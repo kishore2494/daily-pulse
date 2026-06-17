@@ -364,7 +364,7 @@ document.addEventListener('keydown', (ev) => { if (ev.target.id === 'task-input'
    ============================================================ */
 let gymDate = todayStr();
 let gymDraft = { done: {}, log: {} };
-let gymGroup = 'chest';
+let gymDayId = 'day1';
 let openExr = new Set();
 
 function gymStreak() {
@@ -379,68 +379,74 @@ function openGym() {
   gymDraft = { done: Object.assign({}, d.done), log: Object.assign({}, d.log) };
   renderGym();
 }
+function exRow(ex) {
+  const on = !!gymDraft.done[ex.id];
+  const open = openExr.has(ex.id);
+  const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' proper form tutorial');
+  const anim = (typeof renderAnim === 'function') ? renderAnim(ex.anim) : '';
+  return `<div class="exr ${on?'on':''} ${open?'open':''}" data-exid="${ex.id}">
+    <div class="exr-main">
+      <div class="check" data-ex-toggle="${ex.id}">✓</div>
+      <div class="exr-prev" data-ex-open="${ex.id}">${anim}</div>
+      <div class="exr-info" data-ex-open="${ex.id}">
+        <div class="name">${escapeHtml(ex.name)}</div>
+        <div class="sets">${escapeHtml(ex.sets||'')}</div>
+        ${ex.tip ? `<div class="tip">${escapeHtml(ex.tip)}</div>` : ''}
+      </div>
+      <div class="exr-chev" data-ex-open="${ex.id}">${open?'▲':'▼'}</div>
+    </div>
+    <div class="exr-howto">
+      ${open ? `<div class="big">${anim}</div>` : ''}
+      ${ex.tip ? `<div class="tip-box"><b>Form tip:</b> ${escapeHtml(ex.tip)}</div>` : ''}
+      <div class="field"><label>Your reps / weight (optional)</label>
+        <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[ex.id]||'')}" placeholder="e.g. 3 × 12 @ 40kg"></div>
+      <a class="watch-btn" target="_blank" rel="noopener" href="${yt}">▶  Watch tutorial on YouTube</a>
+    </div>
+  </div>`;
+}
 function renderGym() {
   const isToday = gymDate === todayStr();
   document.getElementById('screen-title').textContent = 'Gym';
   document.getElementById('screen-sub').textContent = isToday ? prettyDate(gymDate) + " · today's workout" : 'Editing ' + prettyDate(gymDate);
 
-  const totalDone = Object.keys(gymDraft.done).filter(k => gymDraft.done[k]).length;
-  const totalEx = WORKOUT_PLAN.reduce((n, g) => n + g.exercises.length, 0);
+  const day = WORKOUT_DAYS.find(d => d.id === gymDayId) || WORKOUT_DAYS[0];
+  const blocks = dayBlocks(day);
+  const dayEx = dayExercises(day);
+  const totalDone = dayEx.filter(e => gymDraft.done[e.id]).length;
 
-  const chips = WORKOUT_PLAN.map(g => {
-    const dn = g.exercises.filter(e => gymDraft.done[e.id]).length;
-    const on = g.id === gymGroup;
-    return `<button class="grp-chip ${on?'on':''}" data-grp="${g.id}" style="${on?`background:${g.color}`:''}">
-      <span class="dot" style="background:${on?'#fff':g.color}"></span>${g.emoji} ${g.name}<span class="cnt">${dn}/${g.exercises.length}</span></button>`;
+  const chips = WORKOUT_DAYS.map(d => {
+    const dn = dayExercises(d).filter(e => gymDraft.done[e.id]).length;
+    const tot = dayExercises(d).length;
+    const on = d.id === gymDayId;
+    const mainG = WORKOUT_PLAN.find(g => g.id === d.main);
+    const col = mainG ? mainG.color : 'var(--accent)';
+    return `<button class="grp-chip ${on?'on':''}" data-day="${d.id}" style="${on?`background:${col}`:''}">
+      <span class="dot" style="background:${on?'#fff':col}"></span>${d.name} · ${d.label}<span class="cnt">${dn}/${tot}</span></button>`;
   }).join('');
 
-  const group = WORKOUT_PLAN.find(g => g.id === gymGroup) || WORKOUT_PLAN[0];
-  const rows = group.exercises.map(ex => {
-    const on = !!gymDraft.done[ex.id];
-    const open = openExr.has(ex.id);
-    const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' proper form tutorial');
-    const anim = (typeof renderAnim === 'function') ? renderAnim(ex.anim) : '';
-    return `<div class="exr ${on?'on':''} ${open?'open':''}" data-exid="${ex.id}">
-      <div class="exr-main">
-        <div class="check" data-ex-toggle="${ex.id}">✓</div>
-        <div class="exr-prev" data-ex-open="${ex.id}">${anim}</div>
-        <div class="exr-info" data-ex-open="${ex.id}">
-          <div class="name">${escapeHtml(ex.name)}</div>
-          <div class="sets">${escapeHtml(ex.sets||'')}</div>
-          ${ex.tip ? `<div class="tip">${escapeHtml(ex.tip)}</div>` : ''}
-        </div>
-        <div class="exr-chev" data-ex-open="${ex.id}">${open?'▲':'▼'}</div>
-      </div>
-      <div class="exr-howto">
-        ${open ? `<div class="big">${anim}</div>` : ''}
-        ${ex.tip ? `<div class="tip-box"><b>Form tip:</b> ${escapeHtml(ex.tip)}</div>` : ''}
-        <div class="field"><label>Your reps / weight (optional)</label>
-          <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[ex.id]||'')}" placeholder="e.g. 3 × 12 @ 40kg"></div>
-        <a class="watch-btn" target="_blank" rel="noopener" href="${yt}">▶  Watch tutorial on YouTube</a>
-      </div>
-    </div>`;
-  }).join('');
+  const blockCards = blocks.map(b => `
+    <div class="card">
+      <h2><span style="color:${b.color}">${b.title}</span> <span class="hint">${b.exercises.filter(e=>gymDraft.done[e.id]).length}/${b.exercises.length} · tap for how-to</span></h2>
+      ${b.exercises.map(exRow).join('')}
+    </div>`).join('');
 
   document.getElementById('s-gym').innerHTML = `
     <div class="card">
       <div class="field"><label>Date</label><input type="date" id="gym-date" value="${gymDate}" max="${todayStr()}"></div>
       <div class="progress-ring">
-        <div class="big">${totalDone}/${totalEx}</div>
-        <div><div style="font-weight:600">done today</div><div class="hint">🔥 ${gymStreak()} day gym streak</div></div>
+        <div class="big">${totalDone}/${dayEx.length}</div>
+        <div><div style="font-weight:600">${day.name} · ${escapeHtml(day.label)} done</div><div class="hint">🔥 ${gymStreak()} day gym streak</div></div>
       </div>
     </div>
     <div class="grp-row">${chips}</div>
-    <div class="card">
-      <h2>${group.emoji} ${group.name} <span class="hint">tap a move for the how-to</span></h2>
-      ${rows}
-    </div>
+    ${blockCards}
     <button class="btn btn-primary" id="gym-save">Save workout</button>
     <div style="height:14px"></div>
   `;
 }
 document.addEventListener('click', async (ev) => {
-  const grp = ev.target.closest('[data-grp]');
-  if (grp) { gymGroup = grp.dataset.grp; renderGym(); window.scrollTo(0, 0); return; }
+  const grp = ev.target.closest('[data-day]');
+  if (grp) { gymDayId = grp.dataset.day; renderGym(); window.scrollTo(0, 0); return; }
   const tg = ev.target.closest('[data-ex-toggle]');
   if (tg) { const id = tg.dataset.exToggle; gymDraft.done[id] = !gymDraft.done[id]; renderGym(); return; }
   const op = ev.target.closest('[data-ex-open]');
