@@ -591,6 +591,36 @@ function renderDash() {
   const tasks = DB.tasks(); const tDone = tasks.filter(t=>t.done).length; const tOpen = tasks.length - tDone;
   const tRate = tasks.length ? Math.round(tDone/tasks.length*100) : 0;
 
+  // ---- Mood calendar heatmap (last 12 weeks) ----
+  const heatDays = []; for (let i = 83; i >= 0; i--) heatDays.push(addDays(todayStr(), -i));
+  const heatCells = heatDays.map(d => {
+    const m = e[d] && e[d].mood;
+    const bg = m ? `hsl(${Math.round((m-1)/9*120)},62%,45%)` : 'var(--bg-input)';
+    return `<div class="cell" title="${d}${m?' · mood '+m:''}" style="background:${bg}"></div>`;
+  }).join('');
+
+  // ---- Averages by weekday ----
+  const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const wdAgg = wd.map(() => []);
+  allDates.forEach(d => { if (e[d].mood) wdAgg[new Date(d+'T00:00:00').getDay()].push(+e[d].mood); });
+  const wdAvg = i => wdAgg[i].length ? wdAgg[i].reduce((a,b)=>a+b,0)/wdAgg[i].length : 0;
+  const wdBars = wd.map((name,i) => { const a = wdAvg(i); return `<div class="bar-row"><span class="name" style="width:40px">${name}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${a/10*100}%"></span></span><span class="pct">${a?a.toFixed(1):'–'}</span></div>`; }).join('');
+
+  // ---- Auto insights ----
+  const condAvg = (fn, key) => { const v = allDates.filter(fn).map(d=>e[d][key]).filter(x=>x!=null&&x!==''); return v.length ? v.reduce((a,b)=>a+ +b,0)/v.length : null; };
+  const insights = [];
+  const mHi = condAvg(d=>e[d].sleepHours!==''&&+e[d].sleepHours>=7, 'mood');
+  const mLo = condAvg(d=>e[d].sleepHours!=null&&e[d].sleepHours!==''&&+e[d].sleepHours<7, 'mood');
+  if (mHi!=null && mLo!=null) insights.push(`😴 On 7h+ sleep nights your mood averages <b>${mHi.toFixed(1)}</b> vs <b>${mLo.toFixed(1)}</b> on less sleep.`);
+  let bWd=-1,bV=-1; wd.forEach((n,i)=>{const a=wdAvg(i); if(a>bV){bV=a;bWd=i;}});
+  if (bV>0) insights.push(`📅 Your best-mood day is <b>${wd[bWd]}</b> (avg ${bV.toFixed(1)}/10).`);
+  const eHi = condAvg(d=>e[d].deepWorkHours!==''&&+e[d].deepWorkHours>=4, 'energy');
+  const eLo = condAvg(d=>e[d].deepWorkHours!=null&&e[d].deepWorkHours!==''&&+e[d].deepWorkHours<4, 'energy');
+  if (eHi!=null && eLo!=null) insights.push(`⚡ Deep-work 4h+ days: energy <b>${eHi.toFixed(1)}</b> vs <b>${eLo.toFixed(1)}</b>.`);
+
+  const woSeries = days.map(d => ({ x: d, y: e[d] && e[d].workoutsDone!=null && e[d].workoutsDone!=='' ? +e[d].workoutsDone : null }));
+
   document.getElementById('s-dash').innerHTML = `
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
@@ -615,6 +645,20 @@ function renderDash() {
       <div style="margin-top:-6px">${lineChart(series('deepWorkHours'), '#fbbf24')}</div>
       <div class="legend"><span><span class="dot" style="background:#a78bfa"></span>Sleep (h)</span>
         <span><span class="dot" style="background:#fbbf24"></span>Deep work (h)</span></div></div>
+
+    ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
+      ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
+
+    <div class="card"><h2>📅 Mood calendar <span class="hint">last 12 weeks</span></h2>
+      <div class="heat">${heatCells}</div>
+      <div class="legend"><span><span class="dot" style="background:hsl(0,62%,45%)"></span>low</span>
+        <span><span class="dot" style="background:hsl(60,62%,45%)"></span>ok</span>
+        <span><span class="dot" style="background:hsl(120,62%,45%)"></span>great</span></div></div>
+
+    <div class="card"><h2>Mood by weekday <span class="hint">all time</span></h2>${wdBars}</div>
+
+    <div class="card"><h2>🏋️ Workout volume <span class="hint">exercises/day · last ${N} days</span></h2>
+      ${lineChart(woSeries, '#34d399')}</div>
 
     <div class="card"><h2>💪 Gym breakdown <span class="hint">sessions per group · ${totalWorkouts} total</span></h2>
       ${gymBars || '<div class="empty">No workouts logged yet.</div>'}</div>
