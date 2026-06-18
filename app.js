@@ -381,9 +381,12 @@ function openGym() {
   gymView = 'home';
   renderGym();
 }
+// Each day's ticks are independent: store keyed by "dayId/exerciseId".
+function dkey(dayId, exId) { return dayId + '/' + exId; }
 function exRow(ex) {
-  const on = !!gymDraft.done[ex.id];
-  const open = openExr.has(ex.id);
+  const k = dkey(gymDayId, ex.id);
+  const on = !!gymDraft.done[k];
+  const open = openExr.has(k);
   const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' proper form tutorial');
   const anim = (typeof renderAnim === 'function') ? renderAnim(ex.anim) : '';
   return `<div class="exr ${on?'on':''} ${open?'open':''}" data-exid="${ex.id}">
@@ -401,7 +404,7 @@ function exRow(ex) {
       ${open ? `<div class="big">${anim}</div>` : ''}
       ${ex.tip ? `<div class="tip-box"><b>Form tip:</b> ${escapeHtml(ex.tip)}</div>` : ''}
       <div class="field"><label>Your reps / weight (optional)</label>
-        <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[ex.id]||'')}" placeholder="e.g. 3 × 12 @ 40kg"></div>
+        <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[k]||'')}" placeholder="e.g. 3 × 12 @ 40kg"></div>
       <a class="watch-btn" target="_blank" rel="noopener" href="${yt}">▶  Watch tutorial on YouTube</a>
     </div>
   </div>`;
@@ -416,7 +419,7 @@ function renderGym() {
 function gymHomeHTML() {
   const rows = WORKOUT_DAYS.map(d => {
     const ex = dayExercises(d);
-    const done = ex.filter(e => gymDraft.done[e.id]).length;
+    const done = ex.filter(e => gymDraft.done[dkey(d.id, e.id)]).length;
     const main = dayMain(d);
     const ab = groupById(d.ab);
     return `<div class="day-row" data-day="${d.id}">
@@ -446,10 +449,10 @@ function gymDayHTML() {
   const main = dayMain(day);
   const blocks = dayBlocks(day);
   const ex = dayExercises(day);
-  const done = ex.filter(e => gymDraft.done[e.id]).length;
+  const done = ex.filter(e => gymDraft.done[dkey(day.id, e.id)]).length;
   const blockCards = blocks.map(b => `
     <div class="card">
-      <h2><span style="color:${b.color}">${b.title}</span> <span class="hint">${b.exercises.filter(e=>gymDraft.done[e.id]).length}/${b.exercises.length} · tap for how-to</span></h2>
+      <h2><span style="color:${b.color}">${b.title}</span> <span class="hint">${b.exercises.filter(e=>gymDraft.done[dkey(day.id, e.id)]).length}/${b.exercises.length} · tap for how-to</span></h2>
       ${b.exercises.map(exRow).join('')}
     </div>`).join('');
   return `
@@ -469,13 +472,13 @@ document.addEventListener('click', async (ev) => {
   if (grp) { gymDayId = grp.dataset.day; gymView = 'day'; renderGym(); window.scrollTo(0, 0); return; }
   if (ev.target.id === 'gym-back') { gymView = 'home'; renderGym(); window.scrollTo(0, 0); return; }
   const tg = ev.target.closest('[data-ex-toggle]');
-  if (tg) { const id = tg.dataset.exToggle; gymDraft.done[id] = !gymDraft.done[id]; renderGym(); return; }
+  if (tg) { const k = dkey(gymDayId, tg.dataset.exToggle); gymDraft.done[k] = !gymDraft.done[k]; renderGym(); return; }
   const op = ev.target.closest('[data-ex-open]');
-  if (op) { const id = op.dataset.exOpen; if (openExr.has(id)) openExr.delete(id); else openExr.add(id); renderGym(); return; }
+  if (op) { const k = dkey(gymDayId, op.dataset.exOpen); if (openExr.has(k)) openExr.delete(k); else openExr.add(k); renderGym(); return; }
   if (ev.target.id === 'gym-save') {
     DB.putGymDay(gymDate, gymDraft);
     const doneIds = Object.keys(gymDraft.done).filter(k => gymDraft.done[k]);
-    const detail = doneIds.map(id => { const e = WORKOUT_BY_ID[id]; const nm = e ? e.name : id; return nm + (gymDraft.log[id] ? ` (${gymDraft.log[id]})` : ''); }).join('; ');
+    const detail = doneIds.map(k => { const exId = k.split('/').pop(); const e = WORKOUT_BY_ID[exId]; const nm = e ? e.name : exId; return nm + (gymDraft.log[k] ? ` (${gymDraft.log[k]})` : ''); }).join('; ');
     const entry = DB.entry(gymDate) || { habits: {} };
     entry.workoutsDone = doneIds.length; entry.workoutDetail = detail;
     entry.updatedAt = new Date().toISOString();
@@ -487,7 +490,7 @@ document.addEventListener('click', async (ev) => {
   }
 });
 document.addEventListener('input', (ev) => {
-  const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[lg.dataset.exLog] = lg.value; }
+  const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value; }
 });
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
 
@@ -568,7 +571,8 @@ function renderDash() {
 
   // ---- Gym analysis: how many sessions per muscle group / cardio / abs-sides-core ----
   const gym = DB.gym(); const gymDates = Object.keys(gym);
-  const groupSessions = g => gymDates.filter(d => { const dn = gym[d].done || {}; return g.exercises.some(x => dn[x.id]); }).length;
+  const doneExIdsOn = d => new Set(Object.keys(gym[d].done || {}).filter(k => gym[d].done[k]).map(k => k.split('/').pop()));
+  const groupSessions = g => gymDates.filter(d => { const s = doneExIdsOn(d); return g.exercises.some(x => s.has(x.id)); }).length;
   const gymOrder = ['cardio','chest','triceps','shoulder','biceps','back','legs','abs','side','core'];
   const gymStats = gymOrder.map(id => { const g = groupById(id); return { g, n: groupSessions(g) }; }).filter(x => x.g);
   const gymMax = Math.max(1, ...gymStats.map(x => x.n));
