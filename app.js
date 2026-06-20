@@ -269,8 +269,8 @@ function renderToday() {
     <div class="card">
       <div class="field"><label>Date</label>
         <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
-      ${scaleField('mood','Evening mood',true)}
-      ${scaleField('energy','Energy level',true)}
+      ${scaleField('mood','Evening mood',false)}
+      ${scaleField('energy','Energy level',false)}
       <div class="row2">
         <div class="field"><label>Sleep hrs <span class="req">*</span></label>
           <input type="number" step="0.5" inputmode="decimal" data-num="sleepHours" value="${draft.sleepHours??''}"></div>
@@ -335,7 +335,6 @@ document.addEventListener('change', (ev) => {
 });
 document.addEventListener('click', async (ev) => {
   if (ev.target.id !== 'save-entry') return;
-  if (!draft.mood || !draft.energy) { toast('Mood & energy are required', true); return; }
   draft.updatedAt = new Date().toISOString();
   draft.tasks = tasksForDate(logDate);
   DB.putEntry(logDate, draft);
