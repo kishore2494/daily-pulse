@@ -892,11 +892,12 @@ function longestLoggedStreak() {
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
   return best;
 }
+let dashRange = 14;
 function renderDash() {
   document.getElementById('screen-title').textContent = 'Stats';
   document.getElementById('screen-sub').textContent = 'Your trends & analysis';
   const e = DB.entries();
-  const N = 14;
+  const N = dashRange;
   const days = []; for (let i = N - 1; i >= 0; i--) days.push(addDays(todayStr(), -i));
   const series = key => days.map(d => ({ x: d, y: e[d] && e[d][key] != null && e[d][key] !== '' ? +e[d][key] : null }));
 
@@ -984,6 +985,9 @@ function renderDash() {
       <span class="bar-track"><span class="bar-fill" style="width:${v}%;background:${p.c}"></span></span><span class="pct">${v}</span></div>`; }).join('');
 
   document.getElementById('s-dash').innerHTML = `
+    <div class="range-row">
+      ${[7, 14, 30, 90].map(r => `<button class="range-btn ${dashRange===r?'on':''}" data-range="${r}">${r===90?'3 months':r+' days'}</button>`).join('')}
+    </div>
     <div class="card pm-card">
       <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
       <div class="pm-hero">
@@ -1251,7 +1255,10 @@ document.addEventListener('click', (ev) => {
   const gn = ev.target.closest('[data-node]');
   if (gn && document.getElementById('s-dash').classList.contains('on')) {
     graphFocus = (graphFocus === gn.dataset.node) ? null : gn.dataset.node; renderDash(); window.scrollTo(0, document.documentElement.scrollHeight);
+    return;
   }
+  const rb = ev.target.closest('[data-range]');
+  if (rb) { dashRange = +rb.dataset.range; renderDash(); }
 });
 document.getElementById('nav').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;

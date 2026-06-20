@@ -140,6 +140,9 @@ textarea { resize: vertical; min-height: 64px; }
 .rem-body input[type=text] { flex: 1; min-width: 0; }
 
 /* Dashboard */
+.range-row { display: flex; gap: 7px; margin-bottom: 14px; }
+.range-btn { flex: 1; padding: 9px 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-dim); border-radius: 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.range-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .pm-card { background: linear-gradient(160deg, rgba(109,140,255,.16), rgba(74,214,192,.07)); border-color: #3a4a7a; }
 .pm-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
 .pm-score { font-size: 46px; font-weight: 780; letter-spacing: -2px; line-height: 1; color: #fff; }
