@@ -743,6 +743,31 @@ function lineChart(values, color) {
     <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
     ${pts}</svg>`;
 }
+/* Polymath Index — one 0-100 score/day from 5 pillars. Missing metrics are skipped,
+   so even a light day scores fairly (only what you logged counts). */
+function polymath(e) {
+  if (!e) return null;
+  const num = v => (v != null && v !== '' && !isNaN(+v)) ? +v : null;
+  const cl = v => Math.max(0, Math.min(100, v));
+  const s10 = v => { v = num(v); return v == null ? null : cl(v / 10 * 100); };          // higher = better
+  const s10i = v => { v = num(v); return v == null ? null : cl((10 - v) / 9 * 100); };    // lower = better
+  const tgt = (v, t) => { v = num(v); return v == null ? null : cl(v / t * 100); };
+  const hb = k => (e.habits && k in e.habits) ? (e.habits[k] ? 100 : 0) : null;
+  const mean = arr => { const a = arr.filter(x => x != null); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; };
+
+  const body = mean([tgt(e.sleepHours, 8), s10(e.sleepQuality), s10(e.energy), tgt(e.water, 8), hb('workout'), hb('faceWorkout'), hb('healthyFood')]);
+  const mind = mean([s10(e.mood), s10(e.happiness), s10i(e.stress), s10i(e.anxiety), s10(e.clarity), s10(e.focus), s10(e.motivation), hb('meditation')]);
+  let tasksR = null;
+  if (e.tasksDone != null && e.tasksDone !== '' && +e.tasksPlanned > 0) tasksR = cl(+e.tasksDone / +e.tasksPlanned * 100);
+  const work = mean([tgt(e.deepWorkHours, 4), s10(e.productivity), s10(e.efficiency), s10(e.workSatisfaction), tasksR]);
+  const topicsN = e.topics ? cl(Object.values(e.topics).filter(Boolean).length / 3 * 100) : null;
+  const learning = mean([hb('reading'), hb('english'), hb('consumed'), hb('projectAI'), hb('projectSpace'), s10(e.retention), topicsN, tgt(e.codeLines, 100)]);
+  let discipline = null;
+  if (e.habits) discipline = cl(HABITS.filter(h => e.habits[h.key]).length / HABITS.length * 100);
+
+  const total = mean([body, mind, work, learning, discipline]);
+  return total == null ? null : { total: Math.round(total), body, mind, work, learning, discipline };
+}
 function longestLoggedStreak() {
   const ds = Object.keys(DB.entries()).sort();
   let best = 0, cur = 0, prev = null;
@@ -825,7 +850,32 @@ function renderDash() {
 
   const woSeries = days.map(d => ({ x: d, y: e[d] && e[d].workoutsDone!=null && e[d].workoutsDone!=='' ? +e[d].workoutsDone : null }));
 
+  // ---- Polymath Index ----
+  const pmSeries = days.map(d => { const p = e[d] ? polymath(e[d]) : null; return { x: d, y: p ? p.total : null }; });
+  const pm30 = last30.map(d => e[d] ? polymath(e[d]) : null).filter(Boolean);
+  const pmAvg = pm30.length ? Math.round(pm30.reduce((a, p) => a + p.total, 0) / pm30.length) : 0;
+  const pillarAvg = key => { const v = pm30.map(p => p[key]).filter(x => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0; };
+  const latestDate = allDates.slice().sort().slice(-1)[0];
+  const latestPm = latestDate && polymath(e[latestDate]) ? polymath(e[latestDate]).total : '–';
+  const PILLARS = [
+    { k: 'body', l: '💪 Body', c: '#34d399' }, { k: 'mind', l: '🧠 Mind', c: '#6d8cff' },
+    { k: 'work', l: '💼 Work', c: '#fbbf24' }, { k: 'learning', l: '📚 Learning', c: '#a78bfa' },
+    { k: 'discipline', l: '🔥 Discipline', c: '#f87171' },
+  ];
+  const pmBars = PILLARS.map(p => { const v = pillarAvg(p.k); return `<div class="bar-row"><span class="name">${p.l}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${v}%;background:${p.c}"></span></span><span class="pct">${v}</span></div>`; }).join('');
+
   document.getElementById('s-dash').innerHTML = `
+    <div class="card pm-card">
+      <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
+      <div class="pm-hero">
+        <div class="pm-score">${pmAvg}<span class="pm-out">/100</span></div>
+        <div class="pm-meta"><div>30-day average</div><div class="hint">latest day: ${latestPm}${typeof latestPm==='number'?'/100':''}</div></div>
+      </div>
+      ${lineChart(pmSeries, '#8b9dff')}
+      <div style="margin-top:10px">${pmBars}</div>
+    </div>
+
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
       <div class="stat"><div class="v">${longestLoggedStreak()}</div><div class="l">best streak</div></div>

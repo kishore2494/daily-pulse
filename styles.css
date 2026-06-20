@@ -140,6 +140,11 @@ textarea { resize: vertical; min-height: 64px; }
 .rem-body input[type=text] { flex: 1; min-width: 0; }
 
 /* Dashboard */
+.pm-card { background: linear-gradient(160deg, rgba(109,140,255,.16), rgba(74,214,192,.07)); border-color: #3a4a7a; }
+.pm-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.pm-score { font-size: 46px; font-weight: 780; letter-spacing: -2px; line-height: 1; color: #fff; }
+.pm-out { font-size: 17px; font-weight: 600; color: var(--text-dim); letter-spacing: 0; }
+.pm-meta { font-size: 13px; font-weight: 600; }
 .stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
 .stat { background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; padding: 13px; text-align: center; }
 .stat .v { font-size: 23px; font-weight: 720; letter-spacing: -.5px; }
