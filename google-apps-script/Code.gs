@@ -54,6 +54,7 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     if (data.type === 'reminders') return saveReminders_(data.items || []);
     if (data.type === 'notes') return saveList_('Notes', ['text', 'color', 'created'], data.items || []);
+    if (data.type === 'state') return saveState_(e.postData.contents);
     var sheet = getSheet_();
     flatten_(data);
     var row = COLUMNS.map(function (k) { return data[k] !== undefined && data[k] !== null ? data[k] : ''; });
@@ -76,7 +77,37 @@ function doPost(e) {
   }
 }
 
-function doGet() { return json_({ ok: true, msg: 'Daily Pulse sync is live.' }); }
+function doGet(e) {
+  // Multi-device pull: returns the full app state. Uses JSONP (?callback=) to dodge CORS.
+  if (e && e.parameter && e.parameter.type === 'pull') {
+    var raw = readState_();              // the exact JSON string the app last pushed (or '{}')
+    if (e.parameter.callback) {
+      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
+  }
+  return json_({ ok: true, msg: 'Daily Pulse sync is live.' });
+}
+
+// Full-state snapshot for device sync, stored chunked in a hidden "_State" tab.
+function saveState_(jsonStr) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('_State') || ss.insertSheet('_State');
+  sh.clear();
+  var size = 45000, rows = [];
+  for (var i = 0; i < jsonStr.length; i += size) rows.push([jsonStr.substr(i, size)]);
+  if (rows.length) sh.getRange(1, 1, rows.length, 1).setValues(rows);
+  try { sh.hideSheet(); } catch (_) {}
+  return json_({ ok: true, bytes: jsonStr.length });
+}
+function readState_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('_State');
+  if (!sh || sh.getLastRow() === 0) return '{}';
+  var vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
+  return vals.map(function (r) { return r[0]; }).join('') || '{}';
+}
 
 // Reminders → a dedicated "Reminders" tab (rewritten each time)
 function saveReminders_(items) {

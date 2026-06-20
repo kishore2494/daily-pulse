@@ -121,25 +121,25 @@ function enableDrag(listEl, onReorder) {
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return JSON.parse(localStorage.getItem('dp.entries') || '{}'); },
-  saveEntries(e) { localStorage.setItem('dp.entries', JSON.stringify(e)); },
+  saveEntries(e) { localStorage.setItem('dp.entries', JSON.stringify(e)); pushState(); },
   entry(date) { return this.entries()[date] || null; },
   putEntry(date, data) { const e = this.entries(); e[date] = data; this.saveEntries(e); },
 
   tasks() { return JSON.parse(localStorage.getItem('dp.tasks') || '[]'); },
-  saveTasks(t) { localStorage.setItem('dp.tasks', JSON.stringify(t)); },
+  saveTasks(t) { localStorage.setItem('dp.tasks', JSON.stringify(t)); pushState(); },
 
   exercises() { const s = localStorage.getItem('dp.exercises'); return s ? JSON.parse(s) : DEFAULT_EXERCISES.slice(); },
-  saveExercises(x) { localStorage.setItem('dp.exercises', JSON.stringify(x)); },
+  saveExercises(x) { localStorage.setItem('dp.exercises', JSON.stringify(x)); pushState(); },
   gym() { return JSON.parse(localStorage.getItem('dp.gym') || '{}'); },
-  saveGym(g) { localStorage.setItem('dp.gym', JSON.stringify(g)); },
+  saveGym(g) { localStorage.setItem('dp.gym', JSON.stringify(g)); pushState(); },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; this.saveGym(g); },
 
   reminders() { return JSON.parse(localStorage.getItem('dp.reminders') || '[]'); },
-  saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); },
+  saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); pushState(); },
 
   notes() { return JSON.parse(localStorage.getItem('dp.notes') || '[]'); },
-  saveNotes(n) { localStorage.setItem('dp.notes', JSON.stringify(n)); },
+  saveNotes(n) { localStorage.setItem('dp.notes', JSON.stringify(n)); pushState(); },
 
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, JSON.parse(localStorage.getItem('dp.settings') || '{}')); },
   saveSettings(s) { localStorage.setItem('dp.settings', JSON.stringify(s)); },
@@ -198,7 +198,51 @@ async function resyncAll() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   let ok = 0;
   for (const d of dates) { if (await syncEntry(d, e[d])) ok++; }
+  syncReminders(); syncNotes(); pushState(true);
   toast(`Pushed ${ok} day(s) to your Sheet`);
+}
+
+/* ---------- Multi-device sync: full-state push + JSONP pull ----------
+   The sync link IS the login. Whichever device saved most recently wins;
+   the app pulls on open so you see the latest before editing. */
+let pushTimer;
+function pushState(now) {
+  const url = DB.settings().syncUrl; if (!url) return;
+  const touched = Date.now();
+  localStorage.setItem('dp.touched', String(touched));
+  clearTimeout(pushTimer);
+  const send = () => {
+    const payload = { type: 'state', touched,
+      entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(),
+      reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises() };
+    fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
+  };
+  now ? send() : (pushTimer = setTimeout(send, 1200));
+}
+function pullState(done) {
+  const url = DB.settings().syncUrl; if (!url) { done && done(false); return; }
+  const cb = 'dpcb' + Date.now();
+  const script = document.createElement('script');
+  const cleanup = () => { delete window[cb]; script.remove(); };
+  window[cb] = (remote) => { cleanup(); applyRemoteState(remote); done && done(true); };
+  script.onerror = () => { cleanup(); done && done(false); };
+  script.src = url + (url.includes('?') ? '&' : '?') + 'type=pull&callback=' + cb + '&t=' + Date.now();
+  document.body.appendChild(script);
+}
+function applyRemoteState(remote) {
+  if (!remote || !remote.touched) return;            // nothing in the cloud yet
+  const localTouched = +(localStorage.getItem('dp.touched') || 0);
+  if (remote.touched <= localTouched) return;         // local is newer/equal — keep it
+  if (remote.entries)   localStorage.setItem('dp.entries', JSON.stringify(remote.entries));
+  if (remote.tasks)     localStorage.setItem('dp.tasks', JSON.stringify(remote.tasks));
+  if (remote.notes)     localStorage.setItem('dp.notes', JSON.stringify(remote.notes));
+  if (remote.reminders) localStorage.setItem('dp.reminders', JSON.stringify(remote.reminders));
+  if (remote.gym)       localStorage.setItem('dp.gym', JSON.stringify(remote.gym));
+  if (remote.exercises) localStorage.setItem('dp.exercises', JSON.stringify(remote.exercises));
+  localStorage.setItem('dp.touched', String(remote.touched));
+  refreshStreak(); setupReminders();
+  const cur = document.querySelector('.nav button.on'); if (cur) show(cur.dataset.screen);
+  toast('Synced from your other device ⬇️');
 }
 
 /* ============================================================
@@ -842,13 +886,17 @@ function renderSettings() {
   const s = DB.settings();
   document.getElementById('s-settings').innerHTML = `
     <div class="card">
-      <h2>☁️ Google Sheet sync</h2>
-      <div class="field"><label>Web App URL <span class="hint">(from your Apps Script — see README)</span></label>
+      <h2>☁️ Sync &amp; login <span class="hint">${s.syncUrl ? 'connected ●' : 'not connected'}</span></h2>
+      <div class="field"><label>Your sheet link = your login key <span class="hint">paste it on any device to load your data</span></label>
         <input type="url" id="sync-url" placeholder="https://script.google.com/macros/s/…/exec" value="${escapeHtml(s.syncUrl)}"></div>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="save-sync">Save link</button>
+        <button class="btn btn-primary btn-sm" id="save-sync">Connect / Log in</button>
+        <button class="btn btn-ghost btn-sm" id="sync-now">⟳ Sync now</button>
+      </div>
+      <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-ghost btn-sm" id="resync">Push all to Sheet</button>
       </div>
+      <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Newest edit wins.</div>
     </div>
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
@@ -886,8 +934,13 @@ function renderSettings() {
 }
 document.addEventListener('click', async (ev) => {
   const s = DB.settings();
-  if (ev.target.id === 'save-sync') { s.syncUrl = document.getElementById('sync-url').value.trim(); DB.saveSettings(s); toast('Sheet link saved'); }
-  if (ev.target.id === 'resync') { toast('Syncing…'); resyncAll(); }
+  if (ev.target.id === 'save-sync') {
+    s.syncUrl = document.getElementById('sync-url').value.trim(); DB.saveSettings(s);
+    if (s.syncUrl) { toast('Connected — loading your data…'); pullState(ok => { renderSettings(); toast(ok ? 'Logged in & synced ✅' : 'Connected (nothing to pull yet)'); }); }
+    else { renderSettings(); toast('Link cleared'); }
+  }
+  if (ev.target.id === 'sync-now') { toast('Syncing…'); pullState(ok => { if (!ok) pushState(true); toast('Synced ✅'); }); }
+  if (ev.target.id === 'resync') { toast('Pushing all…'); resyncAll(); }
   if (ev.target.id === 'rem-add') {
     const time = document.getElementById('rem-new-time').value;
     const label = document.getElementById('rem-new-label').value.trim();
@@ -1004,6 +1057,7 @@ function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<
 refreshStreak();
 show('today');
 setupReminders();
+pullState();   // multi-device: pull latest from your Sheet on open
 if ('serviceWorker' in navigator) {
   // If a service worker already controls this page, auto-reload once when a new
   // version takes over — so app updates appear immediately, no manual refresh.
