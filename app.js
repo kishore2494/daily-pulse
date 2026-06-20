@@ -154,6 +154,27 @@ function prettyDate(str) {
 }
 function isSunday(str) { return new Date(str + 'T00:00:00').getDay() === 0; }
 
+/* ---------- Voice dictation (speak → journal) ---------- */
+let _recog = null, _recogOn = false;
+function dictateInto(key, btn) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast('Voice input needs Chrome / Android', true); return; }
+  if (_recogOn) { _recog && _recog.stop(); return; }
+  const ta = document.querySelector(`[data-txt="${key}"]`); if (!ta) return;
+  _recog = new SR(); _recog.lang = 'en-IN'; _recog.continuous = true; _recog.interimResults = false;
+  _recogOn = true; btn.classList.add('rec'); btn.textContent = '● Listening… tap to stop';
+  _recog.onresult = (ev) => {
+    let txt = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) txt += ev.results[i][0].transcript;
+    txt = txt.trim();
+    if (txt) { ta.value = (ta.value ? ta.value + ' ' : '') + txt; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+  };
+  _recog.onerror = (e) => { toast(e.error === 'not-allowed' ? 'Mic permission blocked' : 'Mic error', true); };
+  _recog.onend = () => { _recogOn = false; btn.classList.remove('rec'); btn.textContent = '🎤 Speak'; };
+  try { _recog.start(); toast('Listening… speak now 🎤'); } catch (e) { _recogOn = false; }
+}
+document.addEventListener('click', (ev) => { const m = ev.target.closest('[data-mic]'); if (m) dictateInto(m.dataset.mic, m); });
+
 /* ---------- Toast ---------- */
 let toastTimer;
 function toast(msg, isErr) {
@@ -368,8 +389,9 @@ function renderToday() {
         <textarea data-txt="wentWell" placeholder="...">${draft.wentWell||''}</textarea></div>
       <div class="field"><label>One thing to improve tomorrow 🎯</label>
         <textarea data-txt="improve" placeholder="...">${draft.improve||''}</textarea></div>
-      <div class="field"><label>Journal entry 📓</label>
-        <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${draft.journal||''}</textarea></div>
+      <div class="field"><label>Journal entry 📓 <span class="hint">type or speak · use #tags to link</span></label>
+        <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${draft.journal||''}</textarea>
+        <button type="button" class="mic-btn" data-mic="journal">🎤 Speak</button></div>
     </div>
 
     <h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
@@ -813,6 +835,7 @@ function exportCSV() {
    Nodes: days, topics, habits. Edges link each day to its topics + habits done,
    so shared topics/habits become hubs that connect your days. */
 let graphFocus = null;
+function extractTags(s) { const out = []; const m = String(s || '').match(/#[a-z0-9_]+/gi); if (m) m.forEach(t => { t = t.toLowerCase(); if (!out.includes(t)) out.push(t); }); return out; }
 function buildGraph() {
   const e = DB.entries();
   const days = Object.keys(e).sort().slice(-21);
@@ -823,6 +846,15 @@ function buildGraph() {
     const en = e[d];
     if (en.topics) Object.keys(en.topics).filter(k => en.topics[k]).forEach(t => { add('t:' + t, 'topic', t); links.push(['d:' + d, 't:' + t]); });
     if (en.habits) HABITS.forEach(h => { if (en.habits[h.key]) { add('h:' + h.key, 'habit', h.label); links.push(['d:' + d, 'h:' + h.key]); } });
+    // #tags from the day's journal/reflection
+    [...new Set([].concat(extractTags(en.journal), extractTags(en.wentWell), extractTags(en.improve), extractTags(en.keyInsight)))]
+      .forEach(tg => { add('g:' + tg, 'tag', tg); links.push(['d:' + d, 'g:' + tg]); });
+  });
+  // notes with #tags become nodes too (link to days via shared tags)
+  DB.notes().forEach(nt => {
+    const tags = [...new Set(extractTags(nt.text))]; if (!tags.length) return;
+    add('n:' + nt.id, 'note', (nt.text || '').replace(/#[a-z0-9_]+/gi, '').trim().slice(0, 14) || 'note');
+    tags.forEach(tg => { add('g:' + tg, 'tag', tg); links.push(['n:' + nt.id, 'g:' + tg]); });
   });
   const ns = nodes; links.forEach(([a, b]) => { if (ns[a]) ns[a].deg++; if (ns[b]) ns[b].deg++; });
   return { nodes: Object.values(nodes), links: links.filter(([a, b]) => ns[a] && ns[b]) };
@@ -844,15 +876,15 @@ function graphSVG() {
   if (g.nodes.length < 2) return '<div class="empty">Log a few days with topics &amp; habits — your graph grows here.</div>';
   const W = 340, H = 300; layoutGraph(g, W, H);
   const pos = {}; g.nodes.forEach(n => pos[n.id] = n);
-  const col = t => t === 'day' ? '#6d8cff' : t === 'topic' ? '#fbbf24' : '#34d399';
+  const col = t => ({ day: '#6d8cff', topic: '#fbbf24', habit: '#34d399', tag: '#ec4899', note: '#a78bfa' }[t] || '#34d399');
   const focus = (graphFocus && pos[graphFocus]) ? graphFocus : null;
   const near = new Set(); if (focus) { near.add(focus); g.links.forEach(([a, b]) => { if (a === focus) near.add(b); if (b === focus) near.add(a); }); }
   const edges = g.links.map(([a, b]) => { const on = focus && (a === focus || b === focus); return `<line x1="${pos[a].x.toFixed(1)}" y1="${pos[a].y.toFixed(1)}" x2="${pos[b].x.toFixed(1)}" y2="${pos[b].y.toFixed(1)}" stroke="${on ? '#6d8cff' : '#2a3550'}" stroke-width="${on ? 1.6 : 0.7}" opacity="${focus && !on ? 0.12 : 0.55}"/>`; }).join('');
   const circ = g.nodes.map(n => { const r = Math.min(12, 4 + n.deg * 0.8); const dim = focus && !near.has(n.id); const showLabel = n.id === focus || (n.type !== 'day' && n.deg >= 2);
     return `<g opacity="${dim ? 0.18 : 1}"><circle data-node="${escapeHtml(n.id)}" cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${r}" fill="${col(n.type)}" stroke="${n.id === focus ? '#fff' : 'none'}" stroke-width="2"/>${showLabel ? `<text x="${n.x.toFixed(1)}" y="${(n.y - r - 3).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--text-dim)">${escapeHtml(n.label)}</text>` : ''}</g>`; }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;touch-action:none" id="graph-svg">${edges}${circ}</svg>
-    <div class="legend"><span><span class="dot" style="background:#6d8cff"></span>Day</span><span><span class="dot" style="background:#fbbf24"></span>Topic</span><span><span class="dot" style="background:#34d399"></span>Habit</span></div>
-    <div class="hint" style="margin-top:4px">${focus ? `Connections for <b style="color:var(--text)">${escapeHtml(pos[focus].label)}</b> · tap it again to reset` : 'Tap a node to highlight its connections'}</div>`;
+    <div class="legend"><span><span class="dot" style="background:#6d8cff"></span>Day</span><span><span class="dot" style="background:#fbbf24"></span>Topic</span><span><span class="dot" style="background:#34d399"></span>Habit</span><span><span class="dot" style="background:#ec4899"></span>#tag</span><span><span class="dot" style="background:#a78bfa"></span>Note</span></div>
+    <div class="hint" style="margin-top:4px">${focus ? `Connections for <b style="color:var(--text)">${escapeHtml(pos[focus].label)}</b> · tap it again to reset` : 'Tap a node · add #tags in journals/notes to link them'}</div>`;
 }
 function longestLoggedStreak() {
   const ds = Object.keys(DB.entries()).sort();
