@@ -257,8 +257,11 @@ function pullState(done) {
 //  tasks/notes/reminders -> union by id (adds anything this device is missing)
 function applyRemoteState(remote) {
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
+  const localTouched = +(localStorage.getItem('dp.touched') || 0);
+  const remoteNewer = remote.touched > localTouched; // the other device changed more recently
   let changed = false;
 
+  // Entries: merge by date, newest updatedAt wins — never lose a day logged on either device.
   if (remote.entries) {
     const local = DB.entries();
     Object.keys(remote.entries).forEach(d => {
@@ -267,6 +270,7 @@ function applyRemoteState(remote) {
     });
     localStorage.setItem('dp.entries', JSON.stringify(local));
   }
+  // Gym: merge by date, union of done/log — never lose a workout.
   if (remote.gym) {
     const local = DB.gym();
     Object.keys(remote.gym).forEach(d => {
@@ -277,14 +281,17 @@ function applyRemoteState(remote) {
     });
     localStorage.setItem('dp.gym', JSON.stringify(local));
   }
-  [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['reminders', 'dp.reminders']].forEach(([key, store]) => {
-    if (!remote[key]) return;
-    const local = JSON.parse(localStorage.getItem(store) || '[]');
-    const ids = new Set(local.map(x => x.id));
-    const add = remote[key].filter(x => !ids.has(x.id));
-    if (add.length) { localStorage.setItem(store, JSON.stringify(local.concat(add))); changed = true; }
-  });
-  if (remote.exercises && !localStorage.getItem('dp.exercises')) localStorage.setItem('dp.exercises', JSON.stringify(remote.exercises));
+  // Tasks / Notes / Reminders / Exercises are LISTS that get completed, edited, reordered, deleted —
+  // a union-of-ids would never propagate those. So when the other device changed more recently,
+  // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
+  if (remoteNewer) {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises']].forEach(([key, store]) => {
+      if (!remote[key]) return;
+      if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
+        localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
+      }
+    });
+  }
 
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
