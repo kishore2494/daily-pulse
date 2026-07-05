@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v31';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v32';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
@@ -143,6 +143,9 @@ const DB = {
   notes() { return JSON.parse(localStorage.getItem('dp.notes') || '[]'); },
   saveNotes(n) { localStorage.setItem('dp.notes', JSON.stringify(n)); pushState(); },
 
+  plans() { return JSON.parse(localStorage.getItem('dp.plans') || '[]'); },
+  savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
+
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, JSON.parse(localStorage.getItem('dp.settings') || '{}')); },
   saveSettings(s) { localStorage.setItem('dp.settings', JSON.stringify(s)); },
 };
@@ -244,7 +247,7 @@ function pushState(now) {
   clearTimeout(pushTimer);
   const send = () => {
     const payload = { type: 'state', touched,
-      entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(),
+      entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
@@ -294,7 +297,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -523,12 +526,21 @@ function addTask() {
   DB.saveTasks(tasks); renderTasks(); syncTodayTasks();
   document.getElementById('task-input').focus();
 }
-function rerenderList() { if (document.getElementById('s-notes').classList.contains('on')) renderNotes(); else renderTasks(); }
+function rerenderList() {
+  if (document.getElementById('s-plans').classList.contains('on')) renderPlans();
+  else if (document.getElementById('s-notes').classList.contains('on')) renderNotes();
+  else renderTasks();
+}
 function setColor(id, col) {
   const ts = DB.tasks(); const t = ts.find(x => x.id === id);
   if (t) { t.color = col; DB.saveTasks(ts); openColorId = null; renderTasks(); return; }
   const ns = DB.notes(); const n = ns.find(x => x.id === id);
-  if (n) { n.color = col; DB.saveNotes(ns); openColorId = null; renderNotes(); syncNotes(); }
+  if (n) { n.color = col; DB.saveNotes(ns); openColorId = null; renderNotes(); syncNotes(); return; }
+  // Plans: the id can be a plan label OR a checklist item inside a plan.
+  const ps = DB.plans();
+  const p = ps.find(x => x.id === id);
+  if (p) { p.color = col; DB.savePlans(ps); openColorId = null; renderPlans(); return; }
+  for (const pl of ps) { const it = (pl.items || []).find(x => x.id === id); if (it) { it.color = col; DB.savePlans(ps); openColorId = null; renderPlans(); return; } }
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.id === 'task-add-btn') return addTask();
@@ -600,6 +612,131 @@ document.addEventListener('input', (ev) => {
   if (nt) { const ns = DB.notes(); const n = ns.find(x => x.id === nt.dataset.note); if (n) { n.text = nt.value; DB.saveNotes(ns); } nt.style.height = 'auto'; nt.style.height = nt.scrollHeight + 'px'; }
 });
 document.addEventListener('change', (ev) => { if (ev.target.closest('[data-note]')) syncNotes(); });
+
+/* ============================================================
+   SCREEN: PLANS  (named plan → its own checklist)
+   ============================================================ */
+let curPlan = null;   // null = list of plans; otherwise the open plan's id
+function planProgress(p) { const its = p.items || []; return { t: its.length, d: its.filter(i => i.done).length }; }
+function progressBar(d, t) {
+  const pct = t ? Math.round(d / t * 100) : 0;
+  return `<div class="pbar"><span style="width:${pct}%"></span></div>`;
+}
+function planRow(p) {
+  const { t, d } = planProgress(p);
+  return `<div class="lrow" data-id="${p.id}" style="${p.color?`border-left:3px solid ${colorHex(p.color)}`:''}">
+    <div class="lrow-main">
+      <span class="drag-handle" data-drag>⠿</span>
+      <div class="txt plan-open" data-openplan="${p.id}">
+        <div class="plan-name">${escapeHtml(p.name)}</div>
+        <div class="plan-meta">${t?`${d}/${t} done`:'empty'} ${progressBar(d, t)}</div>
+      </div>
+      <button class="pal" data-palette="${p.id}" title="color"${p.color?` style="background:${colorHex(p.color)};border-color:${colorHex(p.color)}"`:''}></button>
+      <button class="del" data-delplan="${p.id}">×</button>
+    </div>
+    ${openColorId===p.id ? swatchStrip(p.id) : ''}
+  </div>`;
+}
+function planItemRow(it) {
+  return `<div class="lrow ${it.done?'done':''}" data-id="${it.id}" style="${it.color?`border-left:3px solid ${colorHex(it.color)}`:''}">
+    <div class="lrow-main">
+      <span class="drag-handle" data-drag>⠿</span>
+      <div class="check" data-planitem-toggle="${it.id}">✓</div>
+      <div class="txt">${escapeHtml(it.text)}</div>
+      <button class="pal" data-palette="${it.id}" title="color"${it.color?` style="background:${colorHex(it.color)};border-color:${colorHex(it.color)}"`:''}></button>
+      <button class="del" data-planitem-del="${it.id}">×</button>
+    </div>
+    ${openColorId===it.id ? swatchStrip(it.id) : ''}
+  </div>`;
+}
+function renderPlans() {
+  document.getElementById('screen-title').textContent = 'Plans';
+  const plans = DB.plans();
+
+  // ---- LIST VIEW: all plan labels ----
+  if (!curPlan) {
+    document.getElementById('screen-sub').textContent = `${plans.length} plan${plans.length===1?'':'s'}`;
+    document.getElementById('s-plans').innerHTML = `
+      <div class="card">
+        <div class="task-add">
+          <input type="text" id="plan-input" placeholder="New plan name… (e.g. Launch app)" autocomplete="off">
+          <button class="mic-ic" data-mic="#plan-input" title="speak">🎤</button>
+          <button class="btn btn-primary btn-sm" id="plan-add-btn">Add</button>
+        </div>
+        <div class="hint" style="margin-top:8px">Each plan holds its own checklist. Tap a plan to open it · drag ⠿ to reorder · tap ◌ to color</div>
+      </div>
+      <div class="card" id="plan-list" style="padding:4px 16px">
+        ${plans.length ? plans.map(planRow).join('') : '<div class="empty">No plans yet. Add one above 👆</div>'}
+      </div>`;
+    enableDrag(document.getElementById('plan-list'), ids => {
+      const ps = DB.plans(); DB.savePlans(ids.map(id => ps.find(p => p.id === id)).filter(Boolean)); renderPlans();
+    });
+    return;
+  }
+
+  // ---- DETAIL VIEW: one plan's checklist ----
+  const p = plans.find(x => x.id === curPlan);
+  if (!p) { curPlan = null; return renderPlans(); }
+  const items = p.items || [];
+  const { t, d } = planProgress(p);
+  document.getElementById('screen-sub').textContent = `${t?`${d}/${t} done`:'new plan'}`;
+  document.getElementById('s-plans').innerHTML = `
+    <div class="card">
+      <button class="btn btn-ghost btn-sm" id="plan-back">← All plans</button>
+      <input type="text" class="plan-title" data-planname="${p.id}" value="${escapeHtml(p.name)}" placeholder="Plan name…">
+      <div class="hint" style="margin-top:6px">${t?`${d}/${t} done`:'No steps yet'} ${progressBar(d, t)}</div>
+    </div>
+    <div class="card">
+      <h2>Checklist <span class="hint">drag ⠿ · tap ◌ to color · 🎤 to speak</span></h2>
+      <div id="plan-item-list">${items.length ? items.map(planItemRow).join('') : '<div class="empty">No steps yet. Add one below 👇</div>'}</div>
+      <div class="task-add">
+        <input type="text" id="plan-item-input" placeholder="Add a step…" autocomplete="off">
+        <button class="mic-ic" data-mic="#plan-item-input" title="speak">🎤</button>
+        <button class="btn btn-primary btn-sm" id="plan-item-add-btn">Add</button>
+      </div>
+      ${items.some(i => i.done) ? '<div style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="plan-clear-done">Clear completed</button></div>' : ''}
+    </div>`;
+  enableDrag(document.getElementById('plan-item-list'), ids => {
+    const ps = DB.plans(); const pl = ps.find(x => x.id === curPlan); if (!pl) return;
+    pl.items = ids.map(id => (pl.items || []).find(i => i.id === id)).filter(Boolean);
+    DB.savePlans(ps); renderPlans();
+  });
+}
+function addPlan() {
+  const inp = document.getElementById('plan-input'); const name = inp.value.trim(); if (!name) return;
+  const ps = DB.plans(); ps.unshift({ id: 'pl' + Date.now(), name, color: '', created: todayStr(), items: [] });
+  DB.savePlans(ps); renderPlans();
+  const f = document.getElementById('plan-input'); if (f) f.focus();
+}
+function addPlanItem() {
+  const inp = document.getElementById('plan-item-input'); const text = inp.value.trim(); if (!text) return;
+  const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (!p) return;
+  p.items = p.items || []; p.items.push({ id: 'pi' + Date.now(), text, done: false, color: '', created: todayStr() });
+  DB.savePlans(ps); renderPlans();
+  const f = document.getElementById('plan-item-input'); if (f) f.focus();
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target.id === 'plan-add-btn') return addPlan();
+  const op = ev.target.closest('[data-openplan]');
+  if (op) { curPlan = op.dataset.openplan; renderPlans(); window.scrollTo(0, 0); return; }
+  const dp = ev.target.closest('[data-delplan]');
+  if (dp) { if (!confirm('Delete this whole plan and its checklist?')) return; DB.savePlans(DB.plans().filter(p => p.id !== dp.dataset.delplan)); renderPlans(); return; }
+  if (ev.target.id === 'plan-back') { curPlan = null; renderPlans(); return; }
+  if (ev.target.id === 'plan-item-add-btn') return addPlanItem();
+  const pt = ev.target.closest('[data-planitem-toggle]');
+  if (pt) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); const it = p && (p.items || []).find(i => i.id === pt.dataset.planitemToggle); if (it) { it.done = !it.done; DB.savePlans(ps); renderPlans(); } return; }
+  const pid = ev.target.closest('[data-planitem-del]');
+  if (pid) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { p.items = (p.items || []).filter(i => i.id !== pid.dataset.planitemDel); DB.savePlans(ps); renderPlans(); } return; }
+  if (ev.target.id === 'plan-clear-done') { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { p.items = (p.items || []).filter(i => !i.done); DB.savePlans(ps); renderPlans(); } return; }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.id === 'plan-input' && ev.key === 'Enter') addPlan();
+  if (ev.target.id === 'plan-item-input' && ev.key === 'Enter') addPlanItem();
+});
+document.addEventListener('input', (ev) => {
+  const pn = ev.target.closest('[data-planname]');
+  if (pn) { const ps = DB.plans(); const p = ps.find(x => x.id === pn.dataset.planname); if (p) { p.name = pn.value; DB.savePlans(ps); } }
+});
 
 /* ============================================================
    SCREEN: GYM
@@ -1379,7 +1516,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, tasks: renderTasks, notes: renderNotes, gym: openGym, habits: renderHabits, dash: renderDash, history: renderHistory, settings: renderSettings };
+const RENDER = { today: openToday, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, history: renderHistory, settings: renderSettings };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   document.getElementById('s-' + name).classList.add('on');
@@ -1402,6 +1539,7 @@ document.getElementById('nav').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
   if (b.dataset.screen === 'today') logDate = todayStr();   // Log tab always opens today
   if (b.dataset.screen === 'gym') gymDate = todayStr();     // Gym tab always opens today
+  if (b.dataset.screen === 'plans') curPlan = null;         // Plans tab always opens the list
   show(b.dataset.screen);
 });
 

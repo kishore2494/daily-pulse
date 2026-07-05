@@ -312,3 +312,11 @@ textarea { resize: vertical; min-height: 64px; }
 .sync-dot.ok { background: var(--good); } .sync-dot.off { background: var(--text-faint); } .sync-dot.err { background: var(--bad); }
 a { color: var(--accent); }
 code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-size: 12.5px; }
+
+/* ---------- Plans ---------- */
+.plan-open { cursor: pointer; }
+.plan-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.plan-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+.pbar { flex: 1; height: 5px; border-radius: 3px; background: var(--bg-input); overflow: hidden; max-width: 160px; }
+.pbar span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .25s; }
+.plan-title { width: 100%; margin-top: 10px; font-size: 18px; font-weight: 700; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text); font-family: inherit; }
