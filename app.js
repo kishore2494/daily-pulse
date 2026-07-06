@@ -160,31 +160,32 @@ function prettyDate(str) {
 function isSunday(str) { return new Date(str + 'T00:00:00').getDay() === 0; }
 
 /* ---------- Voice dictation (speak → journal) ---------- */
-let _recog = null, _recogOn = false, _recogBtn = null, _recogStop = false;
+let _recog = null, _recogOn = false, _recogBtn = null, _userStopped = false;
 // sel = a CSS selector for the input/textarea to dictate into.
-// Keeps listening through thinking pauses (auto-restarts on silence) until you tap to stop.
+// MANUAL toggle: tap 🎤 to start recording, tap again to stop. No auto-restart, so no
+// repeated mic "ding" and no unpredictable cut-in/cut-out. `continuous = true` keeps it
+// listening through pauses on capable browsers; if the OS ends it during a long silence
+// (common on phones), the mic just turns off and you tap once to continue.
 function dictateInto(sel, btn) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { toast('Voice input needs Chrome / Android', true); return; }
-  if (_recogOn) { _recogStop = true; _recog && _recog.stop(); return; }   // tapping again = stop
+  if (_recogOn) { _userStopped = true; try { _recog && _recog.stop(); } catch (_) {} return; }   // tap again = stop
   const ta = document.querySelector(sel); if (!ta) return;
-  _recogStop = false; _recogOn = true; _recogBtn = btn; btn.classList.add('rec');
+  _userStopped = false; _recogOn = true; _recogBtn = btn; btn.classList.add('rec');
   _recog = new SR(); _recog.lang = 'en-IN'; _recog.continuous = true; _recog.interimResults = false;
   _recog.onresult = (ev) => {
     let txt = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) txt += ev.results[i][0].transcript;
+    for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) txt += ev.results[i][0].transcript + ' ';
     txt = txt.trim();
-    if (txt) { ta.value = (ta.value ? ta.value + ' ' : '') + txt; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (txt) { ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '') + txt; ta.dispatchEvent(new Event('input', { bubbles: true })); }
   };
-  _recog.onerror = (e) => {
-    // permission/service errors are fatal; 'no-speech'/'aborted'/'network' are just pauses — let onend restart
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { _recogStop = true; toast('Mic permission blocked', true); }
+  _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Mic permission blocked', true); };
+  _recog.onend = () => {                       // NO auto-restart — purely manual
+    _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null;
+    if (!_userStopped) toast('Mic paused — tap 🎤 to continue');
   };
-  _recog.onend = () => {
-    if (_recogStop) { _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); return; }
-    try { _recog.start(); } catch (e) { setTimeout(() => { if (!_recogStop) { try { _recog.start(); } catch (_) { _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); } } }, 250); }
-  };
-  try { _recog.start(); toast('Listening — pause to think, tap 🎤 again to stop'); } catch (e) { _recogOn = false; btn.classList.remove('rec'); }
+  try { _recog.start(); toast('🎙️ Recording — tap 🎤 again to stop'); }
+  catch (e) { _recogOn = false; btn.classList.remove('rec'); _recog = null; }
 }
 document.addEventListener('click', (ev) => { const m = ev.target.closest('[data-mic]'); if (m) { ev.preventDefault(); dictateInto(m.dataset.mic, m); } });
 
