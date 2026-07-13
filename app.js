@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v35';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v36';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
@@ -146,6 +146,11 @@ const DB = {
   plans() { return JSON.parse(localStorage.getItem('dp.plans') || '[]'); },
   savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
 
+  timelog() { return JSON.parse(localStorage.getItem('dp.timelog') || '[]'); },
+  saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); },
+  timeacts() { return JSON.parse(localStorage.getItem('dp.timeacts') || '[]'); },   // custom activities
+  saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
+
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, JSON.parse(localStorage.getItem('dp.settings') || '{}')); },
   saveSettings(s) { localStorage.setItem('dp.settings', JSON.stringify(s)); },
 };
@@ -249,7 +254,8 @@ function pushState(now) {
   const send = () => {
     const payload = { type: 'state', touched,
       entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
-      reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises() };
+      reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
+      timelog: DB.timelog(), timeacts: DB.timeacts() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -294,11 +300,32 @@ function applyRemoteState(remote) {
     });
     localStorage.setItem('dp.gym', JSON.stringify(local));
   }
+  // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
+  // Deletions: when the other device saved more recently, drop local segments it no longer has
+  // (unless ours is newer than its save — that's a fresh local segment it hasn't seen yet).
+  if (remote.timelog) {
+    const local = DB.timelog();
+    const byId = {}; local.forEach(s => byId[s.id] = s);
+    const remoteIds = new Set();
+    remote.timelog.forEach(r => {
+      remoteIds.add(r.id);
+      const l = byId[r.id];
+      if (!l || (r.upd || 0) > (l.upd || 0)) { byId[r.id] = r; changed = true; }
+    });
+    let merged = Object.values(byId);
+    if (remoteNewer) {
+      const before = merged.length;
+      merged = merged.filter(s => remoteIds.has(s.id) || (s.upd || 0) > remote.touched);
+      if (merged.length !== before) changed = true;
+    }
+    merged.sort((a, b) => a.start - b.start);
+    localStorage.setItem('dp.timelog', JSON.stringify(merged));
+  }
   // Tasks / Notes / Reminders / Exercises are LISTS that get completed, edited, reordered, deleted —
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -873,6 +900,249 @@ document.addEventListener('input', (ev) => {
   const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value; }
 });
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
+
+/* ============================================================
+   SCREEN: TIME  (24h activity stopwatch + visual timeline)
+   Tap an activity to start its timer; tapping another switches
+   (the old one stops, the new one starts) — so the whole day gets
+   recorded as back-to-back segments on a 24-hour scale.
+   Segments are stored as epoch ms {id, act, start, end|null, upd},
+   so one that crosses midnight just renders on both days.
+   ============================================================ */
+const TIME_ACTS = [
+  { id: 'sleep',  emoji: '😴', name: 'Sleep',           color: '#a78bfa' },
+  { id: 'ready',  emoji: '🚿', name: 'Getting ready',   color: '#94a3b8' },
+  { id: 'travel', emoji: '🚌', name: 'Travel',          color: '#fbbf24' },
+  { id: 'work',   emoji: '💼', name: 'Work',            color: '#6d8cff' },
+  { id: 'eat',    emoji: '🍽️', name: 'Eating',          color: '#34d399' },
+  { id: 'break',  emoji: '☕', name: 'Break',           color: '#4ad6c0' },
+  { id: 'gymt',   emoji: '🏋️', name: 'Gym',             color: '#f87171' },
+  { id: 'learn',  emoji: '📚', name: 'Learning',        color: '#ec4899' },
+  { id: 'scroll', emoji: '📱', name: 'Scrolling',       color: '#fb923c' },
+  { id: 'social', emoji: '🧑‍🤝‍🧑', name: 'Friends & family', color: '#22d3ee' },
+];
+const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
+function allActs() { return TIME_ACTS.concat(DB.timeacts()); }
+function actById(id) { return allActs().find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' }; }
+
+let ttDate = todayStr();       // day being viewed on the timeline
+let ttSelSeg = null;           // selected segment id (shows the edit card)
+let ttShowManual = false;      // manual "forgot to track" form open?
+
+function runningSeg() { return DB.timelog().find(s => s.end == null) || null; }
+function fmtDur(ms, short) {
+  ms = Math.max(0, ms);
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
+  if (h) return `${h}h ${String(m).padStart(2,'0')}m`;
+  if (m) return short ? `${m}m` : `${m}m ${String(s).padStart(2,'0')}s`;
+  return short ? '<1m' : `${s}s`;
+}
+function fmtClock(ms) { const d = new Date(ms); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
+
+function startAct(actId) {
+  const log = DB.timelog(); const now = Date.now();
+  const run = log.find(s => s.end == null);
+  if (run) {
+    run.end = now; run.upd = now;
+    if (run.act === actId) {   // tapping the running activity = just stop it
+      DB.saveTimelog(log); renderTime(); toast(`⏹ ${actById(actId).name} stopped · ${fmtDur(run.end - run.start)}`); return;
+    }
+  }
+  log.push({ id: 'ts' + now, act: actId, start: now, end: null, upd: now });
+  DB.saveTimelog(log); ttDate = todayStr(); renderTime();
+  toast(`▶ ${actById(actId).name} started`);
+}
+
+/* Segments overlapping the viewed day, clipped to it (handles cross-midnight). */
+function segsForDay(dateStr) {
+  const d0 = new Date(dateStr + 'T00:00:00').getTime(), d1 = d0 + 86400000;
+  const now = Date.now();
+  return DB.timelog()
+    .map(s => ({ seg: s, a: Math.max(s.start, d0), b: Math.min(s.end == null ? now : s.end, d1) }))
+    .filter(x => x.b > x.a)
+    .sort((x, y) => x.a - y.a);
+}
+
+function timelineHTML(dateStr) {
+  const d0 = new Date(dateStr + 'T00:00:00').getTime();
+  const px = t => ((t - d0) / 86400000 * 100).toFixed(2) + '%';
+  const clips = segsForDay(dateStr);
+  const blocks = clips.map(({ seg, a, b }) => {
+    const act = actById(seg.act);
+    const run = seg.end == null;
+    return `<div class="tl-seg ${run ? 'run' : ''} ${ttSelSeg === seg.id ? 'sel' : ''}" data-seg="${seg.id}"
+      style="left:${px(a)};width:${((b - a) / 86400000 * 100).toFixed(2)}%;background:${act.color}"
+      title="${escapeHtml(act.name)} ${fmtClock(a)}–${run ? 'now' : fmtClock(b)}"></div>`;
+  }).join('');
+  const isToday = dateStr === todayStr();
+  const nowLine = isToday ? `<div class="tl-now" style="left:${px(Date.now())}"></div>` : '';
+  const ticks = [0, 3, 6, 9, 12, 15, 18, 21, 24].map(h => `<span>${h}</span>`).join('');
+  return `<div class="tl-wrap" id="tl-wrap">${blocks}${nowLine}</div><div class="tl-ticks">${ticks}</div>`;
+}
+
+function timeTotalsHTML(dateStr) {
+  const totals = {};
+  segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
+  const acts = Object.keys(totals).map(id => ({ act: actById(id), ms: totals[id] })).sort((x, y) => y.ms - x.ms);
+  if (!acts.length) return '<div class="empty">Nothing tracked this day yet.</div>';
+  const tracked = acts.reduce((s, x) => s + x.ms, 0);
+  const max = acts[0].ms;
+  const rows = acts.map(x => `<div class="bar-row"><span class="name">${x.act.emoji} ${escapeHtml(x.act.name)}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${Math.round(x.ms / max * 100)}%;background:${x.act.color}"></span></span>
+      <span class="pct" style="width:56px">${fmtDur(x.ms, true)}</span></div>`).join('');
+  // "untracked" compares against how much of the day has actually elapsed (full 24h for past days)
+  const dayStart = new Date(dateStr + 'T00:00:00').getTime();
+  const elapsed = dateStr === todayStr() ? Math.min(86400000, Date.now() - dayStart) : 86400000;
+  return rows + `<div class="hint" style="margin-top:8px">Tracked <b>${fmtDur(tracked)}</b> · untracked ${fmtDur(Math.max(0, elapsed - tracked))}</div>`;
+}
+
+function segEditHTML() {
+  if (!ttSelSeg) return '';
+  const seg = DB.timelog().find(s => s.id === ttSelSeg);
+  if (!seg) { ttSelSeg = null; return ''; }
+  const act = actById(seg.act);
+  const run = seg.end == null;
+  return `<div class="card" style="border-color:${act.color}">
+    <h2>${act.emoji} ${escapeHtml(act.name)} <span class="hint">${fmtDur((run ? Date.now() : seg.end) - seg.start)} · tap times to fix them</span></h2>
+    <div class="row2">
+      <div class="field"><label>Started</label><input type="time" data-segt="start" value="${fmtClock(seg.start)}"></div>
+      <div class="field"><label>Ended</label><input type="time" data-segt="end" value="${run ? '' : fmtClock(seg.end)}" ${run ? 'disabled placeholder="running…"' : ''}></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" id="seg-close">Close</button>
+      <button class="btn btn-ghost btn-sm" id="seg-del" style="color:var(--bad,#f87171)">🗑 Delete</button>
+    </div>
+  </div>`;
+}
+
+function openTime() { ttDate = todayStr(); ttSelSeg = null; renderTime(); }
+function renderTime() {
+  document.getElementById('screen-title').textContent = 'Time';
+  const run = runningSeg();
+  document.getElementById('screen-sub').textContent = run ? `⏱ ${actById(run.act).name} running` : '24-hour activity tracker';
+
+  const nowCard = run ? (() => { const act = actById(run.act); return `
+    <div class="card tt-now" style="border-color:${act.color}">
+      <div class="tt-now-emoji">${act.emoji}</div>
+      <div class="tt-now-info">
+        <div class="tt-now-name">${escapeHtml(act.name)}</div>
+        <div class="tt-now-since hint">since ${fmtClock(run.start)}</div>
+      </div>
+      <div class="tt-now-elapsed" id="tt-elapsed">${fmtDur(Date.now() - run.start)}</div>
+      <button class="btn btn-primary btn-sm" id="tt-stop">⏹ Stop</button>
+    </div>`; })() : `
+    <div class="card tt-now idle">
+      <div class="tt-now-emoji">⏱️</div>
+      <div class="tt-now-info"><div class="tt-now-name">Nothing running</div>
+      <div class="hint">Tap an activity below to start tracking 👇</div></div>
+    </div>`;
+
+  const chips = allActs().map(a => {
+    const on = run && run.act === a.id;
+    return `<button class="act-chip ${on ? 'on' : ''}" data-act-start="${a.id}"
+      style="--c:${a.color}"><span class="emoji">${a.emoji}</span><span>${escapeHtml(a.name)}</span>${on ? '<span class="live">●</span>' : ''}</button>`;
+  }).join('');
+
+  const isToday = ttDate === todayStr();
+  const manual = ttShowManual ? `
+    <div class="tt-manual">
+      <select id="tt-m-act">${allActs().map(a => `<option value="${a.id}">${a.emoji} ${escapeHtml(a.name)}</option>`).join('')}</select>
+      <input type="time" id="tt-m-start"><span class="hint">to</span><input type="time" id="tt-m-end">
+      <button class="btn btn-primary btn-sm" id="tt-m-save">Add</button>
+    </div>` : '';
+
+  document.getElementById('s-time').innerHTML = `
+    ${nowCard}
+    <div class="card">
+      <h2>Switch to <span class="hint">tapping switches instantly — the old timer stops itself</span></h2>
+      <div class="act-grid">${chips}</div>
+      <div class="task-add" style="margin-top:10px">
+        <input type="text" id="tt-newact" placeholder="Add your own activity… (e.g. Cooking)" autocomplete="off">
+        <button class="btn btn-ghost btn-sm" id="tt-newact-add">Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📊 Your day on a 24h scale
+        <span class="hint">tap a block to fix or delete it</span></h2>
+      <div class="field"><label>Date</label><input type="date" id="tt-date" value="${ttDate}" max="${todayStr()}"></div>
+      ${timelineHTML(ttDate)}
+      <div class="tl-legend">${[...new Set(segsForDay(ttDate).map(x => x.seg.act))].map(id => { const a = actById(id); return `<span><span class="dot" style="background:${a.color}"></span>${a.emoji} ${escapeHtml(a.name)}</span>`; }).join('') || '<span class="hint">empty day</span>'}</div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-ghost btn-sm" id="tt-manual-toggle">${ttShowManual ? '✕ Cancel' : '＋ Add a block I forgot to track'}</button>
+      </div>
+      ${manual}
+    </div>
+    ${segEditHTML()}
+    <div class="card">
+      <h2>⏳ Where the ${isToday ? 'day is going' : 'day went'} <span class="hint">${prettyDate(ttDate)}</span></h2>
+      ${timeTotalsHTML(ttDate)}
+    </div>
+    <div style="height:14px"></div>`;
+}
+
+/* live ticker — updates the elapsed readout each second; light-refreshes the
+   timeline once a minute (skipped while you're typing in an input) */
+setInterval(() => {
+  if (!document.getElementById('s-time').classList.contains('on')) return;
+  const run = runningSeg(); if (!run) return;
+  const el = document.getElementById('tt-elapsed');
+  if (el) el.textContent = fmtDur(Date.now() - run.start);
+  const sec = new Date().getSeconds();
+  const typing = document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  if (sec === 0 && !typing && ttDate === todayStr()) {
+    const w = document.getElementById('tl-wrap');
+    if (w) w.outerHTML = timelineHTML(ttDate).split('<div class="tl-ticks">')[0];
+  }
+}, 1000);
+
+document.addEventListener('click', (ev) => {
+  if (!document.getElementById('s-time').classList.contains('on')) return;
+  const st = ev.target.closest('[data-act-start]');
+  if (st) { startAct(st.dataset.actStart); return; }
+  if (ev.target.id === 'tt-stop') { const run = runningSeg(); if (run) startAct(run.act); return; }   // startAct on the running act = stop
+  const sg = ev.target.closest('[data-seg]');
+  if (sg) { ttSelSeg = (ttSelSeg === sg.dataset.seg) ? null : sg.dataset.seg; renderTime(); return; }
+  if (ev.target.id === 'seg-close') { ttSelSeg = null; renderTime(); return; }
+  if (ev.target.id === 'seg-del') {
+    DB.saveTimelog(DB.timelog().filter(s => s.id !== ttSelSeg));
+    ttSelSeg = null; renderTime(); toast('Block deleted'); return;
+  }
+  if (ev.target.id === 'tt-manual-toggle') { ttShowManual = !ttShowManual; renderTime(); return; }
+  if (ev.target.id === 'tt-m-save') {
+    const act = document.getElementById('tt-m-act').value;
+    const sv = document.getElementById('tt-m-start').value, ev2 = document.getElementById('tt-m-end').value;
+    if (!sv || !ev2) { toast('Pick both times', true); return; }
+    const d0 = new Date(ttDate + 'T00:00:00').getTime();
+    const toMs = t => { const [h, m] = t.split(':').map(Number); return d0 + (h * 60 + m) * 60000; };
+    const a = toMs(sv), b = toMs(ev2);
+    if (b <= a) { toast('End must be after start', true); return; }
+    const log = DB.timelog(); const now = Date.now();
+    log.push({ id: 'ts' + now, act, start: a, end: b, upd: now });
+    log.sort((x, y) => x.start - y.start);
+    DB.saveTimelog(log); ttShowManual = false; renderTime(); toast('Block added ✅'); return;
+  }
+  if (ev.target.id === 'tt-newact-add') {
+    const inp = document.getElementById('tt-newact'); const name = inp.value.trim(); if (!name) return;
+    const acts = DB.timeacts();
+    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    DB.saveTimeacts(acts); renderTime(); toast(`"${name}" added`); return;
+  }
+});
+document.addEventListener('change', (ev) => {
+  if (ev.target.id === 'tt-date') { ttDate = ev.target.value; ttSelSeg = null; renderTime(); return; }
+  const te = ev.target.closest('[data-segt]');
+  if (te && ttSelSeg) {
+    const log = DB.timelog(); const seg = log.find(s => s.id === ttSelSeg); if (!seg || !ev.target.value) return;
+    const [h, m] = ev.target.value.split(':').map(Number);
+    const base = new Date(te.dataset.segt === 'start' ? seg.start : seg.end);   // keep the segment's own date, change only the clock time
+    base.setHours(h, m, 0, 0);
+    const v = base.getTime();
+    if (te.dataset.segt === 'start' && seg.end != null && v >= seg.end) { toast('Start must be before end', true); renderTime(); return; }
+    if (te.dataset.segt === 'end' && v <= seg.start) { toast('End must be after start', true); renderTime(); return; }
+    seg[te.dataset.segt] = v; seg.upd = Date.now();
+    DB.saveTimelog(log); renderTime(); toast('Time fixed ✅');
+  }
+});
 
 /* ============================================================
    SCREEN: HABITS (streaks + heatmaps)
@@ -1623,7 +1893,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, history: renderHistory, settings: renderSettings };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, history: renderHistory, settings: renderSettings };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   document.getElementById('s-' + name).classList.add('on');
