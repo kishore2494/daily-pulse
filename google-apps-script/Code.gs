@@ -41,6 +41,8 @@ var COLUMNS = [
   'screenTime', 'socialMedia',
   // deep log — growth
   'lifeSatisfaction', 'purposeClarity', 'keyInsight', 'breakthrough', 'priorities',
+  // time tracker summary (per-activity totals for the day)
+  'timeSummary',
   // weekly
   'weekWins', 'weekFocus',
   // grooming / care routines (tick lists)
@@ -54,6 +56,7 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     if (data.type === 'reminders') return saveReminders_(data.items || []);
     if (data.type === 'notes') return saveList_('Notes', ['text', 'color', 'created'], data.items || []);
+    if (data.type === 'timelog') return saveTimelog_(data.items || []);
     if (data.type === 'state') return saveState_(e.postData.contents);
     var sheet = getSheet_();
     flatten_(data);
@@ -118,6 +121,23 @@ function saveReminders_(items) {
   sh.setFrozenRows(1);
   items.forEach(function (r) { sh.appendRow([r.time || '', r.label || '', r.enabled ? 'Yes' : 'No']); });
   return json_({ ok: true, count: items.length });
+}
+
+// Time tracker → a "Time Log" tab, one row per activity block (rewritten each time).
+// Blocks that cross midnight arrive already split per day by the app.
+function saveTimelog_(items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Time Log') || ss.insertSheet('Time Log');
+  sh.clear();
+  var header = ['date', 'activity', 'start', 'end', 'duration', 'hours'];
+  sh.getRange(1, 1, 1, header.length).setValues([header]);
+  sh.setFrozenRows(1);
+  sh.getRange('A:A').setNumberFormat('@');   // keep dates as plain text
+  var rows = items.map(function (s) {
+    return [s.date || '', s.activity || '', s.start || '', s.end || '', s.duration || '', s.hours || ''];
+  });
+  if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
+  return json_({ ok: true, count: rows.length });
 }
 
 // Generic: rewrite a tab from a list of objects (used by Notes).

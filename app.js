@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v36';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v37';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
@@ -147,7 +147,7 @@ const DB = {
   savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
 
   timelog() { return JSON.parse(localStorage.getItem('dp.timelog') || '[]'); },
-  saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); },
+  saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
   timeacts() { return JSON.parse(localStorage.getItem('dp.timeacts') || '[]'); },   // custom activities
   saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
 
@@ -238,7 +238,7 @@ async function resyncAll() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   let ok = 0;
   for (const d of dates) { if (await syncEntry(d, e[d])) ok++; }
-  syncReminders(); syncNotes(); pushState(true);
+  syncReminders(); syncNotes(); syncTimelog(); pushState(true);
   toast(`Pushed ${ok} day(s) to your Sheet`);
 }
 
@@ -1080,6 +1080,53 @@ function renderTime() {
     <div style="height:14px"></div>`;
 }
 
+/* ---------- Sync the time log to the Sheet ----------
+   Two things go over: ① a readable "Time Log" tab (one row per block, cross-midnight
+   blocks split per day) and ② a per-day "timeSummary" column on the daily Log row
+   (e.g. "Work 6h 20m · Travel 1h 05m"). Debounced so rapid switches send once. */
+let timelogSyncTimer;
+function syncTimelog() { clearTimeout(timelogSyncTimer); timelogSyncTimer = setTimeout(syncTimelogNow, 1500); }
+function syncTimelogNow() {
+  const url = DB.settings().syncUrl; if (!url) return;
+  const items = [];
+  const touchedDates = new Set();
+  DB.timelog().forEach(s => {
+    const running = s.end == null;
+    const end = running ? Date.now() : s.end;
+    let a = s.start;
+    while (a < end) {                             // split per calendar day for the sheet
+      const dayStr = todayStr(new Date(a));
+      const dayEnd = new Date(dayStr + 'T00:00:00').getTime() + 86400000;
+      const b = Math.min(end, dayEnd);
+      const act = actById(s.act);
+      items.push({ date: dayStr, activity: act.emoji + ' ' + act.name,
+        start: fmtClock(a), end: (running && b === end) ? 'running' : fmtClock(b),
+        duration: fmtDur(b - a), hours: +((b - a) / 3600000).toFixed(2) });
+      touchedDates.add(dayStr);
+      a = b;
+    }
+  });
+  items.sort((x, y) => x.date === y.date ? (x.start < y.start ? -1 : 1) : (x.date < y.date ? -1 : 1));
+  fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ type: 'timelog', items }) }).catch(() => {});
+  touchedDates.forEach(updateTimeSummary);
+}
+/* Write "Work 6h 20m · Travel 1h 05m" into the day's entry so it lands on the Log row. */
+function updateTimeSummary(dateStr) {
+  const totals = {};
+  segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
+  const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
+    .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
+  if (!parts.length) return;
+  const entry = DB.entry(dateStr) || { habits: {} };
+  const summary = parts.join(' · ');
+  if (entry.timeSummary === summary) return;     // nothing changed — skip the network call
+  entry.timeSummary = summary;
+  entry.updatedAt = new Date().toISOString();
+  DB.putEntry(dateStr, entry);
+  syncEntry(dateStr, entry);
+}
+
 /* live ticker — updates the elapsed readout each second; light-refreshes the
    timeline once a minute (skipped while you're typing in an input) */
 setInterval(() => {
@@ -1252,7 +1299,7 @@ function coachReview() {
 function exportCSV() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   if (!dates.length) { toast('Nothing to export yet', true); return; }
-  const cols = ['date', 'mood', 'energy', 'sleepHours', 'deepWorkHours', 'tasksDone', 'tasksPlanned', 'workoutsDone', 'workoutDetail', 'wentWell', 'improve', 'journal', 'tasks'];
+  const cols = ['date', 'mood', 'energy', 'sleepHours', 'deepWorkHours', 'tasksDone', 'tasksPlanned', 'workoutsDone', 'workoutDetail', 'timeSummary', 'wentWell', 'improve', 'journal', 'tasks'];
   const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n]/.test(v) ? `"${v}"` : v; };
   let csv = cols.join(',') + '\n';
   dates.forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
@@ -1763,7 +1810,7 @@ document.addEventListener('click', (ev) => {
     toast('Snoozed 5 min'); setTimeout(() => fireAlarm(label, '', true), 5 * 60000);
   }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(true); scheduleNtfy(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(true); scheduleNtfy(); syncTimelog(); } });
 // Push the reminders list to the Sheet (a "Reminders" tab)
 function syncReminders() {
   const url = DB.settings().syncUrl; if (!url) return;
