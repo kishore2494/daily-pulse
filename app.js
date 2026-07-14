@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v37';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v38';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
@@ -1361,6 +1361,98 @@ function graphSVG() {
     <div class="legend"><span><span class="dot" style="background:#6d8cff"></span>Day</span><span><span class="dot" style="background:#fbbf24"></span>Topic</span><span><span class="dot" style="background:#34d399"></span>Habit</span><span><span class="dot" style="background:#ec4899"></span>#tag</span><span><span class="dot" style="background:#a78bfa"></span>Note</span></div>
     <div class="hint" style="margin-top:4px">${focus ? `Connections for <b style="color:var(--text)">${escapeHtml(pos[focus].label)}</b> · tap it again to reset` : 'Tap a node · add #tags in journals/notes to link them'}</div>`;
 }
+/* ---------- Time-log analytics for the Stats screen ---------- */
+function timeStatsHTML(days) {
+  // days: chronological list of YYYY-MM-DD in the selected range
+  const dayData = days.map(d => ({ d, clips: segsForDay(d) }));
+  const totals = {};                      // actId -> ms over the whole range
+  const byDay = {};                       // date -> {actId -> ms}
+  let tracked = 0, activeDays = 0;
+  dayData.forEach(({ d, clips }) => {
+    if (clips.length) activeDays++;
+    byDay[d] = {};
+    clips.forEach(({ seg, a, b }) => {
+      totals[seg.act] = (totals[seg.act] || 0) + (b - a);
+      byDay[d][seg.act] = (byDay[d][seg.act] || 0) + (b - a);
+      tracked += b - a;
+    });
+  });
+  const actIds = Object.keys(totals).sort((x, y) => totals[y] - totals[x]);
+  if (!actIds.length) return '';          // nothing tracked in range → no time cards at all
+
+  // ---- headline stats ----
+  const elapsedInRange = days.reduce((s, d) => {
+    const d0 = new Date(d + 'T00:00:00').getTime();
+    return s + Math.max(0, Math.min(86400000, Date.now() - d0));
+  }, 0);
+  const coverage = elapsedInRange ? Math.round(tracked / elapsedInRange * 100) : 0;
+  const top = actById(actIds[0]);
+  const topShare = Math.round(totals[actIds[0]] / tracked * 100);
+
+  // ---- per-activity bars: total + avg per active day ----
+  const maxT = totals[actIds[0]];
+  const actBars = actIds.map(id => {
+    const act = actById(id);
+    const daysWith = days.filter(d => byDay[d][id]).length;
+    const avg = totals[id] / Math.max(1, daysWith);
+    return `<div class="bar-row"><span class="name">${act.emoji} ${escapeHtml(act.name)}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${Math.round(totals[id] / maxT * 100)}%;background:${act.color}"></span></span>
+      <span class="pct" style="width:92px">${fmtDur(totals[id])} · ~${fmtDur(avg)}/d</span></div>`;
+  }).join('');
+
+  // ---- trend chart: hours/day for the top 2 activities ----
+  const hSeries = id => days.map(d => ({ x: d, y: dayHasData(d) ? +((byDay[d][id] || 0) / 3600000).toFixed(2) : null }));
+  function dayHasData(d) { return Object.keys(byDay[d]).length > 0; }
+  const trendActs = actIds.slice(0, 2).map(actById);
+  const trend = trendActs.map((act, i) =>
+    `<div style="${i ? 'margin-top:-6px' : ''}">${lineChart(hSeries(actIds[i]), act.color)}</div>`).join('');
+  const trendLegend = trendActs.map(a =>
+    `<span><span class="dot" style="background:${a.color}"></span>${a.emoji} ${escapeHtml(a.name)} (h/day)</span>`).join('');
+
+  // ---- day-by-day 24h strips (newest first, capped at 14 rows) ----
+  const stripDays = dayData.filter(x => x.clips.length).slice(-14).reverse();
+  const strips = stripDays.map(({ d, clips }) => {
+    const d0 = new Date(d + 'T00:00:00').getTime();
+    const px = t => ((t - d0) / 86400000 * 100).toFixed(2) + '%';
+    const blocks = clips.map(({ seg, a, b }) => { const act = actById(seg.act);
+      return `<div class="tl-seg" style="left:${px(a)};width:${((b - a) / 86400000 * 100).toFixed(2)}%;background:${act.color}" title="${escapeHtml(act.name)}"></div>`; }).join('');
+    return `<div class="tl-day-row"><span class="tl-day-lab">${prettyDate(d).replace(/,.*$/, '')} ${d.slice(8)}</span><div class="tl-wrap tl-mini">${blocks}</div></div>`;
+  }).join('');
+  const stripLegend = actIds.map(id => { const a = actById(id);
+    return `<span><span class="dot" style="background:${a.color}"></span>${a.emoji} ${escapeHtml(a.name)}</span>`; }).join('');
+
+  // ---- auto insights from the time log ----
+  const tIns = [];
+  const avgH = id => { const ds = days.filter(d => byDay[d][id]); return ds.length ? ds.reduce((s, d) => s + byDay[d][id], 0) / ds.length : null; };
+  const sleepAvg = avgH('sleep');
+  if (sleepAvg != null) tIns.push(`😴 You sleep <b>${fmtDur(sleepAvg)}</b> a day on average (tracked).`);
+  const workAvg = avgH('work');
+  if (workAvg != null) tIns.push(`💼 Average tracked work: <b>${fmtDur(workAvg)}</b> a day.`);
+  const travelAvg = avgH('travel');
+  if (travelAvg != null) tIns.push(`🚌 Commute costs you about <b>${fmtDur(travelAvg)}</b> a day.`);
+  const scrollAvg = avgH('scroll');
+  if (scrollAvg != null) tIns.push(`📱 Scrolling eats <b>${fmtDur(scrollAvg)}</b> a day${workAvg && scrollAvg > workAvg / 2 ? ' — more than half your work time 👀' : ''}.`);
+
+  return `
+    <div class="card"><h2>⏱ Time analysis <span class="hint">last ${days.length} days</span></h2>
+      <div class="stat-grid">
+        <div class="stat"><div class="v">${Math.round(tracked / 3600000)}h</div><div class="l">tracked</div></div>
+        <div class="stat"><div class="v">${coverage}%</div><div class="l">of time covered</div></div>
+        <div class="stat"><div class="v">${activeDays}</div><div class="l">days tracked</div></div>
+        <div class="stat"><div class="v">${top.emoji}</div><div class="l">${escapeHtml(top.name)} ${topShare}%</div></div>
+      </div>
+      <div style="margin-top:12px">${actBars}</div>
+      ${tIns.length ? `<div style="margin-top:10px">${tIns.map(t => `<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
+    </div>
+    <div class="card"><h2>⏱ Top activities trend <span class="hint">hours per day</span></h2>
+      ${trend}
+      <div class="legend">${trendLegend}</div></div>
+    <div class="card"><h2>📆 Your days, side by side <span class="hint">each row = one day, 0–24h</span></h2>
+      ${strips}
+      <div class="tl-ticks" style="margin-left:52px">${[0, 6, 12, 18, 24].map(h => `<span>${h}</span>`).join('')}</div>
+      <div class="tl-legend">${stripLegend}</div></div>`;
+}
+
 function longestLoggedStreak() {
   const ds = Object.keys(DB.entries()).sort();
   let best = 0, cur = 0, prev = null;
@@ -1488,6 +1580,8 @@ function renderDash() {
       <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
       <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">workouts</div></div>
     </div></div>
+
+    ${timeStatsHTML(days)}
 
     <div class="card"><h2>Mood &amp; Energy <span class="hint">last ${N} days</span></h2>
       ${lineChart(series('mood'), '#6d8cff')}
