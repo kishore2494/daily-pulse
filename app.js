@@ -5,14 +5,14 @@
 
 'use strict';
 
-const APP_VERSION = 'v38';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v39';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
   { key: 'workout',     emoji: '🏋️', label: 'Workout' },
   { key: 'faceWorkout', emoji: '😊', label: 'Face workout', color: '#fb923c' },
   { key: 'meditation',  emoji: '🧘', label: 'Meditation' },
-  { key: 'english',     emoji: '🗣️', label: 'English practice', color: '#fb923c' },
+  { key: 'english',     emoji: '🗣️', label: 'Communication', color: '#fb923c' },
   { key: 'reading',     emoji: '📚', label: 'Books / Reading' },
   { key: 'projectAI',   emoji: '🤖', label: 'Project — AI' },
   { key: 'projectSpace',emoji: '🚀', label: 'Project — Space tech' },
