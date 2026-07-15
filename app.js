@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v39';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v40';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
@@ -146,6 +146,9 @@ const DB = {
   plans() { return JSON.parse(localStorage.getItem('dp.plans') || '[]'); },
   savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
 
+  events() { return JSON.parse(localStorage.getItem('dp.events') || '[]'); },
+  saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
+
   timelog() { return JSON.parse(localStorage.getItem('dp.timelog') || '[]'); },
   saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
   timeacts() { return JSON.parse(localStorage.getItem('dp.timeacts') || '[]'); },   // custom activities
@@ -255,7 +258,7 @@ function pushState(now) {
     const payload = { type: 'state', touched,
       entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
-      timelog: DB.timelog(), timeacts: DB.timeacts() };
+      timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -325,7 +328,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -1651,6 +1654,128 @@ document.addEventListener('click', (ev) => {
 });
 
 /* ============================================================
+   SCREEN: CALENDAR  (month grid of your data + dated events)
+   Each day is tinted by that day's mood; dots mark gym / time
+   tracked / events. Tap a day to see its summary, add events
+   with alarms, or jump into its full log.
+   ============================================================ */
+let calMonth = todayStr().slice(0, 7);   // 'YYYY-MM' being viewed
+let calSel = todayStr();                 // selected day
+
+function eventsOn(date) { return DB.events().filter(x => x.date === date).sort((a, b) => (a.time || '') < (b.time || '') ? -1 : 1); }
+function syncEvents() {
+  const url = DB.settings().syncUrl; if (!url) return;
+  const items = DB.events().slice().sort((a, b) => (a.date + a.time) < (b.date + b.time) ? -1 : 1)
+    .map(x => ({ date: x.date, time: x.time || '', label: x.label || '', alarm: x.alarm ? 'Yes' : '' }));
+  fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ type: 'events', items }) }).catch(() => {});
+}
+
+function renderCal() {
+  const [y, m] = calMonth.split('-').map(Number);
+  const monthName = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  document.getElementById('screen-title').textContent = 'Calendar';
+  document.getElementById('screen-sub').textContent = monthName;
+
+  const e = DB.entries(), gym = DB.gym();
+  const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;   // Monday-first
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const today = todayStr();
+
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<span class="cal-cell blank"></span>';
+  for (let n = 1; n <= daysInMonth; n++) {
+    const ds = calMonth + '-' + String(n).padStart(2, '0');
+    const en = e[ds];
+    const future = ds > today;
+    let bg = '';
+    if (en && en.mood) bg = `background:hsla(${Math.round((en.mood - 1) / 9 * 120)},62%,45%,.4)`;
+    else if (en) bg = 'background:rgba(109,140,255,.18)';       // logged, no mood yet
+    const dots =
+      (gym[ds] && Object.values(gym[ds].done || {}).some(Boolean) ? '<i style="background:#f87171"></i>' : '') +
+      (segsForDay(ds).length ? '<i style="background:#4ad6c0"></i>' : '') +
+      (eventsOn(ds).length ? '<i style="background:#fbbf24"></i>' : '');
+    cells += `<button class="cal-cell ${ds === today ? 'today' : ''} ${ds === calSel ? 'sel' : ''} ${future ? 'future' : ''}"
+      data-calday="${ds}" style="${bg}"><span class="d">${n}</span><span class="cal-dots">${dots}</span></button>`;
+  }
+
+  // ---- selected-day panel ----
+  const en = e[calSel];
+  const hc = en && en.habits ? Object.values(en.habits).filter(Boolean).length : 0;
+  const evs = eventsOn(calSel);
+  const evRows = evs.map(x => `<div class="lrow"><div class="lrow-main">
+      <span class="ev-time">${x.time || '—'}</span>
+      <div class="txt">${escapeHtml(x.label)} ${x.alarm ? '⏰' : ''}</div>
+      <button class="del" data-ev-del="${x.id}">×</button></div></div>`).join('');
+  const pills = en ? `<div class="hist-moods" style="margin:8px 0">
+      <span class="pill">😊 ${en.mood || '–'}</span><span class="pill">⚡ ${en.energy || '–'}</span>
+      <span class="pill">✅ ${hc}/${HABITS.length}</span>${en.sleepHours ? `<span class="pill">😴 ${en.sleepHours}h</span>` : ''}</div>
+      ${en.timeSummary ? `<div class="hint" style="margin-bottom:6px">⏱ ${escapeHtml(en.timeSummary)}</div>` : ''}
+      ${en.journal ? `<div class="hint" style="margin-bottom:6px">📓 ${escapeHtml(en.journal.slice(0, 80))}${en.journal.length > 80 ? '…' : ''}</div>` : ''}`
+    : `<div class="hint" style="margin:8px 0">${calSel > today ? 'Future day — plan something below 👇' : 'Nothing logged this day.'}</div>`;
+
+  document.getElementById('s-cal').innerHTML = `
+    <div class="card">
+      <div class="cal-nav">
+        <button class="btn btn-ghost btn-sm" id="cal-prev">‹</button>
+        <div class="cal-title">${monthName}</div>
+        <button class="btn btn-ghost btn-sm" id="cal-next">›</button>
+        <button class="btn btn-ghost btn-sm" id="cal-today">Today</button>
+      </div>
+      <div class="cal-head">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+      <div class="tl-legend" style="margin-top:10px">
+        <span><span class="dot" style="background:hsl(120,62%,45%)"></span>good day</span>
+        <span><span class="dot" style="background:hsl(30,62%,45%)"></span>rough</span>
+        <span><span class="dot" style="background:#f87171"></span>gym</span>
+        <span><span class="dot" style="background:#4ad6c0"></span>time tracked</span>
+        <span><span class="dot" style="background:#fbbf24"></span>event</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>${prettyDate(calSel)} ${calSel === today ? '<span class="hint">today</span>' : ''}
+        <button class="btn btn-ghost btn-sm" style="float:right" data-callog="${calSel}">Open log →</button></h2>
+      ${pills}
+      <h2 style="margin-top:14px">📌 Events <span class="hint">${evs.length ? evs.length : 'none yet'}</span></h2>
+      ${evRows}
+      <div class="task-add">
+        <input type="time" id="ev-new-time" style="max-width:110px">
+        <input type="text" id="ev-new-label" placeholder="Event… (e.g. Dentist)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="ev-add">Add</button>
+      </div>
+      <label class="ev-alarm-row"><input type="checkbox" id="ev-new-alarm" checked> ⏰ Ring an alarm at that time</label>
+    </div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (!document.getElementById('s-cal') || !document.getElementById('s-cal').classList.contains('on')) return;
+  const shift = n => { const [y, m] = calMonth.split('-').map(Number); const d = new Date(y, m - 1 + n, 1);
+    calMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderCal(); };
+  if (ev.target.id === 'cal-prev') return shift(-1);
+  if (ev.target.id === 'cal-next') return shift(1);
+  if (ev.target.id === 'cal-today') { calSel = todayStr(); calMonth = calSel.slice(0, 7); renderCal(); return; }
+  const dc = ev.target.closest('[data-calday]');
+  if (dc) { calSel = dc.dataset.calday; renderCal(); return; }
+  const ol = ev.target.closest('[data-callog]');
+  if (ol) { logDate = ol.dataset.callog; show('today'); return; }
+  if (ev.target.id === 'ev-add') {
+    const time = document.getElementById('ev-new-time').value;
+    const label = document.getElementById('ev-new-label').value.trim();
+    const alarm = document.getElementById('ev-new-alarm').checked;
+    if (!label) { toast('Name the event', true); return; }
+    const evs = DB.events();
+    const id = 'ev' + Date.now();
+    // if the event's moment is already in the past, mark it acknowledged so it doesn't insta-ring
+    if (time && new Date(calSel + 'T' + time + ':00').getTime() <= Date.now()) localStorage.setItem('dp.notified.' + id, '1');
+    evs.push({ id, date: calSel, time, label, alarm });
+    DB.saveEvents(evs); renderCal(); setupReminders();
+    if (alarm && 'Notification' in window && Notification.permission !== 'granted') Notification.requestPermission();
+    toast('Event added 📌'); return;
+  }
+  const ed = ev.target.closest('[data-ev-del]');
+  if (ed) { DB.saveEvents(DB.events().filter(x => x.id !== ed.dataset.evDel)); renderCal(); setupReminders(); toast('Event deleted'); return; }
+});
+
+/* ============================================================
    SCREEN: SETTINGS / MORE
    ============================================================ */
 function renderSettings() {
@@ -1844,18 +1969,34 @@ function checkReminders(catchUp) {
     if ((r.mode || 'alarm') === 'alarm') fireAlarm(r.label || 'Reminder', r.time, catchUp && curMin !== remMin);
     else toast('🔔 ' + (r.label || 'Reminder'));   // "just a notification" mode — no full-screen alarm
   });
+  // One-time dated events (from the Calendar tab) — same due/ack logic, no daily repeat.
+  DB.events().forEach(x => {
+    if (x.date !== todayStr() || !x.time) return;
+    const [h, m] = x.time.split(':').map(Number);
+    const evMin = h * 60 + m;
+    const flag = 'dp.notified.' + x.id;
+    if (localStorage.getItem(flag)) return;
+    const due = catchUp ? (curMin >= evMin) : (curMin === evMin);
+    if (!due) return;
+    localStorage.setItem(flag, '1');
+    if ('Notification' in window && Notification.permission === 'granted')
+      new Notification('📌 ' + x.label, { body: x.time + ' · ' + x.label, tag: x.id });
+    if (x.alarm) fireAlarm(x.label, x.time, catchUp && curMin !== evMin);
+    else toast('📌 ' + x.label);
+  });
 }
 function setupReminders() {
   clearInterval(reminderInterval);
   reminderTimeouts.forEach(clearTimeout); reminderTimeouts = [];
   const rems = DB.reminders().filter(r => r.enabled && r.time);
-  if (!rems.length) return;
+  const todaysEvents = DB.events().filter(x => x.date === todayStr() && x.time);
+  if (!rems.length && !todaysEvents.length) return;
   // 1) Polling backup every 10s — self-heals a missed/late tick (`true` = due & unacknowledged).
   reminderInterval = setInterval(() => checkReminders(true), 10000);
   // 2) Precise per-reminder timer to the exact next occurrence today. A setTimeout aimed at the
   //    exact moment is far more reliable than waiting for a poll tick to land on the right minute.
   const now = new Date();
-  rems.forEach(r => {
+  rems.concat(todaysEvents).forEach(r => {
     const [h, m] = r.time.split(':').map(Number);
     const target = new Date(now); target.setHours(h, m, 0, 0);
     const ms = target - now;
@@ -1981,7 +2122,8 @@ async function scheduleNtfy() {
   const s = DB.settings();
   if (!s.ntfyOn || !s.ntfyTopic) return;
   const rs = DB.reminders().filter(r => r.enabled && r.time);
-  if (!rs.length) return;
+  const evs = DB.events().filter(x => x.time);
+  if (!rs.length && !evs.length) return;
   let sent = {};
   try { sent = JSON.parse(localStorage.getItem('dp.ntfy.sent') || '{}'); } catch (_) {}
   const now = Date.now();
@@ -1997,6 +2139,15 @@ async function scheduleNtfy() {
       const ok = await ntfyPublish(s.ntfyTopic, r.label || 'Daily Pulse reminder', Math.floor(ts / 1000), r.mode);
       if (ok) sent[key] = 1;
     }
+  }
+  // Calendar events within the 3-day window (one-time, so no per-day loop)
+  for (const x of evs) {
+    const ts = new Date(x.date + 'T' + x.time + ':00').getTime();
+    if (isNaN(ts) || ts <= now + 30000 || ts > horizon) continue;
+    const key = x.id + '@' + ts;
+    if (sent[key]) continue;
+    const ok = await ntfyPublish(s.ntfyTopic, '📌 ' + x.label, Math.floor(ts / 1000), x.alarm ? 'alarm' : 'notify');
+    if (ok) sent[key] = 1;
   }
   Object.keys(sent).forEach(k => { const ts = +String(k).split('@')[1]; if (ts && ts < now - 3600000) delete sent[k]; });
   localStorage.setItem('dp.ntfy.sent', JSON.stringify(sent));
@@ -2034,7 +2185,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, history: renderHistory, settings: renderSettings };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, history: renderHistory, settings: renderSettings };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   document.getElementById('s-' + name).classList.add('on');
@@ -2058,6 +2209,7 @@ document.getElementById('nav').addEventListener('click', (ev) => {
   if (b.dataset.screen === 'today') logDate = todayStr();   // Log tab always opens today
   if (b.dataset.screen === 'gym') gymDate = todayStr();     // Gym tab always opens today
   if (b.dataset.screen === 'plans') curPlan = null;         // Plans tab always opens the list
+  if (b.dataset.screen === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }   // Calendar opens on today
   show(b.dataset.screen);
 });
 

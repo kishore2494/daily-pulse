@@ -352,3 +352,20 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .tl-day-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .tl-day-lab { width: 44px; flex: none; font-size: 10px; color: var(--text-faint); text-align: right; }
 .tl-wrap.tl-mini { height: 16px; flex: 1; border-radius: 5px; }
+
+/* ---------- Calendar ---------- */
+.cal-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cal-title { flex: 1; text-align: center; font-weight: 700; font-size: 15px; }
+.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
+.cal-head span { text-align: center; font-size: 10px; color: var(--text-faint); font-weight: 600; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-cell { position: relative; aspect-ratio: 1; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-input); color: var(--text); font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; min-width: 0; }
+.cal-cell.blank { background: none; border: none; cursor: default; }
+.cal-cell.future { opacity: .45; }
+.cal-cell.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cal-cell.sel { outline: 2px solid #fff; outline-offset: -1px; z-index: 1; }
+.cal-dots { display: flex; gap: 2px; height: 4px; }
+.cal-dots i { width: 4px; height: 4px; border-radius: 50%; display: block; }
+.ev-time { flex: none; font-size: 12px; font-weight: 700; color: var(--accent); width: 46px; font-variant-numeric: tabular-nums; }
+.ev-alarm-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.ev-alarm-row input { width: auto; accent-color: var(--accent); }

@@ -57,6 +57,7 @@ function doPost(e) {
     if (data.type === 'reminders') return saveReminders_(data.items || []);
     if (data.type === 'notes') return saveList_('Notes', ['text', 'color', 'created'], data.items || []);
     if (data.type === 'timelog') return saveTimelog_(data.items || []);
+    if (data.type === 'events') return saveList_('Events', ['date', 'time', 'label', 'alarm'], data.items || []);
     if (data.type === 'state') return saveState_(e.postData.contents);
     var sheet = getSheet_();
     flatten_(data);
