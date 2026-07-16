@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v40';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v41';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ---------- */
 const HABITS = [
