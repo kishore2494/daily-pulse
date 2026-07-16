@@ -5,10 +5,13 @@
 
 'use strict';
 
-const APP_VERSION = 'v41';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v42';   // shown in More ▸ About so you can confirm the build on each device
 
-/* ---------- Config: your habits (from the Daily Pulse form) ---------- */
-const HABITS = [
+/* ---------- Config: your habits (from the Daily Pulse form) ----------
+   DEFAULT_HABITS is only the starting point — the Customize screen
+   (More ▸ Customize) saves your own list to dp.habitcfg, and HABITS
+   is rebuilt from it (hidden ones excluded) via reloadCfg(). */
+const DEFAULT_HABITS = [
   { key: 'workout',     emoji: '🏋️', label: 'Workout' },
   { key: 'faceWorkout', emoji: '😊', label: 'Face workout', color: '#fb923c' },
   { key: 'meditation',  emoji: '🧘', label: 'Meditation' },
@@ -22,6 +25,13 @@ const HABITS = [
   { key: 'hairCare',    emoji: '💇', label: 'Hair care' },
   { key: 'skinCare',    emoji: '🧴', label: 'Skin care' },
 ];
+function habitCfg() { const s = localStorage.getItem('dp.habitcfg'); return s ? JSON.parse(s) : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
+function saveHabitCfg(cfg) { localStorage.setItem('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
+let HABITS = habitCfg().filter(h => !h.hidden);
+function reloadCfg() {
+  HABITS = habitCfg().filter(h => !h.hidden);
+  if (typeof actCfg === 'function') TIME_ACTS_ALL = actCfg();
+}
 
 /* Deep-log sections — the bridge to your full Life Intelligence Tracker.
    Data-driven: add fields here and they appear in the form AND sync to your Sheet
@@ -146,6 +156,9 @@ const DB = {
   plans() { return JSON.parse(localStorage.getItem('dp.plans') || '[]'); },
   savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
 
+  docs() { return JSON.parse(localStorage.getItem('dp.docs') || '[]'); },
+  saveDocs(d) { localStorage.setItem('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
+
   events() { return JSON.parse(localStorage.getItem('dp.events') || '[]'); },
   saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
 
@@ -258,7 +271,8 @@ function pushState(now) {
     const payload = { type: 'state', touched,
       entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
-      timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events() };
+      timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
+      docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -328,7 +342,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -338,6 +352,7 @@ function applyRemoteState(remote) {
 
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
+    reloadCfg();                // custom habits/activities may have changed
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
     const cur = document.querySelector('.nav button.on'); if (cur) show(cur.dataset.screen);
@@ -912,7 +927,7 @@ document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') {
    Segments are stored as epoch ms {id, act, start, end|null, upd},
    so one that crosses midnight just renders on both days.
    ============================================================ */
-const TIME_ACTS = [
+const DEFAULT_TIME_ACTS = [
   { id: 'sleep',  emoji: '😴', name: 'Sleep',           color: '#a78bfa' },
   { id: 'ready',  emoji: '🚿', name: 'Getting ready',   color: '#94a3b8' },
   { id: 'travel', emoji: '🚌', name: 'Travel',          color: '#fbbf24' },
@@ -925,8 +940,13 @@ const TIME_ACTS = [
   { id: 'social', emoji: '🧑‍🤝‍🧑', name: 'Friends & family', color: '#22d3ee' },
 ];
 const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
-function allActs() { return TIME_ACTS.concat(DB.timeacts()); }
-function actById(id) { return allActs().find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' }; }
+function actCfg() { const s = localStorage.getItem('dp.actcfg'); return s ? JSON.parse(s) : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
+function saveActCfg(cfg) { localStorage.setItem('dp.actcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
+let TIME_ACTS_ALL = actCfg();
+/* visible activities = non-hidden defaults + non-hidden customs */
+function allActs() { return TIME_ACTS_ALL.filter(a => !a.hidden).concat(DB.timeacts().filter(a => !a.hidden)); }
+/* lookups include hidden ones so old timeline blocks still render right */
+function actById(id) { return TIME_ACTS_ALL.concat(DB.timeacts()).find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' }; }
 
 let ttDate = todayStr();       // day being viewed on the timeline
 let ttSelSeg = null;           // selected segment id (shows the edit card)
@@ -1654,6 +1674,245 @@ document.addEventListener('click', (ev) => {
 });
 
 /* ============================================================
+   SCREEN: WRITE  (inner blog — block-based articles)
+   A doc = title + ordered blocks. Block types:
+     h = heading · p = paragraph · c = checklist item · b = bullet
+   Every block is a textarea you can also dictate into (the 🎤
+   targets whichever block you touched last). Drag ⠿ to reorder,
+   Enter inside a checklist/bullet starts the next item.
+   ============================================================ */
+let curDoc = null;            // open doc id (null = list of articles)
+let lastBlk = null;           // id of the block that had focus last (mic target)
+
+function docText(d) { return (d.blocks || []).map(b => b.text).join(' '); }
+let docsSyncTimer;
+function syncDocs() { clearTimeout(docsSyncTimer); docsSyncTimer = setTimeout(() => {
+  const url = DB.settings().syncUrl; if (!url) return;
+  const items = DB.docs().map(d => ({ title: d.title || 'Untitled', updated: (d.updated || '').slice(0, 10),
+    text: (d.blocks || []).map(b => (b.t === 'h' ? '## ' : b.t === 'c' ? (b.done ? '[x] ' : '[ ] ') : b.t === 'b' ? '• ' : '') + b.text).join('\n') }));
+  fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ type: 'docs', items }) }).catch(() => {});
+}, 2000); }
+
+function blockRow(b) {
+  const ta = `<textarea class="blk blk-${b.t}" data-blk="${b.id}" rows="1"
+    placeholder="${b.t === 'h' ? 'Heading…' : b.t === 'c' ? 'To-do…' : b.t === 'b' ? 'Point…' : 'Write… (or tap 🎤 and speak)'}">${escapeHtml(b.text || '')}</textarea>`;
+  return `<div class="blk-row ${b.t === 'c' && b.done ? 'done' : ''}" data-id="${b.id}">
+    <span class="drag-handle" data-drag>⠿</span>
+    ${b.t === 'c' ? `<div class="check" data-blkcheck="${b.id}">✓</div>` : b.t === 'b' ? '<span class="blk-bullet">•</span>' : ''}
+    ${ta}
+    <button class="del" data-blkdel="${b.id}">×</button>
+  </div>`;
+}
+function autoSizeBlocks() {
+  document.querySelectorAll('#blk-list .blk').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
+}
+function renderWrite() {
+  document.getElementById('screen-title').textContent = 'Write';
+  const docs = DB.docs();
+
+  // ---- LIST: all articles ----
+  if (!curDoc) {
+    document.getElementById('screen-sub').textContent = `${docs.length} article${docs.length === 1 ? '' : 's'}`;
+    const items = docs.map(d => { const txt = docText(d);
+      const donePart = (d.blocks || []).filter(b => b.t === 'c');
+      return `<div class="doc-item" data-opendoc="${d.id}">
+        <div class="doc-title">${escapeHtml(d.title || 'Untitled')}</div>
+        <div class="doc-meta">${(d.updated || d.created || '').slice(0, 10)}${donePart.length ? ` · ☑ ${donePart.filter(b => b.done).length}/${donePart.length}` : ''} · ${(d.blocks || []).length} block${(d.blocks || []).length === 1 ? '' : 's'}</div>
+        ${txt ? `<div class="doc-snip">${escapeHtml(txt.slice(0, 90))}${txt.length > 90 ? '…' : ''}</div>` : ''}
+      </div>`; }).join('');
+    document.getElementById('s-write').innerHTML = `
+      <div class="card">
+        <button class="btn btn-primary" id="doc-new">＋ New article</button>
+        <div class="hint" style="margin-top:8px;text-align:center">Your inner blog — headings, writing, voice notes, checklists.</div>
+      </div>
+      <div class="card" style="padding:6px 16px">${items || '<div class="empty">Nothing written yet. Start your first article 👆</div>'}</div>`;
+    return;
+  }
+
+  // ---- EDITOR: one article ----
+  const d = docs.find(x => x.id === curDoc);
+  if (!d) { curDoc = null; return renderWrite(); }
+  document.getElementById('screen-sub').textContent = 'Editing · saves as you type';
+  document.getElementById('s-write').innerHTML = `
+    <button class="back-btn" id="doc-back">← All articles</button>
+    <div class="card">
+      <input type="text" class="doc-title-input" data-doctitle="${d.id}" value="${escapeHtml(d.title || '')}" placeholder="Article title…">
+      <div id="blk-list" style="margin-top:10px">${(d.blocks || []).map(blockRow).join('') || '<div class="empty">Empty — add a block below 👇</div>'}</div>
+      <div class="blk-toolbar">
+        <button data-addblk="h">H Heading</button>
+        <button data-addblk="p">¶ Text</button>
+        <button data-addblk="c">☑ Check</button>
+        <button data-addblk="b">• Bullet</button>
+        <button data-mic="#blk-focus-target" id="doc-mic">🎤</button>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-ghost btn-sm" id="doc-del" style="color:var(--bad)">🗑 Delete article</button>
+      </div>
+    </div>`;
+  autoSizeBlocks();
+  enableDrag(document.getElementById('blk-list'), ids => {
+    const ds = DB.docs(); const doc = ds.find(x => x.id === curDoc); if (!doc) return;
+    doc.blocks = ids.map(id => (doc.blocks || []).find(b => b.id === id)).filter(Boolean);
+    doc.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite();
+  });
+}
+function addBlock(type, afterId) {
+  const ds = DB.docs(); const d = ds.find(x => x.id === curDoc); if (!d) return null;
+  d.blocks = d.blocks || [];
+  const blk = { id: 'bk' + Date.now() + Math.floor(Math.random() * 99), t: type, text: '' };
+  if (type === 'c') blk.done = false;
+  const at = afterId ? d.blocks.findIndex(b => b.id === afterId) + 1 : d.blocks.length;
+  d.blocks.splice(at, 0, blk);
+  d.updated = new Date().toISOString();
+  DB.saveDocs(ds); renderWrite();
+  const el = document.querySelector(`[data-blk="${blk.id}"]`); if (el) el.focus();
+  return blk.id;
+}
+document.addEventListener('click', (ev) => {
+  const sw = document.getElementById('s-write');
+  if (!sw || !sw.classList.contains('on')) return;
+  if (ev.target.id === 'doc-new') {
+    const ds = DB.docs();
+    const d = { id: 'doc' + Date.now(), title: '', blocks: [{ id: 'bk' + Date.now(), t: 'h', text: '' }], created: todayStr(), updated: new Date().toISOString() };
+    ds.unshift(d); DB.saveDocs(ds); curDoc = d.id; renderWrite();
+    const t = document.querySelector('.doc-title-input'); if (t) t.focus();
+    return;
+  }
+  const od = ev.target.closest('[data-opendoc]');
+  if (od) { curDoc = od.dataset.opendoc; renderWrite(); window.scrollTo(0, 0); return; }
+  if (ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
+  if (ev.target.id === 'doc-del') {
+    if (!confirm('Delete this whole article?')) return;
+    DB.saveDocs(DB.docs().filter(x => x.id !== curDoc)); curDoc = null; renderWrite(); toast('Article deleted'); return;
+  }
+  const ab = ev.target.closest('[data-addblk]');
+  if (ab) { addBlock(ab.dataset.addblk); return; }
+  const bc = ev.target.closest('[data-blkcheck]');
+  if (bc) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+    const b = d && (d.blocks || []).find(z => z.id === bc.dataset.blkcheck);
+    if (b) { b.done = !b.done; d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
+  const bd = ev.target.closest('[data-blkdel]');
+  if (bd) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+    if (d) { d.blocks = (d.blocks || []).filter(z => z.id !== bd.dataset.blkdel); d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
+});
+/* typing saves live; the mic button always targets the block you touched last */
+document.addEventListener('focusin', (ev) => {
+  const b = ev.target.closest('[data-blk]');
+  if (b) { lastBlk = b.dataset.blk;
+    const mic = document.getElementById('doc-mic'); if (mic) mic.dataset.mic = `[data-blk="${lastBlk}"]`; }
+});
+document.addEventListener('input', (ev) => {
+  const t = ev.target.closest('[data-blk]');
+  if (t) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+    const b = d && (d.blocks || []).find(z => z.id === t.dataset.blk);
+    if (b) { b.text = t.value; d.updated = new Date().toISOString(); DB.saveDocs(ds); }
+    t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; return; }
+  const dt = ev.target.closest('[data-doctitle]');
+  if (dt) { const ds = DB.docs(); const d = ds.find(x => x.id === dt.dataset.doctitle);
+    if (d) { d.title = dt.value; d.updated = new Date().toISOString(); DB.saveDocs(ds); } }
+});
+document.addEventListener('keydown', (ev) => {
+  const t = ev.target.closest('[data-blk]');
+  if (!t || ev.key !== 'Enter') return;
+  const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+  const b = d && (d.blocks || []).find(z => z.id === t.dataset.blk);
+  if (b && (b.t === 'c' || b.t === 'b')) { ev.preventDefault(); addBlock(b.t, b.id); }   // Enter = next item
+});
+
+/* ============================================================
+   SCREEN: CUSTOMIZE  (More ▸ Customize — make the app yours)
+   Edit emoji / name / accent color, hide what you don't use,
+   drag to reorder, add your own. Applies everywhere instantly.
+   ============================================================ */
+const CFG_COLORS = ['', '#fb923c', '#6d8cff', '#a78bfa', '#ec4899', '#34d399', '#fbbf24', '#f87171', '#22d3ee'];
+function nextCfgColor(c) { return CFG_COLORS[(CFG_COLORS.indexOf(c || '') + 1) % CFG_COLORS.length]; }
+function cfgRow(kind, item, deletable) {
+  const id = item.key || item.id;
+  const color = item.color || '';
+  return `<div class="cfg-row ${item.hidden ? 'hid' : ''}" data-id="${id}">
+    <span class="drag-handle" data-drag>⠿</span>
+    <input class="cfg-emoji" maxlength="4" data-cfg-emoji="${kind}:${id}" value="${escapeHtml(item.emoji || '')}">
+    <input class="cfg-name" data-cfg-name="${kind}:${id}" value="${escapeHtml(item.label || item.name || '')}">
+    <button class="cfg-color" data-cfg-color="${kind}:${id}" title="tap to change color" style="${color ? `background:${color};border-color:${color}` : ''}"></button>
+    <button class="cfg-hide" data-cfg-hide="${kind}:${id}" title="show / hide">${item.hidden ? '🙈' : '👁'}</button>
+    ${deletable ? `<button class="del" data-cfg-del="${kind}:${id}">×</button>` : '<span style="width:23px"></span>'}
+  </div>`;
+}
+function renderCustom() {
+  document.getElementById('screen-title').textContent = 'Customize';
+  document.getElementById('screen-sub').textContent = 'Make Daily Pulse yours';
+  const habits = habitCfg();
+  const acts = actCfg();
+  const customActs = DB.timeacts();
+  document.getElementById('s-custom').innerHTML = `
+    <button class="back-btn" id="custom-back">← Back to More</button>
+    <div class="card">
+      <h2>✅ Daily checklist habits <span class="hint">emoji · name · color · 👁 hide · drag</span></h2>
+      <div id="cfg-habits">${habits.map(h => cfgRow('h', h, !!h.custom)).join('')}</div>
+      <div class="task-add">
+        <input type="text" id="cfg-new-habit" placeholder="New habit… (e.g. 🌅 Wake at 6)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="cfg-add-habit">Add</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Hidden habits keep their history — they just leave the checklist. Custom habits sync between devices; the Google-Sheet Log columns stay fixed.</div>
+    </div>
+    <div class="card">
+      <h2>⏱ Time activities <span class="hint">same controls</span></h2>
+      <div id="cfg-acts">${acts.map(a => cfgRow('a', a, false)).join('')}${customActs.map(a => cfgRow('c', a, true)).join('')}</div>
+      <div class="task-add">
+        <input type="text" id="cfg-new-act" placeholder="New activity… (e.g. Cooking)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="cfg-add-act">Add</button>
+      </div>
+    </div>`;
+  enableDrag(document.getElementById('cfg-habits'), ids => {
+    const cfg = habitCfg();
+    saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
+  });
+}
+function cfgFind(kind, id) {
+  if (kind === 'h') { const cfg = habitCfg(); return { list: cfg, item: cfg.find(h => h.key === id), save: () => saveHabitCfg(cfg) }; }
+  if (kind === 'a') { const cfg = actCfg(); return { list: cfg, item: cfg.find(a => a.id === id), save: () => saveActCfg(cfg) }; }
+  const cfg = DB.timeacts(); return { list: cfg, item: cfg.find(a => a.id === id), save: () => DB.saveTimeacts(cfg) };
+}
+document.addEventListener('click', (ev) => {
+  const sc = document.getElementById('s-custom');
+  if (!sc || !sc.classList.contains('on')) return;
+  if (ev.target.id === 'custom-back') { show('settings'); return; }
+  if (ev.target.id === 'cfg-add-habit') {
+    const inp = document.getElementById('cfg-new-habit'); const raw = inp.value.trim(); if (!raw) return;
+    const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
+    const cfg = habitCfg();
+    cfg.push({ key: 'ch' + Date.now(), emoji: (m && m[2]) ? m[1] : '⭐', label: (m && m[2]) ? m[2] : raw, custom: true });
+    saveHabitCfg(cfg); renderCustom(); toast('Habit added'); return;
+  }
+  if (ev.target.id === 'cfg-add-act') {
+    const inp = document.getElementById('cfg-new-act'); const name = inp.value.trim(); if (!name) return;
+    const acts = DB.timeacts();
+    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    DB.saveTimeacts(acts); renderCustom(); toast('Activity added'); return;
+  }
+  const cc = ev.target.closest('[data-cfg-color]');
+  if (cc) { const [k, id] = cc.dataset.cfgColor.split(':'); const f = cfgFind(k, id);
+    if (f.item) { f.item.color = nextCfgColor(f.item.color); f.save(); renderCustom(); } return; }
+  const ch = ev.target.closest('[data-cfg-hide]');
+  if (ch) { const [k, id] = ch.dataset.cfgHide.split(':'); const f = cfgFind(k, id);
+    if (f.item) { f.item.hidden = !f.item.hidden; f.save(); renderCustom(); } return; }
+  const cd = ev.target.closest('[data-cfg-del]');
+  if (cd) { const [k, id] = cd.dataset.cfgDel.split(':');
+    if (!confirm('Delete this? Its logged history stays.')) return;
+    if (k === 'h') saveHabitCfg(habitCfg().filter(h => h.key !== id));
+    else DB.saveTimeacts(DB.timeacts().filter(a => a.id !== id));
+    renderCustom(); return; }
+});
+document.addEventListener('input', (ev) => {
+  const ce = ev.target.closest('[data-cfg-emoji]');
+  if (ce) { const [k, id] = ce.dataset.cfgEmoji.split(':'); const f = cfgFind(k, id); if (f.item) { f.item.emoji = ce.value; f.save(); } return; }
+  const cn = ev.target.closest('[data-cfg-name]');
+  if (cn) { const [k, id] = cn.dataset.cfgName.split(':'); const f = cfgFind(k, id);
+    if (f.item) { if (f.item.label !== undefined || k === 'h') f.item.label = cn.value; else f.item.name = cn.value; f.save(); } return; }
+});
+
+/* ============================================================
    SCREEN: CALENDAR  (month grid of your data + dated events)
    Each day is tinted by that day's mood; dots mark gym / time
    tracked / events. Tap a day to see its summary, add events
@@ -1784,6 +2043,13 @@ function renderSettings() {
   const s = DB.settings();
   if (!s.ntfyTopic) { s.ntfyTopic = 'dp-' + randomToken(); DB.saveSettings(s); }   // one secret topic per user
   document.getElementById('s-settings').innerHTML = `
+    <div class="card">
+      <h2>🎨 Customize &amp; more</h2>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="open-custom">🎨 Customize habits &amp; activities</button>
+        <button class="btn btn-ghost btn-sm" id="open-history">🕘 History</button>
+      </div>
+    </div>
     <div class="card">
       <h2>☁️ Sync &amp; login <span class="hint">${s.syncUrl ? 'connected ●' : 'not connected'}</span></h2>
       <div class="field"><label>Your sheet link = your login key <span class="hint">paste it on any device to load your data</span></label>
@@ -1916,6 +2182,8 @@ document.addEventListener('click', async (ev) => {
     toast(ok ? 'Sent ✅ — check your phone / ntfy app' : 'Failed — check the topic & connection', !ok);
     return;
   }
+  if (ev.target.id === 'open-custom') { show('custom'); return; }
+  if (ev.target.id === 'open-history') { show('history'); return; }
   if (ev.target.id === 'export') exportData();
   if (ev.target.id === 'export-csv') exportCSV();
   if (ev.target.id === 'import') document.getElementById('import-file').click();
@@ -1930,23 +2198,40 @@ document.addEventListener('change', (ev) => {
   if (ev.target.id === 'import-file' && ev.target.files[0]) importData(ev.target.files[0]);
   if (ev.target.closest('[data-rem-time]') || ev.target.closest('[data-rem-label]')) syncReminders();
 });
+/* Everything the app stores, for a COMPLETE backup/restore. */
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg'];
 function exportData() {
-  const blob = new Blob([JSON.stringify({ entries: DB.entries(), tasks: DB.tasks(), settings: DB.settings() }, null, 2)], { type: 'application/json' });
+  const out = { settings: DB.settings() };
+  BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'daily-pulse-backup-' + todayStr() + '.json'; a.click();
-  toast('Backup downloaded');
+  toast('Full backup downloaded');
 }
 function importData(file) {
   const r = new FileReader();
   r.onload = () => {
     try { const d = JSON.parse(r.result);
-      if (d.entries) DB.saveEntries(d.entries);
-      if (d.tasks) DB.saveTasks(d.tasks);
+      BACKUP_KEYS.forEach(k => { if (d[k] !== undefined) localStorage.setItem('dp.' + k, JSON.stringify(d[k])); });
       if (d.settings) DB.saveSettings(Object.assign(DB.settings(), d.settings));
-      toast('Backup restored'); refreshStreak(); show('dash');
+      reloadCfg();
+      toast('Backup restored'); refreshStreak(); setupReminders(); pushState(true); show('dash');
     } catch (e) { toast('Bad backup file', true); }
   };
   r.readAsText(file);
+}
+/* Janitor: drop notified-flags from past days so localStorage doesn't grow forever. */
+function cleanNotifiedFlags() {
+  const today = todayStr();
+  const liveEventIds = new Set(DB.events().filter(x => x.date >= today).map(x => x.id));
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (!k || k.indexOf('dp.notified.') !== 0) continue;
+    const rest = k.slice('dp.notified.'.length);
+    const m = rest.match(/\.(\d{4}-\d{2}-\d{2})$/);
+    if (m) { if (m[1] < today) localStorage.removeItem(k); }              // daily reminder flag
+    else if (rest.indexOf('ev') === 0 && !liveEventIds.has(rest)) localStorage.removeItem(k);   // stale event flag
+  }
 }
 
 /* ---------- Reminders (multiple, foreground firing) ---------- */
@@ -2185,7 +2470,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, history: renderHistory, settings: renderSettings };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   document.getElementById('s-' + name).classList.add('on');
@@ -2210,6 +2495,7 @@ document.getElementById('nav').addEventListener('click', (ev) => {
   if (b.dataset.screen === 'gym') gymDate = todayStr();     // Gym tab always opens today
   if (b.dataset.screen === 'plans') curPlan = null;         // Plans tab always opens the list
   if (b.dataset.screen === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }   // Calendar opens on today
+  if (b.dataset.screen === 'write') curDoc = null;          // Write tab always opens the article list
   show(b.dataset.screen);
 });
 
@@ -2217,6 +2503,7 @@ function refreshStreak() { document.getElementById('streak-n').textContent = log
 function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ---------- Init ---------- */
+cleanNotifiedFlags();
 refreshStreak();
 show('today');
 setupReminders();
