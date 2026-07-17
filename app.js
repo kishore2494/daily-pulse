@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v43';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v44';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -83,6 +83,28 @@ function cookDeep(cfg) {
   }));
 }
 let DEEP_SECTIONS = cookDeep(deepCfg());
+
+/* Core Log-screen fields (the always-visible top card + reflection card).
+   Rename/hide via Customize; stored in dp.corecfg. New defaults added in
+   future versions get appended to a stored config automatically. */
+const DEFAULT_CORE_FIELDS = [
+  { key: 'mood',          label: 'Evening mood',                     type: 'scale' },
+  { key: 'energy',        label: 'Energy level',                     type: 'scale' },
+  { key: 'sleepHours',    label: 'Sleep hrs',                        type: 'num', step: 0.5, req: true },
+  { key: 'deepWorkHours', label: 'Deep work hrs',                    type: 'num', step: 0.5, req: true },
+  { key: 'tasksDone',     label: 'Tasks done',                       type: 'num' },
+  { key: 'tasksPlanned',  label: 'Tasks planned',                    type: 'num' },
+  { key: 'wentWell',      label: 'One thing that went well ✨',      type: 'text' },
+  { key: 'improve',       label: 'One thing to improve tomorrow 🎯', type: 'text' },
+  { key: 'journal',       label: 'Journal entry 📓',                 type: 'journal' },
+];
+function coreCfg() {
+  const s = localStorage.getItem('dp.corecfg');
+  const cfg = s ? JSON.parse(s) : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
+  DEFAULT_CORE_FIELDS.forEach(d => { if (!cfg.find(f => f.key === d.key)) cfg.push(Object.assign({}, d)); });
+  return cfg;
+}
+function saveCoreCfg(cfg) { localStorage.setItem('dp.corecfg', JSON.stringify(cfg)); pushState(); }
 
 /* Default gym routine — fully editable in the Gym tab. */
 const DEFAULT_EXERCISES = [
@@ -287,7 +309,8 @@ function pushState(now) {
       entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
       timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
-      docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg() };
+      docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg(),
+      corecfg: coreCfg(), daycfg: gymDays(), gymgroups: gymGroups(), navcfg: navCfg() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -357,7 +380,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -368,6 +391,7 @@ function applyRemoteState(remote) {
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
     reloadCfg();                // custom habits/activities may have changed
+    renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
     const cur = document.querySelector('.nav button.on'); if (cur) show(cur.dataset.screen);
@@ -440,24 +464,29 @@ function renderToday() {
       <span>${h.label}</span>${st>1?`<span class="streak">🔥${st}</span>`:''}</div>`;
   }).join('');
 
+  // Core fields come from the user's config (Customize ▸ Log screen fields)
+  const core = coreCfg().filter(f => !f.hidden);
+  const coreScales = core.filter(f => f.type === 'scale').map(f => scaleField(f.key, f.label, f.req)).join('');
+  const coreNums = core.filter(f => f.type === 'num');
+  let numRows = '';
+  for (let i = 0; i < coreNums.length; i += 2) {
+    const cell = f => f ? `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
+      <input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}"></div>` : '<div></div>';
+    numRows += `<div class="row2">${cell(coreNums[i])}${cell(coreNums[i + 1])}</div>`;
+  }
+  const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
+      <textarea data-txt="${f.key}" placeholder="...">${draft[f.key] || ''}</textarea></div>`).join('');
+  const journalF = core.find(f => f.type === 'journal');
+  const journalHtml = journalF ? `<div class="field"><label>${escapeHtml(journalF.label)} <span class="hint">type or speak · use #tags to link</span></label>
+      <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${draft.journal || ''}</textarea>
+      <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
+
   document.getElementById('s-today').innerHTML = `
     <div class="card">
       <div class="field"><label>Date</label>
         <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
-      ${scaleField('mood','Evening mood',false)}
-      ${scaleField('energy','Energy level',false)}
-      <div class="row2">
-        <div class="field"><label>Sleep hrs <span class="req">*</span></label>
-          <input type="number" step="0.5" inputmode="decimal" data-num="sleepHours" value="${draft.sleepHours??''}"></div>
-        <div class="field"><label>Deep work hrs <span class="req">*</span></label>
-          <input type="number" step="0.5" inputmode="decimal" data-num="deepWorkHours" value="${draft.deepWorkHours??''}"></div>
-      </div>
-      <div class="row2">
-        <div class="field"><label>Tasks done</label>
-          <input type="number" inputmode="numeric" data-num="tasksDone" value="${draft.tasksDone??''}"></div>
-        <div class="field"><label>Tasks planned</label>
-          <input type="number" inputmode="numeric" data-num="tasksPlanned" value="${draft.tasksPlanned??''}"></div>
-      </div>
+      ${coreScales}
+      ${numRows}
     </div>
 
     <div class="card">
@@ -465,16 +494,11 @@ function renderToday() {
       <div class="habits">${habitChips}</div>
     </div>
 
-    <div class="card">
+    ${(reflect || journalHtml) ? `<div class="card">
       <h2>Reflection</h2>
-      <div class="field"><label>One thing that went well ✨</label>
-        <textarea data-txt="wentWell" placeholder="...">${draft.wentWell||''}</textarea></div>
-      <div class="field"><label>One thing to improve tomorrow 🎯</label>
-        <textarea data-txt="improve" placeholder="...">${draft.improve||''}</textarea></div>
-      <div class="field"><label>Journal entry 📓 <span class="hint">type or speak · use #tags to link</span></label>
-        <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${draft.journal||''}</textarea>
-        <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>
-    </div>
+      ${reflect}
+      ${journalHtml}
+    </div>` : ''}
 
     <h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
     ${renderDeepSections()}
@@ -813,8 +837,24 @@ let openExr = new Set();
    overrides + customs on top of WORKOUT_PLAN, so the plan file stays pristine. */
 function gymCfg() { const s = localStorage.getItem('dp.gymcfg'); return s ? JSON.parse(s) : { ex: {}, custom: {} }; }
 function saveGymCfg(c) { localStorage.setItem('dp.gymcfg', JSON.stringify(c)); pushState(); }
+/* Custom muscle groups (dp.gymgroups) — brand-new groups whose exercises all
+   live in gymCfg().custom[groupId]. */
+function gymGroups() { return JSON.parse(localStorage.getItem('dp.gymgroups') || '[]'); }
+function saveGymGroups(g) { localStorage.setItem('dp.gymgroups', JSON.stringify(g)); pushState(); }
+function anyGroupById(id) {
+  const cg = gymGroups().find(g => g.id === id);
+  return cg ? Object.assign({ exercises: [] }, cg) : groupById(id);
+}
+function allGroups() { return WORKOUT_PLAN.concat(gymGroups()); }
+/* The 6-day split is editable (dp.daycfg): rename days, pick each day's
+   muscle group + core/abs rotation. */
+function gymDays() {
+  const s = localStorage.getItem('dp.daycfg');
+  return s ? JSON.parse(s) : WORKOUT_DAYS.map(d => Object.assign({}, d));
+}
+function saveGymDays(d) { localStorage.setItem('dp.daycfg', JSON.stringify(d)); pushState(); }
 function cookedGroupById(id) {
-  const g = groupById(id); const cfg = gymCfg();
+  const g = anyGroupById(id); const cfg = gymCfg();
   const own = g.exercises.map(e => Object.assign({}, e, cfg.ex[e.id] || {}));
   const extra = (cfg.custom[g.id] || []).map(e => Object.assign({ group: g.id, anim: '' }, e, cfg.ex[e.id] || {}));
   return Object.assign({}, g, { exercises: own.concat(extra).filter(e => !e.hidden) });
@@ -885,7 +925,7 @@ function renderGym() {
 }
 // HOME: 6 day labels (history-list style)
 function gymHomeHTML() {
-  const rows = WORKOUT_DAYS.map(d => {
+  const rows = gymDays().map(d => {
     const ex = cookedDayEx(d);
     const done = ex.filter(e => gymDraft.done[dkey(d.id, e.id)]).length;
     const main = cookedGroupById(d.main);
@@ -913,7 +953,8 @@ function gymHomeHTML() {
 }
 // DAY: that day's workouts on the next page
 function gymDayHTML() {
-  const day = WORKOUT_DAYS.find(d => d.id === gymDayId) || WORKOUT_DAYS[0];
+  const days = gymDays();
+  const day = days.find(d => d.id === gymDayId) || days[0];
   const main = cookedGroupById(day.main);
   const blocks = cookedBlocks(day);
   const ex = cookedDayEx(day);
@@ -1550,7 +1591,7 @@ function renderDash() {
   const gym = DB.gym(); const gymDates = Object.keys(gym);
   const doneExIdsOn = d => new Set(Object.keys(gym[d].done || {}).filter(k => gym[d].done[k]).map(k => k.split('/').pop()));
   const groupSessions = g => gymDates.filter(d => { const s = doneExIdsOn(d); return g.exercises.some(x => s.has(x.id)); }).length;
-  const gymOrder = ['cardio','chest','triceps','shoulder','biceps','back','legs','abs','side','core'];
+  const gymOrder = ['cardio','chest','triceps','shoulder','biceps','back','legs','abs','side','core'].concat(gymGroups().map(g => g.id));
   const gymStats = gymOrder.map(id => { const g = cookedGroupById(id); return { g, n: groupSessions(g) }; }).filter(x => x.g);
   const gymMax = Math.max(1, ...gymStats.map(x => x.n));
   const totalWorkouts = gymDates.filter(d => Object.values(gym[d].done||{}).some(Boolean)).length;
@@ -1888,8 +1929,48 @@ function renderCustom() {
   const habits = habitCfg();
   const acts = actCfg();
   const customActs = DB.timeacts();
+  const daySplit = gymDays().map(d => `<div class="cfg-row">
+      <input class="cfg-name" style="flex:0 0 72px" data-day-name="${d.id}" value="${escapeHtml(d.name)}">
+      <select data-day-main="${d.id}">${allGroups().filter(g => !['cardio','abs','side','core'].includes(g.id)).map(g =>
+        `<option value="${g.id}" ${g.id === d.main ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`).join('')}</select>
+      <select data-day-ab="${d.id}" style="flex:0 0 92px">${['abs','side','core'].map(id => { const g = groupById(id);
+        return `<option value="${id}" ${id === d.ab ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`; }).join('')}</select>
+    </div>`).join('');
+  const navRows = navCfg().map(n => `<div class="cfg-row ${n.hidden ? 'hid' : ''}" data-id="${n.k}">
+      <span class="drag-handle" data-drag>⠿</span>
+      <span style="flex:0 0 26px;text-align:center">${n.ico}</span>
+      <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
+      ${n.locked ? '<span class="hint" style="flex:0 0 auto">always</span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
+    </div>`).join('');
+  const curAccent = DB.settings().accent || 'indigo';
   document.getElementById('s-custom').innerHTML = `
     <button class="back-btn" id="custom-back">← Back to More</button>
+    <div class="card">
+      <h2>🎨 Theme color</h2>
+      <div class="theme-row">${THEMES.map(t => `<button class="theme-sw ${t.id === curAccent ? 'on' : ''}" data-theme="${t.id}"
+        style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div>
+    </div>
+    <div class="card">
+      <h2>🧭 Tabs <span class="hint">drag order · rename · 👁 hide</span></h2>
+      <div id="cfg-nav">${navRows}</div>
+    </div>
+    <div class="card">
+      <h2>📝 Log screen fields <span class="hint">rename · hide — incl. reflection questions</span></h2>
+      ${coreCfg().map(f => `<div class="cfg-row ${f.hidden ? 'hid' : ''}">
+        <span class="cfg-type">${f.type === 'scale' ? '1-10' : f.type === 'num' ? '123' : 'Aa'}</span>
+        <input class="cfg-name" data-core-label="${f.key}" value="${escapeHtml(f.label)}">
+        <button class="cfg-hide" data-core-hide="${f.key}">${f.hidden ? '🙈' : '👁'}</button>
+      </div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>🗓 Gym 6-day split <span class="hint">rename days · pick muscle + core group</span></h2>
+      ${daySplit}
+      <div class="task-add" style="margin-top:10px">
+        <input type="text" id="cfg-new-group" placeholder="New muscle group… (e.g. 🧗 Forearms)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="cfg-add-group">Add</button>
+      </div>
+      <div class="hint" style="margin-top:8px">New groups appear below under Gym workouts — add exercises there, then pick the group for any day.</div>
+    </div>
     <div class="card">
       <h2>✅ Daily checklist habits <span class="hint">emoji · name · color · 👁 hide · drag</span></h2>
       <div id="cfg-habits">${habits.map(h => cfgRow('h', h, !!h.custom)).join('')}</div>
@@ -1914,11 +1995,15 @@ function renderCustom() {
     </div>
     <div class="card">
       <h2>🏋️ Gym workouts <span class="hint">rename · sets · hide · add exercises</span></h2>
-      ${WORKOUT_PLAN.map(g => gymGroupEditor(g)).join('')}
+      ${allGroups().map(g => gymGroupEditor(g)).join('')}
     </div>`;
   enableDrag(document.getElementById('cfg-habits'), ids => {
     const cfg = habitCfg();
     saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
+  });
+  enableDrag(document.getElementById('cfg-nav'), ids => {
+    const cfg = navCfg();
+    saveNavCfg(ids.map(id => cfg.find(n => n.k === id)).filter(Boolean)); renderCustom();
   });
 }
 /* --- Deep-log section editor (one collapsible <details> per section) --- */
@@ -1961,10 +2046,11 @@ function gymGroupEditor(g) {
       ${custom ? `<button class="del" data-gx-del="${g.id}:${e.id}">×</button>` : '<span style="width:23px"></span>'}
     </div>`; };
   const customs = (cfg.custom[g.id] || []);
+  const isCustomGroup = g.id.indexOf('cg') === 0;
   return `<details class="cfg-sec" data-cfgsec="gym:${g.id}" ${openCfgSecs.has('gym:' + g.id) ? 'open' : ''}>
-    <summary><span style="color:${g.color}">${g.emoji} ${escapeHtml(g.name)}</span><span class="hint">${cookedGroupById(g.id).exercises.length} shown</span></summary>
+    <summary><span style="color:${g.color}">${g.emoji} ${escapeHtml(g.name)}</span><span class="hint">${cookedGroupById(g.id).exercises.length} shown</span>${isCustomGroup ? `<button class="del" data-ggroup-del="${g.id}">×</button>` : ''}</summary>
     <div class="cfg-sec-body">
-      ${g.exercises.map(e => row(e, false)).join('')}${customs.map(e => row(e, true)).join('')}
+      ${(g.exercises || []).map(e => row(e, false)).join('')}${customs.map(e => row(e, true)).join('')}
       <div class="task-add" style="margin-top:8px">
         <input type="text" id="gx-new-${g.id}" placeholder="New exercise… (e.g. Dips 3 × 12)" autocomplete="off">
         <button class="btn btn-primary btn-sm" data-gx-add="${g.id}">Add</button>
@@ -2053,6 +2139,31 @@ document.addEventListener('click', (ev) => {
     const cfg = gymCfg(); cfg.custom[gid] = cfg.custom[gid] || [];
     cfg.custom[gid].push({ id: 'cx' + Date.now(), name: m ? m[1] : raw, sets: m ? m[2].replace(/x/i, '×') : '3 × 15' });
     saveGymCfg(cfg); renderCustom(); toast('Exercise added'); return; }
+
+  // ---- theme / nav / gym-group controls ----
+  const th = ev.target.closest('[data-theme]');
+  if (th) { const s = DB.settings(); s.accent = th.dataset.theme; DB.saveSettings(s); applyTheme(); renderCustom(); return; }
+  const nh = ev.target.closest('[data-nav-hide]');
+  if (nh) { const cfg = navCfg(); const n = cfg.find(x => x.k === nh.dataset.navHide);
+    if (n && !n.locked) { n.hidden = !n.hidden; saveNavCfg(cfg); renderCustom(); } return; }
+  if (ev.target.id === 'cfg-add-group') {
+    const inp = document.getElementById('cfg-new-group'); const raw = inp.value.trim(); if (!raw) return;
+    const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
+    const gs = gymGroups();
+    gs.push({ id: 'cg' + Date.now(), emoji: (m && m[2]) ? m[1] : '🏷️', name: (m && m[2]) ? m[2] : raw,
+      color: CUSTOM_ACT_COLORS[gs.length % CUSTOM_ACT_COLORS.length] });
+    saveGymGroups(gs); renderCustom(); toast('Group added — now add its exercises below'); return;
+  }
+  const gd = ev.target.closest('[data-ggroup-del]');
+  if (gd) { ev.preventDefault();
+    if (!confirm('Delete this group and its exercises?')) return;
+    const gid = gd.dataset.ggroupDel;
+    saveGymGroups(gymGroups().filter(g => g.id !== gid));
+    const cfg = gymCfg(); delete cfg.custom[gid]; saveGymCfg(cfg);
+    const days = gymDays(); let changed = false;
+    days.forEach(d => { if (d.main === gid) { d.main = 'chest'; changed = true; } });
+    if (changed) saveGymDays(days);
+    renderCustom(); return; }
 });
 /* keep <details> sections open across re-renders */
 let openCfgSecs = new Set();
@@ -2081,6 +2192,30 @@ document.addEventListener('input', (ev) => {
   if (gxn) { const cfg = gymCfg(); cfg.ex[gxn.dataset.gxName] = Object.assign({}, cfg.ex[gxn.dataset.gxName], { name: gxn.value }); saveGymCfg(cfg); return; }
   const gxs = ev.target.closest('[data-gx-sets]');
   if (gxs) { const cfg = gymCfg(); cfg.ex[gxs.dataset.gxSets] = Object.assign({}, cfg.ex[gxs.dataset.gxSets], { sets: gxs.value }); saveGymCfg(cfg); return; }
+  // core Log fields / nav labels / day names
+  const cl = ev.target.closest('[data-core-label]');
+  if (cl) { const cfg = coreCfg(); const f = cfg.find(x => x.key === cl.dataset.coreLabel);
+    if (f) { f.label = cl.value; saveCoreCfg(cfg); } return; }
+  const nl = ev.target.closest('[data-nav-label]');
+  if (nl) { const cfg = navCfg(); const n = cfg.find(x => x.k === nl.dataset.navLabel);
+    if (n) { n.label = nl.value; saveNavCfg(cfg); } return; }
+  const dn = ev.target.closest('[data-day-name]');
+  if (dn) { const days = gymDays(); const d = days.find(x => x.id === dn.dataset.dayName);
+    if (d) { d.name = dn.value; saveGymDays(days); } return; }
+});
+/* select changes: day split + core-field hide clicks */
+document.addEventListener('change', (ev) => {
+  const dm = ev.target.closest('[data-day-main]');
+  if (dm) { const days = gymDays(); const d = days.find(x => x.id === dm.dataset.dayMain);
+    if (d) { d.main = dm.value; saveGymDays(days); renderCustom(); } return; }
+  const da = ev.target.closest('[data-day-ab]');
+  if (da) { const days = gymDays(); const d = days.find(x => x.id === da.dataset.dayAb);
+    if (d) { d.ab = da.value; saveGymDays(days); renderCustom(); } return; }
+});
+document.addEventListener('click', (ev) => {
+  const chd = ev.target.closest('[data-core-hide]');
+  if (chd) { const cfg = coreCfg(); const f = cfg.find(x => x.key === chd.dataset.coreHide);
+    if (f) { f.hidden = !f.hidden; saveCoreCfg(cfg); renderCustom(); } return; }
 });
 
 /* ============================================================
@@ -2370,7 +2505,7 @@ document.addEventListener('change', (ev) => {
   if (ev.target.closest('[data-rem-time]') || ev.target.closest('[data-rem-label]')) syncReminders();
 });
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg'];
 function exportData() {
   const out = { settings: DB.settings() };
   BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
@@ -2640,6 +2775,51 @@ async function scheduleBackgroundNotifications() {
   } catch (e) { return false; }
 }
 
+/* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
+const NAV_DEF = [
+  { k: 'today',    ico: '📝', label: 'Log',     locked: true },
+  { k: 'time',     ico: '⏱️', label: 'Time' },
+  { k: 'tasks',    ico: '✅', label: 'Tasks' },
+  { k: 'notes',    ico: '🗒️', label: 'Notes' },
+  { k: 'plans',    ico: '📋', label: 'Plans' },
+  { k: 'gym',      ico: '💪', label: 'Gym' },
+  { k: 'habits',   ico: '🔥', label: 'Habits' },
+  { k: 'dash',     ico: '📊', label: 'Stats' },
+  { k: 'cal',      ico: '📆', label: 'Cal' },
+  { k: 'write',    ico: '✍️', label: 'Write' },
+  { k: 'history',  ico: '🕘', label: 'History', hidden: true },
+  { k: 'settings', ico: '⚙️', label: 'More',    locked: true },
+];
+function navCfg() {
+  const s = localStorage.getItem('dp.navcfg');
+  const cfg = s ? JSON.parse(s) : NAV_DEF.map(n => Object.assign({}, n));
+  NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.splice(cfg.length - 1, 0, Object.assign({}, d)); });   // future tabs slot in before More
+  return cfg;
+}
+function saveNavCfg(cfg) { localStorage.setItem('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); }
+function renderNav() {
+  const cur = (document.querySelector('.screen.on') || {}).id || 's-today';
+  document.getElementById('nav').innerHTML = navCfg().filter(n => !n.hidden)
+    .map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`).join('');
+}
+
+/* ---------- Theme accent (device-local, in settings) ---------- */
+const THEMES = [
+  { id: 'indigo', a: '#6d8cff', b: '#8f7bff' },
+  { id: 'teal',   a: '#2dd4bf', b: '#4ad6c0' },
+  { id: 'pink',   a: '#ec4899', b: '#f472b6' },
+  { id: 'amber',  a: '#f59e0b', b: '#fbbf24' },
+  { id: 'green',  a: '#34d399', b: '#4ade80' },
+  { id: 'red',    a: '#f87171', b: '#fb7185' },
+];
+function applyTheme() {
+  const t = THEMES.find(x => x.id === (DB.settings().accent || 'indigo')) || THEMES[0];
+  const r = document.documentElement.style;
+  r.setProperty('--accent', t.a);
+  r.setProperty('--grad-accent', `linear-gradient(135deg, ${t.a} 0%, ${t.b} 100%)`);
+  r.setProperty('--glow-accent', `0 6px 22px ${t.a}52`);
+}
+
 /* ---------- Navigation ---------- */
 const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom };
 function show(name) {
@@ -2675,6 +2855,8 @@ function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<
 
 /* ---------- Init ---------- */
 cleanNotifiedFlags();
+applyTheme();
+renderNav();
 refreshStreak();
 show('today');
 setupReminders();
