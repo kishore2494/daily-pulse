@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v46';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v47';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2409,7 +2409,7 @@ function renderSettings() {
       </div>
       <div class="hint" style="margin-top:8px">The full-screen alarm fires while the app is open, and catches missed ones when you reopen. For alarms even when the app is fully closed, tap <b>Add to phone calendar</b> (adds daily repeating alerts your phone rings natively).</div>
     </div>
-    <div class="card">
+    ${nativeShell() ? '' : `<div class="card">
       <h2>🔔 Background alarms · ntfy <span class="hint">${s.ntfyOn ? 'ON ●' : 'off'}</span></h2>
       <div class="hint">Rings even when this app is <b>closed & your phone is locked</b>. One-time setup with the free <b>ntfy</b> app.</div>
       <div class="task-add" style="margin-top:8px">
@@ -2422,7 +2422,7 @@ function renderSettings() {
         <button class="btn btn-ghost btn-sm" id="ntfy-test">Test push</button>
       </div>
       <div class="hint" style="margin-top:8px"><b>Setup:</b> ① Install <b>ntfy</b> (Play Store / App&nbsp;Store). ② In ntfy tap ➕ and subscribe to the topic <b>${escapeHtml(s.ntfyTopic || '—')}</b>. ③ Come back, tap <b>Turn ON</b>, then <b>Test push</b> — your phone should buzz. Reminders are sent up to 3 days ahead, so open this app at least every few days.</div>
-    </div>
+    </div>`}
     <div class="card">
       <h2>💾 Your data</h2>
       <div class="btn-row">
@@ -2637,6 +2637,7 @@ function setupReminders() {
     reminderTimeouts.push(setTimeout(() => checkReminders(true), Math.max(0, ms) + 300));
   });
   checkReminders(true);   // check immediately too (catches an already-due one)
+  if (nativeShell()) { scheduleNativeAlarms(); return; }   // Android app: real native alarms, skip the workarounds
   scheduleBackgroundNotifications();   // + OS-level alarms even when the app is closed (where supported)
   scheduleNtfy();                      // + ntfy push (rings via the ntfy app even when this app is closed)
 }
@@ -2715,6 +2716,47 @@ function exportReminderCalendar() {
   a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
   a.download = 'daily-pulse-reminders.ics'; a.click();
   toast('Calendar file ready — open it to add');
+}
+
+/* ---------- Native alarms (Capacitor shell) ----------
+   When the site runs inside the Daily Pulse Android app (Capacitor WebView),
+   window.Capacitor exposes LocalNotifications — REAL exact alarms that ring
+   with the app closed, no ntfy needed. In a plain browser this whole block
+   no-ops. Reminder n uses ids n*1000+day, events use hash ids — cancelled
+   and rescheduled wholesale on every setupReminders(). */
+function nativeShell() { return !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications); }
+async function scheduleNativeAlarms() {
+  if (!nativeShell()) return false;
+  const LN = window.Capacitor.Plugins.LocalNotifications;
+  try {
+    const perm = await LN.requestPermissions();
+    if (perm.display !== 'granted') return false;
+    // wipe our previously scheduled ones, then schedule the next 7 days
+    const pending = await LN.getPending();
+    if (pending.notifications && pending.notifications.length)
+      await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+    const toSchedule = [];
+    const now = Date.now();
+    let seq = 1;
+    DB.reminders().filter(r => r.enabled && r.time).forEach(r => {
+      const [h, m] = r.time.split(':').map(Number);
+      for (let d = 0; d < 7; d++) {
+        const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);
+        if (t.getTime() <= now) continue;
+        toSchedule.push({ id: seq++, title: '⏰ ' + (r.label || 'Daily Pulse'),
+          body: r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥',
+          schedule: { at: t, allowWhileIdle: true }, sound: r.mode === 'notify' ? undefined : 'default' });
+      }
+    });
+    DB.events().filter(x => x.time && x.date >= todayStr()).forEach(x => {
+      const t = new Date(x.date + 'T' + x.time + ':00');
+      if (isNaN(t.getTime()) || t.getTime() <= now) return;
+      toSchedule.push({ id: seq++, title: '📌 ' + x.label, body: x.time + ' · ' + x.label,
+        schedule: { at: t, allowWhileIdle: true }, sound: 'default' });
+    });
+    if (toSchedule.length) await LN.schedule({ notifications: toSchedule });
+    return true;
+  } catch (e) { return false; }
 }
 
 /* ---------- ntfy: real background push (rings even when the app is closed) ----------
