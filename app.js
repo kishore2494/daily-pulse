@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v44';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v45';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2420,7 +2420,7 @@ function renderSettings() {
     </div>
     <div class="card"><h2>ℹ️ About</h2>
       <div class="hint">Daily Pulse · <b>${APP_VERSION}</b> · local-first. Your data stays on this device${s.syncUrl?' and syncs to your Google Sheet':''}.
-      Add to Home Screen to use it like a native app, offline.</div></div>
+      Add to Home Screen to use it like a native app, offline. · <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></div></div>
   `;
 }
 document.addEventListener('click', async (ev) => {
@@ -2853,12 +2853,81 @@ document.getElementById('nav').addEventListener('click', (ev) => {
 function refreshStreak() { document.getElementById('streak-n').textContent = loggedStreak(); }
 function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+/* ============================================================
+   FIRST-RUN ONBOARDING — shown once to brand-new users only
+   (any existing data or the dp.onboarded flag skips it).
+   Step 1 welcome → step 2 pick habits → step 3 pick activities.
+   Unpicked items are hidden via the same customize configs, so
+   everything remains changeable later in More ▸ Customize.
+   ============================================================ */
+let obStep = 0;
+const obHideH = new Set(), obHideA = new Set();
+function needsOnboard() {
+  return !localStorage.getItem('dp.onboarded')
+    && !Object.keys(DB.entries()).length && !DB.timelog().length
+    && !DB.tasks().length && !DB.docs().length;
+}
+function renderOnboard() {
+  const el = document.getElementById('onboard');
+  let body = '';
+  if (obStep === 0) body = `
+    <div class="ob-emoji">🔥</div>
+    <h1>Daily Pulse</h1>
+    <p class="ob-lead">Your whole life in one private tracker.</p>
+    <div class="ob-points">
+      <div>🔒 <b>Private by design</b> — everything stays on your phone. No account, no cloud, no tracking.</div>
+      <div>⏱ <b>Track anything</b> — habits, mood, your day hour-by-hour, gym, journal, plans.</div>
+      <div>🎨 <b>Make it yours</b> — every habit, field, workout and tab is customizable.</div>
+    </div>
+    <button class="btn btn-primary" data-ob-next>Get started</button>`;
+  if (obStep === 1) body = `
+    <h1>Pick your daily habits</h1>
+    <p class="ob-lead">Tap to keep or drop — you can add your own later.</p>
+    <div class="habits ob-grid">${habitCfg().map(h => `
+      <div class="habit ${obHideH.has(h.key) ? '' : 'on'}" data-ob-habit="${h.key}">
+        <span class="check">✓</span><span class="emoji">${h.emoji}</span><span>${escapeHtml(h.label)}</span>
+      </div>`).join('')}</div>
+    <button class="btn btn-primary" data-ob-next>Next</button>`;
+  if (obStep === 2) body = `
+    <h1>What do you spend time on?</h1>
+    <p class="ob-lead">These become your one-tap stopwatch activities.</p>
+    <div class="habits ob-grid">${actCfg().map(a => `
+      <div class="habit ${obHideA.has(a.id) ? '' : 'on'}" data-ob-act="${a.id}">
+        <span class="check">✓</span><span class="emoji">${a.emoji}</span><span>${escapeHtml(a.name)}</span>
+      </div>`).join('')}</div>
+    <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
+  el.innerHTML = `<div class="ob-inner">${body}
+    ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
+    <div class="ob-dots">${[0, 1, 2].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+}
+document.addEventListener('click', (ev) => {
+  const el = document.getElementById('onboard');
+  if (!el || !el.classList.contains('on')) return;
+  const hb = ev.target.closest('[data-ob-habit]');
+  if (hb) { const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard(); return; }
+  const ac = ev.target.closest('[data-ob-act]');
+  if (ac) { const k = ac.dataset.obAct; obHideA.has(k) ? obHideA.delete(k) : obHideA.add(k); renderOnboard(); return; }
+  if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
+  if (ev.target.closest('[data-ob-next]')) {
+    if (obStep < 2) { obStep++; renderOnboard(); return; }
+    // finish: apply picks as hidden-flags in the normal customize configs
+    if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
+    if (obHideA.size) { const cfg = actCfg(); cfg.forEach(a => { if (obHideA.has(a.id)) a.hidden = true; }); saveActCfg(cfg); }
+    localStorage.setItem('dp.onboarded', '1');
+    el.classList.remove('on');
+    show('today');
+    toast('Welcome! Change anything later in More ▸ Customize 🎨');
+  }
+});
+
 /* ---------- Init ---------- */
 cleanNotifiedFlags();
 applyTheme();
 renderNav();
 refreshStreak();
 show('today');
+if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); renderOnboard(); }
+else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();
 setTimeout(() => checkReminders(true), 1000);   // catch a reminder you missed while the app was closed
 // Opened by tapping an ntfy push (?alarm=<label>) → go straight into the loud full-screen alarm.
