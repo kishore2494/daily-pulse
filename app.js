@@ -5,22 +5,22 @@
 
 'use strict';
 
-const APP_VERSION = 'v49';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v50';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
    (More ▸ Customize) saves your own list to dp.habitcfg, and HABITS
    is rebuilt from it (hidden ones excluded) via reloadCfg(). */
 const DEFAULT_HABITS = [
-  { key: 'workout',     emoji: '🏋️', label: 'Workout' },
-  { key: 'faceWorkout', emoji: '😊', label: 'Face workout', color: '#fb923c' },
+  { key: 'workout',     emoji: '💪', label: 'Workout' },
+  { key: 'faceWorkout', emoji: '😁', label: 'Face workout', color: '#fb923c' },
   { key: 'meditation',  emoji: '🧘', label: 'Meditation' },
-  { key: 'english',     emoji: '🗣️', label: 'Communication', color: '#fb923c' },
-  { key: 'reading',     emoji: '📚', label: 'Books / Reading' },
+  { key: 'english',     emoji: '💬', label: 'Communication', color: '#fb923c' },
+  { key: 'reading',     emoji: '📖', label: 'Books / Reading' },
   { key: 'projectAI',   emoji: '🤖', label: 'Project — AI' },
   { key: 'projectSpace',emoji: '🚀', label: 'Project — Space tech' },
   { key: 'healthyFood', emoji: '🥗', label: 'Healthy food only', color: '#fb923c' },
-  { key: 'posted',      emoji: '📤', label: 'Posted content' },
+  { key: 'posted',      emoji: '📣', label: 'Posted content' },
   { key: 'consumed',    emoji: '🧠', label: 'Consumed useful content' },
   { key: 'hairCare',    emoji: '💇', label: 'Hair care' },
   { key: 'skinCare',    emoji: '🧴', label: 'Skin care' },
@@ -1018,10 +1018,10 @@ const DEFAULT_TIME_ACTS = [
   { id: 'work',   emoji: '💼', name: 'Work',            color: '#6d8cff' },
   { id: 'eat',    emoji: '🍽️', name: 'Eating',          color: '#34d399' },
   { id: 'break',  emoji: '☕', name: 'Break',           color: '#4ad6c0' },
-  { id: 'gymt',   emoji: '🏋️', name: 'Gym',             color: '#f87171' },
-  { id: 'learn',  emoji: '📚', name: 'Learning',        color: '#ec4899' },
+  { id: 'gymt',   emoji: '💪', name: 'Gym',             color: '#f87171' },
+  { id: 'learn',  emoji: '📖', name: 'Learning',        color: '#ec4899' },
   { id: 'scroll', emoji: '📱', name: 'Scrolling',       color: '#fb923c' },
-  { id: 'social', emoji: '🧑‍🤝‍🧑', name: 'Friends & family', color: '#22d3ee' },
+  { id: 'social', emoji: '👥', name: 'Friends & family', color: '#22d3ee' },
 ];
 const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
 function actCfg() { const s = localStorage.getItem('dp.actcfg'); return s ? JSON.parse(s) : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
@@ -2355,6 +2355,9 @@ function renderSettings() {
         <button class="btn btn-ghost btn-sm" id="open-custom">🎨 Customize habits &amp; activities</button>
         <button class="btn btn-ghost btn-sm" id="open-history">🕘 History</button>
       </div>
+      <div class="btn-row" style="margin-top:8px">
+        <a class="btn btn-ghost btn-sm" href="guide.html" target="_blank" rel="noopener" style="text-decoration:none;display:flex;align-items:center;justify-content:center">📖 How to use Daily Pulse</a>
+      </div>
     </div>
     <div class="card" style="border-color:rgba(251,191,36,.4)">
       <h2>📦 Your data lives on this device</h2>
@@ -3003,19 +3006,29 @@ function renderOnboard() {
     <button class="btn btn-primary" data-ob-next>Get started</button>`;
   if (obStep === 1) body = `
     <h1>Pick your daily habits</h1>
-    <p class="ob-lead">Tap to keep or drop — you can add your own later.</p>
+    <p class="ob-lead">Tap to keep or drop, or add your own.</p>
     <div class="habits ob-grid">${habitCfg().map(h => `
       <div class="habit ${obHideH.has(h.key) ? '' : 'on'}" data-ob-habit="${h.key}">
         <span class="check">✓</span><span class="emoji">${h.emoji}</span><span>${escapeHtml(h.label)}</span>
       </div>`).join('')}</div>
+    <div class="task-add ob-add">
+      <input type="text" id="ob-new-habit" placeholder="Add your own… (e.g. 🌅 Wake at 6)" autocomplete="off">
+      <button class="btn btn-primary btn-sm" id="ob-add-habit">Add</button>
+    </div>
+    <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>More ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Next</button>`;
   if (obStep === 2) body = `
     <h1>What do you spend time on?</h1>
     <p class="ob-lead">These become your one-tap stopwatch activities.</p>
-    <div class="habits ob-grid">${actCfg().map(a => `
+    <div class="habits ob-grid">${actCfg().concat(DB.timeacts()).map(a => `
       <div class="habit ${obHideA.has(a.id) ? '' : 'on'}" data-ob-act="${a.id}">
         <span class="check">✓</span><span class="emoji">${a.emoji}</span><span>${escapeHtml(a.name)}</span>
       </div>`).join('')}</div>
+    <div class="task-add ob-add">
+      <input type="text" id="ob-new-act" placeholder="Add your own… (e.g. Cooking)" autocomplete="off">
+      <button class="btn btn-primary btn-sm" id="ob-add-act">Add</button>
+    </div>
+    <p class="ob-note">Everything here is editable later in <b>More ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
   el.innerHTML = `<div class="ob-inner">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
@@ -3028,12 +3041,28 @@ document.addEventListener('click', (ev) => {
   if (hb) { const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard(); return; }
   const ac = ev.target.closest('[data-ob-act]');
   if (ac) { const k = ac.dataset.obAct; obHideA.has(k) ? obHideA.delete(k) : obHideA.add(k); renderOnboard(); return; }
+  if (ev.target.id === 'ob-add-habit') {
+    const inp = document.getElementById('ob-new-habit'); const raw = (inp.value || '').trim(); if (!raw) return;
+    const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
+    const cfg = habitCfg();
+    cfg.push({ key: 'ch' + Date.now(), emoji: (m && m[2]) ? m[1] : '⭐', label: (m && m[2]) ? m[2] : raw, custom: true });
+    saveHabitCfg(cfg); renderOnboard(); return;   // new item shows selected (not in obHideH)
+  }
+  if (ev.target.id === 'ob-add-act') {
+    const inp = document.getElementById('ob-new-act'); const name = (inp.value || '').trim(); if (!name) return;
+    const acts = DB.timeacts();
+    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    DB.saveTimeacts(acts); renderOnboard(); return;
+  }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
     if (obStep < 2) { obStep++; renderOnboard(); return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
-    if (obHideA.size) { const cfg = actCfg(); cfg.forEach(a => { if (obHideA.has(a.id)) a.hidden = true; }); saveActCfg(cfg); }
+    if (obHideA.size) {
+      const cfg = actCfg(); cfg.forEach(a => { if (obHideA.has(a.id)) a.hidden = true; }); saveActCfg(cfg);
+      const cust = DB.timeacts(); let ch = false; cust.forEach(a => { if (obHideA.has(a.id)) { a.hidden = true; ch = true; } }); if (ch) DB.saveTimeacts(cust);
+    }
     localStorage.setItem('dp.onboarded', '1');
     el.classList.remove('on');
     show('today');
