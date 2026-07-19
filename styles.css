@@ -551,3 +551,7 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .ob-dots { display: flex; gap: 7px; justify-content: center; margin-top: 2px; }
 .ob-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--border-hi); transition: all .2s; }
 .ob-dots span.on { background: var(--accent); width: 20px; border-radius: 4px; }
+.ob-add { width: 100%; margin-top: 12px; }
+.ob-add input { flex: 1; }
+.ob-note { font-size: 12px; color: var(--text-faint); text-align: center; margin: 12px 0 2px; line-height: 1.5; }
+.ob-note b { color: var(--text-dim); }
