@@ -1,0 +1,35 @@
+{
+  "product": {
+    "name": "Daily Pulse",
+    "tagline": "One tap to log your whole day",
+    "install_url": "https://kishore2494.github.io/daily-pulse/",
+    "play_url": "https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse",
+    "base_path": "/daily-pulse",
+    "one_liner": "a fast, offline, installable life-tracker — mood, energy, habits, workouts, journal and tasks in one tap, private on your device with optional Google Sheet sync",
+    "google_verification": "w2EHGR95fVgvKWQ54zXT4rUVEbezhZg5YiokbvLjHoU",
+    "ga_id": "G-BFV887LQYB",
+    "category": "LifestyleApplication"
+  },
+  "features": [
+    { "key": "habit-tracker", "name": "Habit Tracker", "verb": "build habits", "does": "a 10-habit daily checklist with per-habit streaks and a 90-day consistency heatmap", "proof": "streaks 🔥 and heatmaps that make a missed day obvious the next morning" },
+    { "key": "mood-tracker", "name": "Mood Tracker", "verb": "track your mood", "does": "a one-tap mood and energy log with trend charts over time", "proof": "mood and energy trend lines you can actually read after a few weeks" },
+    { "key": "workout-log", "name": "Workout Log", "verb": "log workouts", "does": "an 8-group, 42-exercise gym plan with animated how-to demos, reps/weight logging and a gym streak", "proof": "a real Fitness-Zone plan with animated form demos, not a blank spreadsheet" },
+    { "key": "journal", "name": "Daily Journal", "verb": "journal", "does": "a went-well / to-improve / free-journal block plus a deep log organised into Mind, Wellbeing, Health, Work, Learning, Finance, Digital and Growth", "proof": "structured prompts so the page is never blank, plus a free space when you need it" },
+    { "key": "task-manager", "name": "Task Manager", "verb": "manage tasks", "does": "quick task add, check-off, and automatic carry-over flagging for anything you didn't finish", "proof": "carried-over tasks get flagged so nothing quietly disappears" },
+    { "key": "sleep-tracker", "name": "Sleep Tracker", "verb": "track sleep", "does": "a daily sleep-hours log charted against your deep-work and energy", "proof": "sleep plotted next to focus and energy, so the connection is visible" },
+    { "key": "focus-tracker", "name": "Focus Tracker", "verb": "track deep work", "does": "a daily deep-work / focus-hours log with a trend chart", "proof": "deep-work hours trended over 30 days, not guessed at" },
+    { "key": "weekly-review", "name": "Weekly Review", "verb": "run a weekly review", "does": "an automatic Sunday weekly-review block that folds into your normal log", "proof": "the review appears on its own every Sunday — no separate ritual to remember" }
+  ],
+  "audiences": [
+    { "key": "students", "name": "Students", "pain": "juggling classes, assignments and revision while trying to keep any kind of routine", "hook": "between lectures and deadlines, a tracker only works if it takes seconds" },
+    { "key": "software-developers", "name": "Software Developers", "pain": "long focus blocks, irregular sleep, and habits that slip during crunch", "hook": "you already live in tools — this one logs the day in a tap and syncs to a sheet you own" },
+    { "key": "remote-workers", "name": "Remote Workers", "pain": "days blurring together with no commute to bookend them", "hook": "when every day is at the same desk, a daily log is what gives the week shape" },
+    { "key": "entrepreneurs", "name": "Entrepreneurs", "pain": "wearing every hat and pushing health and habits to 'later'", "hook": "you track the business obsessively — this tracks the operator running it" },
+    { "key": "adhd", "name": "People with ADHD", "pain": "starting systems that die by day three because they ask too much", "hook": "one screen, one tap, visible streaks — built to survive the day-three drop-off" },
+    { "key": "fitness-beginners", "name": "Fitness Beginners", "pain": "not knowing which exercises to do or how to do them safely", "hook": "42 exercises with animated form demos, so you start without a trainer" },
+    { "key": "busy-parents", "name": "Busy Parents", "pain": "no time and no hands free for a fiddly app", "hook": "a full day logged in the time it takes to make one coffee" },
+    { "key": "freelancers", "name": "Freelancers", "pain": "unstructured days and no manager to create rhythm", "hook": "build your own rhythm when nobody else sets it for you" },
+    { "key": "medical-residents", "name": "Medical Residents", "pain": "brutal shifts that wreck sleep and any routine", "hook": "track sleep and energy through rotations, offline, private on your device" },
+    { "key": "designers", "name": "Designers", "pain": "creative work that needs focus but rarely gets measured", "hook": "see your focus hours and mood trend against the work you actually shipped" }
+  ]
+}

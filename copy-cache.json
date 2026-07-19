@@ -1,0 +1,122 @@
+{
+  "habit-tracker-for-students": {
+    "intro": "They rush from an 8 am lecture to a crowded library, trying to squeeze a quick stretch between problem sets, but habit logging slips through the cracks. Daily Pulse captures each routine in a single tap, right on their phone today.",
+    "why": "Students juggle back‑to‑back classes, lab reports, and late‑night revision, leaving little mental bandwidth for tracking habits manually. Forgetting a water break or a quick review derails momentum and adds stress. Daily Pulse’s one‑tap log fits into those gaps, giving them a clear, private view of consistency without extra effort.",
+    "quickAnswer": "Daily Pulse is a private, on‑device habit tracker that lets students log up to ten daily routines with a single tap, view streaks, and see a 90‑day heatmap, all without leaving their study flow while staying private and under control.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-software-developers": {
+    "intro": "When a developer finishes a 90‑minute deep‑work sprint, the urge to log a quick stretch or water break vanishes because opening another app feels like a context switch. Daily Pulse captures that habit in a single tap, right from the keyboard, without breaking flow.",
+    "why": "Long coding blocks push sleep and movement to the background, and during crunch weeks even basic habits like posture checks or evening walks disappear from memory. A habit tracker that lives inside the dev environment lets you note each slip instantly, turning invisible loss into visible data you can act on without extra steps.",
+    "quickAnswer": "Daily Pulse is a one‑tap habit tracker built for developers that logs stretch, water, posture, and sleep habits during deep work, shows streaks per habit, and visualizes 90‑day consistency in a heatmap and syncs to Sheets across your devices daily",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-remote-workers": {
+    "intro": "You sip coffee at the kitchen table, then stare at the same screen until lunch, with no commute to mark the start or end of work. That blur makes it easy to lose track of healthy habits. Daily Pulse logs each habit in one tap.",
+    "why": "Remote workers miss the physical cues that structure a day, so habits slip when the screen stays on. A ten‑item checklist with per‑habit streaks shows exactly where you’re consistent, and the 90‑day heatmap reveals patterns you can’t feel. Seeing those streaks builds the routine you need without leaving your desk.",
+    "quickAnswer": "Daily Pulse is a private on‑device habit tracker that lets remote workers tick a ten‑habit checklist, view per‑habit streaks, and watch a 90‑day consistency heatmap appear after each tap, and keeps your data strictly on your phone, never leaving it.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-entrepreneurs": {
+    "intro": "At 7 a.m. you're answering investor emails while your coffee cools, and the habit you meant to track slips into the 'later' pile. Juggling dev, sales, and team check‑ins makes logging feel like extra work. Daily Pulse lets you tick each habit in one tap.",
+    "why": "Entrepreneurs wear every hat, from product to payroll, so health and habit work gets pushed to 'later' and never happens. Missing a day breaks streaks, and without a quick visual you can't see where consistency drifts. Daily Pulse gives a ten‑habit checklist, per‑habit streaks, and a 90‑day heatmap that shows gaps instantly.",
+    "quickAnswer": "Daily Pulse is a private, on‑device habit tracker that lets entrepreneurs log up to ten habits with a single tap, view per‑habit streaks, and see a 90‑day consistency heatmap to spot missed days instantly from lock screen, one tap only.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-adhd": {
+    "intro": "Morning alarm blares, you stare at a half‑filled coffee mug while the to‑do list looms like a wall. Remembering to log each habit feels like another chore you can’t afford. Daily Pulse lets you tick every habit with a single tap.",
+    "why": "People with ADHD often abandon habit plans after a few days because each step drains focus and motivation. They need a tracker that asks nothing more than a tap, shows streaks instantly, and builds a 90‑day heatmap so progress is visible without added work. All data stays on your phone, so there’s no sync anxiety.",
+    "quickAnswer": "Daily Pulse is a private, on‑device habit tracker that lets people with ADHD log up to ten habits with a single tap, view live streaks, and see a 90‑day consistency heatmap without any extra steps or mental load for you",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-busy-parents": {
+    "intro": "At 6:15 am, you’re juggling a crying toddler while trying to sip cold coffee, and your hands are too full to tap through menus. Daily Pulse lets you log any habit with a single tap, so you never miss a check-in even when you’re rushed.",
+    "why": "Busy parents snatch minutes between school drop-offs, work calls, and bedtime stories, leaving no room for habit apps that demand multiple screens or internet sync. Daily Pulse stays on-device, logs in one tap, shows streaks and a 90-day heatmap so you see progress instantly, fitting habit tracking into the cracks of a hectic day.",
+    "quickAnswer": "Daily Pulse is a ten-habit daily checklist that lets busy parents tap each habit once, tracks individual streaks, and displays a 90-day consistency heatmap, giving a clear, private picture of progress without extra steps or online sync for your family.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-freelancers": {
+    "intro": "You begin each freelance day juggling client pings, a half‑finished sketch, and a coffee that’s gone lukewarm, then realize you missed your morning stretch because there’s no boss to remind you. Daily Pulse captures that habit in a single tap, right on your phone.",
+    "why": "Freelancers set their own schedule, so missed meals, skipped workouts, or forgotten invoices slip into the day unnoticed. Without a manager’s cue, small gaps become big losses - lost focus, uneven income, and creeping fatigue. Daily Pulse gives you a quick, private log that shows where time really goes, helping you rebuild a steady rhythm.",
+    "quickAnswer": "Daily Pulse is a habit tracker that lets freelancers log up to ten routines (like stretching, invoicing, or water intake) with tap, view streaks, and see a 90‑day heatmap to spot patterns and keep their unstructured work life on track.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-medical-residents": {
+    "intro": "After a 3 a.m. sign-out, you sip lukewarm coffee while your pager buzzes for the next admit. Remembering if you took meds, stretched, or drank water feels impossible. Daily Pulse lets you tap each habit once on your lock screen and records it instantly.",
+    "why": "Residents survive on fractured sleep, back-to-back rounds, and endless paperwork, so any routine collapses by hour two of a shift. Missing sleep, exercise, or hydration quickly erodes focus and patient safety. A frictionless, on-device log that works even without Wi-Fi keeps you honest when every minute is claimed by the hospital.",
+    "quickAnswer": "Daily Pulse is a habit tracker for medical residents: a ten-item checklist with per-habit streaks, a 90-day consistency heatmap, one-tap logging, optional Google Sheet sync, and works offline to keep you daily consistent through brutal shifts and unpredictable call schedules.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-designers": {
+    "intro": "You open Photoshop at 9 a.m., stare at a blank canvas, and wonder if you actually moved the needle on your user‑flow sketches. Tracking creative focus feels vague, and you forget which micro‑habits helped. Daily Pulse logs each habit in one tap.",
+    "why": "Designers juggle wireframes, client feedback, and software updates, yet creative focus rarely shows up on a timesheet. Without a visible log, it’s easy to slip into endless tweaks and lose momentum on the habits that actually sharpen your eye. Seeing a 90‑day heatmap turns vague effort into proof of progress.",
+    "quickAnswer": "Daily Pulse is a habit tracker built for designers who need to see which micro‑routines sharpen their design eye, log each habit with a single tap, and view a 90‑day streak heatmap that turns creative focus into clear, actionable data",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "habit-tracker-for-fitness-beginners": {
+    "intro": "Morning alarm rings, you stare at your sneakers by the door, unsure whether to start with squats or a walk. You waste minutes scrolling videos trying to find a safe beginner routine. Daily Pulse logs that choice in one tap.",
+    "why": "Fitness beginners often copy random moves from videos, end up sore or confused, and quit after a few missed days. Without a simple way to see which exercises they actually did and how often, progress stays hidden. Daily Pulse's ten-habit checklist, streak counters, and 90-day heatmap turn guesswork into visible proof.",
+    "quickAnswer": "Daily Pulse is a ten-habit daily checklist with per-habit streaks and a 90-day consistency heatmap that lets fitness beginners log their chosen workout in one tap, see which moves they completed, track streaks, and visualize progress over three months today",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-students": {
+    "intro": "After a 9 am lecture, you stare at a half‑finished essay while your phone buzzes with reminders, and you forget to note how you felt. Daily Pulse logs your mood in one tap, right there on the screen for quick insight.",
+    "why": "Students juggle back‑to‑back classes, labs, and revision sessions, leaving little mental space to track emotions. When stress builds unnoticed, focus slips and sleep suffers. A quick mood log reveals patterns tied to deadlines or sleep, letting them adjust study breaks before burnout hits. It also shows links between low mood and exams.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger built for students, capturing feelings instantly, charting trends over weeks, and highlighting how sleep, deadlines, and study breaks affect wellbeing so you can adjust routines without extra effort for better focus.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-software-developers": {
+    "intro": "You stare at a blinking cursor at 2 a.m. after three back‑to‑back stand‑ups, eyes burning and coffee cold, then realize you never logged how drained you felt. Daily Pulse captures that mood in one tap, right from your keyboard while you code.",
+    "why": "During marathon coding sessions, sleep shifts and skipped meals quietly erode focus, turning small frustrations into bugs that linger for hours. Tracking mood reveals the hidden link between energy dips and mistake rates, letting you adjust breaks, snacks, or sleep before fatigue derails the next sprint and improve code quality.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger for developers juggling long focus blocks, irregular sleep, and crunch‑time habits, showing charts that link feeling shifts to workload so you can adjust routines before burnout hits and keep coding steady.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-remote-workers": {
+    "intro": "You finish a Zoom call, stare at the same kitchen table, and notice the morning blurred into afternoon. The missing commute makes mood shifts hard to spot each day. Daily Pulse logs your feeling in the moment with one tap.",
+    "why": "Remote workers often sit in the same space for hours, losing natural cues that signal stress or fatigue. Without a commute to mark transitions, emotions can build unnoticed, affecting focus and sleep. Tracking mood in one tap reveals patterns, helping you adjust breaks, workload, or environment before burnout creeps in.",
+    "quickAnswer": "Daily Pulse is a private, one‑tap mood and energy logger built for remote workers who need instant insight into how their day feels, showing trends over time so they can spot shifts and act before fatigue sets in daily routines.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-entrepreneurs": {
+    "intro": "Your 7 a.m. inbox ping pulls you into back‑to‑back calls before you’ve even had coffee, and you barely notice how your mood swings from excited pitch to draining admin. Daily Pulse captures that swing with a single tap every day to see patterns.",
+    "why": "Entrepreneurs juggle product dev, sales, and family duties, often postponing sleep or exercise until burnout hits. Without a quick log, the subtle mood dips that precede poor decisions go unnoticed, making it hard to adjust workload or recover before stress compounds. It reveals patterns so you can schedule recovery before fatigue spikes.",
+    "quickAnswer": "Daily Pulse is a private, one‑tap mood and energy logger that builds personal trend charts, lets entrepreneurs see how daily habits affect feelings, and syncs optionally to Google Sheets without ever leaving the device while keeping data private on device.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-adhd": {
+    "intro": "You wake up, glance at the half filled sticky note on your nightstand that still says 'track mood', realize you forgot again because opening another app feels like another chore, and Daily Pulse lets you tap once to record how you feel right then.",
+    "why": "People with ADHD often start a mood tracker with enthusiasm, but the extra steps of opening another app, picking a mood from a list, and typing notes become friction that kills consistency by day three; a single‑tap log on the same screen where they already check tasks removes that barrier and lets patterns emerge.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger that creates trend charts time, built for people with ADHD who forget to log feelings because opening another app feels like another chore, letting them capture state instantly and see patterns.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-fitness-beginners": {
+    "intro": "You finish a walk around your room, unsure if those steps count as exercise, and you hesitate because you don’t know which moves to try or how to stay safe. Daily Pulse lets you tap once to log your mood and energy right then.",
+    "why": "Fitness beginners often guess at workouts, leading to soreness or skipping sessions because they can’t tell if fatigue comes from effort or mood. Seeing how your feelings shift after each activity helps you pick safer moves, adjust intensity, and build a routine that feels doable rather than draining for you.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger that creates simple trend charts, letting fitness beginners see how feelings change after each workout attempt, so they can choose safer exercises, avoid guesswork, and stay consistent without extra effort today.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-busy-parents": {
+    "intro": "When the toddler finally naps and the coffee’s cold, you stare at the sink of dishes and wonder how you felt that morning. You have no hand or spare minute for a fiddly tracker. Daily Pulse logs mood and energy in one tap from counter.",
+    "why": "Busy parents juggle feedings, school runs, and work calls, leaving seconds to notice their own shifts. When mood dips go unnoticed, irritability builds and energy crashes affect the whole family. A one‑tap log lets you capture those moments instantly, reveal trends, and adjust your daily routines before stress spills over.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger built for parents who need to record feelings without unlocking a phone or typing, giving instant charts that show how sleep, meals, and kids’ moods shape your day for better balance",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-freelancers": {
+    "intro": "You wrap up a Zoom call with a startup founder at 2 p.m., then stare at a sticky note trying to recall whether you felt drained or buzzed during the brainstorm. Daily Pulse lets you tap one button to log that mood and energy instantly.",
+    "why": "Freelancers juggle multiple projects without a set schedule, so a bad morning can bleed into afternoon calls and missed deadlines. Without a manager to notice shifts, you rely on memory alone, which fades fast. Tracking mood in one tap reveals hidden triggers, lets you adjust workload before burnout creeps in.",
+    "quickAnswer": "Daily Pulse is a one-tap mood and energy logger built for freelancers who need instant insight into how client work, breaks, and sleep shape their feelings, showing trends so you can spot patterns without extra effort for better daily balance.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-medical-residents": {
+    "intro": "At 2 a.m. after a 12-hour ICU shift, your scrubs are stained with coffee and you can’t find a pen to note how drained you feel. Daily Pulse lets you tap one button to log mood and energy instantly, no paperwork.",
+    "why": "Residents survive on erratic sleep, back-to-back calls, and constant decision fatigue, making it hard to notice how a rough night or a tough case drags down mood for days. A one‑tap log captures those spikes so you can see trends, adjust handoffs, and seek help before burnout sets in and protect your well‑being.",
+    "quickAnswer": "Daily Pulse is a free offline app where residents tap one button to log mood and energy after shift, view charts that reveal how sleep loss, patient load, or night floats affect feelings, and keep data private on their phone.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "mood-tracker-for-designers": {
+    "intro": "You spend the morning aligning grids in Figma, then the afternoon slips into endless revisions that leave you guessing how you actually felt. Forgetting to log your mood breaks focus, but Daily Pulse captures it with one tap, right where you work.",
+    "why": "Designers toggle between sketching, client feedback, and UI tweaks, yet no tool shows how those shifts affect energy or mood. Without data, you rely on gut feeling, which leads to missed burnout signs or unexplained slumps. Daily Pulse gives you a quick, private log that reveals patterns tied to your actual workflow.",
+    "quickAnswer": "Daily Pulse is a one‑tap mood and energy logger built for designers who need instant, private insights tied to their design sessions, showing trends over time without leaving the workflow or adding extra steps and helps you spot early signs.",
+    "_model": "nvidia/nemotron-3-super-120b-a12b:free"
+  }
+}
