@@ -555,3 +555,28 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .ob-add input { flex: 1; }
 .ob-note { font-size: 12px; color: var(--text-faint); text-align: center; margin: 12px 0 2px; line-height: 1.5; }
 .ob-note b { color: var(--text-dim); }
+
+/* ---------- Focus (Pomodoro + Timebox) ---------- */
+.focus-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+.ftog { flex: 1; padding: 11px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text-dim); border-radius: 12px; font-family: var(--font-display); font-weight: 650; font-size: 13.5px; cursor: pointer; transition: .15s; }
+.ftog.on { background: var(--grad-accent); color: #fff; border-color: transparent; box-shadow: var(--glow-accent); }
+.pomo-card { text-align: center; }
+.pomo-phase { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: .3px; margin-bottom: 6px; }
+.pomo-ring-wrap { position: relative; width: 240px; max-width: 72vw; margin: 6px auto 10px; }
+.pomo-ring { width: 100%; height: auto; display: block; }
+.pomo-time { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 46px; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
+.pomo-controls { display: flex; gap: 10px; justify-content: center; margin: 6px 0 4px; }
+.pomo-controls .btn { width: auto; flex: 1; max-width: 200px; }
+.pomo-controls .btn-ghost { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
+.pomo-done { font-size: 13.5px; color: var(--text-dim); margin-top: 12px; }
+.pomo-done b { font-family: var(--font-display); color: var(--text); font-size: 16px; }
+.tb-row { display: flex; align-items: center; gap: 11px; padding: 11px 4px; border-bottom: 1px solid var(--border); }
+.tb-row:last-child { border-bottom: none; }
+.tb-row.live { background: rgba(109,140,255,.08); border-radius: 10px; }
+.tb-time { flex: 0 0 auto; width: 52px; font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--accent); line-height: 1.3; font-variant-numeric: tabular-nums; }
+.tb-time span { display: block; color: var(--text-faint); font-weight: 500; font-size: 11.5px; }
+.tb-main { flex: 1; min-width: 0; }
+.tb-label { font-size: 14.5px; font-weight: 500; }
+.tb-now { font-size: 11px; color: var(--accent); font-weight: 700; margin-top: 2px; }
+.tb-row .del { background: none; border: none; color: var(--text-faint); font-size: 18px; cursor: pointer; flex: 0 0 auto; padding: 0 3px; }
+.tb-row .btn-sm { flex: 0 0 auto; padding: 7px 12px; }

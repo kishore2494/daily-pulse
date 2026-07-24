@@ -58,7 +58,11 @@ the other way around.
 Free. Private. Yours.
 
 ## Category
-Productivity (alt: Health & Fitness)
+**Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
+developer account, Google restricts health/finance/government-service apps, and that
+category can trigger a review flag. Daily Pulse is a personal productivity/journaling
+tracker (it provides no health *service*, makes no medical claims), so Productivity is
+both accurate and the safe choice.
 
 ## Tags / keywords (for ASO)
 habit tracker, time tracker, offline journal, private diary, mood tracker,
@@ -78,7 +82,12 @@ https://kishore2494.github.io/daily-pulse/privacy.html
 ## Content rating questionnaire
 Everyone. No user-generated content shared publicly, no ads, no violence.
 
-## Assets needed (todo)
-- 512×512 hi-res icon (have: icons/icon-512.png — review quality)
-- 1024×500 feature graphic
-- ≥4 phone screenshots (1080×1920+): Log, Time timeline, Stats, Gym, Calendar
+## App access declaration (important for review)
+No login required — the app is fully usable with no account. In the "App access"
+section declare: **"All functionality is available without special access / login."**
+(This satisfies the email's "provide valid login credentials" point — there are none.)
+
+## Assets (DONE — on ~/Desktop/daily-pulse-store-assets/)
+- 512×512 hi-res icon (icons/icon-512.png)
+- 1024×500 feature graphic (store-feature-graphic.png)
+- 5 phone screenshots: Log, Time timeline, Stats, Calendar, Write
