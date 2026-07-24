@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v51';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v52';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -199,6 +199,11 @@ const DB = {
   events() { return JSON.parse(localStorage.getItem('dp.events') || '[]'); },
   saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
 
+  pomo() { return JSON.parse(localStorage.getItem('dp.pomo') || 'null'); },
+  savePomo(p) { localStorage.setItem('dp.pomo', JSON.stringify(p)); pushState(); },
+  timebox() { return JSON.parse(localStorage.getItem('dp.timebox') || '[]'); },
+  saveTimebox(t) { localStorage.setItem('dp.timebox', JSON.stringify(t)); pushState(); },
+
   timelog() { return JSON.parse(localStorage.getItem('dp.timelog') || '[]'); },
   saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
   timeacts() { return JSON.parse(localStorage.getItem('dp.timeacts') || '[]'); },   // custom activities
@@ -310,7 +315,8 @@ function pushState(now) {
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
       timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
       docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg(),
-      corecfg: coreCfg(), daycfg: gymDays(), gymgroups: gymGroups(), navcfg: navCfg() };
+      corecfg: coreCfg(), daycfg: gymDays(), gymgroups: gymGroups(), navcfg: navCfg(),
+      pomo: DB.pomo(), timebox: DB.timebox() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -380,7 +386,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -2220,6 +2226,268 @@ document.addEventListener('click', (ev) => {
 });
 
 /* ============================================================
+   SCREEN: FOCUS  (Pomodoro timer + Timebox planner)
+   Pomodoro: focus/break cycles with an offline native alarm at each
+   phase end; optionally logs focus time to a Time-tracker activity.
+   Timebox: plan today's blocks (time range + label), optional start
+   alarm, and "start now" to kick off the matching timer.
+   ============================================================ */
+const POMO_DEFAULTS = { focus: 25, short: 5, long: 15, rounds: 4, auto: true, act: '' };
+function pomoState() {
+  const p = DB.pomo();
+  if (p && p.cfg) return p;
+  return { cfg: Object.assign({}, POMO_DEFAULTS), run: null, done: { d: todayStr(), n: 0 } };
+}
+let focusMode = 'pomo';   // 'pomo' | 'timebox'
+const POMO_NOTIF_ID = 750;
+
+function pomoDoneToday(p) { return (p.done && p.done.d === todayStr()) ? p.done.n : 0; }
+function phaseName(ph) { return ph === 'focus' ? 'Focus' : ph === 'long' ? 'Long break' : 'Short break'; }
+function phaseMin(cfg, ph) { return ph === 'focus' ? cfg.focus : ph === 'long' ? cfg.long : cfg.short; }
+
+async function schedulePomoAlarm(endsAt, label) {
+  if (!nativeShell()) return;
+  const LN = window.Capacitor.Plugins.LocalNotifications;
+  try {
+    await LN.cancel({ notifications: [{ id: POMO_NOTIF_ID }] });
+    if (!endsAt || endsAt <= Date.now() + 500) return;
+    await LN.schedule({ notifications: [{ id: POMO_NOTIF_ID, title: '🍅 ' + label,
+      body: label === 'Focus' ? 'Focus done — time for a break ☕' : 'Break over — back to focus 💪',
+      schedule: { at: new Date(endsAt), allowWhileIdle: true }, sound: 'default' }] });
+  } catch (e) {}
+}
+function cancelPomoAlarm() { if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.cancel({ notifications: [{ id: POMO_NOTIF_ID }] }); } catch (e) {} } }
+
+function pomoStart(ph) {
+  const p = pomoState();
+  const mins = phaseMin(p.cfg, ph);
+  const endsAt = Date.now() + mins * 60000;
+  p.run = { phase: ph, endsAt, round: (p.run && ph !== 'focus') ? p.run.round : (p.run ? p.run.round : 1) };
+  DB.savePomo(p);
+  if (ph === 'focus' && p.cfg.act) { const r = runningSeg(); if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
+  else if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }   // stop timing on break
+  schedulePomoAlarm(endsAt, phaseName(ph));
+  renderFocus();
+}
+function pomoAdvance() {
+  const p = pomoState();
+  if (!p.run) return;
+  const wasFocus = p.run.phase === 'focus';
+  let round = p.run.round;
+  if (wasFocus) {
+    p.done = { d: todayStr(), n: pomoDoneToday(p) + 1 };
+    const next = (round >= p.cfg.rounds) ? 'long' : 'short';
+    if (next === 'long') round = 1; else round = round + 1;
+    p.run = { phase: next, endsAt: Date.now() + phaseMin(p.cfg, next) * 60000, round };
+  } else {
+    p.run = { phase: 'focus', endsAt: Date.now() + p.cfg.focus * 60000, round };
+  }
+  DB.savePomo(p);
+  // time-tracker link
+  if (p.cfg.act) { const r = runningSeg();
+    if (p.run.phase === 'focus') { if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
+    else if (r && r.act === p.cfg.act) startAct(r.act); }
+  schedulePomoAlarm(p.run.endsAt, phaseName(p.run.phase));
+  try { pomoChime(); } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate([300, 120, 300]);
+  toast(p.run.phase === 'focus' ? '💪 Focus time!' : '☕ Break time!');
+  if (!p.cfg.auto) { pomoPause(); return; }   // if not auto, land paused on the new phase
+  renderFocus();
+}
+function pomoPause() {
+  const p = pomoState(); if (!p.run) return;
+  p.run.paused = true; p.run.remain = Math.max(0, p.run.endsAt - Date.now());
+  DB.savePomo(p); cancelPomoAlarm();
+  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }
+  renderFocus();
+}
+function pomoResume() {
+  const p = pomoState(); if (!p.run || !p.run.paused) return;
+  p.run.endsAt = Date.now() + (p.run.remain || 0); p.run.paused = false;
+  DB.savePomo(p);
+  if (p.run.phase === 'focus' && p.cfg.act) { const r = runningSeg(); if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
+  schedulePomoAlarm(p.run.endsAt, phaseName(p.run.phase));
+  renderFocus();
+}
+function pomoReset() {
+  const p = pomoState();
+  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }
+  p.run = null; DB.savePomo(p); cancelPomoAlarm(); renderFocus();
+}
+let _pomoAC;
+function pomoChime() {
+  _pomoAC = _pomoAC || new (window.AudioContext || window.webkitAudioContext)();
+  if (_pomoAC.state === 'suspended') _pomoAC.resume();
+  [880, 1174, 1568].forEach((f, i) => { const o = _pomoAC.createOscillator(), g = _pomoAC.createGain(), t = _pomoAC.currentTime + i * 0.16;
+    o.frequency.value = f; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g); g.connect(_pomoAC.destination); o.start(t); o.stop(t + 0.42); });
+}
+
+function renderFocus() {
+  document.getElementById('screen-title').textContent = 'Focus';
+  const p = pomoState();
+  // reconcile if a running phase already elapsed while we were away
+  if (p.run && !p.run.paused) { let guard = 0; while (p.run && !p.run.paused && Date.now() >= p.run.endsAt && guard++ < 20) { pomoAdvance(); return; } }
+  document.getElementById('screen-sub').textContent = focusMode === 'pomo' ? '🍅 Pomodoro' : '📦 Timebox — plan your day';
+  document.getElementById('s-focus').innerHTML = `
+    <div class="focus-toggle">
+      <button class="ftog ${focusMode==='pomo'?'on':''}" data-focusmode="pomo">🍅 Pomodoro</button>
+      <button class="ftog ${focusMode==='timebox'?'on':''}" data-focusmode="timebox">📦 Timebox</button>
+    </div>
+    ${focusMode === 'pomo' ? pomoHTML(p) : timeboxHTML()}`;
+}
+
+function pomoHTML(p) {
+  const run = p.run;
+  const total = run ? phaseMin(p.cfg, run.phase) * 60000 : p.cfg.focus * 60000;
+  const remain = run ? (run.paused ? (run.remain || 0) : Math.max(0, run.endsAt - Date.now())) : p.cfg.focus * 60000;
+  const mm = String(Math.floor(remain / 60000)).padStart(2, '0');
+  const ss = String(Math.floor(remain % 60000 / 1000)).padStart(2, '0');
+  const pct = total ? (1 - remain / total) : 0;
+  const R = 120, C = 2 * Math.PI * R;
+  const phase = run ? run.phase : 'focus';
+  const ring = phase === 'focus' ? 'var(--accent)' : 'var(--good)';
+  const acts = allActs();
+  const actOpts = `<option value="">— no activity —</option>` + acts.map(a => `<option value="${a.id}" ${p.cfg.act===a.id?'selected':''}>${a.emoji} ${escapeHtml(a.name)}</option>`).join('');
+  return `
+    <div class="card pomo-card">
+      <div class="pomo-phase" style="color:${ring}">${run ? phaseName(run.phase) : 'Ready'} ${run ? `· round ${run.round}/${p.cfg.rounds}` : ''}</div>
+      <div class="pomo-ring-wrap">
+        <svg viewBox="0 0 300 300" class="pomo-ring">
+          <circle cx="150" cy="150" r="${R}" fill="none" stroke="var(--bg-input)" stroke-width="16"/>
+          <circle cx="150" cy="150" r="${R}" fill="none" stroke="${ring}" stroke-width="16" stroke-linecap="round"
+            stroke-dasharray="${C}" stroke-dashoffset="${(C * (1 - pct)).toFixed(1)}" transform="rotate(-90 150 150)" style="transition:stroke-dashoffset .5s"/>
+        </svg>
+        <div class="pomo-time">${mm}:${ss}</div>
+      </div>
+      <div class="pomo-controls">
+        ${!run ? `<button class="btn btn-primary" data-pomo="start-focus">▶ Start focus</button>`
+          : run.paused ? `<button class="btn btn-primary" data-pomo="resume">▶ Resume</button><button class="btn btn-ghost" data-pomo="reset">Reset</button>`
+          : `<button class="btn btn-ghost" data-pomo="pause">⏸ Pause</button><button class="btn btn-ghost" data-pomo="skip">⏭ Skip</button><button class="btn btn-ghost" data-pomo="reset">⏹</button>`}
+      </div>
+      <div class="pomo-done">🍅 <b>${pomoDoneToday(p)}</b> completed today</div>
+    </div>
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="field"><label>Log focus time to activity</label>
+        <select data-pomo-act>${actOpts}</select></div>
+      <div class="row2">
+        <div class="field"><label>Focus (min)</label><input type="number" inputmode="numeric" data-pomo-cfg="focus" value="${p.cfg.focus}"></div>
+        <div class="field"><label>Short break</label><input type="number" inputmode="numeric" data-pomo-cfg="short" value="${p.cfg.short}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Long break</label><input type="number" inputmode="numeric" data-pomo-cfg="long" value="${p.cfg.long}"></div>
+        <div class="field"><label>Rounds → long break</label><input type="number" inputmode="numeric" data-pomo-cfg="rounds" value="${p.cfg.rounds}"></div>
+      </div>
+      <label class="ev-alarm-row"><input type="checkbox" data-pomo-cfg="auto" ${p.cfg.auto?'checked':''}> Auto-start the next phase</label>
+      <div class="hint" style="margin-top:8px">A native alarm rings at each phase end — even with the app closed.</div>
+    </div>`;
+}
+
+function timeboxHTML() {
+  const today = todayStr();
+  const blocks = DB.timebox().filter(b => b.date === today).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+  const now = new Date(); const curMin = now.getHours() * 60 + now.getMinutes();
+  const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+  const rows = blocks.map(b => {
+    const act = b.act ? actById(b.act) : null;
+    const live = curMin >= toMin(b.start) && curMin < toMin(b.end);
+    return `<div class="tb-row ${live?'live':''}" data-id="${b.id}" style="${act?`border-left:3px solid ${act.color}`:''}">
+      <div class="tb-time">${b.start}<span>${b.end}</span></div>
+      <div class="tb-main"><div class="tb-label">${act?act.emoji+' ':''}${escapeHtml(b.label)} ${b.alarm?'⏰':''}</div>
+        ${live?'<div class="tb-now">● now</div>':''}</div>
+      ${act ? `<button class="btn btn-ghost btn-sm" data-tb-start="${b.id}">▶</button>` : ''}
+      <button class="del" data-tb-del="${b.id}">×</button>
+    </div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <h2>Today's plan <span class="hint">${prettyDate(today)}</span></h2>
+      <div id="tb-list">${blocks.length ? rows : '<div class="empty">No blocks planned. Add one below 👇</div>'}</div>
+    </div>
+    <div class="card">
+      <h2>Add a block</h2>
+      <div class="row2">
+        <div class="field"><label>Start</label><input type="time" id="tb-start" value="09:00"></div>
+        <div class="field"><label>End</label><input type="time" id="tb-end" value="10:00"></div>
+      </div>
+      <div class="field"><label>What for?</label><input type="text" id="tb-label" placeholder="e.g. Deep work — report" autocomplete="off"></div>
+      <div class="field"><label>Activity (optional — enables ▶ start)</label>
+        <select id="tb-act"><option value="">— none —</option>${allActs().map(a=>`<option value="${a.id}">${a.emoji} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
+      <label class="ev-alarm-row"><input type="checkbox" id="tb-alarm" checked> ⏰ Alarm at start time</label>
+      <button class="btn btn-primary" id="tb-add" style="margin-top:12px">Add block</button>
+    </div>`;
+}
+
+async function scheduleTimeboxAlarms() {
+  if (!nativeShell()) return;
+  const LN = window.Capacitor.Plugins.LocalNotifications;
+  try {
+    // ids 800..830 reserved for timebox
+    const cancels = []; for (let i = 800; i < 831; i++) cancels.push({ id: i });
+    await LN.cancel({ notifications: cancels });
+    const now = Date.now(); let id = 800;
+    DB.timebox().filter(b => b.alarm && b.start).forEach(b => {
+      if (id > 830) return;
+      const at = new Date(b.date + 'T' + b.start + ':00');
+      if (isNaN(at.getTime()) || at.getTime() <= now) return;
+      LN.schedule({ notifications: [{ id: id++, title: '📦 ' + b.label, body: 'Time-box starting (' + b.start + ')',
+        schedule: { at, allowWhileIdle: true }, sound: 'default' }] });
+    });
+  } catch (e) {}
+}
+
+document.addEventListener('click', (ev) => {
+  const sf = document.getElementById('s-focus');
+  if (!sf || !sf.classList.contains('on')) return;
+  const fm = ev.target.closest('[data-focusmode]');
+  if (fm) { focusMode = fm.dataset.focusmode; renderFocus(); return; }
+  const pc = ev.target.closest('[data-pomo]');
+  if (pc) { const a = pc.dataset.pomo;
+    if (a === 'start-focus') pomoStart('focus');
+    else if (a === 'pause') pomoPause();
+    else if (a === 'resume') pomoResume();
+    else if (a === 'skip') pomoAdvance();
+    else if (a === 'reset') pomoReset();
+    return; }
+  if (ev.target.id === 'tb-add') {
+    const start = document.getElementById('tb-start').value, end = document.getElementById('tb-end').value;
+    const label = (document.getElementById('tb-label').value || '').trim();
+    const act = document.getElementById('tb-act').value, alarm = document.getElementById('tb-alarm').checked;
+    if (!label) { toast('Name the block', true); return; }
+    if (!start || !end) { toast('Set start and end', true); return; }
+    const tb = DB.timebox();
+    tb.push({ id: 'tb' + Date.now(), date: todayStr(), start, end, label, act, alarm });
+    DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); toast('Block added 📦'); return;
+  }
+  const ts = ev.target.closest('[data-tb-start]');
+  if (ts) { const b = DB.timebox().find(x => x.id === ts.dataset.tbStart); if (b && b.act) { startAct(b.act); toast('▶ ' + actById(b.act).name + ' started'); } return; }
+  const td = ev.target.closest('[data-tb-del]');
+  if (td) { DB.saveTimebox(DB.timebox().filter(x => x.id !== td.dataset.tbDel)); scheduleTimeboxAlarms(); renderFocus(); return; }
+});
+document.addEventListener('change', (ev) => {
+  const pa = ev.target.closest('[data-pomo-act]');
+  if (pa) { const p = pomoState(); p.cfg.act = pa.value; DB.savePomo(p); return; }
+  const pcfg = ev.target.closest('[data-pomo-cfg]');
+  if (pcfg) { const p = pomoState(); const k = pcfg.dataset.pomoCfg;
+    p.cfg[k] = (k === 'auto') ? pcfg.checked : Math.max(1, +pcfg.value || POMO_DEFAULTS[k]);
+    DB.savePomo(p); return; }
+});
+/* 1-second tick to update the countdown while the Focus screen is open */
+setInterval(() => {
+  const sf = document.getElementById('s-focus');
+  if (!sf || !sf.classList.contains('on') || focusMode !== 'pomo') return;
+  const p = pomoState(); if (!p.run || p.run.paused) return;
+  if (Date.now() >= p.run.endsAt) { pomoAdvance(); return; }
+  const remain = Math.max(0, p.run.endsAt - Date.now());
+  const el = sf.querySelector('.pomo-time');
+  if (el) el.textContent = String(Math.floor(remain / 60000)).padStart(2, '0') + ':' + String(Math.floor(remain % 60000 / 1000)).padStart(2, '0');
+  const total = phaseMin(p.cfg, p.run.phase) * 60000, C = 2 * Math.PI * 120;
+  const ring = sf.querySelector('.pomo-ring circle:last-child');
+  if (ring) ring.setAttribute('stroke-dashoffset', (C * (remain / total)).toFixed(1));
+}, 1000);
+
+/* ============================================================
    SCREEN: CALENDAR  (month grid of your data + dated events)
    Each day is tinted by that day's mood; dots mark gym / time
    tracked / events. Tap a day to see its summary, add events
@@ -2572,7 +2840,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox'];
 function exportData() {
   const out = { settings: DB.settings() };
   BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
@@ -2664,7 +2932,7 @@ function setupReminders() {
     reminderTimeouts.push(setTimeout(() => checkReminders(true), Math.max(0, ms) + 300));
   });
   checkReminders(true);   // check immediately too (catches an already-due one)
-  if (nativeShell()) { scheduleNativeAlarms(); refreshTimerNotif(); return; }   // Android app: real native alarms, skip the workarounds
+  if (nativeShell()) { scheduleNativeAlarms(); refreshTimerNotif(); scheduleTimeboxAlarms(); return; }   // Android app: real native alarms, skip the workarounds
   scheduleBackgroundNotifications();   // + OS-level alarms even when the app is closed (where supported)
   scheduleNtfy();                      // + ntfy push (rings via the ntfy app even when this app is closed)
 }
@@ -2985,6 +3253,7 @@ const NAV_DEF = [
   { k: 'tasks',    ico: '✅', label: 'Tasks' },
   { k: 'notes',    ico: '🗒️', label: 'Notes' },
   { k: 'plans',    ico: '📋', label: 'Plans' },
+  { k: 'focus',    ico: '🍅', label: 'Focus' },
   { k: 'gym',      ico: '💪', label: 'Gym' },
   { k: 'habits',   ico: '🔥', label: 'Habits' },
   { k: 'dash',     ico: '📊', label: 'Stats' },
@@ -3024,7 +3293,7 @@ function applyTheme() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   document.getElementById('s-' + name).classList.add('on');
