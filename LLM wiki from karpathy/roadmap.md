@@ -19,3 +19,11 @@
 
 ## Nice-to-haves (not committed)
 - Pomodoro count → Stats card. Widget. Apple/iOS store via the same Capacitor project. Data-viz polish on Stats.
+
+## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
+- **Sync robustness**: list/config stores are last-writer-wins whole-list → concurrent multi-device edits can drop items. Move to id-keyed merge + tombstones + per-item stamps. Gym merge is union-only (uncheck/edit doesn't propagate).
+- **Sync security**: the sync URL is an unauthenticated bearer to all data; pull uses JSONP. Add a shared-secret token + CORS fetch with shape validation. Document the secrecy requirement.
+- **Native**: add a BOOT_COMPLETED receiver (alarms lost on reboot); request POST_NOTIFICATIONS in Focus/timebox paths; fill the SCHEDULE_EXACT_ALARM Play declaration.
+- **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).
+- **Consistency**: custom deep-log NUMBER/TEXT fields never show in Stats (only scales); 'Push all to Sheet' omits Events/Articles; dead dp.exercises store; privacy claim vs Google Fonts fetch.
+- **UX**: 12-tab nav is cramped (<44px) — consider overflow sheet or fewer default tabs.
