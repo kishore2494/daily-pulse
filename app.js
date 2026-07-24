@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v52';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v53';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -341,12 +341,20 @@ function applyRemoteState(remote) {
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
   let changed = false;
 
-  // Entries: merge by date, newest updatedAt wins — never lose a day logged on either device.
+  // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields,
+  // but fields present on only one side are always kept — so a machine-generated
+  // partial write (timeSummary, gym workoutsDone) on a stale device can NEVER
+  // clobber another device's journal/mood/habits for that day. habits merge deeply.
   if (remote.entries) {
     const local = DB.entries();
     Object.keys(remote.entries).forEach(d => {
       const r = remote.entries[d], l = local[d];
-      if (!l || (r.updatedAt || '') > (l.updatedAt || '')) { local[d] = r; changed = true; }
+      if (!l) { local[d] = r; changed = true; return; }
+      const rNewer = (r.updatedAt || '') >= (l.updatedAt || '');
+      const older = rNewer ? l : r, newer = rNewer ? r : l;
+      const merged = Object.assign({}, older, newer);          // newer wins shared keys; older fills any gaps
+      merged.habits = Object.assign({}, older.habits || {}, newer.habits || {});   // never drop a tick from either side
+      if (JSON.stringify(merged) !== JSON.stringify(l)) { local[d] = merged; changed = true; }
     });
     localStorage.setItem('dp.entries', JSON.stringify(local));
   }
@@ -380,6 +388,15 @@ function applyRemoteState(remote) {
       if (merged.length !== before) changed = true;
     }
     merged.sort((a, b) => a.start - b.start);
+    // Guard: two devices can each have an open (end==null) segment. Keep only the
+    // latest as running; close the earlier ones at the next segment's start so time
+    // isn't double-counted forever.
+    const open = merged.filter(s => s.end == null);
+    if (open.length > 1) {
+      open.sort((a, b) => a.start - b.start);
+      for (let i = 0; i < open.length - 1; i++) { open[i].end = open[i + 1].start > open[i].start ? open[i + 1].start : open[i].start; open[i].upd = Date.now(); }
+      changed = true;
+    }
     localStorage.setItem('dp.timelog', JSON.stringify(merged));
   }
   // Tasks / Notes / Reminders / Exercises are LISTS that get completed, edited, reordered, deleted —
@@ -392,6 +409,14 @@ function applyRemoteState(remote) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
       }
     });
+    // Pomodoro: adopt remote SETTINGS + higher done-count, but NEVER the live `run`
+    // countdown (that's device-local — a timer must not "run" on two phones).
+    if (remote.pomo && remote.pomo.cfg) {
+      const lp = DB.pomo() || { cfg: {}, run: null, done: { d: todayStr(), n: 0 } };
+      const merged = { cfg: remote.pomo.cfg, run: lp.run, done: lp.done };
+      if (remote.pomo.done && remote.pomo.done.d === todayStr() && (!lp.done || lp.done.d !== todayStr() || (remote.pomo.done.n || 0) > (lp.done.n || 0))) merged.done = remote.pomo.done;
+      if (JSON.stringify(merged) !== JSON.stringify(lp)) { localStorage.setItem('dp.pomo', JSON.stringify(merged)); changed = true; }
+    }
   }
 
   if (changed) {
@@ -450,7 +475,7 @@ function renderDeepSections() {
     (sec.texts || []).forEach(t => body += txtField(t));
     const open = openSections.has(sec.id);
     return `<div class="card section-collapsible ${open?'':'collapsed'}" data-section="${sec.id}">
-      <h2 data-toggle-section="${sec.id}"><span>${sec.title}</span><span class="chev">▾</span></h2>
+      <h2 data-toggle-section="${sec.id}"><span>${escapeHtml(sec.title)}</span><span class="chev">▾</span></h2>
       <div class="body">${body}</div></div>`;
   }).join('');
 }
@@ -481,10 +506,10 @@ function renderToday() {
     numRows += `<div class="row2">${cell(coreNums[i])}${cell(coreNums[i + 1])}</div>`;
   }
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
-      <textarea data-txt="${f.key}" placeholder="...">${draft[f.key] || ''}</textarea></div>`).join('');
+      <textarea data-txt="${f.key}" placeholder="...">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
   const journalF = core.find(f => f.type === 'journal');
   const journalHtml = journalF ? `<div class="field"><label>${escapeHtml(journalF.label)} <span class="hint">type or speak · use #tags to link</span></label>
-      <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${draft.journal || ''}</textarea>
+      <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${escapeHtml(draft.journal || '')}</textarea>
       <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
 
   document.getElementById('s-today').innerHTML = `
@@ -510,8 +535,8 @@ function renderToday() {
     ${renderDeepSections()}
 
     ${isSunday(logDate) ? `<div class="card"><h2>📅 Sunday weekly review</h2>
-      <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${draft.weekWins||''}</textarea></div>
-      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${draft.weekFocus||''}</textarea></div></div>` : ''}
+      <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${escapeHtml(draft.weekWins||'')}</textarea></div>
+      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''}
 
     <button class="btn btn-primary" id="save-entry">Save ${isToday?'today':'entry'}</button>
     <div style="height:14px"></div>
@@ -940,8 +965,8 @@ function gymHomeHTML() {
     return `<div class="day-row" data-day="${d.id}">
       <div class="day-dot" style="background:${main.color}">${main.emoji}</div>
       <div class="day-info">
-        <div class="day-name">${d.name} · ${main.name}</div>
-        <div class="day-sub">🏃 Cardio · ${ab.emoji} ${ab.name}</div>
+        <div class="day-name">${escapeHtml(d.name)} · ${escapeHtml(main.name)}</div>
+        <div class="day-sub">🏃 Cardio · ${ab.emoji} ${escapeHtml(ab.name)}</div>
       </div>
       <div class="day-cnt">${done}/${ex.length}</div>
       <div class="day-go">›</div>
@@ -1324,7 +1349,7 @@ function renderHabits() {
       return `<div class="cell" title="${d}" style="background:${on?'var(--good)':'var(--bg-input)'}"></div>`;
     }).join('');
     return `<div class="card">
-      <h2>${h.emoji} ${h.label}
+      <h2>${h.emoji} ${escapeHtml(h.label)}
         <span class="hint" style="float:right">🔥 ${st} day${st===1?'':'s'} · ${pct}% / 30d</span></h2>
       <div class="heat">${heat}</div>
     </div>`;
@@ -1403,8 +1428,8 @@ function coachReview() {
   let strong = null, weak = null;
   HABITS.forEach(h => { const c = thisW.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
     if (!strong || c > strong.c) strong = { h, c }; if (!weak || c < weak.c) weak = { h, c }; });
-  if (strong && strong.c > 0) lines.push({ t: `Most consistent: <b>${strong.h.emoji} ${strong.h.label}</b> (${strong.c}/7)`, k: 'ok' });
-  if (weak && weak.c < logged) lines.push({ t: `Needs love: <b>${weak.h.emoji} ${weak.h.label}</b> (${weak.c}/7)`, k: 'warn' });
+  if (strong && strong.c > 0) lines.push({ t: `Most consistent: <b>${strong.h.emoji} ${escapeHtml(strong.h.label)}</b> (${strong.c}/7)`, k: 'ok' });
+  if (weak && weak.c < logged) lines.push({ t: `Needs love: <b>${weak.h.emoji} ${escapeHtml(weak.h.label)}</b> (${weak.c}/7)`, k: 'warn' });
   const mWo = avgOf(thisW.filter(d => e[d] && e[d].workoutsDone > 0), 'mood');
   const mNo = avgOf(thisW.filter(d => e[d] && !(e[d].workoutsDone > 0)), 'mood');
   if (mWo != null && mNo != null && mWo - mNo >= 0.5) lines.push({ t: `💡 Your mood is <b>+${(mWo - mNo).toFixed(1)}</b> higher on workout days — keep moving.`, k: 'tip' });
@@ -1589,7 +1614,7 @@ function renderDash() {
   const habitBars = HABITS.map(h => {
     const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
     const pct = Math.round(hits / 30 * 100);
-    return `<div class="bar-row"><span class="name">${h.emoji} ${h.label}</span>
+    return `<div class="bar-row"><span class="name">${h.emoji} ${escapeHtml(h.label)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
       <span class="pct">${pct}%</span></div>`;
   }).join('');
@@ -1602,7 +1627,7 @@ function renderDash() {
   const gymStats = gymOrder.map(id => { const g = cookedGroupById(id); return { g, n: groupSessions(g) }; }).filter(x => x.g);
   const gymMax = Math.max(1, ...gymStats.map(x => x.n));
   const totalWorkouts = gymDates.filter(d => Object.values(gym[d].done||{}).some(Boolean)).length;
-  const gymBars = gymStats.map(x => `<div class="bar-row"><span class="name">${x.g.emoji} ${x.g.name}</span>
+  const gymBars = gymStats.map(x => `<div class="bar-row"><span class="name">${x.g.emoji} ${escapeHtml(x.g.name)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${Math.round(x.n/gymMax*100)}%;background:${x.g.color}"></span></span>
       <span class="pct">${x.n}</span></div>`).join('');
 
@@ -1612,7 +1637,7 @@ function renderDash() {
   deepCfg().forEach(sec => { if (sec.hidden) return;
     (sec.scales || []).forEach(f => { if (!f.hidden) scaleDefs.push({ k: f.key, l: f.label }); }); });
   const scaleBars = scaleDefs.map(s => ({ s, a: avg(s.k) })).filter(x => x.a !== '–')
-    .map(x => `<div class="bar-row"><span class="name">${x.s.l}</span>
+    .map(x => `<div class="bar-row"><span class="name">${escapeHtml(x.s.l)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${x.a/10*100}%"></span></span>
       <span class="pct">${x.a}</span></div>`).join('');
 
@@ -3032,11 +3057,13 @@ async function scheduleNativeAlarms() {
   try {
     const perm = await LN.requestPermissions();
     const notifOk = perm.display === 'granted';
-    // wipe previously scheduled LocalNotifications
+    // wipe previously scheduled reminder/event notifications ONLY (ids < 700).
+    // Reserved ids owned by other features must survive this reschedule:
+    // 399 fs-test, 750 pomodoro, 760 inactivity, 770 running-timer, 800-830 timebox.
     if (notifOk) {
       const pending = await LN.getPending();
-      if (pending.notifications && pending.notifications.length)
-        await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+      const mine = (pending.notifications || []).filter(n => n.id < 700 && n.id !== 399);
+      if (mine.length) await LN.cancel({ notifications: mine.map(n => ({ id: n.id })) });
     }
     const notifs = [];   // LocalNotifications (notify mode / fallback)
     const alarms = [];   // native full-screen (alarm mode)
