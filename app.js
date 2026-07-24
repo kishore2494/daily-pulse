@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v53';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v54';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1399,7 +1399,7 @@ function polymath(e) {
   const topicsN = e.topics ? cl(Object.values(e.topics).filter(Boolean).length / 3 * 100) : null;
   const learning = mean([hb('reading'), hb('english'), hb('consumed'), hb('projectAI'), hb('projectSpace'), s10(e.retention), topicsN, tgt(e.codeLines, 100)]);
   let discipline = null;
-  if (e.habits) discipline = cl(HABITS.filter(h => e.habits[h.key]).length / HABITS.length * 100);
+  if (e.habits && HABITS.length) discipline = cl(HABITS.filter(h => e.habits[h.key]).length / HABITS.length * 100);
 
   const total = mean([body, mind, work, learning, discipline]);
   return total == null ? null : { total: Math.round(total), body, mind, work, learning, discipline };
