@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v56';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v57';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1975,7 +1975,7 @@ function renderCustom() {
       <span style="flex:0 0 24px;text-align:center">${n.ico}</span>
       <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
       <button class="cfg-star ${n.k === dt ? 'on' : ''}" data-nav-default="${n.k}" title="default opening tab">${n.k === dt ? '🎯' : '○'}</button>
-      <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar (max ${MAX_PRIMARY})" ${n.hidden ? 'disabled' : ''}>📌</button>
+      <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar" ${n.hidden ? 'disabled' : ''}>📌</button>
       ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
     </div>`).join('');
   const curAccent = DB.settings().accent || 'indigo';
@@ -1987,9 +1987,9 @@ function renderCustom() {
         style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div>
     </div>
     <div class="card">
-      <h2>🧭 Tabs <span class="hint">📌 pin to bottom bar (${pinnedCount}/${MAX_PRIMARY}) · 🎯 default tab · drag order · 👁 hide</span></h2>
+      <h2>🧭 Tabs <span class="hint">📌 pin to bottom bar (${pinnedCount} pinned) · 🎯 default tab · drag order · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
-      <div class="hint" style="margin-top:8px">Your ${MAX_PRIMARY} pinned tabs fill the bottom bar (in this order); everything else lives under <b>More</b>. 🎯 is the tab the app opens to.</div>
+      <div class="hint" style="margin-top:8px">Pin as many tabs as you like — pinned ones fill the bottom bar (in this order), everything else lives under <b>More</b>. 🎯 is the tab the app opens to. (4–5 pins stays easiest to tap, but it's your call.)</div>
     </div>
     <div class="card">
       <h2>📝 Log screen fields <span class="hint">rename · hide — incl. reflection questions</span></h2>
@@ -2185,8 +2185,9 @@ document.addEventListener('click', (ev) => {
     if (n && !n.noHide) { n.hidden = !n.hidden; if (n.hidden) n.primary = false; saveNavCfg(cfg); renderCustom(); } return; }
   const np = ev.target.closest('[data-nav-pin]');
   if (np) { const cfg = navCfg(); const n = cfg.find(x => x.k === np.dataset.navPin); if (!n || n.hidden) return;
-    if (!n.primary && cfg.filter(x => !x.hidden && x.primary).length >= MAX_PRIMARY) { toast(`Only ${MAX_PRIMARY} tabs fit the bottom bar — unpin one first`, true); return; }
-    n.primary = !n.primary; saveNavCfg(cfg); renderCustom(); return; }
+    n.primary = !n.primary; saveNavCfg(cfg); renderCustom();
+    if (n.primary && cfg.filter(x => !x.hidden && x.primary).length > 5) toast('Tip: 4–5 pinned tabs stay easiest to tap');
+    return; }
   const nd = ev.target.closest('[data-nav-default]');
   if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; DB.saveSettings(s); renderCustom(); toast('Default tab set'); return; }
   if (ev.target.id === 'cfg-add-group') {
@@ -3285,7 +3286,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
-const MAX_PRIMARY = 5;   // tabs shown in the bottom bar (a 6th "More" button opens the rest)
+// Bottom bar shows however many tabs the user pins (no hard cap) + a "More" button for the rest.
 const NAV_DEF = [
   { k: 'today',    ico: '📝', label: 'Log',     primary: true, noHide: true },
   { k: 'time',     ico: '⏱️', label: 'Time',    primary: true },
@@ -3320,7 +3321,7 @@ function defaultTab() {
 function renderNav() {
   const cur = (document.querySelector('.screen.on') || {}).id || 's-today';
   const items = navCfg().filter(n => !n.hidden);
-  const primary = items.filter(n => n.primary).slice(0, MAX_PRIMARY);
+  const primary = items.filter(n => n.primary);   // user chooses how many — no cap
   const primaryKeys = new Set(primary.map(n => n.k));
   const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`);
   // synthetic More button — always present, opens the overflow grid
