@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v55';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v56';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1968,23 +1968,28 @@ function renderCustom() {
       <select data-day-ab="${d.id}" style="flex:0 0 92px">${['abs','side','core'].map(id => { const g = groupById(id);
         return `<option value="${id}" ${id === d.ab ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`; }).join('')}</select>
     </div>`).join('');
+  const dt = defaultTab();
+  const pinnedCount = navCfg().filter(n => !n.hidden && n.primary).length;
   const navRows = navCfg().map(n => `<div class="cfg-row ${n.hidden ? 'hid' : ''}" data-id="${n.k}">
       <span class="drag-handle" data-drag>⠿</span>
-      <span style="flex:0 0 26px;text-align:center">${n.ico}</span>
+      <span style="flex:0 0 24px;text-align:center">${n.ico}</span>
       <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
-      ${n.locked ? '<span class="hint" style="flex:0 0 auto">always</span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
+      <button class="cfg-star ${n.k === dt ? 'on' : ''}" data-nav-default="${n.k}" title="default opening tab">${n.k === dt ? '🎯' : '○'}</button>
+      <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar (max ${MAX_PRIMARY})" ${n.hidden ? 'disabled' : ''}>📌</button>
+      ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
     </div>`).join('');
   const curAccent = DB.settings().accent || 'indigo';
   document.getElementById('s-custom').innerHTML = `
-    <button class="back-btn" id="custom-back">← Back to More</button>
+    <button class="back-btn" id="custom-back">← Back</button>
     <div class="card">
       <h2>🎨 Theme color</h2>
       <div class="theme-row">${THEMES.map(t => `<button class="theme-sw ${t.id === curAccent ? 'on' : ''}" data-theme="${t.id}"
         style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div>
     </div>
     <div class="card">
-      <h2>🧭 Tabs <span class="hint">drag order · rename · 👁 hide</span></h2>
+      <h2>🧭 Tabs <span class="hint">📌 pin to bottom bar (${pinnedCount}/${MAX_PRIMARY}) · 🎯 default tab · drag order · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
+      <div class="hint" style="margin-top:8px">Your ${MAX_PRIMARY} pinned tabs fill the bottom bar (in this order); everything else lives under <b>More</b>. 🎯 is the tab the app opens to.</div>
     </div>
     <div class="card">
       <h2>📝 Log screen fields <span class="hint">rename · hide — incl. reflection questions</span></h2>
@@ -2177,7 +2182,13 @@ document.addEventListener('click', (ev) => {
   if (th) { const s = DB.settings(); s.accent = th.dataset.theme; DB.saveSettings(s); applyTheme(); renderCustom(); return; }
   const nh = ev.target.closest('[data-nav-hide]');
   if (nh) { const cfg = navCfg(); const n = cfg.find(x => x.k === nh.dataset.navHide);
-    if (n && !n.locked) { n.hidden = !n.hidden; saveNavCfg(cfg); renderCustom(); } return; }
+    if (n && !n.noHide) { n.hidden = !n.hidden; if (n.hidden) n.primary = false; saveNavCfg(cfg); renderCustom(); } return; }
+  const np = ev.target.closest('[data-nav-pin]');
+  if (np) { const cfg = navCfg(); const n = cfg.find(x => x.k === np.dataset.navPin); if (!n || n.hidden) return;
+    if (!n.primary && cfg.filter(x => !x.hidden && x.primary).length >= MAX_PRIMARY) { toast(`Only ${MAX_PRIMARY} tabs fit the bottom bar — unpin one first`, true); return; }
+    n.primary = !n.primary; saveNavCfg(cfg); renderCustom(); return; }
+  const nd = ev.target.closest('[data-nav-default]');
+  if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; DB.saveSettings(s); renderCustom(); toast('Default tab set'); return; }
   if (ev.target.id === 'cfg-add-group') {
     const inp = document.getElementById('cfg-new-group'); const raw = inp.value.trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
@@ -3274,32 +3285,48 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
+const MAX_PRIMARY = 5;   // tabs shown in the bottom bar (a 6th "More" button opens the rest)
 const NAV_DEF = [
-  { k: 'today',    ico: '📝', label: 'Log',     locked: true },
-  { k: 'time',     ico: '⏱️', label: 'Time' },
+  { k: 'today',    ico: '📝', label: 'Log',     primary: true, noHide: true },
+  { k: 'time',     ico: '⏱️', label: 'Time',    primary: true },
   { k: 'tasks',    ico: '✅', label: 'Tasks' },
   { k: 'notes',    ico: '🗒️', label: 'Notes' },
   { k: 'plans',    ico: '📋', label: 'Plans' },
-  { k: 'focus',    ico: '🍅', label: 'Focus' },
+  { k: 'focus',    ico: '🍅', label: 'Focus',   primary: true },
   { k: 'gym',      ico: '💪', label: 'Gym' },
   { k: 'habits',   ico: '🔥', label: 'Habits' },
-  { k: 'dash',     ico: '📊', label: 'Stats' },
-  { k: 'cal',      ico: '📆', label: 'Cal' },
+  { k: 'dash',     ico: '📊', label: 'Stats',   primary: true },
+  { k: 'cal',      ico: '📆', label: 'Cal',     primary: true },
   { k: 'write',    ico: '✍️', label: 'Write' },
-  { k: 'history',  ico: '🕘', label: 'History', hidden: true },
-  { k: 'settings', ico: '⚙️', label: 'More',    locked: true },
+  { k: 'history',  ico: '🕘', label: 'History' },
+  { k: 'settings', ico: '⚙️', label: 'Settings' },
 ];
 function navCfg() {
   const s = localStorage.getItem('dp.navcfg');
-  const cfg = s ? JSON.parse(s) : NAV_DEF.map(n => Object.assign({}, n));
-  NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.splice(cfg.length - 1, 0, Object.assign({}, d)); });   // future tabs slot in before More
+  let cfg = s ? JSON.parse(s) : NAV_DEF.map(n => Object.assign({}, n));
+  NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.push(Object.assign({}, d)); });   // future tabs append
+  // Migrate legacy configs (pre-v56 had no `primary`): seed pins from NAV_DEF defaults once.
+  if (cfg.every(n => n.primary === undefined)) {
+    cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); n.primary = !!(d && d.primary); n.hidden = n.k === 'history' ? false : n.hidden; });
+  }
   return cfg;
 }
 function saveNavCfg(cfg) { localStorage.setItem('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); }
+function defaultTab() {
+  const dt = DB.settings().defaultTab || 'today';
+  const n = navCfg().find(x => x.k === dt);
+  return (n && !n.hidden) ? dt : 'today';
+}
 function renderNav() {
   const cur = (document.querySelector('.screen.on') || {}).id || 's-today';
-  document.getElementById('nav').innerHTML = navCfg().filter(n => !n.hidden)
-    .map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`).join('');
+  const items = navCfg().filter(n => !n.hidden);
+  const primary = items.filter(n => n.primary).slice(0, MAX_PRIMARY);
+  const primaryKeys = new Set(primary.map(n => n.k));
+  const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`);
+  // synthetic More button — always present, opens the overflow grid
+  const moreOn = !primaryKeys.has(cur.replace('s-', '')) ? 'on' : '';
+  btns.push(`<button data-screen="more" class="${moreOn}"><span class="ico">⋯</span>More</button>`);
+  document.getElementById('nav').innerHTML = btns.join('');
 }
 
 /* ---------- Theme accent (device-local, in settings) ---------- */
@@ -3319,13 +3346,28 @@ function applyTheme() {
   r.setProperty('--glow-accent', `0 6px 22px ${t.a}52`);
 }
 
+/* ---------- More: overflow launcher grid ---------- */
+function renderMore() {
+  document.getElementById('screen-title').textContent = 'More';
+  document.getElementById('screen-sub').textContent = 'Everything else';
+  const overflow = navCfg().filter(n => !n.hidden && !n.primary);
+  const cards = overflow.map(n => `<button class="more-card" data-screen="${n.k}">
+    <span class="more-ico">${n.ico}</span><span class="more-lbl">${escapeHtml(n.label)}</span></button>`).join('');
+  document.getElementById('s-more').innerHTML = `
+    <div class="more-grid">${cards || '<div class="empty">All your tabs are pinned to the bottom bar.</div>'}</div>
+    <div class="card" style="margin-top:6px">
+      <div class="hint">Pin up to 5 tabs to the bottom bar, reorder them, and choose your default opening tab in <b>Settings ▸ Customize ▸ Tabs</b>.</div>
+    </div>`;
+}
+
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
-  document.getElementById('s-' + name).classList.add('on');
-  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.screen === name));
+  const sec = document.getElementById('s-' + name);
+  if (sec) sec.classList.add('on');
   (RENDER[name] || (()=>{}))();
+  renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)
   window.scrollTo(0, 0);
 }
 document.addEventListener('click', (ev) => {
@@ -3339,14 +3381,22 @@ document.addEventListener('click', (ev) => {
   const rb = ev.target.closest('[data-range]');
   if (rb) { dashRange = +rb.dataset.range; renderDash(); }
 });
+function navigateTo(name) {
+  if (name === 'today') logDate = todayStr();               // Log always opens today
+  if (name === 'gym') gymDate = todayStr();                 // Gym always opens today
+  if (name === 'plans') curPlan = null;                     // Plans opens the list
+  if (name === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }
+  if (name === 'write') curDoc = null;                      // Write opens the article list
+  show(name);
+}
 document.getElementById('nav').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
-  if (b.dataset.screen === 'today') logDate = todayStr();   // Log tab always opens today
-  if (b.dataset.screen === 'gym') gymDate = todayStr();     // Gym tab always opens today
-  if (b.dataset.screen === 'plans') curPlan = null;         // Plans tab always opens the list
-  if (b.dataset.screen === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }   // Calendar opens on today
-  if (b.dataset.screen === 'write') curDoc = null;          // Write tab always opens the article list
-  show(b.dataset.screen);
+  navigateTo(b.dataset.screen);
+});
+// Tapping a card in the More overflow grid
+document.addEventListener('click', (ev) => {
+  const c = ev.target.closest('.more-card[data-screen]');
+  if (c && document.getElementById('s-more').classList.contains('on')) navigateTo(c.dataset.screen);
 });
 
 function refreshStreak() { document.getElementById('streak-n').textContent = loggedStreak(); }
@@ -3451,7 +3501,7 @@ cleanNotifiedFlags();
 applyTheme();
 renderNav();
 refreshStreak();
-show('today');
+navigateTo(defaultTab());
 if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); renderOnboard(); }
 else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();
