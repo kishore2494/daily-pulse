@@ -439,8 +439,10 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .act-chip .emoji { font-size: 17px; }
 .act-chip span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-chip.on {
+  background: var(--bg-elev);   /* fallback for old WebViews without color-mix() */
   background: color-mix(in srgb, var(--c) 17%, var(--bg-input));
   border-color: var(--c);
+  box-shadow: inset 4px 0 0 var(--c), 0 2px 14px rgba(0, 0, 0, .25);
   box-shadow: inset 4px 0 0 var(--c), 0 2px 14px color-mix(in srgb, var(--c) 30%, transparent);
 }
 .act-chip .live { margin-left: auto; color: var(--c); animation: ttblink 1.1s ease-in-out infinite; }
@@ -581,3 +583,16 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .tb-now { font-size: 11px; color: var(--accent); font-weight: 700; margin-top: 2px; }
 .tb-row .del { background: none; border: none; color: var(--text-faint); font-size: 18px; cursor: pointer; flex: 0 0 auto; padding: 0 3px; }
 .tb-row .btn-sm { flex: 0 0 auto; padding: 7px 12px; }
+
+/* ---------- v55: enlarge small icon-button tap targets (audit low-sev) ----------
+   Keeps the visual icons ~the same; expands the tappable hit area toward 44px. */
+.lrow .del, .task .del, .ex .del, .tb-row .del, .cfg-row .del, .blk-row .del,
+.rem-toggle, .cfg-hide {
+  min-width: 40px; min-height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; box-sizing: border-box;
+}
+.blk-row .del { min-height: 34px; }   /* block rows are denser */
+/* round color swatches: slightly bigger + generous hit area */
+.lrow .pal, .cfg-color { width: 30px; height: 30px; }
+.sw { width: 30px; height: 30px; }

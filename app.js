@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v54';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v55';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
