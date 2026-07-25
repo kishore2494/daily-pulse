@@ -17,3 +17,6 @@ v55: enlarged small icon-button tap targets (40px) + color-mix() fallback (nav l
 
 ## 2026-07-25 — Nav: remove the 5-tab cap (v57)
 Per user: don't force 5 pinned tabs — let them choose how many. Removed MAX_PRIMARY hard cap in renderNav + the pin-cap block in the handler; kept a non-blocking "4-5 stays easiest to tap" tip past 5 pins. Customize labels updated to "pin as many as you like".
+
+## 2026-07-25 — Deep-log: add whole new sections (v58)
+Customize ▸ Deep log now has a "New section…" input (emoji-aware) + delete (×) on custom sections (ids `cs*`). Previously you could only add FIELDS to existing sections. New sections render on Log; their scale (1-10) fields flow into Stats wellbeing averages. Verified end-to-end.
