@@ -596,3 +596,20 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 /* round color swatches: slightly bigger + generous hit area */
 .lrow .pal, .cfg-color { width: 30px; height: 30px; }
 .sw { width: 30px; height: 30px; }
+
+/* ---------- v56: More overflow grid + tab pin/default controls ---------- */
+.more-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 4px; }
+.more-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0) 55%), var(--bg-card);
+  border: 1px solid var(--border); border-top-color: var(--border-hi); border-radius: 16px;
+  padding: 18px 8px; cursor: pointer; color: var(--text); font-family: var(--font-display); font-weight: 600;
+  font-size: 13px; aspect-ratio: 1; box-shadow: var(--shadow-card); transition: transform .12s, border-color .15s; }
+.more-card:active { transform: scale(.95); }
+.more-card:hover { border-color: var(--accent); }
+.more-ico { font-size: 30px; line-height: 1; }
+.more-lbl { text-align: center; }
+.cfg-star, .cfg-pin { flex: 0 0 auto; background: none; border: none; font-size: 15px; cursor: pointer; padding: 4px; opacity: .45; min-width: 34px; min-height: 34px; }
+.cfg-star.on, .cfg-pin.on { opacity: 1; }
+.cfg-pin { filter: grayscale(1); }
+.cfg-pin.on { filter: none; }
+.cfg-pin:disabled { opacity: .15; cursor: default; }
