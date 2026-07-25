@@ -19,7 +19,7 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 | More | settings | renderSettings | dp.settings | sync, reminders, ntfy, data backup, feedback, **Customize** (renderCustom → `#s-custom`), guide link |
 
 ## Customization engine (More ▸ Customize, renderCustom)
-Everything is editable and hideable: theme accent (6 colors), nav tabs (reorder/rename/hide), core Log fields, deep-log sections/fields (add/rename/hide, incl. tick-list options), habits, time activities, gym exercises + sets + custom groups + the 6-day split. `reloadCfg()` rebuilds the live `HABITS`, `TIME_ACTS_ALL`, `DEEP_SECTIONS` from their configs. Hidden items keep their history.
+Everything is editable and hideable: theme accent (6 colors), nav tabs (reorder/rename/hide), core Log fields, deep-log sections/fields (add/rename/hide, incl. tick-list options), habits, time activities, gym exercises + sets + custom groups + the 6-day split. Deep-log: add/rename/hide fields AND **add or delete whole custom sections** (v58, ids `cs*`). `reloadCfg()` rebuilds the live `HABITS`, `TIME_ACTS_ALL`, `DEEP_SECTIONS` from their configs. Hidden items keep their history.
 
 ## Onboarding (first run only)
 3 steps: welcome (with data-loss note) → pick habits (+ add own) → pick activities (+ add own). Gated by `needsOnboard()` (no data + no `dp.onboarded`). Unpicked items are hidden via the same config flags.

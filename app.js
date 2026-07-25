@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v57';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v58';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2026,9 +2026,13 @@ function renderCustom() {
       </div>
     </div>
     <div class="card">
-      <h2>🧠 Deep log sections <span class="hint">rename · hide · add your own fields</span></h2>
+      <h2>🧠 Deep log sections <span class="hint">rename · hide · add fields · add sections</span></h2>
       ${deepCfg().map(sec => deepSecEditor(sec)).join('')}
-      <div class="hint" style="margin-top:8px">New fields show up on the Log screen and in Stats averages automatically. The Google-Sheet Log columns stay fixed — custom fields live in the app + device sync.</div>
+      <div class="task-add" style="margin-top:10px">
+        <input type="text" id="cfg-new-deepsec" placeholder="New section… (e.g. 🎸 Music practice)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="cfg-add-deepsec">Add</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Open a new section and add fields to it. New fields show on the Log screen; scale (1-10) fields also appear in Stats. The Google-Sheet Log columns stay fixed — custom sections/fields live in the app + device sync.</div>
     </div>
     <div class="card">
       <h2>🏋️ Gym workouts <span class="hint">rename · sets · hide · add exercises</span></h2>
@@ -2059,8 +2063,9 @@ function deepSecEditor(sec) {
       <button class="cfg-hide" data-dchecks-hide="${sec.id}">${sec.checks.hidden ? '🙈' : '👁'}</button>
       <span style="width:23px"></span>
     </div>` : '';
+  const isCustomSec = sec.id.indexOf('cs') === 0;
   return `<details class="cfg-sec" data-cfgsec="deep:${sec.id}" ${openCfgSecs.has('deep:' + sec.id) ? 'open' : ''}>
-    <summary><span>${escapeHtml(sec.title)}</span><button class="cfg-hide" data-dsec-hide="${sec.id}">${sec.hidden ? '🙈' : '👁'}</button></summary>
+    <summary><span>${escapeHtml(sec.title)}</span><button class="cfg-hide" data-dsec-hide="${sec.id}">${sec.hidden ? '🙈' : '👁'}</button>${isCustomSec ? `<button class="del" data-dsec-del="${sec.id}">×</button>` : ''}</summary>
     <div class="cfg-sec-body">
       <input class="cfg-name" style="margin-bottom:8px" data-dsec-title="${sec.id}" value="${escapeHtml(sec.title)}" placeholder="Section title…">
       ${fields}${checks}
@@ -2158,6 +2163,19 @@ document.addEventListener('click', (ev) => {
     sec[list] = sec[list] || [];
     sec[list].push({ key: 'cf' + Date.now(), label, custom: true });
     saveDeepCfg(cfg); renderCustom(); toast('Field added'); return; }
+  if (ev.target.id === 'cfg-add-deepsec') {
+    const raw = (document.getElementById('cfg-new-deepsec').value || '').trim(); if (!raw) return;
+    const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
+    const title = (m && m[2]) ? (m[1] + ' ' + m[2]) : raw;
+    const id = 'cs' + Date.now();
+    const cfg = deepCfg();
+    cfg.push({ id, title, scales: [], nums: [], texts: [], custom: true });
+    openCfgSecs.add('deep:' + id);   // open it so the user can add fields right away
+    saveDeepCfg(cfg); renderCustom(); toast('Section added — now add fields'); return; }
+  const dsd = ev.target.closest('[data-dsec-del]');
+  if (dsd) { ev.preventDefault();
+    if (!confirm('Delete this whole section and its fields? Logged history stays.')) return;
+    saveDeepCfg(deepCfg().filter(s => s.id !== dsd.dataset.dsecDel)); renderCustom(); return; }
 
   // ---- gym exercise controls ----
   const gxh = ev.target.closest('[data-gx-hide]');
