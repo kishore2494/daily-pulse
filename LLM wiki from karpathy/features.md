@@ -1,6 +1,6 @@
 # Features
 
-Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `primary` (in bottom bar, max 5 = `MAX_PRIMARY`), `hidden`, `noHide` (Log). renderNav() shows primary non-hidden tabs + a synthetic ⋯ More button → `renderMore()` grid of the rest (incl. Settings). Default opening tab = `settings.defaultTab` (device-local), applied via `navigateTo(defaultTab())` at init. All configurable in Settings ▸ Customize ▸ Tabs (📌 pin / 🎯 default / drag order / 👁 hide). Each screen = a `render*()` in the `RENDER` map, filling `#s-<key>`.
+Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `primary` (pinned to bottom bar — **no cap**, user pins however many they want), `hidden`, `noHide` (Log). renderNav() shows ALL pinned non-hidden tabs (no slice/cap) + a synthetic ⋯ More button → `renderMore()` grid of the rest (incl. Settings). Default opening tab = `settings.defaultTab` (device-local), applied via `navigateTo(defaultTab())` at init. All configurable in Settings ▸ Customize ▸ Tabs (📌 pin any number / 🎯 default / drag order / 👁 hide; a soft tip appears past 5 pins but nothing is blocked). Each screen = a `render*()` in the `RENDER` map, filling `#s-<key>`.
 
 | Tab | key | render fn | storage | notes |
 |---|---|---|---|---|
