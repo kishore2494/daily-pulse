@@ -9,7 +9,8 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 | Tasks | tasks | renderTasks | dp.tasks | carry-over, colors, drag |
 | Notes | notes | renderNotes | dp.notes | drag, colors, voice |
 | Plans | plans | renderPlans | dp.plans | named plan → own checklist |
-| Focus | focus | renderFocus | dp.pomo, dp.timebox | Pomodoro (config cycles, countdown ring, native end-of-phase alarm, optional logs focus time to a Time activity, daily 🍅 count) + Timebox (plan today's blocks, start alarm, one-tap start) |
+| Focus | focus | renderFocus | dp.pomo, dp.timebox |
+| Waves | waves | renderWaves | dp.waves | binaural-beat generator (delta/theta/alpha/beta/gamma), offline Web Audio, needs headphones | Pomodoro (config cycles, countdown ring, native end-of-phase alarm, optional logs focus time to a Time activity, daily 🍅 count) + Timebox (plan today's blocks, start alarm, one-tap start) |
 | Gym | gym | openGym/renderGym | dp.gym + configs | 6-day split (`dp.daycfg`), exercises (`dp.gymcfg` overrides + `dp.gymgroups` custom), animated demos (workout-anims.js), per-set log |
 | Habits | habits | renderHabits | dp.entries | streaks + 90-day heatmaps, built from HABITS (=visible `dp.habitcfg`) |
 | Stats | dash | renderDash | all | trends, Polymath Index, time analytics (v38), connections graph, weekly auto-review, wellbeing averages (DYNAMIC from deep-log config) |
