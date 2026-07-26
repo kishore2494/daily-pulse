@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v58';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v59';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1641,6 +1641,14 @@ function renderDash() {
       <span class="bar-track"><span class="bar-fill" style="width:${x.a/10*100}%"></span></span>
       <span class="pct">${x.a}</span></div>`).join('');
 
+  // ---- Numeric deep-log fields — DYNAMIC averages (water, weight, code lines, custom numbers…) ----
+  const numDefs = [];
+  deepCfg().forEach(sec => { if (sec.hidden) return;
+    (sec.nums || []).forEach(f => { if (!f.hidden) numDefs.push({ k: f.key, l: f.label }); }); });
+  const numAvgRows = numDefs.map(f => ({ f, a: avg(f.k) })).filter(x => x.a !== '–')
+    .map(x => `<div class="bar-row"><span class="name" style="width:150px">${escapeHtml(x.f.l)}</span>
+      <span style="flex:1"></span><span class="pct" style="width:auto">${x.a}</span></div>`).join('');
+
   // ---- Tasks ----
   const tasks = DB.tasks(); const tDone = tasks.filter(t=>t.done).length; const tOpen = tasks.length - tDone;
   const tRate = tasks.length ? Math.round(tDone/tasks.length*100) : 0;
@@ -1718,6 +1726,7 @@ function renderDash() {
       <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep wk</div></div>
       <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
       <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">workouts</div></div>
+      <div class="stat"><div class="v">${(() => { const p = DB.pomo(); return p ? pomoDoneToday(p) : 0; })()}</div><div class="l">🍅 today</div></div>
     </div></div>
 
     ${timeStatsHTML(days)}
@@ -1752,6 +1761,8 @@ function renderDash() {
       ${gymBars || '<div class="empty">No workouts logged yet.</div>'}</div>
 
     ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">out of 10</span></h2>${scaleBars}</div>` : ''}
+
+    ${numAvgRows ? `<div class="card"><h2>🔢 Tracked numbers <span class="hint">all-time average</span></h2>${numAvgRows}</div>` : ''}
 
     <div class="card"><h2>✅ Tasks <span class="hint">${tRate}% completed</span></h2>
       <div class="stat-grid">
@@ -1955,96 +1966,123 @@ function cfgRow(kind, item, deletable) {
     ${deletable ? `<button class="del" data-cfg-del="${kind}:${id}">×</button>` : '<span style="width:23px"></span>'}
   </div>`;
 }
-function renderCustom() {
-  document.getElementById('screen-title').textContent = 'Customize';
-  document.getElementById('screen-sub').textContent = 'Make Daily Pulse yours';
-  const habits = habitCfg();
-  const acts = actCfg();
-  const customActs = DB.timeacts();
-  const daySplit = gymDays().map(d => `<div class="cfg-row">
-      <input class="cfg-name" style="flex:0 0 72px" data-day-name="${d.id}" value="${escapeHtml(d.name)}">
-      <select data-day-main="${d.id}">${allGroups().filter(g => !['cardio','abs','side','core'].includes(g.id)).map(g =>
-        `<option value="${g.id}" ${g.id === d.main ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`).join('')}</select>
-      <select data-day-ab="${d.id}" style="flex:0 0 92px">${['abs','side','core'].map(id => { const g = groupById(id);
-        return `<option value="${id}" ${id === d.ab ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`; }).join('')}</select>
-    </div>`).join('');
-  const dt = defaultTab();
-  const pinnedCount = navCfg().filter(n => !n.hidden && n.primary).length;
-  const navRows = navCfg().map(n => `<div class="cfg-row ${n.hidden ? 'hid' : ''}" data-id="${n.k}">
-      <span class="drag-handle" data-drag>⠿</span>
-      <span style="flex:0 0 24px;text-align:center">${n.ico}</span>
-      <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
-      <button class="cfg-star ${n.k === dt ? 'on' : ''}" data-nav-default="${n.k}" title="default opening tab">${n.k === dt ? '🎯' : '○'}</button>
-      <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar" ${n.hidden ? 'disabled' : ''}>📌</button>
-      ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
-    </div>`).join('');
-  const curAccent = DB.settings().accent || 'indigo';
-  document.getElementById('s-custom').innerHTML = `
-    <button class="back-btn" id="custom-back">← Back</button>
-    <div class="card">
-      <h2>🎨 Theme color</h2>
+/* Customize is a HUB of cards; each opens its own sub-page (customPage). */
+let customPage = null;
+const CUSTOM_PAGES = [
+  { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation', sub: 'pin, order, default tab, hide' },
+  { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
+  { id: 'habits', ico: '✅', label: 'Daily checklist',    sub: 'your habits' },
+  { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
+  { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
+  { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
+  { id: 'theme',  ico: '🎨', label: 'Theme colour',       sub: 'app accent colour' },
+];
+function cfgSectionHTML(page) {
+  if (page === 'theme') {
+    const curAccent = DB.settings().accent || 'indigo';
+    return `<div class="card"><h2>🎨 Theme colour</h2>
       <div class="theme-row">${THEMES.map(t => `<button class="theme-sw ${t.id === curAccent ? 'on' : ''}" data-theme="${t.id}"
-        style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div>
-    </div>
-    <div class="card">
-      <h2>🧭 Tabs <span class="hint">📌 pin to bottom bar (${pinnedCount} pinned) · 🎯 default tab · drag order · 👁 hide</span></h2>
+        style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div></div>`;
+  }
+  if (page === 'tabs') {
+    const dt = defaultTab();
+    const pinnedCount = navCfg().filter(n => !n.hidden && n.primary).length;
+    const navRows = navCfg().map(n => `<div class="cfg-row ${n.hidden ? 'hid' : ''}" data-id="${n.k}">
+        <span class="drag-handle" data-drag>⠿</span>
+        <span style="flex:0 0 24px;text-align:center">${n.ico}</span>
+        <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
+        <button class="cfg-star ${n.k === dt ? 'on' : ''}" data-nav-default="${n.k}" title="default opening tab">${n.k === dt ? '🎯' : '○'}</button>
+        <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar" ${n.hidden ? 'disabled' : ''}>📌</button>
+        ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
+      </div>`).join('');
+    return `<div class="card">
+      <h2>🧭 Tabs <span class="hint">📌 pin (${pinnedCount}) · 🎯 default · drag · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
-      <div class="hint" style="margin-top:8px">Pin as many tabs as you like — pinned ones fill the bottom bar (in this order), everything else lives under <b>More</b>. 🎯 is the tab the app opens to. (4–5 pins stays easiest to tap, but it's your call.)</div>
-    </div>
-    <div class="card">
+      <div class="hint" style="margin-top:8px">Pin as many tabs as you like — pinned ones fill the bottom bar (in this order); the rest live under <b>More</b>. 🎯 is the tab the app opens to.</div></div>`;
+  }
+  if (page === 'log') {
+    return `<div class="card">
       <h2>📝 Log screen fields <span class="hint">rename · hide — incl. reflection questions</span></h2>
       ${coreCfg().map(f => `<div class="cfg-row ${f.hidden ? 'hid' : ''}">
         <span class="cfg-type">${f.type === 'scale' ? '1-10' : f.type === 'num' ? '123' : 'Aa'}</span>
         <input class="cfg-name" data-core-label="${f.key}" value="${escapeHtml(f.label)}">
         <button class="cfg-hide" data-core-hide="${f.key}">${f.hidden ? '🙈' : '👁'}</button>
       </div>`).join('')}
-    </div>
-    <div class="card">
-      <h2>🗓 Gym 6-day split <span class="hint">rename days · pick muscle + core group</span></h2>
-      ${daySplit}
-      <div class="task-add" style="margin-top:10px">
-        <input type="text" id="cfg-new-group" placeholder="New muscle group… (e.g. 🧗 Forearms)" autocomplete="off">
-        <button class="btn btn-primary btn-sm" id="cfg-add-group">Add</button>
-      </div>
-      <div class="hint" style="margin-top:8px">New groups appear below under Gym workouts — add exercises there, then pick the group for any day.</div>
-    </div>
-    <div class="card">
-      <h2>✅ Daily checklist habits <span class="hint">emoji · name · color · 👁 hide · drag</span></h2>
-      <div id="cfg-habits">${habits.map(h => cfgRow('h', h, !!h.custom)).join('')}</div>
+      <div class="hint" style="margin-top:8px">Covers mood, energy, sleep, deep-work, tasks and the reflection/journal questions. Hidden fields leave the Log screen but keep their history.</div></div>`;
+  }
+  if (page === 'habits') {
+    return `<div class="card">
+      <h2>✅ Daily checklist habits <span class="hint">emoji · name · color · 👁 · drag</span></h2>
+      <div id="cfg-habits">${habitCfg().map(h => cfgRow('h', h, !!h.custom)).join('')}</div>
       <div class="task-add">
         <input type="text" id="cfg-new-habit" placeholder="New habit… (e.g. 🌅 Wake at 6)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="cfg-add-habit">Add</button>
       </div>
-      <div class="hint" style="margin-top:8px">Hidden habits keep their history — they just leave the checklist. Custom habits sync between devices; the Google-Sheet Log columns stay fixed.</div>
-    </div>
-    <div class="card">
-      <h2>⏱ Time activities <span class="hint">same controls</span></h2>
-      <div id="cfg-acts">${acts.map(a => cfgRow('a', a, false)).join('')}${customActs.map(a => cfgRow('c', a, true)).join('')}</div>
+      <div class="hint" style="margin-top:8px">Hidden habits keep their history. Custom habits sync between devices; the Google-Sheet Log columns stay fixed.</div></div>`;
+  }
+  if (page === 'acts') {
+    return `<div class="card">
+      <h2>⏱ Time activities <span class="hint">emoji · name · color · 👁</span></h2>
+      <div id="cfg-acts">${actCfg().map(a => cfgRow('a', a, false)).join('')}${DB.timeacts().map(a => cfgRow('c', a, true)).join('')}</div>
       <div class="task-add">
         <input type="text" id="cfg-new-act" placeholder="New activity… (e.g. Cooking)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="cfg-add-act">Add</button>
-      </div>
-    </div>
-    <div class="card">
-      <h2>🧠 Deep log sections <span class="hint">rename · hide · add fields · add sections</span></h2>
+      </div></div>`;
+  }
+  if (page === 'deep') {
+    return `<div class="card">
+      <h2>🧠 Deep log sections <span class="hint">rename · hide · add fields & sections</span></h2>
       ${deepCfg().map(sec => deepSecEditor(sec)).join('')}
       <div class="task-add" style="margin-top:10px">
         <input type="text" id="cfg-new-deepsec" placeholder="New section… (e.g. 🎸 Music practice)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="cfg-add-deepsec">Add</button>
       </div>
-      <div class="hint" style="margin-top:8px">Open a new section and add fields to it. New fields show on the Log screen; scale (1-10) fields also appear in Stats. The Google-Sheet Log columns stay fixed — custom sections/fields live in the app + device sync.</div>
-    </div>
-    <div class="card">
+      <div class="hint" style="margin-top:8px">New fields show on the Log screen; scale (1-10) fields also appear in Stats. Sheet Log columns stay fixed — custom fields live in the app + device sync.</div></div>`;
+  }
+  if (page === 'gym') {
+    const daySplit = gymDays().map(d => `<div class="cfg-row">
+        <input class="cfg-name" style="flex:0 0 72px" data-day-name="${d.id}" value="${escapeHtml(d.name)}">
+        <select data-day-main="${d.id}">${allGroups().filter(g => !['cardio','abs','side','core'].includes(g.id)).map(g =>
+          `<option value="${g.id}" ${g.id === d.main ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`).join('')}</select>
+        <select data-day-ab="${d.id}" style="flex:0 0 92px">${['abs','side','core'].map(id => { const g = groupById(id);
+          return `<option value="${id}" ${id === d.ab ? 'selected' : ''}>${g.emoji} ${escapeHtml(g.name)}</option>`; }).join('')}</select>
+      </div>`).join('');
+    return `<div class="card">
+      <h2>🗓 6-day split <span class="hint">rename days · pick groups</span></h2>
+      ${daySplit}
+      <div class="task-add" style="margin-top:10px">
+        <input type="text" id="cfg-new-group" placeholder="New muscle group… (e.g. 🧗 Forearms)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="cfg-add-group">Add</button>
+      </div></div>
+      <div class="card">
       <h2>🏋️ Gym workouts <span class="hint">rename · sets · hide · add exercises</span></h2>
-      ${allGroups().map(g => gymGroupEditor(g)).join('')}
-    </div>`;
-  enableDrag(document.getElementById('cfg-habits'), ids => {
-    const cfg = habitCfg();
-    saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
+      ${allGroups().map(g => gymGroupEditor(g)).join('')}</div>`;
+  }
+  return '';
+}
+function renderCustom() {
+  const el = document.getElementById('s-custom');
+  if (!customPage) {
+    document.getElementById('screen-title').textContent = 'Customize';
+    document.getElementById('screen-sub').textContent = 'Make Daily Pulse yours';
+    el.innerHTML = `<button class="back-btn" id="custom-back">← Back to Settings</button>
+      <div class="card" style="padding:6px 10px">
+        ${CUSTOM_PAGES.map(p => `<button class="menu-row" data-custompage="${p.id}">
+          <span class="menu-ico">${p.ico}</span>
+          <span class="menu-txt"><span class="menu-lbl">${p.label}</span><span class="menu-sub">${p.sub}</span></span>
+          <span class="menu-go">›</span></button>`).join('')}
+      </div>`;
+    return;
+  }
+  const page = CUSTOM_PAGES.find(p => p.id === customPage);
+  document.getElementById('screen-title').textContent = page ? page.label : 'Customize';
+  document.getElementById('screen-sub').textContent = 'Customize';
+  el.innerHTML = `<button class="back-btn" id="custom-back">← All settings</button>${cfgSectionHTML(customPage)}`;
+  if (customPage === 'habits') enableDrag(document.getElementById('cfg-habits'), ids => {
+    const cfg = habitCfg(); saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
   });
-  enableDrag(document.getElementById('cfg-nav'), ids => {
-    const cfg = navCfg();
-    saveNavCfg(ids.map(id => cfg.find(n => n.k === id)).filter(Boolean)); renderCustom();
+  if (customPage === 'tabs') enableDrag(document.getElementById('cfg-nav'), ids => {
+    const cfg = navCfg(); saveNavCfg(ids.map(id => cfg.find(n => n.k === id)).filter(Boolean)); renderCustom();
   });
 }
 /* --- Deep-log section editor (one collapsible <details> per section) --- */
@@ -2114,7 +2152,9 @@ function cfgFind(kind, id) {
 document.addEventListener('click', (ev) => {
   const sc = document.getElementById('s-custom');
   if (!sc || !sc.classList.contains('on')) return;
-  if (ev.target.id === 'custom-back') { show('settings'); return; }
+  const cp = ev.target.closest('[data-custompage]');
+  if (cp) { customPage = cp.dataset.custompage; renderCustom(); window.scrollTo(0, 0); return; }
+  if (ev.target.id === 'custom-back') { if (customPage) { customPage = null; renderCustom(); window.scrollTo(0, 0); } else show('settings'); return; }
   if (ev.target.id === 'cfg-add-habit') {
     const inp = document.getElementById('cfg-new-habit'); const raw = inp.value.trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
@@ -2543,6 +2583,87 @@ setInterval(() => {
 }, 1000);
 
 /* ============================================================
+   SCREEN: WAVES  (binaural-beat brainwave generator, offline Web Audio)
+   Two pure tones a few Hz apart — one per ear — create a perceived "beat"
+   at the difference frequency. Needs headphones. Wellness aid, not medicine.
+   ============================================================ */
+const WAVE_PRESETS = [
+  { id: 'delta', emoji: '😴', name: 'Delta', hz: 2.5, use: 'Deep sleep & rest', color: '#a78bfa' },
+  { id: 'theta', emoji: '🧘', name: 'Theta', hz: 6,   use: 'Meditation & creativity', color: '#22d3ee' },
+  { id: 'alpha', emoji: '🌊', name: 'Alpha', hz: 10,  use: 'Relaxed calm focus', color: '#34d399' },
+  { id: 'beta',  emoji: '⚡', name: 'Beta',  hz: 18,  use: 'Alert & productive', color: '#6d8cff' },
+  { id: 'gamma', emoji: '🚀', name: 'Gamma', hz: 40,  use: 'Peak concentration', color: '#fb923c' },
+];
+let _waveCtx = null, _waveNodes = null, _wavePlaying = null, _waveTimer = null, _waveEndsAt = 0;
+function waveSettings() { return Object.assign({ carrier: 200, vol: 0.25, minutes: 0 }, JSON.parse(localStorage.getItem('dp.waves') || '{}')); }
+function saveWaveSettings(w) { localStorage.setItem('dp.waves', JSON.stringify(w)); }
+function wavesStop() {
+  if (_waveNodes) { try { _waveNodes.oL.stop(); _waveNodes.oR.stop(); } catch (_) {} _waveNodes = null; }
+  _wavePlaying = null; clearTimeout(_waveTimer); _waveTimer = null; _waveEndsAt = 0;
+}
+function wavesStart(preset) {
+  const w = waveSettings();
+  try {
+    _waveCtx = _waveCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_waveCtx.state === 'suspended') _waveCtx.resume();
+  } catch (e) { toast('Audio not supported here', true); return; }
+  wavesStop();
+  const ctx = _waveCtx;
+  const merger = ctx.createChannelMerger(2);
+  const gain = ctx.createGain(); gain.gain.value = Math.max(0.01, Math.min(0.5, w.vol));
+  const oL = ctx.createOscillator(); oL.type = 'sine'; oL.frequency.value = w.carrier;
+  const oR = ctx.createOscillator(); oR.type = 'sine'; oR.frequency.value = w.carrier + preset.hz;
+  oL.connect(merger, 0, 0); oR.connect(merger, 0, 1);
+  merger.connect(gain); gain.connect(ctx.destination);
+  oL.start(); oR.start();
+  _waveNodes = { oL, oR, gain, merger }; _wavePlaying = preset.id;
+  if (w.minutes > 0) { _waveEndsAt = Date.now() + w.minutes * 60000; _waveTimer = setTimeout(() => { wavesStop(); if (isOn('waves')) renderWaves(); toast('Waves ended'); }, w.minutes * 60000); }
+  renderWaves();
+}
+function isOn(name) { const el = document.getElementById('s-' + name); return el && el.classList.contains('on'); }
+function renderWaves() {
+  document.getElementById('screen-title').textContent = 'Waves';
+  document.getElementById('screen-sub').textContent = _wavePlaying ? '▶ playing — headphones on 🎧' : 'Binaural beats · needs headphones 🎧';
+  const w = waveSettings();
+  const cards = WAVE_PRESETS.map(p => {
+    const on = _wavePlaying === p.id;
+    return `<button class="wave-card ${on ? 'on' : ''}" data-wave="${p.id}" style="--c:${p.color}">
+      <span class="wave-emoji">${p.emoji}</span>
+      <span class="wave-name">${p.name} <span class="wave-hz">${p.hz} Hz</span></span>
+      <span class="wave-use">${p.use}</span>
+      <span class="wave-state">${on ? '⏸ Stop' : '▶ Play'}</span></button>`;
+  }).join('');
+  const mins = [0, 10, 20, 30, 60];
+  document.getElementById('s-waves').innerHTML = `
+    <div class="card">
+      <div class="hint">🎧 <b>Use headphones</b> — the effect comes from a slightly different tone in each ear. A gentle wellness aid for focus, calm or sleep (not a medical treatment).</div>
+    </div>
+    <div class="wave-grid">${cards}</div>
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="field"><label>Auto-stop after</label>
+        <div class="range-row">${mins.map(m => `<button class="range-btn ${w.minutes===m?'on':''}" data-wave-min="${m}">${m===0?'∞':m+'m'}</button>`).join('')}</div></div>
+      <div class="field"><label>Volume</label>
+        <input type="range" min="1" max="50" value="${Math.round(w.vol*100)}" data-wave-vol style="width:100%"></div>
+      <div class="hint">Base tone ${w.carrier} Hz. Binaural beats are a relaxation aid — if you feel any discomfort, stop.</div>
+    </div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (!isOn('waves')) return;
+  const wc = ev.target.closest('[data-wave]');
+  if (wc) { const p = WAVE_PRESETS.find(x => x.id === wc.dataset.wave);
+    if (_wavePlaying === p.id) { wavesStop(); renderWaves(); } else wavesStart(p); return; }
+  const wm = ev.target.closest('[data-wave-min]');
+  if (wm) { const s = waveSettings(); s.minutes = +wm.dataset.waveMin; saveWaveSettings(s);
+    if (_wavePlaying) { const p = WAVE_PRESETS.find(x => x.id === _wavePlaying); wavesStart(p); } else renderWaves(); return; }
+});
+document.addEventListener('input', (ev) => {
+  const wv = ev.target.closest('[data-wave-vol]');
+  if (wv) { const s = waveSettings(); s.vol = (+wv.value) / 100; saveWaveSettings(s);
+    if (_waveNodes) _waveNodes.gain.gain.value = Math.max(0.01, Math.min(0.5, s.vol)); }
+});
+
+/* ============================================================
    SCREEN: CALENDAR  (month grid of your data + dated events)
    Each day is tinted by that day's mood; dots mark gym / time
    tracked / events. Tap a day to see its summary, add events
@@ -2668,20 +2789,21 @@ document.addEventListener('click', (ev) => {
    SCREEN: SETTINGS / MORE
    ============================================================ */
 function renderSettings() {
-  document.getElementById('screen-title').textContent = 'More';
-  document.getElementById('screen-sub').textContent = 'Sync, reminders, data';
+  document.getElementById('screen-title').textContent = 'Settings';
+  document.getElementById('screen-sub').textContent = 'Customize, reminders, data';
   const s = DB.settings();
+  const SHOW_SYNC = false;   // Sync & login hidden for now — planned as a future (paid) feature. Code kept intact.
   if (!s.ntfyTopic) { s.ntfyTopic = 'dp-' + randomToken(); DB.saveSettings(s); }   // one secret topic per user
   document.getElementById('s-settings').innerHTML = `
-    <div class="card">
-      <h2>🎨 Customize &amp; more</h2>
-      <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="open-custom">🎨 Customize habits &amp; activities</button>
-        <button class="btn btn-ghost btn-sm" id="open-history">🕘 History</button>
-      </div>
-      <div class="btn-row" style="margin-top:8px">
-        <a class="btn btn-ghost btn-sm" href="guide.html" target="_blank" rel="noopener" style="text-decoration:none;display:flex;align-items:center;justify-content:center">📖 How to use Daily Pulse</a>
-      </div>
+    <div class="card" style="padding:6px 10px">
+      <button class="menu-row" id="open-custom"><span class="menu-ico">🎨</span>
+        <span class="menu-txt"><span class="menu-lbl">Customize</span><span class="menu-sub">tabs, habits, log fields, gym, deep log, theme</span></span><span class="menu-go">›</span></button>
+      <button class="menu-row" id="open-report"><span class="menu-ico">📄</span>
+        <span class="menu-txt"><span class="menu-lbl">Download report (PDF)</span><span class="menu-sub">your full stats as a printable report</span></span><span class="menu-go">›</span></button>
+      <button class="menu-row" id="open-history"><span class="menu-ico">🕘</span>
+        <span class="menu-txt"><span class="menu-lbl">History</span><span class="menu-sub">every day you've logged</span></span><span class="menu-go">›</span></button>
+      <a class="menu-row" href="guide.html" target="_blank" rel="noopener"><span class="menu-ico">📖</span>
+        <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
     <div class="card" style="border-color:rgba(251,191,36,.4)">
       <h2>📦 Your data lives on this device</h2>
@@ -2692,14 +2814,12 @@ function renderSettings() {
       <div class="hint" style="margin-top:8px">Last backup: <b>${(() => { const t = +localStorage.getItem('dp.lastBackup') || 0; if (!t) return 'never ⚠️'; const d = Math.floor((Date.now() - t) / 86400000); return d === 0 ? 'today ✅' : d + ' day' + (d === 1 ? '' : 's') + ' ago' + (d > 7 ? ' ⚠️' : ''); })()}</b></div>
     </div>
     <div class="card">
-      <h2>💬 Feedback <span class="hint">30 seconds, no sign-in</span></h2>
+      <h2>💬 Feedback <span class="hint">private · no sign-in</span></h2>
       <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What do you love?" style="min-height:70px"></textarea></div>
-      <div class="task-add">
-        <input type="text" id="fb-contact" placeholder="Email (optional, only if you want a reply)" autocomplete="off">
-        <button class="btn btn-primary btn-sm" id="fb-send">Send</button>
-      </div>
+      <div class="btn-row"><button class="btn btn-primary btn-sm" id="fb-send">Send feedback</button></div>
+      <div class="hint" style="margin-top:8px">Goes straight to the developer — no email or account needed.</div>
     </div>
-    <div class="card">
+    ${SHOW_SYNC ? `<div class="card">
       <h2>☁️ Sync &amp; login <span class="hint">${s.syncUrl ? 'connected ●' : 'not connected'}</span></h2>
       <div class="field"><label>Your sheet link = your login key <span class="hint">paste it on any device to load your data</span></label>
         <input type="url" id="sync-url" placeholder="https://script.google.com/macros/s/…/exec" value="${escapeHtml(s.syncUrl)}"></div>
@@ -2711,7 +2831,7 @@ function renderSettings() {
         <button class="btn btn-ghost btn-sm" id="resync">Push all to Sheet</button>
       </div>
       <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Newest edit wins.</div>
-    </div>
+    </div>` : ''}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
       ${DB.reminders().length ? DB.reminders().map(r => `
@@ -2853,16 +2973,16 @@ document.addEventListener('click', async (ev) => {
     toast(ok ? 'Sent ✅ — check your phone / ntfy app' : 'Failed — check the topic & connection', !ok);
     return;
   }
-  if (ev.target.id === 'open-custom') { show('custom'); return; }
+  if (ev.target.id === 'open-custom') { customPage = null; show('custom'); return; }
   if (ev.target.id === 'open-history') { show('history'); return; }
   if (ev.target.id === 'export-quick') { exportData(); renderSettings(); return; }
   if (ev.target.id === 'fb-send') {
     const text = (document.getElementById('fb-text').value || '').trim();
     if (!text) { toast('Write something first 🙂', true); return; }
-    const contact = (document.getElementById('fb-contact').value || '').trim();
-    sendFeedback(text, contact);
+    sendFeedback(text, '');
     return;
   }
+  if (ev.target.id === 'open-report') { downloadReport(); return; }
   if (ev.target.id === 'export') exportData();
   if (ev.target.id === 'export-csv') exportCSV();
   if (ev.target.id === 'import') document.getElementById('import-file').click();
@@ -2882,6 +3002,73 @@ document.addEventListener('change', (ev) => {
    that appends rows to a private "Feedback" sheet. Empty URL = not yet
    deployed; falls back to opening a GitHub issue. */
 const FEEDBACK_URL = '';   // paste the Feedback.gs web-app URL after deploying
+/* ---------- Downloadable PDF report ----------
+   Builds a printable summary of ALL the user's data into #print-report and
+   calls window.print(). On Android WebView / mobile the print sheet offers
+   "Save as PDF"; on desktop the browser print dialog does. Fully offline. */
+function downloadReport() {
+  const e = DB.entries();
+  const dates = Object.keys(e).sort();
+  if (!dates.length) { toast('Log a day or two first — nothing to report yet', true); return; }
+  const num = (arr, k) => { const v = arr.map(d => e[d][k]).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? (v.reduce((a, b) => a + +b, 0) / v.length) : null; };
+  const fmt = (v, d = 1) => v == null ? '–' : (+v).toFixed(d);
+  const last30 = []; for (let i = 29; i >= 0; i--) last30.push(addDays(todayStr(), -i));
+
+  // Polymath 30-day
+  const pm30 = last30.map(d => e[d] ? polymath(e[d]) : null).filter(Boolean);
+  const pmAvg = pm30.length ? Math.round(pm30.reduce((a, p) => a + p.total, 0) / pm30.length) : null;
+
+  // Habit consistency (last 30d)
+  const habitRows = HABITS.map(h => {
+    const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
+    return `<tr><td>${h.emoji} ${escapeHtml(h.label)}</td><td>${hits}/30</td><td>${Math.round(hits / 30 * 100)}%</td><td>🔥 ${habitStreak(h.key)}</td></tr>`;
+  }).join('');
+
+  // Time totals (last 30d)
+  const tt = {}; last30.forEach(d => segsForDay(d).forEach(({ seg, a, b }) => { tt[seg.act] = (tt[seg.act] || 0) + (b - a); }));
+  const timeRows = Object.keys(tt).sort((x, y) => tt[y] - tt[x]).map(id => { const act = actById(id);
+    return `<tr><td>${act.emoji} ${escapeHtml(act.name)}</td><td>${fmtDur(tt[id])}</td><td>${fmtDur(tt[id] / 30)}/day</td></tr>`; }).join('');
+
+  // Deep-log averages: scales (out of 10) + numbers
+  const scaleRows = [], numRows = [];
+  deepCfg().filter(s => !s.hidden).forEach(sec => {
+    (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(dates, f.key); if (a != null) scaleRows.push(`<tr><td>${escapeHtml(f.label)}</td><td>${fmt(a)} / 10</td></tr>`); });
+    (sec.nums || []).filter(f => !f.hidden).forEach(f => { const a = num(dates, f.key); if (a != null) numRows.push(`<tr><td>${escapeHtml(f.label)}</td><td>${fmt(a)}</td></tr>`); });
+  });
+
+  // Gym + pomodoro
+  const gym = DB.gym(); const workouts = Object.keys(gym).filter(d => Object.values(gym[d].done || {}).some(Boolean)).length;
+  const pomo = DB.pomo(); const pomoToday = pomo ? pomoDoneToday(pomo) : 0;
+  const name = (DB.settings().name || '').trim();
+  const tbl = (head, rows, cols) => rows ? `<h3>${head}</h3><table><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>` : '';
+
+  document.getElementById('print-report').innerHTML = `
+    <div class="rep">
+      <div class="rep-head"><div class="rep-fire">🔥</div><div>
+        <div class="rep-title">Daily Pulse — Report</div>
+        <div class="rep-meta">${name ? escapeHtml(name) + ' · ' : ''}${prettyDate(todayStr())} · ${dates.length} days logged</div></div></div>
+      ${pmAvg != null ? `<div class="rep-score">Polymath Index (30-day avg): <b>${pmAvg}/100</b></div>` : ''}
+      <h3>Overview</h3>
+      <table><tbody>
+        <tr><td>Current streak</td><td>🔥 ${loggedStreak()} days</td></tr>
+        <tr><td>Best streak</td><td>${longestLoggedStreak()} days</td></tr>
+        <tr><td>Avg mood / energy</td><td>${fmt(num(dates,'mood'))} / ${fmt(num(dates,'energy'))} (of 10)</td></tr>
+        <tr><td>Avg sleep / deep-work</td><td>${fmt(num(dates,'sleepHours'))}h / ${fmt(num(dates,'deepWorkHours'))}h</td></tr>
+        <tr><td>Workouts logged</td><td>💪 ${workouts} · streak ${gymStreak()}</td></tr>
+        <tr><td>Pomodoros today</td><td>🍅 ${pomoToday}</td></tr>
+      </tbody></table>
+      ${tbl('Habit consistency (last 30 days)', habitRows, ['Habit','Days','%','Streak'])}
+      ${tbl('Where your time goes (last 30 days)', timeRows, ['Activity','Total','Average'])}
+      ${tbl('Wellbeing &amp; focus (all-time avg)', scaleRows.join(''), ['Metric','Average'])}
+      ${tbl('Tracked numbers (all-time avg)', numRows.join(''), ['Metric','Average'])}
+      <div class="rep-foot">Generated by Daily Pulse · private &amp; offline · ${APP_VERSION}</div>
+    </div>`;
+  document.body.classList.add('printing');
+  toast('Opening print — choose "Save as PDF" 📄');
+  setTimeout(() => { window.print(); }, 350);
+}
+window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); });
+
 function sendFeedback(text, contact) {
   if (!FEEDBACK_URL) {
     window.open('https://github.com/kishore2494/daily-pulse/issues/new?title=' + encodeURIComponent('Feedback') + '&body=' + encodeURIComponent(text), '_blank');
@@ -2889,8 +3076,7 @@ function sendFeedback(text, contact) {
   }
   fetch(FEEDBACK_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ text, contact, version: APP_VERSION, ua: navigator.userAgent.slice(0, 120) }) }).catch(() => {});
-  document.getElementById('fb-text').value = '';
-  document.getElementById('fb-contact').value = '';
+  const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
   toast('Thank you! Feedback sent 💛');
 }
 
@@ -3312,6 +3498,7 @@ const NAV_DEF = [
   { k: 'notes',    ico: '🗒️', label: 'Notes' },
   { k: 'plans',    ico: '📋', label: 'Plans' },
   { k: 'focus',    ico: '🍅', label: 'Focus',   primary: true },
+  { k: 'waves',    ico: '🧠', label: 'Waves' },
   { k: 'gym',      ico: '💪', label: 'Gym' },
   { k: 'habits',   ico: '🔥', label: 'Habits' },
   { k: 'dash',     ico: '📊', label: 'Stats',   primary: true },
@@ -3380,7 +3567,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const sec = document.getElementById('s-' + name);

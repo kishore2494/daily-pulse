@@ -20,3 +20,11 @@ Per user: don't force 5 pinned tabs — let them choose how many. Removed MAX_PR
 
 ## 2026-07-25 — Deep-log: add whole new sections (v58)
 Customize ▸ Deep log now has a "New section…" input (emoji-aware) + delete (×) on custom sections (ids `cs*`). Previously you could only add FIELDS to existing sections. New sections render on Log; their scale (1-10) fields flow into Stats wellbeing averages. Verified end-to-end.
+
+## 2026-07-26 — Big customize/stats/report/waves batch (v59)
+- Customize is now a HUB of cards (customPage state) → each opens its own sub-page (tabs/log/habits/acts/deep/gym/theme).
+- Settings reorganized into menu-rows (Customize / Download report / History / How-to). Sync & login HIDDEN behind `SHOW_SYNC=false` (kept for a future paid feature). ntfy already native-hidden. Feedback: email field removed (goes to owner-only Feedback.gs sheet).
+- Nav active tab: stronger highlight (accent-gradient pill + top indicator bar + bold white label).
+- Stats completeness: added 🔢 Tracked-numbers card (numeric deep-log field averages) + 🍅 pomodoro-today stat. (Custom habits/activities/scale-fields already flowed in.)
+- NEW **Waves** tab: binaural-beat generator (`dp.waves`), 5 presets, ChannelMerger L/R oscillators, auto-stop timer + volume. Non-primary tab (lives in More).
+- NEW **Download report (PDF)**: `downloadReport()` builds #print-report + window.print() → Save as PDF (offline). Print CSS hides the app while printing.
