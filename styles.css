@@ -634,12 +634,22 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .menu-sub { font-size: 12px; color: var(--text-faint); }
 .menu-go { color: var(--text-faint); font-size: 22px; flex: 0 0 auto; }
 
-/* ---------- v59: printable PDF report ---------- */
+/* ---------- v59: report overlay + printable PDF ---------- */
 #print-report { display: none; }
+/* On-screen: when reporting, show the report as a full-screen white overlay */
+body.reporting #print-report {
+  display: block; position: fixed; inset: 0; z-index: 200; overflow-y: auto;
+  background: #fff; color: #111; padding: 20px 16px calc(90px + var(--safe-bottom));
+  -webkit-overflow-scrolling: touch;
+}
+body.reporting .app, body.reporting .nav, body.reporting .toast { display: none !important; }
+.rep-actions {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 201; display: flex; gap: 10px;
+  padding: 12px 16px calc(12px + var(--safe-bottom)); background: #fff; border-top: 1px solid #ddd;
+}
 @media print {
-  body.printing .app, body.printing .nav, body.printing .toast, body.printing #onboard { display: none !important; }
-  body.printing::before, body.printing::after { display: none !important; }
-  body.printing #print-report { display: block; }
+  body::before, body::after { display: none !important; }
+  body.reporting .rep-actions { display: none !important; }
   body { background: #fff !important; }
 }
 #print-report .rep { color: #111; font-family: 'DM Sans', system-ui, sans-serif; padding: 8px 4px; max-width: 720px; margin: 0 auto; }
