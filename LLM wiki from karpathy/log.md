@@ -32,3 +32,6 @@ Customize ▸ Deep log now has a "New section…" input (emoji-aware) + delete (
 ## 2026-07-26 — Fixes (v60)
 - Settings menu rows: navigated only when the arrow was tapped (handlers used `ev.target.id===` which missed child spans) → switched to `ev.target.closest('#id')`; whole row is tappable now.
 - PDF report printed the Settings page instead of the report (print-media class timing). Reworked: report now shows as an on-screen full-screen overlay (`body.reporting`, #print-report) with its own "Save as PDF / Print" + Close buttons; print CSS just hides the action bar. Reliable + testable.
+
+## 2026-07-26 — Marketing landing page
+Added landing.html (showcase front page: hero + phone shot, 9-feature grid, screenshot gallery from guide/img, privacy banner, CTAs). Served at /daily-pulse/landing.html — use as the Play Console website URL (can't be the app root, that's the PWA). Reuses guide/img screenshots.
