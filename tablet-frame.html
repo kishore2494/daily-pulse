@@ -1,0 +1,36 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1920px;height:1200px;overflow:hidden;background:#070b14;font-family:'Sora',sans-serif;position:relative}
+body::before{content:'';position:absolute;inset:0;background:radial-gradient(50% 60% at 12% 0%,rgba(109,140,255,.28),transparent 60%),radial-gradient(46% 60% at 96% 100%,rgba(74,214,192,.20),transparent 60%)}
+.wrap{position:relative;height:100%;display:flex;align-items:center;gap:70px;padding:0 110px}
+.left{flex:1;max-width:720px}
+.eyebrow{display:inline-block;font-family:'DM Sans';font-weight:600;font-size:26px;color:#b9c8ff;background:rgba(109,140,255,.14);border:1px solid rgba(109,140,255,.34);border-radius:999px;padding:10px 22px;margin-bottom:30px}
+h1{font-size:82px;line-height:1.04;letter-spacing:-2px;font-weight:800;background:linear-gradient(96deg,#fff 25%,#b9c8ff 72%,#8fd8cd 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+p{font-family:'DM Sans';font-weight:500;font-size:32px;color:#93a0b8;margin-top:26px;max-width:640px}
+.tags{display:flex;gap:16px;margin-top:40px;flex-wrap:wrap}
+.tag{font-family:'DM Sans';font-weight:600;font-size:24px;color:#c4d1ff;border:1px solid #31405f;background:rgba(255,255,255,.05);border-radius:999px;padding:12px 24px}
+.phones{flex:0 0 auto;display:flex;gap:36px;align-items:center}
+.phones img{width:360px;height:760px;object-fit:cover;object-position:top;border-radius:40px;border:10px solid #0d1424;box-shadow:0 40px 90px rgba(0,0,0,.6)}
+.p1{transform:rotate(-4deg)}
+.p2{transform:rotate(4deg);margin-top:60px}
+</style></head>
+<body><div class="wrap">
+<div class="left">
+  <span class="eyebrow" id="eb">🔒 Private · Offline · Free</span>
+  <h1 id="h"></h1><p id="s"></p>
+  <div class="tags"><span class="tag">No account</span><span class="tag">Works offline</span><span class="tag">Fully customizable</span></div>
+</div>
+<div class="phones"><img class="p1" id="i1"><img class="p2" id="i2"></div>
+</div>
+<script>
+const sets={
+ '1':{h:'Your whole life in one private tracker',s:'Habits, mood, journal, gym and focus — all in one calm app that never leaves your phone.',a:'guide/img/today.png',b:'guide/img/dash.png'},
+ '2':{h:'See where your time really goes',s:'Tap to start, tap to switch. Your whole day on a 24-hour timeline — plus Pomodoro and brainwave focus.',a:'guide/img/time.png',b:'guide/img/cal.png'},
+ '3':{h:'Make it completely yours',s:'Rename, recolour, reorder or hide every habit, field, workout and tab. The app adapts to you.',a:'guide/img/habits.png',b:'guide/img/write.png'}
+};
+const q=new URLSearchParams(location.search).get('set')||'1';const d=sets[q];
+document.getElementById('h').textContent=d.h;document.getElementById('s').textContent=d.s;
+document.getElementById('i1').src=d.a;document.getElementById('i2').src=d.b;
+</script></body></html>
