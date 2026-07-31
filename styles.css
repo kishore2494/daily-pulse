@@ -679,3 +679,40 @@ body.reporting .app, body.reporting .nav, body.reporting .toast { display: none 
 .wave-use { font-size: 12px; color: var(--text-dim); }
 .wave-state { margin-top: 6px; font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--c); }
 .wave-card.on .wave-state { animation: ttblink 1.2s ease-in-out infinite; }
+
+/* ---------- v61: theme MODES (light / black) + horizontal-overflow clamp ---------- */
+/* stop stray right-scroll on any screen (clip keeps the sticky topbar working) */
+.app { overflow-x: clip; }
+.screen { overflow-x: clip; }
+img, svg, table, pre, .chart { max-width: 100%; }
+
+/* mode selector UI */
+.mode-row { display: flex; gap: 8px; }
+.mode-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 6px;
+  border: 1px solid var(--border); background: rgba(127,127,127,.06); color: var(--text); border-radius: 13px;
+  font-family: var(--font-display); font-weight: 650; font-size: 13px; cursor: pointer; transition: .15s; }
+.mode-btn.on { border-color: var(--accent); box-shadow: var(--glow-accent); }
+.mode-chip { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border-hi); }
+
+/* ===== BLACK mode (true dark / AMOLED) ===== */
+:root[data-mode="black"] {
+  --bg: #000000; --bg-elev: #0a0a0d; --bg-card: #0c0d11; --bg-card-2: #101013cc; --bg-input: #060608;
+  --border: #1b1c22; --border-hi: #2a2b34; --shadow-card: 0 2px 14px rgba(0,0,0,.6);
+}
+
+/* ===== LIGHT mode (everything white) ===== */
+:root[data-mode="light"] {
+  --bg: #f4f6fb; --bg-elev: #ffffff; --bg-card: #ffffff; --bg-card-2: #ffffffcc; --bg-input: #eef1f7;
+  --border: #dfe4ee; --border-hi: #cfd6e4; --text: #101626; --text-dim: #4a5570; --text-faint: #8b95ab;
+  --line: #dfe4ee; --shadow: 0 10px 34px rgba(30,42,70,.12); --shadow-card: 0 2px 12px rgba(30,42,70,.07);
+}
+/* light: fix elements that hard-code dark colours */
+:root[data-mode="light"] body::before { opacity: .5; }
+:root[data-mode="light"] body::after { opacity: .025; }
+:root[data-mode="light"] .topbar { background: linear-gradient(180deg, rgba(244,246,251,.92) 55%, transparent); }
+:root[data-mode="light"] .topbar h1 { background: linear-gradient(92deg, #1a2340 20%, #4a5db0 90%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+:root[data-mode="light"] .nav { background: rgba(255,255,255,.9); border-top-color: #e3e8f2; box-shadow: 0 -6px 24px rgba(30,42,70,.08); }
+:root[data-mode="light"] .btn-ghost { background: #eef1f7; }
+:root[data-mode="light"] .card { background: #ffffff; }
+:root[data-mode="light"] .mode-btn { background: #eef1f7; }
+:root[data-mode="light"] .streak-badge { background: linear-gradient(135deg, rgba(251,191,36,.22), rgba(248,113,113,.14)); }
