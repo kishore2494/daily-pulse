@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v60';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v61';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1980,7 +1980,11 @@ const CUSTOM_PAGES = [
 function cfgSectionHTML(page) {
   if (page === 'theme') {
     const curAccent = DB.settings().accent || 'indigo';
-    return `<div class="card"><h2>🎨 Theme colour</h2>
+    const curMode = DB.settings().mode || 'navy';
+    return `<div class="card"><h2>🌗 Appearance</h2>
+      <div class="mode-row">${THEME_MODES.map(m => `<button class="mode-btn ${m.id === curMode ? 'on' : ''}" data-thememode="${m.id}">
+        <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>
+      <div class="card"><h2>🎨 Accent colour</h2>
       <div class="theme-row">${THEMES.map(t => `<button class="theme-sw ${t.id === curAccent ? 'on' : ''}" data-theme="${t.id}"
         style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div></div>`;
   }
@@ -2238,6 +2242,8 @@ document.addEventListener('click', (ev) => {
   // ---- theme / nav / gym-group controls ----
   const th = ev.target.closest('[data-theme]');
   if (th) { const s = DB.settings(); s.accent = th.dataset.theme; DB.saveSettings(s); applyTheme(); renderCustom(); return; }
+  const tm = ev.target.closest('[data-thememode]');
+  if (tm) { const s = DB.settings(); s.mode = tm.dataset.thememode; DB.saveSettings(s); applyTheme(); renderCustom(); return; }
   const nh = ev.target.closest('[data-nav-hide]');
   if (nh) { const cfg = navCfg(); const n = cfg.find(x => x.k === nh.dataset.navHide);
     if (n && !n.noHide) { n.hidden = !n.hidden; if (n.hidden) n.primary = false; saveNavCfg(cfg); renderCustom(); } return; }
@@ -3542,7 +3548,7 @@ function renderNav() {
   document.getElementById('nav').innerHTML = btns.join('');
 }
 
-/* ---------- Theme accent (device-local, in settings) ---------- */
+/* ---------- Theme: accent colour + light/dark MODE (device-local) ---------- */
 const THEMES = [
   { id: 'indigo', a: '#6d8cff', b: '#8f7bff' },
   { id: 'teal',   a: '#2dd4bf', b: '#4ad6c0' },
@@ -3551,7 +3557,13 @@ const THEMES = [
   { id: 'green',  a: '#34d399', b: '#4ade80' },
   { id: 'red',    a: '#f87171', b: '#fb7185' },
 ];
+const THEME_MODES = [
+  { id: 'navy',  label: 'Dark (default)', chip: '#141c2e' },
+  { id: 'black', label: 'Black',          chip: '#000000' },
+  { id: 'light', label: 'Light',          chip: '#f4f6fb' },
+];
 function applyTheme() {
+  document.documentElement.setAttribute('data-mode', DB.settings().mode || 'navy');
   const t = THEMES.find(x => x.id === (DB.settings().accent || 'indigo')) || THEMES[0];
   const r = document.documentElement.style;
   r.setProperty('--accent', t.a);
