@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v63';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v64';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1469,6 +1469,51 @@ function coachReview() {
   if (mWo != null && mNo != null && mWo - mNo >= 0.5) lines.push({ t: `💡 Your mood is <b>+${(mWo - mNo).toFixed(1)}</b> higher on workout days — keep moving.`, k: 'tip' });
   return lines;
 }
+/* Universal file export. Works in a normal browser (real download) AND inside the
+   Capacitor WebView, which has no download manager: there we open Android's share
+   sheet (Save to Files/Drive/email…) and, if that's unavailable, a copy-out modal. */
+async function saveFile(filename, content, mime) {
+  const inApp = !!window.Capacitor;
+  if (navigator.canShare) {
+    try {
+      const file = new File([content], filename, { type: mime });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename });
+        toast('Choose where to save 📤'); return;
+      }
+    } catch (e) { if (e && e.name === 'AbortError') return; /* else fall through */ }
+  }
+  if (!inApp) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+    a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('Saved to your downloads'); return;
+  }
+  showCopyModal(filename, content);   // in-app, no share support → let them copy it out
+}
+function showCopyModal(filename, content) {
+  let m = document.getElementById('copy-modal');
+  if (!m) { m = document.createElement('div'); m.id = 'copy-modal'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="copy-box">
+    <div class="copy-head"><b>${escapeHtml(filename)}</b><button class="drawer-x" data-copy-close>✕</button></div>
+    <p class="hint">Here's your data. Tap <b>Copy</b> and paste it into Files, Drive, Notes or an email — or <b>Share</b> it straight to another app.</p>
+    <textarea class="copy-ta" readonly>${escapeHtml(content)}</textarea>
+    <div class="copy-actions">
+      <button class="btn btn-primary btn-sm" data-copy-do>📋 Copy</button>
+      <button class="btn btn-ghost btn-sm" data-copy-share>📤 Share</button>
+      <button class="btn btn-ghost btn-sm" data-copy-close>Close</button>
+    </div></div>`;
+  m._content = content; m._filename = filename; m.classList.add('on');
+}
+document.addEventListener('click', async (ev) => {
+  const m = document.getElementById('copy-modal'); if (!m || !m.classList.contains('on')) return;
+  if (ev.target.closest('[data-copy-close]')) { m.classList.remove('on'); return; }
+  if (ev.target.closest('[data-copy-do]')) {
+    try { await navigator.clipboard.writeText(m._content); toast('Copied ✓'); }
+    catch (e) { const ta = m.querySelector('.copy-ta'); ta.focus(); ta.select(); try { document.execCommand('copy'); toast('Copied ✓'); } catch (_) { toast('Select all and copy', true); } }
+    return;
+  }
+  if (ev.target.closest('[data-copy-share]')) { try { await navigator.share({ text: m._content, title: m._filename }); } catch (e) {} return; }
+});
 function exportCSV() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   if (!dates.length) { toast('Nothing to export yet', true); return; }
@@ -1476,8 +1521,7 @@ function exportCSV() {
   const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n]/.test(v) ? `"${v}"` : v; };
   let csv = cols.join(',') + '\n';
   dates.forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = 'daily-pulse-' + todayStr() + '.csv'; a.click(); toast('CSV exported');
+  saveFile('daily-pulse-' + todayStr() + '.csv', csv, 'text/csv');
 }
 /* ---------- Obsidian-style connections graph ----------
    Nodes: days, topics, habits. Edges link each day to its topics + habits done,
@@ -3136,11 +3180,8 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', '
 function exportData() {
   const out = { settings: DB.settings() };
   BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
-  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = 'daily-pulse-backup-' + todayStr() + '.json'; a.click();
+  saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
   localStorage.setItem('dp.lastBackup', String(Date.now()));
-  toast('Full backup downloaded');
 }
 function importData(file) {
   const r = new FileReader();
@@ -3299,10 +3340,7 @@ function exportReminderCalendar() {
       'END:VEVENT\r\n';
   });
   ics += 'END:VCALENDAR\r\n';
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
-  a.download = 'daily-pulse-reminders.ics'; a.click();
-  toast('Calendar file ready — open it to add');
+  saveFile('daily-pulse-reminders.ics', ics, 'text/calendar;charset=utf-8');
 }
 
 /* ---------- Native alarms (Capacitor shell) ----------
