@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v70';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v71';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1355,8 +1355,9 @@ document.addEventListener('click', (ev) => {
     if (!sv || !ev2) { toast('Pick both times', true); return; }
     const d0 = new Date(ttDate + 'T00:00:00').getTime();
     const toMs = t => { const [h, m] = t.split(':').map(Number); return d0 + (h * 60 + m) * 60000; };
-    const a = toMs(sv), b = toMs(ev2);
-    if (b <= a) { toast('End must be after start', true); return; }
+    const a = toMs(sv); let b = toMs(ev2);
+    if (sv === ev2) { toast('Start and end are the same', true); return; }
+    if (b <= a) b += 86400000;   // end earlier than start → it crosses midnight (e.g. 23:00 → 07:00 sleep)
     const log = DB.timelog(); const now = Date.now();
     log.push({ id: 'ts' + now, act, start: a, end: b, upd: now });
     log.sort((x, y) => x.start - y.start);
