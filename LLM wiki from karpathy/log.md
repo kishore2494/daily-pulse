@@ -1,5 +1,13 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Batch 5: Suri's feedback (v66, live)
+Tanglish tester feedback, all web (no rebuild — back button uses the already-bundled @capacitor/app plugin, confirmed `include ':capacitor-app'` in native settings.gradle). Browser-verified.
+- **Uniform habit cards:** `.habits { grid-auto-rows: 1fr }` — all cards equal height, clean grid (was ragged with multi-line labels like "Project — Space tech").
+- **No nav flash on open:** static index.html nav updated to match the default render (Log/Time/Focus/Stats/Menu) so there's no button-swap; plus `.nav{visibility:hidden}` until JS adds `.ready` after first `renderNav()`.
+- **Android back button** (`handleBack` + `@capacitor/app` `backButton` listener): closes any open overlay (drawer/copy-modal/report/exit-confirm) → else navigates to the home/default tab → else shows an "Exit Daily Pulse?" confirm (Stay/Exit; Exit → `App.exitApp()`). Ignores back while alarm ringing or onboarding.
+- **Centered Log footer:** wrapped the auto-save hint + Done button in `.log-footer` (flex column, centered).
+- Note on the screenshot: onboarding still showed 12 habits on Suri's device because that's their STORED `dp.habitcfg` from a pre-v62 install; new installs get the trimmed 4. Not a bug.
+
 ## 2026-08-02 — Batch 4: Stats redesign (v65, live) + native 101/61 uploaded
 - **v65 Stats redesign (web, live):** replaced the 17-card scroll-wall with a **segmented control** (`dashTab`: Overview / Time / Checklist) — directly answers testers' "simplify, remove clutter, separate time vs checklist". Overview = key stats + Polymath + mood/energy + insights + connections graph; Time = time analysis + sleep + deep-work + workout volume + gym breakdown; Checklist = habits + tasks + wellbeing scales + tracked numbers + mood calendar/weekday. New **`barChart(values,color,{max})`** — daily trends (mood/energy/sleep/deep-work/workout/polymath) now render as bar charts instead of line charts. Range row hidden on Checklist. Browser + screenshot verified.
 - **Native build 101/61 UPLOADED by user** to Play closed testing (was awaiting upload in batch 3). Play showed 2 harmless warnings at Preview&confirm: (1) "no longer supports 20 devices" — RECORD_AUDIO implies an `android.hardware.microphone` feature req, dropping ~20 mic-less devices (~0%, mostly TVs); safe to proceed. Optional future fix: add `<uses-feature android:name="android.hardware.microphone" android:required="false"/>` (needs rebuild → 102). (2) no-deobfuscation-file — expected, we don't obfuscate. User advised to roll out.
