@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v71';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v72';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -607,20 +607,15 @@ function saveDraftNow(date, d) {
   syncEntry(date, d);
   const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
 }
-// Persist a pending debounced save immediately (called before a manual Save so nothing is left in the timer).
-function flushAutosave() { if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; saveDraftNow(logDate, draft); } }
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
 });
 document.addEventListener('click', async (ev) => {
   if (ev.target.id !== 'save-entry') return;
-  draft.updatedAt = new Date().toISOString();
-  draft.tasks = tasksForDate(logDate);
-  DB.putEntry(logDate, draft);
+  clearTimeout(_autosaveTimer); _autosaveTimer = null;   // no stale debounced save left behind
+  saveDraftNow(logDate, draft);   // same merge-safe path as autosave (preserves gym/time fields)
   toast('Saved 🎉');
-  scheduleInactivityReminder();   // logging today slides the 2-day nudge forward
   const synced = await syncEntry(logDate, draft);
-  refreshStreak();
   if (synced) toast('Saved & synced to Sheet 🎉');
 });
 
