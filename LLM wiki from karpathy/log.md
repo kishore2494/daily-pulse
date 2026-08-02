@@ -1,5 +1,15 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Tester feedback batch 1 (v62, live)
+App is LIVE in Play closed testing; testers (Kishore's friends) sent ~25 feedback items. Batch 1 shipped (web push → both repos `kishore2494/daily-pulse` prod + `jurnal-app` origin; testers get it on next open). Browser-verified all six:
+- **Auto-save on Log** — entries persist on-the-go (700ms debounce via `autosaveDraft()` wired into scale/check/habit/num/txt handlers); Save button relabeled "Done" + "Saves automatically" hint (`.autosave-hint`/`.autosave-dot` CSS).
+- **Feedback** — opens mail (`mailto:akishorekumar2494@gmail.com`) instead of GitHub login; `sendFeedback` no longer references github. Still falls back to POST if `FEEDBACK_URL` set.
+- **Duplicate History removed** from Settings (kept in More).
+- **Mic** — `dictateInto` now `await`s `getUserMedia({audio:true})` to trigger the OS prompt; error toasts point to Settings › Apps › Permissions. Native manifest gained RECORD_AUDIO + MODIFY_AUDIO_SETTINGS (needs native rebuild+reupload to take effect in the installed app).
+- **Custom activity emoji** — `emojiSplit()` parses "🍳 Cooking" → {emoji,name}; applied to 3 activity-add sites; placeholder updated.
+- **Checklist alignment** — `.habit{min-height:52px}`; reminders row spacing.
+STILL PENDING from the batch (bigger/deferred): 5-tab nav + side drawer (recurring ask), Stats redesign, native downloads/CSV/PDF (Filesystem+Share rebuild), running-timer notification, sleep-hrs time picker, fewer default habits, professional icon set, unnamed How-to button (needs a screenshot to locate).
+
 ## 2026-07-24 — Wiki bootstrapped
 Created the wiki at v52 during an overnight autonomous QA session. Pages: architecture, features, gotchas, play-store, roadmap, schema, index. Facts verified against code (v52, 3455-line app.js, 13 nav tabs, ~24 dp.* keys). A parallel multi-agent audit was running; its verified findings + fixes are recorded in the session REPORT and folded here as applied.
 
