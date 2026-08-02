@@ -1,5 +1,14 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Autonomous session: v69 theme fixes, v70 bug-hunt fixes (live)
+- **v69 — light-theme contrast:** `.pm-score` (Polymath hero) used a `#fff→#b9c8ff` gradient invisible on white cards → now `var(--grad-accent)`. Active bottom-nav label was `#fff`, invisible on the white light-mode nav → added `:root[data-mode="light"] .nav button.on { color: var(--accent) }`. Caught in a light-mode screenshot QA. All 3 themes (navy/black/light) verified clean.
+- **v70 — fixes from a read-only bug-hunt subagent** (browser-verified):
+  - **[HIGH data-loss]** debounced `autosaveDraft` read the `draft`/`logDate` globals at *fire* time; editing a past entry then switching day/tab within 700ms lost the edit or wrote it to the wrong date. Fixed: capture `targetDate`+`targetDraft` at schedule time (loadDraft deep-clones so the ref stays intact) → `saveDraftNow(date,d)`. Added `flushAutosave()`.
+  - **[MED data-loss]** autosave blindly overwrote the whole entry, clobbering Gym/Time fields. Fixed: `saveDraftNow` preserves `workoutsDone`/`workoutDetail`/`timeSummary` from the stored entry.
+  - **[MED nav]** hardware back ignored sub-views. Fixed: `handleBack` now steps back within Write article (`curDoc`), Plan detail (`curPlan`), Gym day (`gymView`), Customize sub-page (`customPage`) before leaving the screen.
+  - **[self-XSS]** escaped config-derived labels on the Log screen (scale/num/text/checklist labels + options, habit label/emoji) — the last unescaped `innerHTML` sites.
+  - **DEFERRED (documented):** #3 timelog-merge heuristic can drop a device's un-pushed segments — sync-gated (SHOW_SYNC=false), fold into the existing sync-hardening item. #6 manual "forgot to track" block can't cross midnight (`b<=a` rejected). #7 two reminders at the same minute: the 2nd is marked notified but `fireAlarm` early-returns if the overlay's already up → never rings. #8 the v68 surgical habit tap doesn't live-refresh the `🔥streak` badge (self-heals on next full render). Bug-hunt confirmed all other user free-text is consistently escaped; SW + pomodoro math sound.
+
 ## 2026-08-02 — Autonomous session: v67 how-to, v68 smoothness (live)
 User asked to "go hard" autonomously for a few hours with backups. Backup: tag `backup-v66-live` + branch `backup/v66-autonomous` (pushed) + `.backups/v66-<sha>/`.
 - **v67 — How-to "unnamed button" fixed:** the guide opened via `target="_blank"`, which inside the installed WebView spawned an in-app browser whose **unlabeled close button** was the "unnamed button" testers saw. Now the menu row (`app.js` ~2916) opens `guide.html` in-place (no `_blank`), and `guide.html` has a sticky, clearly-labeled "← Back to Daily Pulse" bar at the top (plus the existing bottom CTA).
