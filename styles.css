@@ -716,3 +716,13 @@ img, svg, table, pre, .chart { max-width: 100%; }
 :root[data-mode="light"] .card { background: #ffffff; }
 :root[data-mode="light"] .mode-btn { background: #eef1f7; }
 :root[data-mode="light"] .streak-badge { background: linear-gradient(135deg, rgba(251,191,36,.22), rgba(248,113,113,.14)); }
+
+/* ---------- v62: tester feedback batch 1 ---------- */
+.autosave-hint { text-align: center; font-size: 12px; color: var(--text-faint); margin: 6px 0 10px; }
+.autosave-dot { color: var(--good); font-weight: 700; margin-left: 4px; opacity: 0; transition: opacity .2s; }
+.autosave-dot.show { opacity: 1; }
+/* even out checklist chip heights so 1-line and 2-line items align in the grid */
+.habit { min-height: 52px; }
+/* reminders: let each row breathe on narrow screens */
+.rem-body { row-gap: 6px; }
+.rem-body input[type=time] { max-width: 120px; }
