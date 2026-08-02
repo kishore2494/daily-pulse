@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v69';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v70';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -455,23 +455,23 @@ function scaleField(key, label, required) {
   const v = draft[key];
   let btns = '';
   for (let i = 1; i <= 10; i++) btns += `<button type="button" class="${v===i?'on':''}" data-scale="${key}" data-val="${i}">${i}</button>`;
-  return `<div class="field"><label>${label} ${required?'<span class="req">*</span>':''}</label>
+  return `<div class="field"><label>${escapeHtml(label)} ${required?'<span class="req">*</span>':''}</label>
     <div class="scale">${btns}</div>
     <div class="scale-labels"><span>low</span><span>high</span></div></div>`;
 }
 function numField(f) {
-  return `<div class="field"><label>${f.label}</label>
+  return `<div class="field"><label>${escapeHtml(f.label)}</label>
     <input type="number" step="${f.step||1}" inputmode="decimal" data-num="${f.key}" value="${draft[f.key]??''}"></div>`;
 }
 function txtField(f) {
-  return `<div class="field"><label>${f.label}</label>
+  return `<div class="field"><label>${escapeHtml(f.label)}</label>
     <textarea data-txt="${f.key}" placeholder="optional">${escapeHtml(draft[f.key]||'')}</textarea></div>`;
 }
 function checksField(f) {
   const sel = draft[f.key] || {};
   const chips = f.options.map(o => `<div class="habit ${sel[o]?'on':''}" data-check="${f.key}" data-opt="${escapeHtml(o)}">
-    <span class="check">✓</span><span>${o}</span></div>`).join('');
-  return `<div class="field"><label>${f.label}</label><div class="habits">${chips}</div></div>`;
+    <span class="check">✓</span><span>${escapeHtml(o)}</span></div>`).join('');
+  return `<div class="field"><label>${escapeHtml(f.label)}</label><div class="habits">${chips}</div></div>`;
 }
 
 let openSections = new Set();
@@ -500,8 +500,8 @@ function renderToday() {
     const st = habitStreak(h.key);
     const style = h.color ? `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}` : '';
     return `<div class="habit ${on?'on':''}" data-habit="${h.key}" style="${style}">
-      <span class="check">✓</span><span class="emoji">${h.emoji}</span>
-      <span>${h.label}</span>${st>1?`<span class="streak">🔥${st}</span>`:''}</div>`;
+      <span class="check">✓</span><span class="emoji">${escapeHtml(h.emoji)}</span>
+      <span>${escapeHtml(h.label)}</span>${st>1?`<span class="streak">🔥${st}</span>`:''}</div>`;
   }).join('');
 
   // Core fields come from the user's config (Customize ▸ Log screen fields)
@@ -588,16 +588,27 @@ document.addEventListener('input', (ev) => {
 let _autosaveTimer;
 function autosaveDraft() {
   clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(() => {
-    draft.updatedAt = new Date().toISOString();
-    draft.tasks = tasksForDate(logDate);
-    DB.putEntry(logDate, draft);
-    refreshStreak();
-    scheduleInactivityReminder();
-    syncEntry(logDate, draft);
-    const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
-  }, 700);
+  // Capture the target date + draft object NOW. loadDraft() reassigns the `draft`/`logDate`
+  // globals when you switch day or tab, and the deep-clone means this reference stays intact —
+  // so a pending save always lands on the entry it was actually editing (no cross-day loss).
+  const targetDate = logDate, targetDraft = draft;
+  _autosaveTimer = setTimeout(() => { _autosaveTimer = null; saveDraftNow(targetDate, targetDraft); }, 700);
 }
+function saveDraftNow(date, d) {
+  d.updatedAt = new Date().toISOString();
+  d.tasks = tasksForDate(date);
+  // Preserve fields owned by other flows (Gym writes workoutsDone/workoutDetail, Time writes
+  // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot.
+  const existing = DB.entry(date) || {};
+  ['workoutsDone', 'workoutDetail', 'timeSummary'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
+  DB.putEntry(date, d);
+  refreshStreak();
+  scheduleInactivityReminder();
+  syncEntry(date, d);
+  const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
+}
+// Persist a pending debounced save immediately (called before a manual Save so nothing is left in the timer).
+function flushAutosave() { if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; saveDraftNow(logDate, draft); } }
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
 });
@@ -3726,11 +3737,16 @@ function handleBack() {
   if (document.body.classList.contains('reporting')) { document.body.classList.remove('reporting'); return; }
   const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;   // don't let back dismiss a ringing alarm
   const onboard = document.getElementById('onboard'); if (onboard && onboard.classList.contains('on')) return;
-  // 2) not on the home tab → go back to it
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
+  // 2) step back within a screen's sub-view first (mirror the on-screen "← back" buttons)
+  if (cur === 'write' && curDoc) { curDoc = null; renderWrite(); return; }
+  if (cur === 'plans' && curPlan) { curPlan = null; renderPlans(); return; }
+  if (cur === 'gym' && gymView === 'day') { gymView = 'home'; renderGym(); return; }
+  if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
+  // 3) not on the home tab → go back to it
   const home = defaultTab();
   if (cur !== home) { navigateTo(home); return; }
-  // 3) already home → confirm exit
+  // 4) already home → confirm exit
   showExitConfirm();
 }
 (function setupBackButton() {
