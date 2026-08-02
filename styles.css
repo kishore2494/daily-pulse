@@ -139,7 +139,7 @@ textarea { resize: vertical; min-height: 64px; }
 .scale-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 5px; }
 
 /* Habit chips */
-.habits { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.habits { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; grid-auto-rows: 1fr; }
 .habit {
   display: flex; align-items: center; gap: 9px; padding: 12px 13px;
   background: var(--bg-input); border: 1px solid var(--border); border-radius: 13px;
@@ -781,3 +781,11 @@ img, svg, table, pre, .chart { max-width: 100%; }
   padding: 9px 6px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
 .seg-btn.on { background: var(--grad-accent, var(--accent)); color: #fff; box-shadow: var(--glow-accent); }
 .chart-bar { height: 118px; }
+
+/* ---------- v66: nav flash fix, centered log footer, exit confirm ---------- */
+.nav { visibility: hidden; }          /* revealed by JS once the correct tabs are rendered */
+.nav.ready { visibility: visible; }
+.log-footer { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 6px; }
+.log-footer .btn { min-width: 160px; }
+.confirm-box { text-align: center; }
+.confirm-box h2 { margin-bottom: 4px; }

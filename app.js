@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v65';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v66';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -549,8 +549,10 @@ function renderToday() {
       <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${escapeHtml(draft.weekWins||'')}</textarea></div>
       <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''}
 
-    <div class="autosave-hint">✓ Saves automatically as you go <span id="autosave-dot" class="autosave-dot"></span></div>
-    <button class="btn btn-ghost" id="save-entry">Done</button>
+    <div class="log-footer">
+      <div class="autosave-hint">✓ Saves automatically as you go <span id="autosave-dot" class="autosave-dot"></span></div>
+      <button class="btn btn-ghost" id="save-entry">Done</button>
+    </div>
     <div style="height:14px"></div>
   `;
 }
@@ -3687,6 +3689,47 @@ document.getElementById('drawer-list').addEventListener('click', (ev) => {
   closeDrawer(); navigateTo(b.dataset.screen);
 });
 
+/* ---------- Android hardware back button ----------
+   Close any open overlay first → else step back to the default tab →
+   else ask before exiting (via the already-bundled @capacitor/app plugin). */
+function showExitConfirm() {
+  let m = document.getElementById('confirm-exit');
+  if (!m) { m = document.createElement('div'); m.id = 'confirm-exit'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="copy-box confirm-box">
+    <h2>Exit Daily Pulse?</h2>
+    <p class="hint">Your day is saved automatically — nothing will be lost.</p>
+    <div class="copy-actions" style="justify-content:center">
+      <button class="btn btn-ghost btn-sm" data-exit-cancel>Stay</button>
+      <button class="btn btn-primary btn-sm" data-exit-yes>Exit</button>
+    </div></div>`;
+  m.classList.add('on');
+}
+document.addEventListener('click', (ev) => {
+  const m = document.getElementById('confirm-exit'); if (!m || !m.classList.contains('on')) return;
+  if (ev.target.closest('[data-exit-cancel]')) { m.classList.remove('on'); return; }
+  if (ev.target.closest('[data-exit-yes]')) { const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App; if (App && App.exitApp) App.exitApp(); else m.classList.remove('on'); }
+});
+function handleBack() {
+  // 1) an open overlay always closes first
+  const drawer = document.getElementById('drawer');
+  if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
+  const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
+  const ce = document.getElementById('confirm-exit'); if (ce && ce.classList.contains('on')) { ce.classList.remove('on'); return; }
+  if (document.body.classList.contains('reporting')) { document.body.classList.remove('reporting'); return; }
+  const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;   // don't let back dismiss a ringing alarm
+  const onboard = document.getElementById('onboard'); if (onboard && onboard.classList.contains('on')) return;
+  // 2) not on the home tab → go back to it
+  const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
+  const home = defaultTab();
+  if (cur !== home) { navigateTo(home); return; }
+  // 3) already home → confirm exit
+  showExitConfirm();
+}
+(function setupBackButton() {
+  const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (App && App.addListener) App.addListener('backButton', handleBack);
+})();
+
 /* ---------- Theme: accent colour + light/dark MODE (device-local) ---------- */
 const THEMES = [
   { id: 'indigo', a: '#6d8cff', b: '#8f7bff' },
@@ -3868,6 +3911,7 @@ document.addEventListener('click', (ev) => {
 cleanNotifiedFlags();
 applyTheme();
 renderNav();
+document.getElementById('nav').classList.add('ready');   // reveal the bar now that the correct tabs are rendered (no flash)
 refreshStreak();
 navigateTo(defaultTab());
 if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); renderOnboard(); }
