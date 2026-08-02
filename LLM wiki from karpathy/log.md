@@ -1,5 +1,12 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Autonomous session: v67 how-to, v68 smoothness (live)
+User asked to "go hard" autonomously for a few hours with backups. Backup: tag `backup-v66-live` + branch `backup/v66-autonomous` (pushed) + `.backups/v66-<sha>/`.
+- **v67 — How-to "unnamed button" fixed:** the guide opened via `target="_blank"`, which inside the installed WebView spawned an in-app browser whose **unlabeled close button** was the "unnamed button" testers saw. Now the menu row (`app.js` ~2916) opens `guide.html` in-place (no `_blank`), and `guide.html` has a sticky, clearly-labeled "← Back to Daily Pulse" bar at the top (plus the existing bottom CTA).
+- Confirmed already-built (discoverability, not missing): **timer start alert** (▶ toast in `startAct`) + **ongoing timer notification** (`refreshTimerNotif` schedules an ongoing LocalNotification w/ Pause/Stop, native + POST_NOTIFICATIONS); **custom deep-log** sections/fields (Customize ▸ Deep log, `cfg-add-deepsec`). The side drawer (v63) improves discovery.
+- **v68 — smoother Log + accessibility:** scale/checklist/habit taps now do **surgical class toggles** instead of `renderToday()` full rebuilds — kills the flicker/scroll-jump on the most common interactions (the "not smooth vs Focus Plant" feel). Added `@media (prefers-reduced-motion: reduce)` + `scroll-behavior:smooth`. Browser-verified taps persist correctly.
+- QA: no horizontal overflow on any screen (today/time/dash/habits/gym/history/settings/cal/write all 0px); **light theme verified fully light** via screenshot (white bg/cards, dark text, centered footer, working time picker) — resolves the earlier "make it fully white" ask. A read-only bug-hunt subagent ran over app.js in parallel.
+
 ## 2026-08-02 — Batch 5: Suri's feedback (v66, live)
 Tanglish tester feedback, all web (no rebuild — back button uses the already-bundled @capacitor/app plugin, confirmed `include ':capacitor-app'` in native settings.gradle). Browser-verified.
 - **Uniform habit cards:** `.habits { grid-auto-rows: 1fr }` — all cards equal height, clean grid (was ragged with multi-line labels like "Project — Space tech").
