@@ -214,7 +214,7 @@ textarea { resize: vertical; min-height: 64px; }
 .pm-score {
   font-family: var(--font-display);
   font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1;
-  background: linear-gradient(120deg, #fff 30%, #b9c8ff 80%);
+  background: var(--grad-accent);   /* accent gradient shows on both dark AND light themes (was #fff→blue, invisible on white) */
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
 .pm-out { font-size: 17px; font-weight: 600; color: var(--text-dim); letter-spacing: 0; -webkit-text-fill-color: var(--text-dim); }
@@ -712,6 +712,7 @@ img, svg, table, pre, .chart { max-width: 100%; }
 :root[data-mode="light"] .topbar { background: linear-gradient(180deg, rgba(244,246,251,.92) 55%, transparent); }
 :root[data-mode="light"] .topbar h1 { background: linear-gradient(92deg, #1a2340 20%, #4a5db0 90%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 :root[data-mode="light"] .nav { background: rgba(255,255,255,.9); border-top-color: #e3e8f2; box-shadow: 0 -6px 24px rgba(30,42,70,.08); }
+:root[data-mode="light"] .nav button.on { color: var(--accent); }   /* white label was invisible on the white light-mode nav */
 :root[data-mode="light"] .btn-ghost { background: #eef1f7; }
 :root[data-mode="light"] .card { background: #ffffff; }
 :root[data-mode="light"] .mode-btn { background: #eef1f7; }
