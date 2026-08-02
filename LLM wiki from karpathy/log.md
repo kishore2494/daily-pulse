@@ -1,5 +1,14 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Autonomous session: v73 (2nd bug-hunt: edit flows) (live)
+Second read-only bug-hunt subagent covered Customize/Gym/Calendar/Reminders/Write/Focus/Waves. Fixed (browser-verified):
+- **[HIGH data-loss] Gym note lost on date-switch mid-debounce:** the gym log-input autosave read global `gymDate`/`gymDraft` at fire time (Log had this fixed, Gym didn't). Now `persistGym(silent, date, draft)` and the debounce captures `(capDate, capDraft)` at schedule time.
+- **[MED freeze] Pomodoro catch-up recursion:** `renderFocus`→`pomoAdvance`→`renderFocus` recursed one frame per elapsed phase (the `guard<20` reset every call, useless) → stack-overflow with short phases + long absence. Now a **silent bounded loop** (`pomoAdvance(true)` skips chime/toast/segments/alarm/recursion; `guard<1000`); after the loop it chimes once + schedules one alarm for the final phase. Verified: 8h away on 1-min phases survives in ~1.5s, lands on the correct future phase.
+- **[LOW-MED] Calendar event alarm w/o time:** showed ⏰ but could never ring → now requires a time when the alarm box is ticked.
+- **[LOW] Back from Customize hub:** now goes to Settings (mirrors the on-screen "← Back to Settings") instead of the home tab.
+- **Deferred (documented):** #2 web-only same-minute reminder swallow (native schedules each reminder as a separate alarm id, so testers on the app are unaffected); #4 gym `workoutsDone`/`workoutDetail` counts orphaned `dayId/exId` ticks after a day's group is reassigned in Customize (uncommon); #6 native alarm `seq++` ids can cross the reserved-700 boundary only at unrealistic reminder volume. Agent confirmed Write editor, drag-reorder, deep-log/gym config editors, waves audio, .ics export all sound.
+- Regression: normal Focus render + active-phase (no premature reconcile) + all-screens smoke = ZERO JS errors.
+
 ## 2026-08-02 — Autonomous session: v71 cross-midnight, v72 Done merge-safe + QA (live)
 - **v71:** manual "forgot to track" time block can now cross midnight (`b<=a` → `+24h`, e.g. 23:00→07:00 sleep); rejects identical start/end. (bug-hunt #6)
 - **v72:** the manual **Done** button had the same blind-`putEntry` clobber risk as autosave + left the debounced timer running → now clears the timer and routes through `saveDraftNow()`, so it preserves Gym/Time fields identically.
