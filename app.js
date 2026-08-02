@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v61';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v62';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -229,11 +229,21 @@ let _recog = null, _recogOn = false, _recogBtn = null, _userStopped = false;
 // repeated mic "ding" and no unpredictable cut-in/cut-out. `continuous = true` keeps it
 // listening through pauses on capable browsers; if the OS ends it during a long silence
 // (common on phones), the mic just turns off and you tap once to continue.
-function dictateInto(sel, btn) {
+async function dictateInto(sel, btn) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { toast('Voice input needs Chrome / Android', true); return; }
   if (_recogOn) { _userStopped = true; try { _recog && _recog.stop(); } catch (_) {} return; }   // tap again = stop
   const ta = document.querySelector(sel); if (!ta) return;
+  // Proactively request mic permission so the OS shows its ALLOW/DENY prompt (instead of a silent block).
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); }
+    catch (err) {
+      if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError'))
+        toast('Enable microphone for this app in Settings › Apps › Daily Pulse › Permissions', true);
+      else toast('Microphone unavailable', true);
+      btn.classList.remove('rec'); return;
+    }
+  }
   _userStopped = false; _recogOn = true; _recogBtn = btn; btn.classList.add('rec');
   _recog = new SR(); _recog.lang = 'en-IN'; _recog.continuous = true; _recog.interimResults = false;
   _recog.onresult = (ev) => {
@@ -242,7 +252,7 @@ function dictateInto(sel, btn) {
     txt = txt.trim();
     if (txt) { ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '') + txt; ta.dispatchEvent(new Event('input', { bubbles: true })); }
   };
-  _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Mic permission blocked', true); };
+  _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow microphone in Settings › Apps › Daily Pulse › Permissions', true); };
   _recog.onend = () => {                       // NO auto-restart — purely manual
     _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null;
     if (!_userStopped) toast('Mic paused — tap 🎤 to continue');
@@ -538,7 +548,8 @@ function renderToday() {
       <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${escapeHtml(draft.weekWins||'')}</textarea></div>
       <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''}
 
-    <button class="btn btn-primary" id="save-entry">Save ${isToday?'today':'entry'}</button>
+    <div class="autosave-hint">✓ Saves automatically as you go <span id="autosave-dot" class="autosave-dot"></span></div>
+    <button class="btn btn-ghost" id="save-entry">Done</button>
     <div style="height:14px"></div>
   `;
 }
@@ -551,16 +562,30 @@ document.addEventListener('click', (ev) => {
     const card = document.querySelector(`[data-section="${id}"]`); if (card) card.classList.toggle('collapsed');
     return; }
   const sc = ev.target.closest('[data-scale]');
-  if (sc) { draft[sc.dataset.scale] = +sc.dataset.val; renderToday(); return; }
+  if (sc) { draft[sc.dataset.scale] = +sc.dataset.val; renderToday(); autosaveDraft(); return; }
   const ck = ev.target.closest('[data-check]');
-  if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o]; renderToday(); return; }
+  if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o]; renderToday(); autosaveDraft(); return; }
   const hb = ev.target.closest('[data-habit]');
-  if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k]; renderToday(); return; }
+  if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k]; renderToday(); autosaveDraft(); return; }
 });
 document.addEventListener('input', (ev) => {
-  const n = ev.target.closest('[data-num]'); if (n) { draft[n.dataset.num] = n.value === '' ? '' : +n.value; return; }
-  const t = ev.target.closest('[data-txt]'); if (t) { draft[t.dataset.txt] = t.value; return; }
+  const n = ev.target.closest('[data-num]'); if (n) { draft[n.dataset.num] = n.value === '' ? '' : +n.value; autosaveDraft(); return; }
+  const t = ev.target.closest('[data-txt]'); if (t) { draft[t.dataset.txt] = t.value; autosaveDraft(); return; }
 });
+/* Auto-save the Log draft as you go (debounced) — no need to hit Save. */
+let _autosaveTimer;
+function autosaveDraft() {
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(() => {
+    draft.updatedAt = new Date().toISOString();
+    draft.tasks = tasksForDate(logDate);
+    DB.putEntry(logDate, draft);
+    refreshStreak();
+    scheduleInactivityReminder();
+    syncEntry(logDate, draft);
+    const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
+  }, 700);
+}
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
 });
@@ -1310,7 +1335,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'tt-newact-add') {
     const inp = document.getElementById('tt-newact'); const name = inp.value.trim(); if (!name) return;
     const acts = DB.timeacts();
-    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
     DB.saveTimeacts(acts); renderTime(); toast(`"${name}" added`); return;
   }
 });
@@ -2029,7 +2054,7 @@ function cfgSectionHTML(page) {
       <h2>⏱ Time activities <span class="hint">emoji · name · color · 👁</span></h2>
       <div id="cfg-acts">${actCfg().map(a => cfgRow('a', a, false)).join('')}${DB.timeacts().map(a => cfgRow('c', a, true)).join('')}</div>
       <div class="task-add">
-        <input type="text" id="cfg-new-act" placeholder="New activity… (e.g. Cooking)" autocomplete="off">
+        <input type="text" id="cfg-new-act" placeholder="New activity… (e.g. 🍳 Cooking)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="cfg-add-act">Add</button>
       </div></div>`;
   }
@@ -2169,7 +2194,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'cfg-add-act') {
     const inp = document.getElementById('cfg-new-act'); const name = inp.value.trim(); if (!name) return;
     const acts = DB.timeacts();
-    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
     DB.saveTimeacts(acts); renderCustom(); toast('Activity added'); return;
   }
   const cc = ev.target.closest('[data-cfg-color]');
@@ -2806,8 +2831,6 @@ function renderSettings() {
         <span class="menu-txt"><span class="menu-lbl">Customize</span><span class="menu-sub">tabs, habits, log fields, gym, deep log, theme</span></span><span class="menu-go">›</span></button>
       <button class="menu-row" id="open-report"><span class="menu-ico">📄</span>
         <span class="menu-txt"><span class="menu-lbl">Download report (PDF)</span><span class="menu-sub">your full stats as a printable report</span></span><span class="menu-go">›</span></button>
-      <button class="menu-row" id="open-history"><span class="menu-ico">🕘</span>
-        <span class="menu-txt"><span class="menu-lbl">History</span><span class="menu-sub">every day you've logged</span></span><span class="menu-go">›</span></button>
       <a class="menu-row" href="guide.html" target="_blank" rel="noopener"><span class="menu-ico">📖</span>
         <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
@@ -3007,7 +3030,8 @@ document.addEventListener('change', (ev) => {
    Goes to a tiny Apps Script endpoint (google-apps-script/Feedback.gs)
    that appends rows to a private "Feedback" sheet. Empty URL = not yet
    deployed; falls back to opening a GitHub issue. */
-const FEEDBACK_URL = '';   // paste the Feedback.gs web-app URL after deploying
+const FEEDBACK_URL = '';   // paste the Feedback.gs web-app URL after deploying (silent collection)
+const FEEDBACK_EMAIL = 'akishorekumar2494@gmail.com';   // fallback: opens the user's mail app (no GitHub login)
 /* ---------- Downloadable PDF report ----------
    Builds a printable summary of ALL the user's data into #print-report and
    calls window.print(). On Android WebView / mobile the print sheet offers
@@ -3083,14 +3107,19 @@ document.addEventListener('click', (ev) => {
 window.addEventListener('afterprint', () => { /* keep overlay open so they can re-print or close */ });
 
 function sendFeedback(text, contact) {
-  if (!FEEDBACK_URL) {
-    window.open('https://github.com/kishore2494/daily-pulse/issues/new?title=' + encodeURIComponent('Feedback') + '&body=' + encodeURIComponent(text), '_blank');
+  if (FEEDBACK_URL) {
+    fetch(FEEDBACK_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ text, contact, version: APP_VERSION, ua: navigator.userAgent.slice(0, 120) }) }).catch(() => {});
+    const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
+    toast('Thank you! Feedback sent 💛');
     return;
   }
-  fetch(FEEDBACK_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ text, contact, version: APP_VERSION, ua: navigator.userAgent.slice(0, 120) }) }).catch(() => {});
+  // No silent endpoint set → open the mail app to the developer (no GitHub login, no account).
+  const subject = encodeURIComponent('Daily Pulse feedback (' + APP_VERSION + ')');
+  const body = encodeURIComponent(text + '\n\n— sent from Daily Pulse ' + APP_VERSION);
+  location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + subject + '&body=' + body;
   const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
-  toast('Thank you! Feedback sent 💛');
+  toast('Opening your mail app…');
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
@@ -3625,6 +3654,7 @@ document.addEventListener('click', (ev) => {
 });
 
 function refreshStreak() { document.getElementById('streak-n').textContent = loggedStreak(); }
+function emojiSplit(raw){ raw=(raw||'').trim(); const m=raw.match(/^(\p{Extended_Pictographic}[\u{fe0f}\u{200d}\p{Extended_Pictographic}]*)\s*(.*)$/u); return (m&&m[2])?{emoji:m[1],name:m[2]}:{emoji:'⭐',name:raw}; }
 function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ============================================================
@@ -3702,7 +3732,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'ob-add-act') {
     const inp = document.getElementById('ob-new-act'); const name = (inp.value || '').trim(); if (!name) return;
     const acts = DB.timeacts();
-    acts.push({ id: 'ta' + Date.now(), emoji: '⭐', name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
+    const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
     DB.saveTimeacts(acts); renderOnboard(); return;
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
