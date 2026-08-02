@@ -5,19 +5,25 @@
 
 'use strict';
 
-const APP_VERSION = 'v63';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v62';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
    (More ▸ Customize) saves your own list to dp.habitcfg, and HABITS
    is rebuilt from it (hidden ones excluded) via reloadCfg(). */
-// A lean, universal starter set — new users see just these 4 and add their own
-// (or pick more during onboarding). Everything is editable in More ▸ Customize.
 const DEFAULT_HABITS = [
   { key: 'workout',     emoji: '💪', label: 'Workout' },
+  { key: 'faceWorkout', emoji: '😁', label: 'Face workout', color: '#fb923c' },
   { key: 'meditation',  emoji: '🧘', label: 'Meditation' },
-  { key: 'reading',     emoji: '📖', label: 'Reading' },
-  { key: 'healthyFood', emoji: '🥗', label: 'Healthy food', color: '#fb923c' },
+  { key: 'english',     emoji: '💬', label: 'Communication', color: '#fb923c' },
+  { key: 'reading',     emoji: '📖', label: 'Books / Reading' },
+  { key: 'projectAI',   emoji: '🤖', label: 'Project — AI' },
+  { key: 'projectSpace',emoji: '🚀', label: 'Project — Space tech' },
+  { key: 'healthyFood', emoji: '🥗', label: 'Healthy food only', color: '#fb923c' },
+  { key: 'posted',      emoji: '📣', label: 'Posted content' },
+  { key: 'consumed',    emoji: '🧠', label: 'Consumed useful content' },
+  { key: 'hairCare',    emoji: '💇', label: 'Hair care' },
+  { key: 'skinCare',    emoji: '🧴', label: 'Skin care' },
 ];
 function habitCfg() { const s = localStorage.getItem('dp.habitcfg'); return s ? JSON.parse(s) : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
 function saveHabitCfg(cfg) { localStorage.setItem('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
@@ -84,8 +90,8 @@ let DEEP_SECTIONS = cookDeep(deepCfg());
 const DEFAULT_CORE_FIELDS = [
   { key: 'mood',          label: 'Evening mood',                     type: 'scale' },
   { key: 'energy',        label: 'Energy level',                     type: 'scale' },
-  { key: 'sleepHours',    label: 'Sleep hrs',                        type: 'num', step: 0.5, req: true, time: true },
-  { key: 'deepWorkHours', label: 'Deep work hrs',                    type: 'num', step: 0.5, req: true, time: true },
+  { key: 'sleepHours',    label: 'Sleep hrs',                        type: 'num', step: 0.5, req: true },
+  { key: 'deepWorkHours', label: 'Deep work hrs',                    type: 'num', step: 0.5, req: true },
   { key: 'tasksDone',     label: 'Tasks done',                       type: 'num' },
   { key: 'tasksPlanned',  label: 'Tasks planned',                    type: 'num' },
   { key: 'wentWell',      label: 'One thing that went well ✨',      type: 'text' },
@@ -96,13 +102,8 @@ function coreCfg() {
   const s = localStorage.getItem('dp.corecfg');
   const cfg = s ? JSON.parse(s) : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
   DEFAULT_CORE_FIELDS.forEach(d => { if (!cfg.find(f => f.key === d.key)) cfg.push(Object.assign({}, d)); });
-  // Backfill flags added in later versions onto older stored configs (e.g. the time-picker flag).
-  cfg.forEach(f => { const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) { if (d.time && !f.time) f.time = true; if (d.step && !f.step) f.step = d.step; } });
   return cfg;
 }
-// Decimal hours ⇄ HH:MM for the clock picker. 7.5 ⇄ "07:30".
-function hoursToHM(v) { if (v === '' || v == null || isNaN(v)) return ''; const t = Math.max(0, Math.round(+v * 60)); const h = Math.floor(t / 60), m = t % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
-function hmToHours(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) return ''; return +(+m[1] + (+m[2]) / 60).toFixed(2); }
 function saveCoreCfg(cfg) { localStorage.setItem('dp.corecfg', JSON.stringify(cfg)); pushState(); }
 
 /* Default gym routine — fully editable in the Gym tab. */
@@ -511,9 +512,7 @@ function renderToday() {
   let numRows = '';
   for (let i = 0; i < coreNums.length; i += 2) {
     const cell = f => f ? `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
-      ${f.time
-        ? `<input type="time" class="time-pick" data-numtime="${f.key}" value="${hoursToHM(draft[f.key])}"><span class="time-hint">${draft[f.key] !== '' && draft[f.key] != null ? draft[f.key] + ' h' : 'hh : mm'}</span>`
-        : `<input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}">`}</div>` : '<div></div>';
+      <input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}"></div>` : '<div></div>';
     numRows += `<div class="row2">${cell(coreNums[i])}${cell(coreNums[i + 1])}</div>`;
   }
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
@@ -570,7 +569,6 @@ document.addEventListener('click', (ev) => {
   if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k]; renderToday(); autosaveDraft(); return; }
 });
 document.addEventListener('input', (ev) => {
-  const nt = ev.target.closest('[data-numtime]'); if (nt) { draft[nt.dataset.numtime] = hmToHours(nt.value); const hint = nt.parentNode.querySelector('.time-hint'); if (hint) hint.textContent = nt.value ? draft[nt.dataset.numtime] + ' h' : 'hh : mm'; autosaveDraft(); return; }
   const n = ev.target.closest('[data-num]'); if (n) { draft[n.dataset.num] = n.value === '' ? '' : +n.value; autosaveDraft(); return; }
   const t = ev.target.closest('[data-txt]'); if (t) { draft[t.dataset.txt] = t.value; autosaveDraft(); return; }
 });
@@ -1040,32 +1038,25 @@ document.addEventListener('click', async (ev) => {
   if (grp) { gymDayId = grp.dataset.day; gymView = 'day'; renderGym(); window.scrollTo(0, 0); return; }
   if (ev.target.id === 'gym-back') { gymView = 'home'; renderGym(); window.scrollTo(0, 0); return; }
   const tg = ev.target.closest('[data-ex-toggle]');
-  if (tg) { const k = dkey(gymDayId, tg.dataset.exToggle); gymDraft.done[k] = !gymDraft.done[k]; persistGym(true); renderGym(); return; }
+  if (tg) { const k = dkey(gymDayId, tg.dataset.exToggle); gymDraft.done[k] = !gymDraft.done[k]; renderGym(); return; }
   const op = ev.target.closest('[data-ex-open]');
   if (op) { const k = dkey(gymDayId, op.dataset.exOpen); if (openExr.has(k)) openExr.delete(k); else openExr.add(k); renderGym(); return; }
   if (ev.target.id === 'gym-save') {
-    const entry = persistGym(false);
+    DB.putGymDay(gymDate, gymDraft);
+    const doneIds = Object.keys(gymDraft.done).filter(k => gymDraft.done[k]);
+    const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (gymDraft.log[k] ? ` (${gymDraft.log[k]})` : ''); }).join('; ');
+    const entry = DB.entry(gymDate) || { habits: {} };
+    entry.workoutsDone = doneIds.length; entry.workoutDetail = detail;
+    entry.updatedAt = new Date().toISOString();
+    DB.putEntry(gymDate, entry);
     toast('Workout saved 💪');
     const synced = await syncEntry(gymDate, entry);
     if (synced) toast('Saved & synced 💪');
     return;
   }
 });
-// Save the gym day to storage + mirror the count/detail into the log entry. Returns the entry.
-function persistGym(silent) {
-  DB.putGymDay(gymDate, gymDraft);
-  const doneIds = Object.keys(gymDraft.done).filter(k => gymDraft.done[k]);
-  const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (gymDraft.log[k] ? ` (${gymDraft.log[k]})` : ''); }).join('; ');
-  const entry = DB.entry(gymDate) || { habits: {} };
-  entry.workoutsDone = doneIds.length; entry.workoutDetail = detail;
-  entry.updatedAt = new Date().toISOString();
-  DB.putEntry(gymDate, entry);
-  if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
-  return entry;
-}
-let _gymSaveTimer;
 document.addEventListener('input', (ev) => {
-  const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value; clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(() => persistGym(true), 700); }
+  const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value; }
 });
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
 
@@ -3541,7 +3532,7 @@ async function scheduleBackgroundNotifications() {
 }
 
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
-// Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
+// Bottom bar shows however many tabs the user pins (no hard cap) + a "More" button for the rest.
 const NAV_DEF = [
   { k: 'today',    ico: '📝', label: 'Log',     primary: true, noHide: true },
   { k: 'time',     ico: '⏱️', label: 'Time',    primary: true },
@@ -3574,53 +3565,17 @@ function defaultTab() {
   const n = navCfg().find(x => x.k === dt);
   return (n && !n.hidden) ? dt : 'today';
 }
-const NAV_PRIMARY_MAX = 4;   // bottom bar shows ≤4 pinned tabs + the Menu button = 5 slots
 function renderNav() {
   const cur = (document.querySelector('.screen.on') || {}).id || 's-today';
-  const curKey = cur.replace('s-', '');
   const items = navCfg().filter(n => !n.hidden);
-  const primary = items.filter(n => n.primary).slice(0, NAV_PRIMARY_MAX);   // hard cap so the bar never exceeds 5
+  const primary = items.filter(n => n.primary);   // user chooses how many — no cap
   const primaryKeys = new Set(primary.map(n => n.k));
   const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`);
-  // synthetic Menu button — always present, opens the side drawer with everything
-  const menuOn = (!primaryKeys.has(curKey) || document.getElementById('drawer')?.classList.contains('on')) ? 'on' : '';
-  btns.push(`<button data-screen="__menu" class="${menuOn}"><span class="ico">☰</span>Menu</button>`);
+  // synthetic More button — always present, opens the overflow grid
+  const moreOn = !primaryKeys.has(cur.replace('s-', '')) ? 'on' : '';
+  btns.push(`<button data-screen="more" class="${moreOn}"><span class="ico">⋯</span>More</button>`);
   document.getElementById('nav').innerHTML = btns.join('');
-  // Back-to-menu affordance for any screen that isn't a pinned bottom-bar tab
-  const back = document.getElementById('nav-back');
-  if (back) back.hidden = primaryKeys.has(curKey) || curKey === 'today';
 }
-
-/* ---------- Side navigation drawer ---------- */
-function renderDrawer() {
-  const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
-  const items = navCfg().filter(n => !n.hidden);
-  const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
-    <span class="drawer-ico">${n.ico}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
-    ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
-  document.getElementById('drawer-list').innerHTML = rows +
-    `<button class="drawer-row drawer-cust" data-screen="settings"><span class="drawer-ico">⚙️</span><span class="drawer-lbl">Settings &amp; customize</span></button>`;
-}
-function openDrawer() {
-  renderDrawer();
-  document.getElementById('drawer').classList.add('on');
-  document.getElementById('drawer').setAttribute('aria-hidden', 'false');
-  document.getElementById('drawer-scrim').classList.add('on');
-  renderNav();   // light up the Menu button
-}
-function closeDrawer() {
-  document.getElementById('drawer').classList.remove('on');
-  document.getElementById('drawer').setAttribute('aria-hidden', 'true');
-  document.getElementById('drawer-scrim').classList.remove('on');
-  renderNav();
-}
-document.getElementById('drawer-scrim').addEventListener('click', closeDrawer);
-document.getElementById('drawer-close').addEventListener('click', closeDrawer);
-document.getElementById('nav-back').addEventListener('click', openDrawer);
-document.getElementById('drawer-list').addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-screen]'); if (!b) return;
-  closeDrawer(); navigateTo(b.dataset.screen);
-});
 
 /* ---------- Theme: accent colour + light/dark MODE (device-local) ---------- */
 const THEMES = [
@@ -3690,7 +3645,6 @@ function navigateTo(name) {
 }
 document.getElementById('nav').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
-  if (b.dataset.screen === '__menu') { openDrawer(); return; }
   navigateTo(b.dataset.screen);
 });
 // Tapping a card in the More overflow grid
