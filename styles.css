@@ -773,3 +773,11 @@ img, svg, table, pre, .chart { max-width: 100%; }
   background: var(--bg, #0b1120); color: var(--text, #e8ecf5); border: 1px solid var(--line, #24304a);
   border-radius: 10px; padding: 10px; }
 .copy-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- v65: Stats segmented control + bar charts ---------- */
+.seg-row { display: flex; gap: 4px; background: var(--bg-input, #0b1120); border: 1px solid var(--line, #24304a);
+  border-radius: 12px; padding: 4px; margin-bottom: 12px; }
+.seg-btn { flex: 1; background: none; border: none; color: var(--text-dim, #9aa6bf); font: 600 13px/1 inherit;
+  padding: 9px 6px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.seg-btn.on { background: var(--grad-accent, var(--accent)); color: #fff; box-shadow: var(--glow-accent); }
+.chart-bar { height: 118px; }
