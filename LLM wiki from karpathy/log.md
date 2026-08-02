@@ -1,5 +1,13 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Tester feedback batch 2: side-nav drawer + polish (v63, live)
+Backup taken first (user asked): tag `backup-v62-live`, branch `backup/v62-pre-navdrawer` (pushed to prod), file snapshot in `.backups/v62-<sha>/`. All below browser-verified, pushed to both repos.
+- **Nav overhaul (the big recurring ask — user + 2 testers).** Bottom bar now **capped at 5**: up to `NAV_PRIMARY_MAX = 4` pinned tabs + a **☰ Menu** button. Menu opens a **slide-out side drawer** (right side, `#drawer`/`#drawer-scrim`, `renderDrawer/openDrawer/closeDrawer`) listing **every** screen one tap away, current highlighted, "pinned" badges, + a Settings row. A **'‹ Menu' back button** (`#nav-back` in topbar) appears on any screen that isn't a pinned tab and re-opens the drawer. NOTE: this reverses the earlier "no cap, user chooses count" (v55) — testers explicitly wanted max-5 + side nav; user confirmed "do both". Old `s-more` grid screen is now unreachable/dead (harmless).
+- **Clock time picker** for Sleep hrs / Deep-work hrs: `time:true` flag on those DEFAULT_CORE_FIELDS (backfilled onto stored configs in `coreCfg()`); renders `<input type=time>`, converts HH:MM⇄decimal via `hoursToHM`/`hmToHours` (7:30⇄7.5), shows an "x h" hint. Handler branch on `[data-numtime]`.
+- **Gym auto-saves** on exercise toggle + debounced as you type each log (new `persistGym(silent)` helper; mirrors count/detail into the day's entry). No more Save-trip.
+- **Default habits trimmed 12→4** (Workout, Meditation, Reading, Healthy food) for NEW users; existing testers keep their stored set. Onboarding still lets you add more.
+STILL PENDING: unnamed How-to button (need a screenshot to locate), NATIVE rebuild batch (downloads/CSV/PDF via Filesystem+Share, running-timer notification, mic in WebView), Stats redesign (simplify + bar charts, separate time vs checklist).
+
 ## 2026-08-02 — Tester feedback batch 1 (v62, live)
 App is LIVE in Play closed testing; testers (Kishore's friends) sent ~25 feedback items. Batch 1 shipped (web push → both repos `kishore2494/daily-pulse` prod + `jurnal-app` origin; testers get it on next open). Browser-verified all six:
 - **Auto-save on Log** — entries persist on-the-go (700ms debounce via `autosaveDraft()` wired into scale/check/habit/num/txt handlers); Save button relabeled "Done" + "Saves automatically" hint (`.autosave-hint`/`.autosave-dot` CSS).
