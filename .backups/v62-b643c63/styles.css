@@ -726,38 +726,3 @@ img, svg, table, pre, .chart { max-width: 100%; }
 /* reminders: let each row breathe on narrow screens */
 .rem-body { row-gap: 6px; }
 .rem-body input[type=time] { max-width: 120px; }
-
-/* ---------- v63: side drawer, back button, time picker ---------- */
-.topbar-l { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-.nav-back { align-self: flex-start; background: none; border: none; color: var(--accent);
-  font: 600 13px/1 inherit; padding: 2px 0 4px; cursor: pointer; }
-.nav-back[hidden] { display: none; }
-
-.drawer-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none;
-  transition: opacity .22s ease; z-index: 60; }
-.drawer-scrim.on { opacity: 1; pointer-events: auto; }
-.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(82vw, 320px);
-  background: var(--card, #141c2e); border-left: 1px solid var(--line, #24304a);
-  transform: translateX(100%); transition: transform .24s cubic-bezier(.4,0,.2,1);
-  z-index: 61; display: flex; flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,.4);
-  padding-top: env(safe-area-inset-top); }
-.drawer.on { transform: translateX(0); }
-.drawer-head { display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 16px 12px; border-bottom: 1px solid var(--line, #24304a); }
-.drawer-title { font-weight: 700; font-size: 16px; }
-.drawer-x { background: none; border: none; color: var(--text-faint); font-size: 20px; cursor: pointer; padding: 4px 8px; }
-.drawer-list { flex: 1; overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
-.drawer-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: none; border: none; color: var(--text, #e8ecf5); font: 500 15px/1 inherit;
-  padding: 13px 12px; border-radius: 12px; cursor: pointer; }
-.drawer-row:hover { background: rgba(255,255,255,.04); }
-.drawer-row.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-.drawer-ico { font-size: 19px; width: 24px; text-align: center; }
-.drawer-lbl { flex: 1; }
-.drawer-pin { font-size: 10px; color: var(--text-faint); border: 1px solid var(--line, #24304a);
-  padding: 2px 6px; border-radius: 999px; }
-.drawer-cust { margin-top: 6px; border-top: 1px solid var(--line, #24304a); border-radius: 0 0 12px 12px; }
-
-/* clock time picker on the Log screen (sleep / deep-work hrs) */
-.time-pick { width: 100%; }
-.time-hint { display: block; font-size: 11px; color: var(--text-faint); margin-top: 3px; }

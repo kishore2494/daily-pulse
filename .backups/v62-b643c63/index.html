@@ -19,8 +19,7 @@
 <body>
   <div class="app">
     <div class="topbar">
-      <div class="topbar-l">
-        <button class="nav-back" id="nav-back" aria-label="Open menu" hidden>‹ Menu</button>
+      <div>
         <h1 id="screen-title">Today</h1>
         <div class="sub" id="screen-sub">—</div>
       </div>
@@ -80,19 +79,15 @@
     <button data-screen="today" class="on"><span class="ico">📝</span>Log</button>
     <button data-screen="time"><span class="ico">⏱️</span>Time</button>
     <button data-screen="tasks"><span class="ico">✅</span>Tasks</button>
+    <button data-screen="notes"><span class="ico">🗒️</span>Notes</button>
+    <button data-screen="plans"><span class="ico">📋</span>Plans</button>
+    <button data-screen="gym"><span class="ico">💪</span>Gym</button>
     <button data-screen="habits"><span class="ico">🔥</span>Habits</button>
-    <button data-screen="__menu"><span class="ico">☰</span>Menu</button>
+    <button data-screen="dash"><span class="ico">📊</span>Stats</button>
+    <button data-screen="cal"><span class="ico">📆</span>Cal</button>
+    <button data-screen="write"><span class="ico">✍️</span>Write</button>
+    <button data-screen="settings"><span class="ico">⚙️</span>More</button>
   </nav>
-
-  <!-- Side navigation drawer (everything, one tap away) -->
-  <div class="drawer-scrim" id="drawer-scrim"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true">
-    <div class="drawer-head">
-      <span class="drawer-title">🔥 Daily Pulse</span>
-      <button class="drawer-x" id="drawer-close" aria-label="Close menu">✕</button>
-    </div>
-    <nav class="drawer-list" id="drawer-list"></nav>
-  </aside>
 
   <div class="alarm-overlay" id="alarm">
     <div class="alarm-bell">⏰</div>
