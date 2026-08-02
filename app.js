@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v72';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v73';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1068,20 +1068,26 @@ document.addEventListener('click', async (ev) => {
   }
 });
 // Save the gym day to storage + mirror the count/detail into the log entry. Returns the entry.
-function persistGym(silent) {
-  DB.putGymDay(gymDate, gymDraft);
-  const doneIds = Object.keys(gymDraft.done).filter(k => gymDraft.done[k]);
-  const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (gymDraft.log[k] ? ` (${gymDraft.log[k]})` : ''); }).join('; ');
-  const entry = DB.entry(gymDate) || { habits: {} };
+// date/draft default to the globals, but the debounced save passes captured values so a
+// day-switch mid-debounce can't persist the typed note to the wrong day (or lose it).
+function persistGym(silent, date, draft) {
+  date = date || gymDate; draft = draft || gymDraft;
+  DB.putGymDay(date, draft);
+  const doneIds = Object.keys(draft.done).filter(k => draft.done[k]);
+  const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (draft.log[k] ? ` (${draft.log[k]})` : ''); }).join('; ');
+  const entry = DB.entry(date) || { habits: {} };
   entry.workoutsDone = doneIds.length; entry.workoutDetail = detail;
   entry.updatedAt = new Date().toISOString();
-  DB.putEntry(gymDate, entry);
+  DB.putEntry(date, entry);
   if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
   return entry;
 }
 let _gymSaveTimer;
 document.addEventListener('input', (ev) => {
-  const lg = ev.target.closest('[data-ex-log]'); if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value; clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(() => persistGym(true), 700); }
+  const lg = ev.target.closest('[data-ex-log]');
+  if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value;
+    const capDate = gymDate, capDraft = gymDraft;   // capture NOW so a date-switch mid-debounce is safe
+    clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(() => persistGym(true, capDate, capDraft), 700); }
 });
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
 
@@ -2492,7 +2498,7 @@ function pomoStart(ph) {
   schedulePomoAlarm(endsAt, phaseName(ph));
   renderFocus();
 }
-function pomoAdvance() {
+function pomoAdvance(silent) {
   const p = pomoState();
   if (!p.run) return;
   const wasFocus = p.run.phase === 'focus';
@@ -2506,6 +2512,7 @@ function pomoAdvance() {
     p.run = { phase: 'focus', endsAt: Date.now() + p.cfg.focus * 60000, round };
   }
   DB.savePomo(p);
+  if (silent) { if (!p.cfg.auto) pomoPause(); return; }   // catch-up: just fix state, no side effects/recursion
   // time-tracker link
   if (p.cfg.act) { const r = runningSeg();
     if (p.run.phase === 'focus') { if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
@@ -2548,9 +2555,17 @@ function pomoChime() {
 
 function renderFocus() {
   document.getElementById('screen-title').textContent = 'Focus';
+  // Reconcile phases that elapsed while away — a SILENT bounded loop (no per-phase
+  // chime/toast/segments and, crucially, no recursion back into renderFocus).
+  let rp = pomoState(), guard = 0, advanced = false;
+  while (rp.run && !rp.run.paused && Date.now() >= rp.run.endsAt && guard++ < 1000) { pomoAdvance(true); rp = pomoState(); advanced = true; }
+  if (advanced) {
+    const fp = pomoState();
+    if (fp.run && !fp.run.paused) schedulePomoAlarm(fp.run.endsAt, phaseName(fp.run.phase));   // one alarm for the final phase
+    try { pomoChime(); } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate([300, 120, 300]);
+  }
   const p = pomoState();
-  // reconcile if a running phase already elapsed while we were away
-  if (p.run && !p.run.paused) { let guard = 0; while (p.run && !p.run.paused && Date.now() >= p.run.endsAt && guard++ < 20) { pomoAdvance(); return; } }
   document.getElementById('screen-sub').textContent = focusMode === 'pomo' ? '🍅 Pomodoro' : '📦 Timebox — plan your day';
   document.getElementById('s-focus').innerHTML = `
     <div class="focus-toggle">
@@ -2900,6 +2915,7 @@ document.addEventListener('click', (ev) => {
     const label = document.getElementById('ev-new-label').value.trim();
     const alarm = document.getElementById('ev-new-alarm').checked;
     if (!label) { toast('Name the event', true); return; }
+    if (alarm && !time) { toast('Set a time for the alarm (or untick it)', true); return; }   // an alarm with no time can never ring
     const evs = DB.events();
     const id = 'ev' + Date.now();
     // if the event's moment is already in the past, mark it acknowledged so it doesn't insta-ring
@@ -3739,6 +3755,7 @@ function handleBack() {
   if (cur === 'plans' && curPlan) { curPlan = null; renderPlans(); return; }
   if (cur === 'gym' && gymView === 'day') { gymView = 'home'; renderGym(); return; }
   if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
+  if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   // 3) not on the home tab → go back to it
   const home = defaultTab();
   if (cur !== home) { navigateTo(home); return; }
