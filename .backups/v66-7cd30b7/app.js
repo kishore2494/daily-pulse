@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v67';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v66';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2913,7 +2913,7 @@ function renderSettings() {
         <span class="menu-txt"><span class="menu-lbl">Customize</span><span class="menu-sub">tabs, habits, log fields, gym, deep log, theme</span></span><span class="menu-go">›</span></button>
       <button class="menu-row" id="open-report"><span class="menu-ico">📄</span>
         <span class="menu-txt"><span class="menu-lbl">Download report (PDF)</span><span class="menu-sub">your full stats as a printable report</span></span><span class="menu-go">›</span></button>
-      <a class="menu-row" href="guide.html"><span class="menu-ico">📖</span>
+      <a class="menu-row" href="guide.html" target="_blank" rel="noopener"><span class="menu-ico">📖</span>
         <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
     <div class="card" style="border-color:rgba(251,191,36,.4)">
