@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v67';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v68';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -564,12 +564,20 @@ document.addEventListener('click', (ev) => {
     if (openSections.has(id)) openSections.delete(id); else openSections.add(id);
     const card = document.querySelector(`[data-section="${id}"]`); if (card) card.classList.toggle('collapsed');
     return; }
+  // Surgical updates (no full re-render) so the Log screen never flickers or jumps on a tap.
   const sc = ev.target.closest('[data-scale]');
-  if (sc) { draft[sc.dataset.scale] = +sc.dataset.val; renderToday(); autosaveDraft(); return; }
+  if (sc) { const key = sc.dataset.scale; draft[key] = +sc.dataset.val;
+    sc.parentNode.querySelectorAll(`[data-scale="${key}"]`).forEach(b => b.classList.toggle('on', b === sc));
+    autosaveDraft(); return; }
   const ck = ev.target.closest('[data-check]');
-  if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o]; renderToday(); autosaveDraft(); return; }
+  if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o];
+    ck.classList.toggle('on', !!draft[k][o]); autosaveDraft(); return; }
   const hb = ev.target.closest('[data-habit]');
-  if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k]; renderToday(); autosaveDraft(); return; }
+  if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k];
+    const on = !!draft.habits[k]; hb.classList.toggle('on', on);
+    const h = HABITS.find(x => x.key === k);
+    if (h && h.color) hb.setAttribute('style', `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}`);
+    autosaveDraft(); return; }
 });
 document.addEventListener('input', (ev) => {
   const nt = ev.target.closest('[data-numtime]'); if (nt) { draft[nt.dataset.numtime] = hmToHours(nt.value); const hint = nt.parentNode.querySelector('.time-hint'); if (hint) hint.textContent = nt.value ? draft[nt.dataset.numtime] + ' h' : 'hh : mm'; autosaveDraft(); return; }

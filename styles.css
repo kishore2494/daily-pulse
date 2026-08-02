@@ -789,3 +789,10 @@ img, svg, table, pre, .chart { max-width: 100%; }
 .log-footer .btn { min-width: 160px; }
 .confirm-box { text-align: center; }
 .confirm-box h2 { margin-bottom: 4px; }
+
+/* ---------- v68: motion polish ---------- */
+html { scroll-behavior: smooth; }
+/* Respect users who prefer less motion (accessibility) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
