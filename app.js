@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v64';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v65';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1413,6 +1413,26 @@ function lineChart(values, color) {
     <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
     ${pts}</svg>`;
 }
+/* Daily bar chart — one bar per day. Easier to read at a glance than a line.
+   values: [{x,y}] · opts.max forces a scale (e.g. 10 for 1-10 fields). */
+function barChart(values, color, opts) {
+  opts = opts || {};
+  const w = 320, h = 118, pad = 8;
+  const ys = values.map(v => v.y).filter(v => v != null);
+  if (!ys.length) return '<div class="empty">No data yet</div>';
+  const max = Math.max(opts.max || 0, ...ys) || 1;
+  const n = values.length;
+  const slot = (w - pad * 2) / n;
+  const bw = Math.max(1.5, slot - Math.min(4, slot * 0.28));
+  let bars = '';
+  values.forEach((v, i) => {
+    if (v.y == null) return;
+    const bh = (v.y / max) * (h - pad * 2);
+    const x = pad + i * slot + (slot - bw) / 2;
+    bars += `<rect x="${x.toFixed(1)}" y="${(h - pad - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5, bh).toFixed(1)}" rx="1.4" fill="${color}"/>`;
+  });
+  return `<svg class="chart chart-bar" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>`;
+}
 /* Polymath Index — one 0-100 score/day from 5 pillars. Missing metrics are skipped,
    so even a light day scores fairly (only what you logged counts). */
 function polymath(e) {
@@ -1677,6 +1697,7 @@ function longestLoggedStreak() {
   return best;
 }
 let dashRange = 14;
+let dashTab = 'overview';
 function renderDash() {
   document.getElementById('screen-title').textContent = 'Stats';
   document.getElementById('screen-sub').textContent = 'Your trends & analysis';
@@ -1776,72 +1797,60 @@ function renderDash() {
   const pmBars = PILLARS.map(p => { const v = pillarAvg(p.k); return `<div class="bar-row"><span class="name">${p.l}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${v}%;background:${p.c}"></span></span><span class="pct">${v}</span></div>`; }).join('');
 
-  document.getElementById('s-dash').innerHTML = `
-    <div class="range-row">
+  // ---------- three tabbed views (simplify + separate time vs checklist) ----------
+  const rangeRow = `<div class="range-row">
       ${[7, 14, 30, 90].map(r => `<button class="range-btn ${dashRange===r?'on':''}" data-range="${r}">${r===90?'3 months':r+' days'}</button>`).join('')}
-    </div>
-    <div class="card pm-card">
-      <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
-      <div class="pm-hero">
-        <div class="pm-score">${pmAvg}<span class="pm-out">/100</span></div>
-        <div class="pm-meta"><div>30-day average</div><div class="hint">latest day: ${latestPm}${typeof latestPm==='number'?'/100':''}</div></div>
-      </div>
-      ${lineChart(pmSeries, '#8b9dff')}
-      <div style="margin-top:10px">${pmBars}</div>
-    </div>
+    </div>`;
 
-    ${(() => { const r = coachReview(); return r ? `<div class="card"><h2>🧑‍🏫 Weekly review <span class="hint">last 7 days</span></h2>${r.map(l => `<div class="rev rev-${l.k}">${l.t}</div>`).join('')}</div>` : ''; })()}
-
-    <div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>
-
+  const overviewHTML = `
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
       <div class="stat"><div class="v">${longestLoggedStreak()}</div><div class="l">best streak</div></div>
       <div class="stat"><div class="v">${allDates.length}</div><div class="l">days logged</div></div>
       <div class="stat"><div class="v">${avg('mood')}</div><div class="l">avg mood</div></div>
       <div class="stat"><div class="v">${avg('energy')}</div><div class="l">avg energy</div></div>
-      <div class="stat"><div class="v">${avg('sleepHours')}</div><div class="l">avg sleep h</div></div>
-      <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep wk</div></div>
-      <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
-      <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">workouts</div></div>
-      <div class="stat"><div class="v">${(() => { const p = DB.pomo(); return p ? pomoDoneToday(p) : 0; })()}</div><div class="l">🍅 today</div></div>
+      <div class="stat"><div class="v">${pmAvg}</div><div class="l">🧭 polymath</div></div>
     </div></div>
 
-    ${timeStatsHTML(days)}
+    <div class="card pm-card">
+      <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
+      <div class="pm-hero">
+        <div class="pm-score">${pmAvg}<span class="pm-out">/100</span></div>
+        <div class="pm-meta"><div>30-day average</div><div class="hint">latest day: ${latestPm}${typeof latestPm==='number'?'/100':''}</div></div>
+      </div>
+      ${barChart(pmSeries, '#8b9dff', { max: 100 })}
+      <div style="margin-top:10px">${pmBars}</div>
+    </div>
 
-    <div class="card"><h2>Mood &amp; Energy <span class="hint">last ${N} days</span></h2>
-      ${lineChart(series('mood'), '#6d8cff')}
-      <div style="margin-top:-6px">${lineChart(series('energy'), '#4ad6c0')}</div>
-      <div class="legend"><span><span class="dot" style="background:#6d8cff"></span>Mood</span>
-        <span><span class="dot" style="background:#4ad6c0"></span>Energy</span></div></div>
+    ${(() => { const r = coachReview(); return r ? `<div class="card"><h2>🧑‍🏫 Weekly review <span class="hint">last 7 days</span></h2>${r.map(l => `<div class="rev rev-${l.k}">${l.t}</div>`).join('')}</div>` : ''; })()}
 
-    <div class="card"><h2>Sleep &amp; Deep work <span class="hint">last ${N} days</span></h2>
-      ${lineChart(series('sleepHours'), '#a78bfa')}
-      <div style="margin-top:-6px">${lineChart(series('deepWorkHours'), '#fbbf24')}</div>
-      <div class="legend"><span><span class="dot" style="background:#a78bfa"></span>Sleep (h)</span>
-        <span><span class="dot" style="background:#fbbf24"></span>Deep work (h)</span></div></div>
+    <div class="card"><h2>😊 Mood <span class="hint">last ${N} days</span></h2>${barChart(series('mood'), '#6d8cff', { max: 10 })}</div>
+    <div class="card"><h2>⚡ Energy <span class="hint">last ${N} days</span></h2>${barChart(series('energy'), '#4ad6c0', { max: 10 })}</div>
 
     ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
       ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
 
-    <div class="card"><h2>📅 Mood calendar <span class="hint">last 12 weeks</span></h2>
-      <div class="heat">${heatCells}</div>
-      <div class="legend"><span><span class="dot" style="background:hsl(0,62%,45%)"></span>low</span>
-        <span><span class="dot" style="background:hsl(60,62%,45%)"></span>ok</span>
-        <span><span class="dot" style="background:hsl(120,62%,45%)"></span>great</span></div></div>
+    <div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>`;
 
-    <div class="card"><h2>Mood by weekday <span class="hint">all time</span></h2>${wdBars}</div>
+  const timeHTML = `
+    <div class="card"><div class="stat-grid">
+      <div class="stat"><div class="v">${avg('sleepHours')}</div><div class="l">avg sleep h</div></div>
+      <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep wk</div></div>
+      <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
+      <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">workouts</div></div>
+    </div></div>
 
-    <div class="card"><h2>🏋️ Workout volume <span class="hint">exercises/day · last ${N} days</span></h2>
-      ${lineChart(woSeries, '#34d399')}</div>
+    ${timeStatsHTML(days) || '<div class="card"><div class="empty">No time tracked in this range. Start a stopwatch on the Time tab.</div></div>'}
+
+    <div class="card"><h2>😴 Sleep <span class="hint">hours · last ${N} days</span></h2>${barChart(series('sleepHours'), '#a78bfa')}</div>
+    <div class="card"><h2>🎯 Deep work <span class="hint">hours · last ${N} days</span></h2>${barChart(series('deepWorkHours'), '#fbbf24')}</div>
+
+    <div class="card"><h2>🏋️ Workout volume <span class="hint">exercises/day · last ${N} days</span></h2>${barChart(woSeries, '#34d399')}</div>
 
     <div class="card"><h2>💪 Gym breakdown <span class="hint">sessions per group · ${totalWorkouts} total</span></h2>
-      ${gymBars || '<div class="empty">No workouts logged yet.</div>'}</div>
+      ${gymBars || '<div class="empty">No workouts logged yet.</div>'}</div>`;
 
-    ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">out of 10</span></h2>${scaleBars}</div>` : ''}
-
-    ${numAvgRows ? `<div class="card"><h2>🔢 Tracked numbers <span class="hint">all-time average</span></h2>${numAvgRows}</div>` : ''}
-
+  const checkHTML = `
     <div class="card"><h2>✅ Tasks <span class="hint">${tRate}% completed</span></h2>
       <div class="stat-grid">
         <div class="stat"><div class="v">${tOpen}</div><div class="l">open</div></div>
@@ -1849,8 +1858,26 @@ function renderDash() {
         <div class="stat"><div class="v">${tRate}%</div><div class="l">rate</div></div>
       </div></div>
 
-    <div class="card"><h2>Habit consistency <span class="hint">last 30 days</span></h2>${habitBars}</div>
-  `;
+    <div class="card"><h2>🔥 Habit consistency <span class="hint">last 30 days</span></h2>${habitBars || '<div class="empty">No habits yet.</div>'}</div>
+
+    ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">out of 10</span></h2>${scaleBars}</div>` : ''}
+
+    ${numAvgRows ? `<div class="card"><h2>🔢 Tracked numbers <span class="hint">all-time average</span></h2>${numAvgRows}</div>` : ''}
+
+    <div class="card"><h2>📅 Mood calendar <span class="hint">last 12 weeks</span></h2>
+      <div class="heat">${heatCells}</div>
+      <div class="legend"><span><span class="dot" style="background:hsl(0,62%,45%)"></span>low</span>
+        <span><span class="dot" style="background:hsl(60,62%,45%)"></span>ok</span>
+        <span><span class="dot" style="background:hsl(120,62%,45%)"></span>great</span></div></div>
+
+    <div class="card"><h2>Mood by weekday <span class="hint">all time</span></h2>${wdBars}</div>`;
+
+  const TABS = [['overview', '📊 Overview'], ['time', '⏱ Time'], ['check', '✅ Checklist']];
+  const body = { overview: overviewHTML, time: timeHTML, check: checkHTML }[dashTab] || overviewHTML;
+  document.getElementById('s-dash').innerHTML = `
+    <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
+    ${dashTab === 'check' ? '' : rangeRow}
+    ${body}`;
 }
 
 /* ============================================================
@@ -3717,6 +3744,8 @@ document.addEventListener('click', (ev) => {
   }
   const rb = ev.target.closest('[data-range]');
   if (rb) { dashRange = +rb.dataset.range; renderDash(); }
+  const dt = ev.target.closest('[data-dashtab]');
+  if (dt) { dashTab = dt.dataset.dashtab; renderDash(); window.scrollTo(0, 0); }
 });
 function navigateTo(name) {
   if (name === 'today') logDate = todayStr();               // Log always opens today
