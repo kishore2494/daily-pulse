@@ -1,5 +1,11 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — Autonomous session: v71 cross-midnight, v72 Done merge-safe + QA (live)
+- **v71:** manual "forgot to track" time block can now cross midnight (`b<=a` → `+24h`, e.g. 23:00→07:00 sleep); rejects identical start/end. (bug-hunt #6)
+- **v72:** the manual **Done** button had the same blind-`putEntry` clobber risk as autosave + left the debounced timer running → now clears the timer and routes through `saveDraftNow()`, so it preserves Gym/Time fields identically.
+- **QA verified this session:** full **export→wipe→import round trip** restores all data (entries/tasks/habits/journal) — restore path is safe. **All 15 screens** (today/time/tasks/notes/plans/gym/habits/dash/cal/write/history/settings/focus/waves/custom) render with **ZERO JS errors** after v67–v72. No horizontal overflow anywhere; all 3 themes clean.
+- Net this session: v67→v72, 6 releases. Everything web (auto to testers). Backup `backup/v66-autonomous` pushed.
+
 ## 2026-08-02 — Autonomous session: v69 theme fixes, v70 bug-hunt fixes (live)
 - **v69 — light-theme contrast:** `.pm-score` (Polymath hero) used a `#fff→#b9c8ff` gradient invisible on white cards → now `var(--grad-accent)`. Active bottom-nav label was `#fff`, invisible on the white light-mode nav → added `:root[data-mode="light"] .nav button.on { color: var(--accent) }`. Caught in a light-mode screenshot QA. All 3 themes (navy/black/light) verified clean.
 - **v70 — fixes from a read-only bug-hunt subagent** (browser-verified):
