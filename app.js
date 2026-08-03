@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v75';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v76';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -507,7 +507,11 @@ function renderToday() {
   // Core fields come from the user's config (Customize ▸ Log screen fields)
   const core = coreCfg().filter(f => !f.hidden);
   const coreScales = core.filter(f => f.type === 'scale').map(f => scaleField(f.key, f.label, f.req)).join('');
-  const coreNums = core.filter(f => f.type === 'num');
+  // Task counts are auto-derived from the Tasks list (read-only), never manual number inputs.
+  const TASK_KEYS = ['tasksDone', 'tasksPlanned'];
+  const coreNums = core.filter(f => f.type === 'num' && !TASK_KEYS.includes(f.key));
+  const tc = taskCounts(logDate);
+  draft.tasksDone = tc.done; draft.tasksPlanned = tc.planned;   // feed Stats/Polymath
   let numRows = '';
   for (let i = 0; i < coreNums.length; i += 2) {
     const cell = f => f ? `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
@@ -532,8 +536,23 @@ function renderToday() {
     </div>
 
     <div class="card">
+      <h2>✅ Tasks <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
+      ${tc.planned
+        ? `<div class="task-summary"><div class="ts-cell"><div class="ts-n">${tc.done}</div><div class="ts-l">done</div></div><div class="ts-cell"><div class="ts-n">${tc.planned}</div><div class="ts-l">planned</div></div></div>`
+        : '<div class="hint" style="padding:4px 0 8px">No tasks yet — add one below or on the Tasks tab.</div>'}
+      <div class="task-add">
+        <input type="text" id="log-task-input" placeholder="Add a task…" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="log-task-add">Add</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Daily checklist <span class="hint">tap what you did</span></h2>
       <div class="habits">${habitChips}</div>
+      <div class="task-add" style="margin-top:10px">
+        <input type="text" id="log-habit-input" placeholder="New checklist item… (e.g. 🌅 Wake at 6)" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="log-habit-add">Add</button>
+      </div>
     </div>
 
     ${(reflect || journalHtml) ? `<div class="card">
@@ -618,6 +637,25 @@ document.addEventListener('click', async (ev) => {
   const synced = await syncEntry(logDate, draft);
   if (synced) toast('Saved & synced to Sheet 🎉');
 });
+// Quick-add straight from the Log screen (#log-4, #menu-1)
+document.addEventListener('click', (ev) => {
+  if (ev.target.id === 'log-task-add') {
+    const inp = document.getElementById('log-task-input'); const text = (inp && inp.value || '').trim(); if (!text) return;
+    const tasks = DB.tasks(); tasks.unshift({ id: 't' + Date.now(), text, done: false, created: todayStr(), color: '' });
+    DB.saveTasks(tasks); renderToday(); toast('Task added ✅'); return;
+  }
+  if (ev.target.id === 'log-habit-add') {
+    const inp = document.getElementById('log-habit-input'); const raw = (inp && inp.value || '').trim(); if (!raw) return;
+    const em = emojiSplit(raw); const cfg = habitCfg();
+    cfg.push({ key: 'ch' + Date.now(), emoji: em.emoji, label: em.name, custom: true });
+    saveHabitCfg(cfg); renderToday(); toast('Checklist item added'); return;
+  }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter') return;
+  if (ev.target.id === 'log-task-input') { ev.preventDefault(); const b = document.getElementById('log-task-add'); if (b) b.click(); }
+  if (ev.target.id === 'log-habit-input') { ev.preventDefault(); const b = document.getElementById('log-habit-add'); if (b) b.click(); }
+});
 
 /* ============================================================
    SCREEN: TASKS
@@ -629,6 +667,13 @@ function tasksForDate(d) {
     .filter(t => (t.created || todayStr()) <= d && (!t.done || (t.doneDate && t.doneDate >= d)))
     .map(t => t.text + (t.done && t.doneDate === d ? ' ✓done' : ''))
     .join(', ');
+}
+// Auto counts for the Log screen — derived from the user's Tasks list, never typed by hand. (#log-3)
+function taskCounts(d) {
+  const ts = DB.tasks();
+  const planned = ts.filter(t => (t.created || todayStr()) <= d && (!t.done || (t.doneDate && t.doneDate >= d))).length;
+  const done = ts.filter(t => t.done && t.doneDate === d).length;
+  return { planned, done };
 }
 /* Keep today's Sheet row's task list fresh when tasks change. */
 async function syncTodayTasks() {
