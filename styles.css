@@ -825,3 +825,9 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .bw-dur { margin-left: auto; font-weight: 700; color: var(--accent); font-family: var(--font-display); padding-bottom: 6px; }
 .dur-pick { display: flex; gap: 8px; }
 .dur-pick select { flex: 1; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 11px; font-family: inherit; font-size: 15px; }
+
+/* ---------- v79: gym-on-log, stats range dropdown, chart date axis ---------- */
+.range-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.range-lab { font-size: 13px; color: var(--text-dim); font-weight: 600; }
+.range-select { flex: 1; max-width: 220px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 14.5px; }
+.chart-x { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 2px; padding: 0 2px; }

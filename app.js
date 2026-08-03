@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v78';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v79';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -593,6 +593,11 @@ function renderToday() {
       </div>
     </div>
 
+    <div class="card">
+      <h2>💪 Workout <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
+      <button class="btn btn-primary btn-sm" id="log-open-gym">💪 Log / edit today's workout →</button>
+    </div>
+
     ${(reflect || journalHtml) ? `<div class="card">
       <h2>Reflection</h2>
       ${reflect}
@@ -666,6 +671,7 @@ function saveDraftNow(date, d) {
 }
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
+  if (ev.target.id === 'dash-range') { dashRange = +ev.target.value; renderDash(); }   // Stats range dropdown (#stats)
 });
 // Sleep bed/wake → duration, and deep-work hours+minutes → decimal (#log-1, #log-2)
 document.addEventListener('change', (ev) => {
@@ -708,6 +714,7 @@ document.addEventListener('click', (ev) => {
     cfg.push({ key: 'ch' + Date.now(), emoji: em.emoji, label: em.name, custom: true });
     saveHabitCfg(cfg); renderToday(); toast('Checklist item added'); return;
   }
+  if (ev.target.id === 'log-open-gym') { gymDate = logDate; navigateTo('gym'); return; }   // gym reachable from Log home (#menu-7)
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
@@ -1557,7 +1564,11 @@ function barChart(values, color, opts) {
     const x = pad + i * slot + (slot - bw) / 2;
     bars += `<rect x="${x.toFixed(1)}" y="${(h - pad - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5, bh).toFixed(1)}" rx="1.4" fill="${color}"/>`;
   });
-  return `<svg class="chart chart-bar" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>`;
+  // date axis labels (first / middle / last) so the graph reads clearly
+  const lab = i => { const x = values[i] && values[i].x; if (!x || !/^\d{4}-\d{2}-\d{2}$/.test(x)) return ''; const d = new Date(x + 'T00:00:00'); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+  const mid = Math.floor((n - 1) / 2);
+  const axis = n > 1 ? `<div class="chart-x"><span>${lab(0)}</span>${n > 6 ? `<span>${lab(mid)}</span>` : ''}<span>${lab(n - 1)}</span></div>` : '';
+  return `<svg class="chart chart-bar" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>${axis}`;
 }
 /* Polymath Index — one 0-100 score/day from 5 pillars. Missing metrics are skipped,
    so even a light day scores fairly (only what you logged counts). */
@@ -1822,7 +1833,7 @@ function longestLoggedStreak() {
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
   return best;
 }
-let dashRange = 14;
+let dashRange = 7;
 let dashTab = 'overview';
 function renderDash() {
   document.getElementById('screen-title').textContent = 'Stats';
@@ -1924,8 +1935,12 @@ function renderDash() {
       <span class="bar-track"><span class="bar-fill" style="width:${v}%;background:${p.c}"></span></span><span class="pct">${v}</span></div>`; }).join('');
 
   // ---------- three tabbed views (simplify + separate time vs checklist) ----------
+  const RANGES = [[1, 'Today'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [90, 'Last 3 months']];
   const rangeRow = `<div class="range-row">
-      ${[7, 14, 30, 90].map(r => `<button class="range-btn ${dashRange===r?'on':''}" data-range="${r}">${r===90?'3 months':r+' days'}</button>`).join('')}
+      <label for="dash-range" class="range-lab">📅 Range</label>
+      <select id="dash-range" class="range-select">
+        ${RANGES.map(([v, l]) => `<option value="${v}" ${dashRange === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
     </div>`;
 
   const overviewHTML = `
@@ -3935,8 +3950,6 @@ document.addEventListener('click', (ev) => {
     if (w) w.innerHTML = graphSVG();
     return;
   }
-  const rb = ev.target.closest('[data-range]');
-  if (rb) { dashRange = +rb.dataset.range; renderDash(); }
   const dt = ev.target.closest('[data-dashtab]');
   if (dt) { dashTab = dt.dataset.dashtab; renderDash(); window.scrollTo(0, 0); }
 });
