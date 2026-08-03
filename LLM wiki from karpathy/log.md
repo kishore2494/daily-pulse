@@ -1,5 +1,11 @@
 # Log (reverse-chronological)
 
+## 2026-08-02 — v74: light-mode drawer/modals + professional Twemoji emojis (live)
+Tester report: opening the side drawer in light mode showed a black panel with invisible text; also wants consistent/professional emojis instead of each device's own ("junkie/amateur").
+- **Light-mode drawer/modal bug:** `.drawer`, `.copy-box` (export modal) and the exit-confirm used `background: var(--card, #141c2e)` — but there is NO `--card` variable (it's `--bg-card`), so they ALWAYS fell back to the hardcoded dark `#141c2e`. Fine in dark mode, but in light mode = dark bg + (correct) dark text → invisible. Fixed all three to `--bg-card`/`--border`/`--text`; drawer/rows/modals now correct in navy/black/light.
+- **Professional emojis:** self-hosted **Twemoji COLR** font (`fonts/twemoji.woff2`, 493KB, converted from Mozilla's 1.47MB ttf via fonttools; COLR because Chromium/WebView don't support SVGinOT). Added `@font-face 'Twemoji Mozilla'` + appended it to every font stack (`--font-display`, body, all `'DM Sans'` spots) as the emoji fallback — emoji-only font so text still uses DM Sans/Sora. Precached in `sw.js` ASSETS for offline. Result: one clean flat emoji set on every device. NOTE: app already loads Google Fonts from CDN, so a self-hosted font is consistent with existing behaviour and actually MORE offline-safe.
+- **Tested end-to-end (user demanded):** 15 screens × 3 themes = 0 JS errors; drawer + copy + exit modals readable in light (white bg, dark text); `document.fonts.check('Twemoji Mozilla')`=true and applied on `.habit .emoji`; full regression battery all PASS — autosave cross-day (no loss), gym-field preserve, surgical scale tap, back sub-view, pomodoro catch-up (no overflow), cross-midnight block, export→import round trip.
+
 ## 2026-08-02 — Autonomous session: v73 (2nd bug-hunt: edit flows) (live)
 Second read-only bug-hunt subagent covered Customize/Gym/Calendar/Reminders/Write/Focus/Waves. Fixed (browser-verified):
 - **[HIGH data-loss] Gym note lost on date-switch mid-debounce:** the gym log-input autosave read global `gymDate`/`gymDraft` at fire time (Log had this fixed, Gym didn't). Now `persistGym(silent, date, draft)` and the debounce captures `(capDate, capDraft)` at schedule time.
