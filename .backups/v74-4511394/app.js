@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v75';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v74';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3696,17 +3696,9 @@ function renderDrawer() {
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
     <span class="drawer-ico">${n.ico}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
-  document.getElementById('drawer-list').innerHTML = rows;   // 'settings' is already in the list — no duplicate row
+  document.getElementById('drawer-list').innerHTML = rows +
+    `<button class="drawer-row drawer-cust" data-screen="settings"><span class="drawer-ico">⚙️</span><span class="drawer-lbl">Settings &amp; customize</span></button>`;
 }
-// Hide the fixed bottom nav while a text field is focused, so the on-screen keyboard
-// never pushes the nav up over the input (affects every screen). (#log-5)
-document.addEventListener('focusin', (e) => {
-  if (e.target.matches && e.target.matches('input:not([type=checkbox]):not([type=radio]), textarea, [contenteditable]')) document.body.classList.add('kbd-open');
-});
-document.addEventListener('focusout', (e) => {
-  if (e.target.matches && e.target.matches('input, textarea, [contenteditable]'))
-    setTimeout(() => { const a = document.activeElement; if (!a || !a.matches || !a.matches('input, textarea, [contenteditable]')) document.body.classList.remove('kbd-open'); }, 80);
-});
 function openDrawer() {
   renderDrawer();
   document.getElementById('drawer').classList.add('on');
@@ -3958,10 +3950,7 @@ applyTheme();
 renderNav();
 document.getElementById('nav').classList.add('ready');   // reveal the bar now that the correct tabs are rendered (no flash)
 refreshStreak();
-// Returning from the standalone How-to guide (index.html?go=settings) lands on Settings, not home.
-const _go = new URLSearchParams(location.search).get('go');
-navigateTo((_go && RENDER[_go]) ? _go : defaultTab());
-if (_go) history.replaceState(null, '', location.pathname);   // clean the URL so a refresh goes home
+navigateTo(defaultTab());
 if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); renderOnboard(); }
 else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();

@@ -805,7 +805,3 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
-
-/* ---------- v75: hide bottom nav while typing (keyboard no longer overlaps it) ---------- */
-body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
-.nav { transition: transform .18s ease; }
