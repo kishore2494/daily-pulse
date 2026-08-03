@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v79';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v80';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3065,14 +3065,6 @@ function renderSettings() {
       <a class="menu-row" href="guide.html"><span class="menu-ico">📖</span>
         <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
-    <div class="card" style="border-color:rgba(251,191,36,.4)">
-      <h2>📦 Your data lives on this device</h2>
-      <div class="hint">Daily Pulse is fully private — nothing is uploaded anywhere. The flip side: <b>uninstalling the app or clearing its storage erases everything.</b> Export a backup file regularly and keep it somewhere safe (Drive, email to yourself…).</div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-primary btn-sm" id="export-quick">⬇ Export backup now</button>
-      </div>
-      <div class="hint" style="margin-top:8px">Last backup: <b>${(() => { const t = +localStorage.getItem('dp.lastBackup') || 0; if (!t) return 'never ⚠️'; const d = Math.floor((Date.now() - t) / 86400000); return d === 0 ? 'today ✅' : d + ' day' + (d === 1 ? '' : 's') + ' ago' + (d > 7 ? ' ⚠️' : ''); })()}</b></div>
-    </div>
     <div class="card">
       <h2>💬 Feedback <span class="hint">private · no sign-in</span></h2>
       <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What do you love?" style="min-height:70px"></textarea></div>
@@ -3133,9 +3125,10 @@ function renderSettings() {
       <div class="hint" style="margin-top:8px"><b>Setup:</b> ① Install <b>ntfy</b> (Play Store / App&nbsp;Store). ② In ntfy tap ➕ and subscribe to the topic <b>${escapeHtml(s.ntfyTopic || '—')}</b>. ③ Come back, tap <b>Turn ON</b>, then <b>Test push</b> — your phone should buzz. Reminders are sent up to 3 days ahead, so open this app at least every few days.</div>
     </div>`}
     <div class="card">
-      <h2>💾 Your data</h2>
+      <h2>💾 Backup &amp; restore <span class="hint">last: ${(() => { const t = +localStorage.getItem('dp.lastBackup') || 0; if (!t) return 'never'; const d = Math.floor((Date.now() - t) / 86400000); return d === 0 ? 'today ✅' : d + 'd ago' + (d > 7 ? ' ⚠️' : ''); })()}</span></h2>
+      <div class="hint" style="margin-bottom:8px">A backup file is the only way to move your data to a new phone or recover it after a reinstall (the PDF report is just for reading, it can't be restored). Keep one in Drive/email.</div>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="export">Export backup</button>
+        <button class="btn btn-primary btn-sm" id="export">⬇ Export backup</button>
         <button class="btn btn-ghost btn-sm" id="import">Import backup</button>
       </div>
       <div class="btn-row" style="margin-top:8px">
