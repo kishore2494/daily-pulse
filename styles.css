@@ -3,6 +3,14 @@
    Same class contract as before; pure visual upgrade.
    Revert anytime: git checkout pre-ux-v40 -- styles.css index.html
    ============================================================ */
+/* Twemoji (COLR) — one consistent, professional flat emoji set on every device,
+   instead of each phone's own (often inconsistent) system emoji. Self-hosted so it
+   works offline; only carries emoji glyphs so text still uses DM Sans/Sora. */
+@font-face {
+  font-family: 'Twemoji Mozilla';
+  src: url('fonts/twemoji.woff2') format('woff2');
+  font-display: swap;
+}
 :root {
   --bg: #070b14;
   --bg-elev: #111827;
@@ -29,12 +37,12 @@
   --radius-sm: 12px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
-  --font-display: 'Sora', 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Sora', 'DM Sans', 'Twemoji Mozilla', system-ui, sans-serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'DM Sans', 'Twemoji Mozilla', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
@@ -99,7 +107,7 @@ body::after {
   font-family: var(--font-display);
   font-size: 14.5px; margin: 0 0 13px; font-weight: 650; letter-spacing: -.1px;
 }
-.card .hint { color: var(--text-faint); font-size: 12px; font-weight: 400; font-family: 'DM Sans', system-ui, sans-serif; letter-spacing: 0; }
+.card .hint { color: var(--text-faint); font-size: 12px; font-weight: 400; font-family: 'DM Sans', 'Twemoji Mozilla', system-ui, sans-serif; letter-spacing: 0; }
 .section-collapsible > h2 { cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
 .section-collapsible > h2 .chev { transition: transform .22s cubic-bezier(.2, .7, .3, 1.2); color: var(--text-dim); }
 .section-collapsible.collapsed .body { display: none; }
@@ -509,7 +517,7 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .blk-row.done .check { background: var(--good); border-color: var(--good); color: #06291d; }
 .blk-row.done .blk { text-decoration: line-through; color: var(--text-faint); }
 .blk-bullet { color: var(--accent); font-size: 20px; line-height: 1.3; padding-top: 4px; flex: 0 0 auto; }
-.blk { flex: 1; min-width: 0; background: none; border: none; outline: none; resize: none; overflow: hidden; color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.55; padding: 6px 2px; border-radius: 6px; transition: background .15s; }
+.blk { flex: 1; min-width: 0; background: none; border: none; outline: none; resize: none; overflow: hidden; color: var(--text); font-family: 'DM Sans', 'Twemoji Mozilla', system-ui, sans-serif; font-size: 15px; line-height: 1.55; padding: 6px 2px; border-radius: 6px; transition: background .15s; }
 .blk:focus { background: rgba(109,140,255,.06); }
 .blk-h { font-family: var(--font-display); font-size: 18.5px; font-weight: 750; letter-spacing: -.3px; }
 .blk-toolbar { display: flex; gap: 7px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -652,7 +660,7 @@ body.reporting .app, body.reporting .nav, body.reporting .toast { display: none 
   body.reporting .rep-actions { display: none !important; }
   body { background: #fff !important; }
 }
-#print-report .rep { color: #111; font-family: 'DM Sans', system-ui, sans-serif; padding: 8px 4px; max-width: 720px; margin: 0 auto; }
+#print-report .rep { color: #111; font-family: 'DM Sans', 'Twemoji Mozilla', system-ui, sans-serif; padding: 8px 4px; max-width: 720px; margin: 0 auto; }
 .rep-head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
 .rep-fire { font-size: 34px; }
 .rep-title { font-family: 'Sora', sans-serif; font-size: 24px; font-weight: 800; }
@@ -738,26 +746,26 @@ img, svg, table, pre, .chart { max-width: 100%; }
   transition: opacity .22s ease; z-index: 60; }
 .drawer-scrim.on { opacity: 1; pointer-events: auto; }
 .drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(82vw, 320px);
-  background: var(--card, #141c2e); border-left: 1px solid var(--line, #24304a);
+  background: var(--bg-card); border-left: 1px solid var(--border);
   transform: translateX(100%); transition: transform .24s cubic-bezier(.4,0,.2,1);
   z-index: 61; display: flex; flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,.4);
-  padding-top: env(safe-area-inset-top); }
+  padding-top: env(safe-area-inset-top); color: var(--text); }
 .drawer.on { transform: translateX(0); }
 .drawer-head { display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 16px 12px; border-bottom: 1px solid var(--line, #24304a); }
-.drawer-title { font-weight: 700; font-size: 16px; }
+  padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+.drawer-title { font-weight: 700; font-size: 16px; color: var(--text); }
 .drawer-x { background: none; border: none; color: var(--text-faint); font-size: 20px; cursor: pointer; padding: 4px 8px; }
 .drawer-list { flex: 1; overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
 .drawer-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: none; border: none; color: var(--text, #e8ecf5); font: 500 15px/1 inherit;
+  background: none; border: none; color: var(--text); font: 500 15px/1 inherit;
   padding: 13px 12px; border-radius: 12px; cursor: pointer; }
-.drawer-row:hover { background: rgba(255,255,255,.04); }
+.drawer-row:hover { background: var(--bg-input); }
 .drawer-row.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .drawer-ico { font-size: 19px; width: 24px; text-align: center; }
 .drawer-lbl { flex: 1; }
-.drawer-pin { font-size: 10px; color: var(--text-faint); border: 1px solid var(--line, #24304a);
+.drawer-pin { font-size: 10px; color: var(--text-faint); border: 1px solid var(--border);
   padding: 2px 6px; border-radius: 999px; }
-.drawer-cust { margin-top: 6px; border-top: 1px solid var(--line, #24304a); border-radius: 0 0 12px 12px; }
+.drawer-cust { margin-top: 6px; border-top: 1px solid var(--border); border-radius: 0 0 12px 12px; }
 
 /* clock time picker on the Log screen (sleep / deep-work hrs) */
 .time-pick { width: 100%; }
@@ -767,11 +775,11 @@ img, svg, table, pre, .chart { max-width: 100%; }
 .copy-modal { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
   background: rgba(0,0,0,.55); padding: 20px; }
 .copy-modal.on { display: flex; }
-.copy-box { background: var(--card, #141c2e); border: 1px solid var(--line, #24304a); border-radius: 16px;
+.copy-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; color: var(--text);
   width: min(94vw, 460px); max-height: 82vh; display: flex; flex-direction: column; padding: 16px; gap: 10px; }
 .copy-head { display: flex; align-items: center; justify-content: space-between; }
 .copy-ta { flex: 1; min-height: 180px; width: 100%; resize: none; font: 12px/1.5 ui-monospace, Menlo, monospace;
-  background: var(--bg, #0b1120); color: var(--text, #e8ecf5); border: 1px solid var(--line, #24304a);
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px; }
 .copy-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
