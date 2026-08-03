@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v77';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v78';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2200,9 +2200,9 @@ function cfgRow(kind, item, deletable) {
 /* Customize is a HUB of cards; each opens its own sub-page (customPage). */
 let customPage = null;
 const CUSTOM_PAGES = [
-  { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation', sub: 'pin, order, default tab, hide' },
+  // Tabs & navigation removed — the bottom bar is now fixed. Daily checklist removed —
+  // it's created/edited right on the Log home screen.
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
-  { id: 'habits', ico: '✅', label: 'Daily checklist',    sub: 'your habits' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
@@ -3795,7 +3795,9 @@ function renderNav() {
 /* ---------- Side navigation drawer ---------- */
 function renderDrawer() {
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
-  const items = navCfg().filter(n => !n.hidden);
+  // Menu lists only what's NOT already in the fixed bottom bar (#menu-3).
+  const bottom = new Set(navCfg().filter(n => !n.hidden && n.primary).slice(0, NAV_PRIMARY_MAX).map(n => n.k));
+  const items = navCfg().filter(n => !n.hidden && !bottom.has(n.k));
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
     <span class="drawer-ico">${n.ico}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
