@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v76';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v77';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -84,8 +84,8 @@ let DEEP_SECTIONS = cookDeep(deepCfg());
 const DEFAULT_CORE_FIELDS = [
   { key: 'mood',          label: 'Evening mood',                     type: 'scale' },
   { key: 'energy',        label: 'Energy level',                     type: 'scale' },
-  { key: 'sleepHours',    label: 'Sleep hrs',                        type: 'num', step: 0.5, req: true, time: true },
-  { key: 'deepWorkHours', label: 'Deep work hrs',                    type: 'num', step: 0.5, req: true, time: true },
+  { key: 'sleepHours',    label: 'Sleep',                            type: 'num', step: 0.5, req: true, bedwake: true },
+  { key: 'deepWorkHours', label: 'Deep work',                        type: 'num', step: 0.5, req: true, dur: true },
   { key: 'tasksDone',     label: 'Tasks done',                       type: 'num' },
   { key: 'tasksPlanned',  label: 'Tasks planned',                    type: 'num' },
   { key: 'wentWell',      label: 'One thing that went well ✨',      type: 'text' },
@@ -96,9 +96,20 @@ function coreCfg() {
   const s = localStorage.getItem('dp.corecfg');
   const cfg = s ? JSON.parse(s) : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
   DEFAULT_CORE_FIELDS.forEach(d => { if (!cfg.find(f => f.key === d.key)) cfg.push(Object.assign({}, d)); });
-  // Backfill flags added in later versions onto older stored configs (e.g. the time-picker flag).
-  cfg.forEach(f => { const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) { if (d.time && !f.time) f.time = true; if (d.step && !f.step) f.step = d.step; } });
+  // Backfill flags added in later versions onto older stored configs.
+  cfg.forEach(f => { const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) {
+    if (d.step && !f.step) f.step = d.step;
+    if (d.bedwake) { f.bedwake = true; f.time = false; if (f.label === 'Sleep hrs') f.label = 'Sleep'; }
+    if (d.dur) { f.dur = true; f.time = false; if (f.label === 'Deep work hrs') f.label = 'Deep work'; }
+  } });
   return cfg;
+}
+// Duration between a bed time and a wake time (HH:MM strings), in decimal hours, cross-midnight aware.
+function bedwakeHours(bed, wake) {
+  const p = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : null; };
+  const b = p(bed), w = p(wake); if (b == null || w == null) return '';
+  let mins = w - b; if (mins <= 0) mins += 1440;   // wake next morning
+  return +(mins / 60).toFixed(2);
 }
 // Decimal hours ⇄ HH:MM for the clock picker. 7.5 ⇄ "07:30".
 function hoursToHM(v) { if (v === '' || v == null || isNaN(v)) return ''; const t = Math.max(0, Math.round(+v * 60)); const h = Math.floor(t / 60), m = t % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
@@ -463,6 +474,28 @@ function numField(f) {
   return `<div class="field"><label>${escapeHtml(f.label)}</label>
     <input type="number" step="${f.step||1}" inputmode="decimal" data-num="${f.key}" value="${draft[f.key]??''}"></div>`;
 }
+// Sleep: pick bed time + wake time → duration (#log-1)
+function bedwakeField(f) {
+  const dur = draft[f.key]; const h = dur !== '' && dur != null ? Math.floor(dur) + 'h ' + Math.round((dur - Math.floor(dur)) * 60) + 'm' : '';
+  return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''} <span class="hint">bed → wake</span></label>
+    <div class="bedwake">
+      <span class="bw-cell"><span class="bw-lab">Bed</span><input type="time" data-bed="${f.key}" value="${draft.bedTime || ''}"></span>
+      <span class="bw-arrow">→</span>
+      <span class="bw-cell"><span class="bw-lab">Wake</span><input type="time" data-wake="${f.key}" value="${draft.wakeTime || ''}"></span>
+      <span class="bw-dur" data-bw-dur="${f.key}">${h || '—'}</span>
+    </div></div>`;
+}
+// Deep work (or any duration field): hours + minutes selectors → decimal hours (#log-2)
+function durationField(f) {
+  const dur = draft[f.key]; const H = dur !== '' && dur != null ? Math.floor(dur) : ''; const M = dur !== '' && dur != null ? Math.round((dur - Math.floor(dur)) * 60) : '';
+  const hopts = Array.from({ length: 17 }, (_, i) => `<option value="${i}" ${H === i ? 'selected' : ''}>${i} h</option>`).join('');
+  const mopts = [0, 15, 30, 45].map(m => `<option value="${m}" ${M === m ? 'selected' : ''}>${m} m</option>`).join('');
+  return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''} <span class="hint">duration</span></label>
+    <div class="dur-pick">
+      <select data-dur-h="${f.key}"><option value="">–</option>${hopts}</select>
+      <select data-dur-m="${f.key}">${mopts}</select>
+    </div></div>`;
+}
 function txtField(f) {
   return `<div class="field"><label>${escapeHtml(f.label)}</label>
     <textarea data-txt="${f.key}" placeholder="optional">${escapeHtml(draft[f.key]||'')}</textarea></div>`;
@@ -514,10 +547,15 @@ function renderToday() {
   draft.tasksDone = tc.done; draft.tasksPlanned = tc.planned;   // feed Stats/Polymath
   let numRows = '';
   for (let i = 0; i < coreNums.length; i += 2) {
-    const cell = f => f ? `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
-      ${f.time
-        ? `<input type="time" class="time-pick" data-numtime="${f.key}" value="${hoursToHM(draft[f.key])}"><span class="time-hint">${draft[f.key] !== '' && draft[f.key] != null ? draft[f.key] + ' h' : 'hh : mm'}</span>`
-        : `<input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}">`}</div>` : '<div></div>';
+    const cell = f => {
+      if (!f) return '<div></div>';
+      if (f.bedwake) return bedwakeField(f);
+      if (f.dur) return durationField(f);
+      return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
+        ${f.time
+          ? `<input type="time" class="time-pick" data-numtime="${f.key}" value="${hoursToHM(draft[f.key])}"><span class="time-hint">${draft[f.key] !== '' && draft[f.key] != null ? draft[f.key] + ' h' : 'hh : mm'}</span>`
+          : `<input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}">`}</div>`;
+    };
     numRows += `<div class="row2">${cell(coreNums[i])}${cell(coreNums[i + 1])}</div>`;
   }
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
@@ -628,6 +666,26 @@ function saveDraftNow(date, d) {
 }
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
+});
+// Sleep bed/wake → duration, and deep-work hours+minutes → decimal (#log-1, #log-2)
+document.addEventListener('change', (ev) => {
+  const bw = ev.target.closest('[data-bed], [data-wake]');
+  if (bw) {
+    const key = bw.dataset.bed || bw.dataset.wake;
+    if (bw.dataset.bed !== undefined && bw.hasAttribute('data-bed')) draft.bedTime = bw.value; else draft.wakeTime = bw.value;
+    draft[key] = bedwakeHours(draft.bedTime, draft.wakeTime);
+    const disp = document.querySelector(`[data-bw-dur="${key}"]`);
+    if (disp) { const d = draft[key]; disp.textContent = (d !== '' && d != null) ? (Math.floor(d) + 'h ' + Math.round((d - Math.floor(d)) * 60) + 'm') : '—'; }
+    autosaveDraft(); return;
+  }
+  const dur = ev.target.closest('[data-dur-h], [data-dur-m]');
+  if (dur) {
+    const key = dur.dataset.durH || dur.dataset.durM;
+    const hs = document.querySelector(`[data-dur-h="${key}"]`), ms = document.querySelector(`[data-dur-m="${key}"]`);
+    const h = hs && hs.value !== '' ? +hs.value : null, m = ms ? +ms.value : 0;
+    draft[key] = h == null ? '' : +(h + m / 60).toFixed(2);
+    autosaveDraft(); return;
+  }
 });
 document.addEventListener('click', async (ev) => {
   if (ev.target.id !== 'save-entry') return;
