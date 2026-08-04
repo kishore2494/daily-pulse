@@ -1,12 +1,13 @@
 /* Daily Pulse service worker
    Strategy: NETWORK-FIRST for the app's own files (so you ALWAYS get the latest
    when online), with cache fallback so it still works fully offline. */
-const CACHE = 'daily-pulse-v84';
+const CACHE = 'daily-pulse-v85';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js',
   './workout-anims.js', './workout-plan.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './fonts/twemoji.woff2',
+  './libs/jspdf.min.js',
 ];
 
 self.addEventListener('install', (e) => {
