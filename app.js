@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v84';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v85';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -1643,11 +1643,14 @@ async function saveFile(filename, content, mime) {
     } catch (e) { if (e && e.name === 'AbortError') return; /* else fall through */ }
   }
   if (!inApp) {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
     a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast('Saved to your downloads'); return;
   }
-  showCopyModal(filename, content);   // in-app, no share support → let them copy it out
+  // in-app, no share support: text → copy modal; binary (PDF) → open it so they can save/share via the viewer
+  if (typeof content === 'string') { showCopyModal(filename, content); return; }
+  const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
+  window.open(url, '_blank'); toast('Opened — use the ⋮ menu to save or share');
 }
 function showCopyModal(filename, content) {
   let m = document.getElementById('copy-modal');
@@ -3056,7 +3059,7 @@ function renderSettings() {
   document.getElementById('screen-title').textContent = 'Settings';
   document.getElementById('screen-sub').textContent = 'Customize, reminders, data';
   const s = DB.settings();
-  const SHOW_SYNC = false;   // Sync & login hidden for now — planned as a future (paid) feature. Code kept intact.
+  const SHOW_SYNC = true;   // ENABLED for testing (Google Sheet sync/login). ⚠️ TODO: set back to false before PRODUCTION release.
   if (!s.ntfyTopic) { s.ntfyTopic = 'dp-' + randomToken(); DB.saveSettings(s); }   // one secret topic per user
   document.getElementById('s-settings').innerHTML = `
     <div class="card" style="padding:6px 10px">
@@ -3262,6 +3265,47 @@ const FEEDBACK_EMAIL = 'akishorekumar2494@gmail.com';   // fallback: opens the u
    Builds a printable summary of ALL the user's data into #print-report and
    calls window.print(). On Android WebView / mobile the print sheet offers
    "Save as PDF"; on desktop the browser print dialog does. Fully offline. */
+// Real PDF via jsPDF (works in the WebView, unlike window.print). Saves via share sheet /
+// download, toast + a native notification. (#menu-8)
+async function generatePdfReport() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) { toast('PDF engine still loading — try once more', true); return; }
+  const e = DB.entries(); const dates = Object.keys(e).sort();
+  if (!dates.length) { toast('Log a day or two first — nothing to report yet', true); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 42; let y = M;
+  const ensure = h => { if (y + h > H - M) { doc.addPage(); y = M; } };
+  const num = k => { const v = dates.map(d => e[d][k]).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? v.reduce((a, b) => a + +b, 0) / v.length : null; };
+  const fmt = (v, d = 1) => v == null ? '–' : (+v).toFixed(d);
+  const heading = t => { ensure(34); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(70, 90, 210); doc.text(t, M, y); y += 6; doc.setDrawColor(222, 226, 238); doc.line(M, y, W - M, y); y += 15; };
+  const row = (l, r) => { ensure(18); doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(45, 45, 60); doc.text(String(l), M, y); doc.text(String(r), W - M, y, { align: 'right' }); y += 18; };
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(22, 22, 34); doc.text('Daily Pulse — Report', M, y); y += 22;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 142);
+  const name = (DB.settings().name || '').trim();
+  doc.text((name ? name + ' · ' : '') + prettyDate(todayStr()) + ' · ' + dates.length + ' days logged', M, y); y += 26;
+  const last30 = []; for (let i = 29; i >= 0; i--) last30.push(addDays(todayStr(), -i));
+  const pm30 = last30.map(d => e[d] ? polymath(e[d]) : null).filter(Boolean);
+  const pmAvg = pm30.length ? Math.round(pm30.reduce((a, p) => a + p.total, 0) / pm30.length) : null;
+  heading('Overview');
+  if (pmAvg != null) row('Polymath Index (30-day avg)', pmAvg + ' / 100');
+  row('Current streak', loggedStreak() + ' days');
+  row('Best streak', longestLoggedStreak() + ' days');
+  row('Avg mood / energy', fmt(num('mood')) + ' / ' + fmt(num('energy')) + ' (of 10)');
+  row('Avg sleep / deep-work', fmt(num('sleepHours')) + 'h / ' + fmt(num('deepWorkHours')) + 'h');
+  const gym = DB.gym(); const workouts = Object.keys(gym).filter(d => Object.values(gym[d].done || {}).some(Boolean)).length;
+  row('Workouts logged', workouts + ' · streak ' + gymStreak()); y += 8;
+  heading('Habit consistency (last 30 days)');
+  HABITS.forEach(h => { const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length; row(h.label, Math.round(hits / 30 * 100) + '%  (' + hits + '/30)'); }); y += 8;
+  const tt = {}; last30.forEach(d => segsForDay(d).forEach(({ seg, a, b }) => { tt[seg.act] = (tt[seg.act] || 0) + (b - a); }));
+  const actIds = Object.keys(tt).sort((x, z) => tt[z] - tt[x]);
+  if (actIds.length) { heading('Where your time goes (last 30 days)'); actIds.forEach(id => row(actById(id).name, fmtDur(tt[id]) + ' · ' + fmtDur(tt[id] / 30) + '/day')); y += 8; }
+  const wb = []; deepCfg().filter(s => !s.hidden).forEach(sec => (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(f.key); if (a != null) wb.push([f.label, fmt(a) + ' / 10']); }));
+  if (wb.length) { heading('Wellbeing & focus (avg)'); wb.forEach(([l, r]) => row(l, r)); }
+  doc.setFontSize(9); doc.setTextColor(150, 150, 168); doc.text('Generated by Daily Pulse · private & offline · ' + APP_VERSION, M, H - 24);
+  await saveFile('daily-pulse-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
+  toast('Report PDF ready 📄');
+  if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, title: 'Daily Pulse', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
+}
 function downloadReport() {
   const e = DB.entries();
   const dates = Object.keys(e).sort();
@@ -3320,7 +3364,7 @@ function downloadReport() {
       <div class="rep-foot">Generated by Daily Pulse · private &amp; offline · ${APP_VERSION}</div>
     </div>
     <div class="rep-actions">
-      <button class="btn btn-primary" id="rep-print">📄 Save as PDF / Print</button>
+      <button class="btn btn-primary" id="rep-print">⬇ Download PDF</button>
       <button class="btn btn-ghost" id="rep-close">Close</button>
     </div>`;
   document.body.classList.add('reporting');   // shows the full-screen report overlay
@@ -3328,7 +3372,7 @@ function downloadReport() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.closest('#rep-close')) { document.body.classList.remove('reporting'); return; }
-  if (ev.target.closest('#rep-print')) { window.print(); return; }
+  if (ev.target.closest('#rep-print')) { generatePdfReport(); return; }
 });
 window.addEventListener('afterprint', () => { /* keep overlay open so they can re-print or close */ });
 
