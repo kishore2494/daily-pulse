@@ -831,3 +831,12 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .range-lab { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 .range-select { flex: 1; max-width: 220px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 14.5px; }
 .chart-x { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 2px; padding: 0 2px; }
+
+/* ---------- v81: full-width sleep/deep-work pickers (Log layout fix) ---------- */
+.row-wide { margin-bottom: 2px; }
+.bedwake { flex-wrap: nowrap; gap: 10px; align-items: flex-end; }
+.bw-cell { flex: 1 1 0; min-width: 0; }
+.bw-cell input[type=time] { max-width: none; width: 100%; }
+.bw-arrow { padding-bottom: 10px; }
+.bw-dur { margin-left: 2px; white-space: nowrap; }
+.dur-pick select { min-width: 0; }
