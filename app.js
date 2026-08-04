@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v80';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v81';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -545,19 +545,20 @@ function renderToday() {
   const coreNums = core.filter(f => f.type === 'num' && !TASK_KEYS.includes(f.key));
   const tc = taskCounts(logDate);
   draft.tasksDone = tc.done; draft.tasksPlanned = tc.planned;   // feed Stats/Polymath
-  let numRows = '';
-  for (let i = 0; i < coreNums.length; i += 2) {
-    const cell = f => {
-      if (!f) return '<div></div>';
-      if (f.bedwake) return bedwakeField(f);
-      if (f.dur) return durationField(f);
-      return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
-        ${f.time
-          ? `<input type="time" class="time-pick" data-numtime="${f.key}" value="${hoursToHM(draft[f.key])}"><span class="time-hint">${draft[f.key] !== '' && draft[f.key] != null ? draft[f.key] + ' h' : 'hh : mm'}</span>`
-          : `<input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}">`}</div>`;
-    };
-    numRows += `<div class="row2">${cell(coreNums[i])}${cell(coreNums[i + 1])}</div>`;
-  }
+  const numCell = f => {
+    if (!f) return '<div></div>';
+    if (f.bedwake) return bedwakeField(f);
+    if (f.dur) return durationField(f);
+    return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>
+      ${f.time
+        ? `<input type="time" class="time-pick" data-numtime="${f.key}" value="${hoursToHM(draft[f.key])}"><span class="time-hint">${draft[f.key] !== '' && draft[f.key] != null ? draft[f.key] + ' h' : 'hh : mm'}</span>`
+        : `<input type="number" ${f.step ? `step="${f.step}"` : ''} inputmode="${f.step ? 'decimal' : 'numeric'}" data-num="${f.key}" value="${draft[f.key] ?? ''}">`}</div>`;
+  };
+  // Wide pickers (sleep bed→wake, deep-work duration) get their own full-width row; simple numbers pair up 2-per-row.
+  const wideNums = coreNums.filter(f => f.bedwake || f.dur);
+  const simpleNums = coreNums.filter(f => !f.bedwake && !f.dur);
+  let numRows = wideNums.map(f => `<div class="row-wide">${numCell(f)}</div>`).join('');
+  for (let i = 0; i < simpleNums.length; i += 2) numRows += `<div class="row2">${numCell(simpleNums[i])}${numCell(simpleNums[i + 1])}</div>`;
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
       <textarea data-txt="${f.key}" placeholder="...">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
   const journalF = core.find(f => f.type === 'journal');
