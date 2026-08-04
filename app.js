@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v85';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v86';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -597,8 +597,10 @@ function renderToday() {
 
     <div class="card">
       <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
-      <button class="btn btn-primary btn-sm" id="log-open-gym">💪 Log / edit today's workout →</button>
+      <button class="btn btn-primary btn-sm" id="log-open-gym">Log / edit today's workout →</button>
     </div>
+
+    ${logDate === todayStr() ? healthCardHTML() : ''}
 
     ${(reflect || journalHtml) ? `<div class="card">
       <h2>Reflection</h2>
@@ -717,6 +719,11 @@ document.addEventListener('click', (ev) => {
     saveHabitCfg(cfg); renderToday(); toast('Checklist item added'); return;
   }
   if (ev.target.id === 'log-open-gym') { gymDate = logDate; navigateTo('gym'); return; }   // gym reachable from Log home (#menu-7)
+  if (ev.target.id === 'health-sync') {
+    if (hcPlugin()) syncHealth();
+    else toast('Open the installed app → this will read Health Connect (sleep, steps, distance, calories)', true);
+    return;
+  }
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
@@ -3567,6 +3574,60 @@ function exportReminderCalendar() {
    no-ops. Reminder n uses ids n*1000+day, events use hash ids — cancelled
    and rescheduled wholesale on every setupReminders(). */
 function nativeShell() { return !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications); }
+
+/* ---------- Health Connect (native) integration ----------
+   Reads REAL sensor data (sleep/steps/distance/calories/workouts/HR) via a native
+   Capacitor plugin that exposes this contract:
+     HealthConnect.isAvailable() -> { available:boolean }
+     HealthConnect.requestPermissions() -> { granted:boolean }
+     HealthConnect.today() -> { steps, distanceMeters, caloriesKcal, sleepMinutes, exerciseMinutes, heartRateAvg }
+   Degrades gracefully: on the web/PWA (no plugin) the Health card just invites you to
+   use the app; nothing breaks. Data is cached per-day in dp.health and auto-fills sleep. */
+function hcPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.HealthConnect) || null; }
+function healthStore() { try { return JSON.parse(localStorage.getItem('dp.health') || '{}'); } catch (e) { return {}; } }
+function saveHealthStore(h) { localStorage.setItem('dp.health', JSON.stringify(h)); }
+function healthFor(date) { return healthStore()[date] || null; }
+async function syncHealth(opts) {
+  opts = opts || {};
+  const hc = hcPlugin();
+  if (!hc) { if (!opts.silent) toast('Health sync works in the installed app', true); return null; }
+  try {
+    if (hc.isAvailable) { const a = await hc.isAvailable(); if (a && a.available === false) { if (!opts.silent) toast('Enable Health Connect on your phone first', true); return null; } }
+    if (hc.requestPermissions) { const p = await hc.requestPermissions(); if (p && p.granted === false) { if (!opts.silent) toast('Allow health permissions to sync', true); return null; } }
+    const t = await hc.today();
+    if (!t) return null;
+    const store = healthStore(); const key = todayStr();
+    store[key] = {
+      steps: t.steps ?? null, distanceKm: t.distanceMeters != null ? +(t.distanceMeters / 1000).toFixed(2) : null,
+      calories: t.caloriesKcal != null ? Math.round(t.caloriesKcal) : null,
+      sleepMin: t.sleepMinutes ?? null, exerciseMin: t.exerciseMinutes ?? null, hr: t.heartRateAvg ?? null,
+      at: new Date().toISOString(),
+    };
+    saveHealthStore(store);
+    // auto-fill sleep from Health Connect if the user hasn't entered it for today
+    if (store[key].sleepMin && logDate === key) {
+      const cur = draft.sleepHours;
+      if (cur == null || cur === '') { draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2); saveDraftNow(key, draft); }
+    }
+    if (!opts.silent) toast('Health synced ✅');
+    if (document.getElementById('s-today') && document.getElementById('s-today').classList.contains('on')) renderToday();
+    return store[key];
+  } catch (e) { if (!opts.silent) toast('Health sync failed', true); return null; }
+}
+// Compact Health card for the Log screen (shows today's synced metrics + a sync button).
+function healthCardHTML() {
+  const h = healthFor(todayStr());
+  const hasPlugin = !!hcPlugin();
+  const cell = (v, unit, label) => `<div class="ts-cell"><div class="ts-n">${v != null ? v : '—'}</div><div class="ts-l">${label}${v != null && unit ? ' ' + unit : ''}</div></div>`;
+  const grid = h ? `<div class="task-summary" style="flex-wrap:wrap">
+      ${cell(h.steps, '', 'steps')}${cell(h.distanceKm, 'km', 'distance')}${cell(h.calories, 'kcal', 'calories')}${cell(h.sleepMin != null ? (Math.floor(h.sleepMin / 60) + 'h' + (h.sleepMin % 60) + 'm') : null, '', 'sleep')}
+    </div>` : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today.' : 'Connect your phone\'s health data (Health Connect) in the installed app to auto-track steps, sleep, distance & calories.'}</div>`;
+  return `<div class="card">
+    <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && h.hr ? '❤ ' + h.hr + ' bpm' : 'auto from your phone'}</span></h2>
+    ${grid}
+    <button class="btn ${hasPlugin ? 'btn-primary' : 'btn-ghost'} btn-sm" id="health-sync">${hasPlugin ? '↻ Sync health now' : 'How to connect health'}</button>
+  </div>`;
+}
 function fullScreenPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FullScreenAlarm) || null; }
 // Each reminder/event carries mode 'alarm' (loud full-screen takeover) or 'notify' (plain heads-up).
 // Alarm-mode → the native FullScreenAlarm plugin (rings over the lock screen). Notify-mode, and
