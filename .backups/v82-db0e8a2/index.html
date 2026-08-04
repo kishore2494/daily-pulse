@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="google-site-verification" content="NaRi1JakGHS3tfXnr7RHgNQvOsiUf2EZ5HSnGn1fLYs">
+  <meta name="theme-color" content="#0b0f1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Daily Pulse">
+  <title>Daily Pulse</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="topbar-l">
+        <button class="nav-back" id="nav-back" aria-label="Open menu" hidden>‹ Menu</button>
+        <h1 id="screen-title">Today</h1>
+        <div class="sub" id="screen-sub">—</div>
+      </div>
+      <div class="streak-badge" id="streak-badge">🔥 <span id="streak-n">0</span></div>
+    </div>
+
+    <!-- ============ TODAY / LOG ============ -->
+    <section class="screen on" id="s-today"></section>
+
+    <!-- ============ TIME (24h activity tracker) ============ -->
+    <section class="screen" id="s-time"></section>
+
+    <!-- ============ TASKS ============ -->
+    <section class="screen" id="s-tasks"></section>
+
+    <!-- ============ NOTES ============ -->
+    <section class="screen" id="s-notes"></section>
+
+    <!-- ============ PLANS ============ -->
+    <section class="screen" id="s-plans"></section>
+
+    <!-- ============ GYM ============ -->
+    <section class="screen" id="s-gym"></section>
+
+    <!-- ============ HABITS ============ -->
+    <section class="screen" id="s-habits"></section>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="screen" id="s-dash"></section>
+
+    <!-- ============ WRITE (inner blog) ============ -->
+    <section class="screen" id="s-write"></section>
+
+    <!-- ============ MORE (overflow launcher) ============ -->
+    <section class="screen" id="s-more"></section>
+
+    <!-- ============ CUSTOMIZE ============ -->
+    <section class="screen" id="s-custom"></section>
+
+    <!-- ============ FOCUS (Pomodoro + Timebox) ============ -->
+    <section class="screen" id="s-focus"></section>
+
+    <!-- ============ WAVES (binaural beats) ============ -->
+    <section class="screen" id="s-waves"></section>
+
+    <!-- ============ CALENDAR ============ -->
+    <section class="screen" id="s-cal"></section>
+
+    <!-- ============ HISTORY ============ -->
+    <section class="screen" id="s-history"></section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="screen" id="s-settings"></section>
+  </div>
+
+  <nav class="nav" id="nav">
+    <button data-screen="today" class="on"><span class="ico">📝</span>Log</button>
+    <button data-screen="time"><span class="ico">⏱️</span>Time</button>
+    <button data-screen="focus"><span class="ico">🍅</span>Focus</button>
+    <button data-screen="dash"><span class="ico">📊</span>Stats</button>
+    <button data-screen="__menu"><span class="ico">☰</span>Menu</button>
+  </nav>
+
+  <!-- Side navigation drawer (everything, one tap away) -->
+  <div class="drawer-scrim" id="drawer-scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <span class="drawer-title">🔥 Daily Pulse</span>
+      <button class="drawer-x" id="drawer-close" aria-label="Close menu">✕</button>
+    </div>
+    <nav class="drawer-list" id="drawer-list"></nav>
+  </aside>
+
+  <div class="alarm-overlay" id="alarm">
+    <div class="alarm-bell">⏰</div>
+    <div class="alarm-label" id="alarm-label"></div>
+    <div class="alarm-sub" id="alarm-sub"></div>
+    <div class="alarm-btns">
+      <button class="btn btn-primary" id="alarm-dismiss">Dismiss</button>
+      <button class="btn btn-ghost" id="alarm-snooze">Snooze 5 min</button>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard"></div>
+  <div id="print-report"></div>
+
+  <div class="toast" id="toast"></div>
+  <script src="workout-anims.js"></script>
+  <script src="workout-plan.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

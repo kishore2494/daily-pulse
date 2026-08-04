@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v83';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v82';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -517,7 +517,7 @@ function renderDeepSections() {
     (sec.texts || []).forEach(t => body += txtField(t));
     const open = openSections.has(sec.id);
     return `<div class="card section-collapsible ${open?'':'collapsed'}" data-section="${sec.id}">
-      <h2 data-toggle-section="${sec.id}" class="h2-icon">${hicon(SECTION_ICON[sec.id] || 'layers')}<span>${escapeHtml(stripLeadEmoji(sec.title))}</span><span class="chev">▾</span></h2>
+      <h2 data-toggle-section="${sec.id}"><span>${escapeHtml(sec.title)}</span><span class="chev">▾</span></h2>
       <div class="body">${body}</div></div>`;
   }).join('');
 }
@@ -532,10 +532,9 @@ function renderToday() {
     const on = !!draft.habits[h.key];
     const st = habitStreak(h.key);
     const style = h.color ? `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}` : '';
-    const hi = HABIT_ICON[h.key];
     return `<div class="habit ${on?'on':''}" data-habit="${h.key}" style="${style}">
-      <span class="check">✓</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-      <span>${escapeHtml(h.label)}</span>${st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:''}</div>`;
+      <span class="check">✓</span><span class="emoji">${escapeHtml(h.emoji)}</span>
+      <span>${escapeHtml(h.label)}</span>${st>1?`<span class="streak">🔥${st}</span>`:''}</div>`;
   }).join('');
 
   // Core fields come from the user's config (Customize ▸ Log screen fields)
@@ -576,7 +575,7 @@ function renderToday() {
     </div>
 
     <div class="card">
-      <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
+      <h2>✅ Tasks <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
       ${tc.planned
         ? `<div class="task-summary"><div class="ts-cell"><div class="ts-n">${tc.done}</div><div class="ts-l">done</div></div><div class="ts-cell"><div class="ts-n">${tc.planned}</div><div class="ts-l">planned</div></div></div>`
         : '<div class="hint" style="padding:4px 0 8px">No tasks yet — add one below or on the Tasks tab.</div>'}
@@ -596,7 +595,7 @@ function renderToday() {
     </div>
 
     <div class="card">
-      <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
+      <h2>💪 Workout <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
       <button class="btn btn-primary btn-sm" id="log-open-gym">💪 Log / edit today's workout →</button>
     </div>
 
@@ -3989,35 +3988,8 @@ const ICONS = {
   history:'<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8"/><path d="M3.5 4v4h4"/><path d="M12 8v4.2l3 1.8"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5l1.6 2.2 2.6-.6 .6 2.6 2.2 1.6-1.2 2.4 1.2 2.4-2.2 1.6-.6 2.6-2.6-.6L12 21.5l-1.6-2.2-2.6.6-.6-2.6-2.2-1.6 1.2-2.4-1.2-2.4 2.2-1.6.6-2.6 2.6.6Z"/>',
   radio:'<circle cx="12" cy="12" r="2"/><path d="M8 8a5.5 5.5 0 0 0 0 8"/><path d="M16 8a5.5 5.5 0 0 1 0 8"/><path d="M5 5a9.5 9.5 0 0 0 0 14"/><path d="M19 5a9.5 9.5 0 0 1 0 14"/>',
-  // section / header / content icons
-  lightbulb:'<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/>',
-  smile:'<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/>',
-  heart:'<path d="M12 20 4.6 12.6a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5Z"/>',
-  briefcase:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/>',
-  book:'<path d="M12 6C10 4.6 7.2 4 4 4v14c3.2 0 6 .6 8 2 2-1.4 4.8-2 8-2V4c-3.2 0-6 .6-8 2Z"/><path d="M12 6v14"/>',
-  wallet:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.1"/>',
-  phone:'<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M11 18h2"/>',
-  trending:'<path d="M3 17l6-6 4 4 8-8"/><path d="M16 7h5v5"/>',
-  scissors:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20"/><path d="M8.1 15.9 20 4"/>',
-  droplet:'<path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/>',
-  sparkle:'<path d="M12 3l1.9 5.6L19.5 10l-5.6 1.4L12 17l-1.9-5.6L4.5 10l5.6-1.4Z"/>',
-  layers:'<path d="M12 3 3 8l9 5 9-5Z"/><path d="M3 13l9 5 9-5"/>',
-  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/>',
-  leaf:'<path d="M11 20A7 7 0 0 1 4 13C4 7 9 4 20 4c0 8-4 13-9 16Z"/><path d="M4 20c3-4 6.5-6 11-8"/>',
-  dropletCare:'<path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/><path d="M9 13a3 3 0 0 0 3 3"/>',
-  zap:'<path d="M13 2 4 14h7l-1 8 9-12h-7Z"/>',
-  star:'<path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17.3 6 20.4l1.4-6.3L2.6 9.8l6.4-.6Z"/>',
-  plus:'<path d="M12 5v14"/><path d="M5 12h14"/>',
-  dot:'<circle cx="12" cy="12" r="4"/>',
 };
-// section id → icon, and default-habit key → icon (custom items keep their emoji)
-const SECTION_ICON = { mind:'lightbulb', wellbeing:'smile', health:'heart', work:'briefcase', learning:'book', finance:'wallet', digital:'phone', growth:'trending', haircare:'scissors', skincare:'droplet' };
-const HABIT_ICON = { workout:'dumbbell', meditation:'sparkle', reading:'book', healthyFood:'leaf', faceWorkout:'smile', english:'radio', reading2:'book' };
 function icon(name, size) { size = size || 20; const p = ICONS[name]; if (!p) return name || ''; return `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`; }
-// a rich accent-tinted chip around a line icon — the "polished" header treatment
-function hicon(name) { return `<span class="hicon">${icon(name, 18)}</span>`; }
-// strip a leading emoji (+ space) from a stored title so we can show a clean icon instead
-function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictographic}\u{1f000}-\u{1ffff}☀-➿][\u{fe0f}‍\p{Extended_Pictographic}]*\s*/u, ''); }
 
 /* ============================================================
    FIRST-RUN ONBOARDING — shown once to brand-new users only
