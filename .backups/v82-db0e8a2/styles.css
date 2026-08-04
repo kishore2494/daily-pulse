@@ -847,14 +847,3 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .nav button .ico .ic { width: 21px; height: 21px; }
 .drawer-ico { display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); }
 .drawer-row.on .drawer-ico { color: var(--accent); }
-
-/* ---------- v83: rich icon chips on headers + icon habit chips ---------- */
-.h2-icon { display: flex; align-items: center; gap: 9px; }
-.hicon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
-  width: 30px; height: 30px; border-radius: 9px;
-  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
-.h2-icon .chev { margin-left: auto; }
-.h2-icon .hint { font-weight: 400; }
-.habit .emoji .ic { width: 17px; height: 17px; display: block; color: var(--text-dim); }
-.habit.on .emoji .ic { color: var(--good); }
-.streak .ic { vertical-align: -1px; }
