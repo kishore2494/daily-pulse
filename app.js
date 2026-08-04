@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v83';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v84';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3934,6 +3934,7 @@ function show(name) {
   const sec = document.getElementById('s-' + name);
   if (sec) sec.classList.add('on');
   (RENDER[name] || (()=>{}))();
+  if (sec) decorateHeaders(sec);   // swap leading header/menu emoji → clean icons app-wide
   renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)
   window.scrollTo(0, 0);
 }
@@ -4018,6 +4019,33 @@ function icon(name, size) { size = size || 20; const p = ICONS[name]; if (!p) re
 function hicon(name) { return `<span class="hicon">${icon(name, 18)}</span>`; }
 // strip a leading emoji (+ space) from a stored title so we can show a clean icon instead
 function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictographic}\u{1f000}-\u{1ffff}☀-➿][\u{fe0f}‍\p{Extended_Pictographic}]*\s*/u, ''); }
+/* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
+   in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
+   gets the professional treatment without editing dozens of template strings. */
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle' };
+function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
+function decorateHeaders(root) {
+  if (!root) return;
+  root.querySelectorAll('h2:not(.h2-icon)').forEach(h => {
+    const t = h.firstChild; if (!t || t.nodeType !== 3) return;
+    const m = t.nodeValue.match(/^\s*(\p{Extended_Pictographic}[\u{fe0f}\u{200d}\p{Extended_Pictographic}]*)\s*/u);
+    if (!m) return; const ic = lookupEmojiIcon(m[1]); if (!ic) return;
+    t.nodeValue = t.nodeValue.slice(m[0].length);
+    h.classList.add('h2-icon'); h.insertAdjacentHTML('afterbegin', hicon(ic));
+  });
+  root.querySelectorAll('.menu-ico').forEach(s => {
+    if (s.querySelector('svg')) return; const e = (s.textContent || '').trim(); const ic = lookupEmojiIcon(e);
+    if (ic) { s.innerHTML = icon(ic, 20); s.classList.add('menu-ico-svg'); }
+  });
+}
+// Re-decorate after ANY re-render (many screens rebuild innerHTML without going through show()).
+let _decorTimer = null;
+try {
+  new MutationObserver(() => {
+    if (_decorTimer) return;
+    _decorTimer = setTimeout(() => { _decorTimer = null; const on = document.querySelector('.screen.on'); if (on) decorateHeaders(on); }, 30);
+  }).observe(document.body, { childList: true, subtree: true });
+} catch (e) {}
 
 /* ============================================================
    FIRST-RUN ONBOARDING — shown once to brand-new users only
