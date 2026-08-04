@@ -1,5 +1,19 @@
 # Log (reverse-chronological)
 
+## 2026-08-03/04 — Big rework: v75→v85 (all live on web = live in native app too)
+Native app loads the remote GitHub Pages URL, so ALL of this reached the installed app with NO rebuild. Backups: `backup/v74-prerework`, `backup/v82-preicons` (both pushed).
+- **v75** dedup Settings in menu · bottom nav hides while typing (keyboard overlap) · How-to back→Settings (`index.html?go=settings`).
+- **v76** Log: task done/planned now AUTO from the Tasks list (read-only `taskCounts`) · quick-add task + quick-add checklist item on the Log home.
+- **v77** Sleep = Bed→Wake time → duration (cross-midnight, `bedwakeHours`) · Deep-work = hours+minutes duration picker. `DEFAULT_CORE_FIELDS` gained `bedwake`/`dur` flags (backfilled).
+- **v78** Bottom nav is now FIXED; side menu lists only non-bottom screens; removed Tabs & Daily-checklist from Customize.
+- **v79** 💪 Workout card on Log opens the logger · Stats range is a DROPDOWN (Today/7/14/30/90, default 7) · bar charts show date-axis labels.
+- **v80** Removed the verbose "your data lives on device" card; kept a compact Backup & restore (export/import is the ONLY restore path — PDF is read-only).
+- **v81** Fixed Log layout — sleep/deep-work pickers now full-width rows (were crammed into the 2-col grid).
+- **v82–v84 — PROFESSIONAL ICON SYSTEM (replaces emoji chrome):** `icon()` + Lucide-style inline SVG set; nav + drawer use line icons; rich accent-tinted `hicon()` chips on every card/section header; default habit chips use icons; a global `decorateHeaders()` + MutationObserver swaps a leading emoji in ANY h2/menu-icon → mapped icon (EMOJI_ICON) across all 14 screens (33 header icons, 0 leftover). Emoji kept only for user-typed custom content. Twemoji font (v74) still loads for any remaining user emoji.
+- **v85** Real **PDF report** via self-hosted jsPDF (`generatePdfReport`, SW-precached) — saves via share sheet/download + toast + native notification (window.print didn't work in WebView); `saveFile()` now handles binary blobs. **Re-enabled `SHOW_SYNC=true`** (Google Sheet sync/login) for testing — ⚠️ **set back to false before PRODUCTION**.
+- **Unit tests**: `tests/unit.js` — 26 tests on pure logic, all pass (re-run after each batch).
+- **STILL PENDING**: Health Connect native scaffold (sleep/steps/distance/calories/workouts/HR — needs rebuild + Play health-data declaration); the 3 tester "previous errors" (deep-log/time/reminders) — NO JS crash reproduces, need screenshots.
+
 ## 2026-08-02 — v74: light-mode drawer/modals + professional Twemoji emojis (live)
 Tester report: opening the side drawer in light mode showed a black panel with invisible text; also wants consistent/professional emojis instead of each device's own ("junkie/amateur").
 - **Light-mode drawer/modal bug:** `.drawer`, `.copy-box` (export modal) and the exit-confirm used `background: var(--card, #141c2e)` — but there is NO `--card` variable (it's `--bg-card`), so they ALWAYS fell back to the hardcoded dark `#141c2e`. Fine in dark mode, but in light mode = dark bg + (correct) dark text → invisible. Fixed all three to `--bg-card`/`--border`/`--text`; drawer/rows/modals now correct in navy/black/light.
