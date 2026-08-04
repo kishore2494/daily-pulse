@@ -840,3 +840,10 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .bw-arrow { padding-bottom: 10px; }
 .bw-dur { margin-left: 2px; white-space: nowrap; }
 .dur-pick select { min-width: 0; }
+
+/* ---------- v82: SVG line icons in nav + drawer (professional, no emoji chrome) ---------- */
+.ic { display: block; }
+.nav button .ico { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; }
+.nav button .ico .ic { width: 21px; height: 21px; }
+.drawer-ico { display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.drawer-row.on .drawer-ico { color: var(--accent); }

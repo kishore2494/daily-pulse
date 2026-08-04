@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v81';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v82';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3753,20 +3753,20 @@ async function scheduleBackgroundNotifications() {
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
 // Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
 const NAV_DEF = [
-  { k: 'today',    ico: '📝', label: 'Log',     primary: true, noHide: true },
-  { k: 'time',     ico: '⏱️', label: 'Time',    primary: true },
-  { k: 'tasks',    ico: '✅', label: 'Tasks' },
-  { k: 'notes',    ico: '🗒️', label: 'Notes' },
-  { k: 'plans',    ico: '📋', label: 'Plans' },
-  { k: 'focus',    ico: '🍅', label: 'Focus',   primary: true },
-  { k: 'waves',    ico: '🧠', label: 'Waves' },
-  { k: 'gym',      ico: '💪', label: 'Gym' },
-  { k: 'habits',   ico: '🔥', label: 'Habits' },
-  { k: 'dash',     ico: '📊', label: 'Stats',   primary: true },
-  { k: 'cal',      ico: '📆', label: 'Cal',     primary: true },
-  { k: 'write',    ico: '✍️', label: 'Write' },
-  { k: 'history',  ico: '🕘', label: 'History' },
-  { k: 'settings', ico: '⚙️', label: 'Settings' },
+  { k: 'today',    ico: 'pencil',   label: 'Log',     primary: true, noHide: true },
+  { k: 'time',     ico: 'clock',    label: 'Time',    primary: true },
+  { k: 'tasks',    ico: 'check',    label: 'Tasks' },
+  { k: 'notes',    ico: 'note',     label: 'Notes' },
+  { k: 'plans',    ico: 'list',     label: 'Plans' },
+  { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
+  { k: 'waves',    ico: 'radio',    label: 'Waves' },
+  { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
+  { k: 'habits',   ico: 'flame',    label: 'Habits' },
+  { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
+  { k: 'cal',      ico: 'calendar', label: 'Cal',     primary: true },
+  { k: 'write',    ico: 'pencil',   label: 'Write' },
+  { k: 'history',  ico: 'history',  label: 'History' },
+  { k: 'settings', ico: 'settings', label: 'Settings' },
 ];
 function navCfg() {
   const s = localStorage.getItem('dp.navcfg');
@@ -3791,10 +3791,10 @@ function renderNav() {
   const items = navCfg().filter(n => !n.hidden);
   const primary = items.filter(n => n.primary).slice(0, NAV_PRIMARY_MAX);   // hard cap so the bar never exceeds 5
   const primaryKeys = new Set(primary.map(n => n.k));
-  const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${n.ico}</span>${escapeHtml(n.label)}</button>`);
+  const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${icon(n.ico)}</span>${escapeHtml(n.label)}</button>`);
   // synthetic Menu button — always present, opens the side drawer with everything
   const menuOn = (!primaryKeys.has(curKey) || document.getElementById('drawer')?.classList.contains('on')) ? 'on' : '';
-  btns.push(`<button data-screen="__menu" class="${menuOn}"><span class="ico">☰</span>Menu</button>`);
+  btns.push(`<button data-screen="__menu" class="${menuOn}"><span class="ico">${icon('menu')}</span>Menu</button>`);
   document.getElementById('nav').innerHTML = btns.join('');
   // Back-to-menu affordance for any screen that isn't a pinned bottom-bar tab
   const back = document.getElementById('nav-back');
@@ -3808,7 +3808,7 @@ function renderDrawer() {
   const bottom = new Set(navCfg().filter(n => !n.hidden && n.primary).slice(0, NAV_PRIMARY_MAX).map(n => n.k));
   const items = navCfg().filter(n => !n.hidden && !bottom.has(n.k));
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
-    <span class="drawer-ico">${n.ico}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
+    <span class="drawer-ico">${icon(n.ico, 22)}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
   document.getElementById('drawer-list').innerHTML = rows;   // 'settings' is already in the list — no duplicate row
 }
@@ -3969,6 +3969,27 @@ document.addEventListener('click', (ev) => {
 function refreshStreak() { document.getElementById('streak-n').textContent = loggedStreak(); }
 function emojiSplit(raw){ raw=(raw||'').trim(); const m=raw.match(/^(\p{Extended_Pictographic}[\u{fe0f}\u{200d}\p{Extended_Pictographic}]*)\s*(.*)$/u); return (m&&m[2])?{emoji:m[1],name:m[2]}:{emoji:'⭐',name:raw}; }
 function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+/* Clean line-icon set (Lucide-style) for app CHROME — nav, menu, headers, buttons.
+   Inline SVG, stroke=currentColor so it themes automatically. Emoji stays only for
+   user-chosen content (custom habits/activities). icon() falls back to the raw string
+   (e.g. an emoji) if the name isn't in the set. */
+const ICONS = {
+  pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/>',
+  chart:'<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/>',
+  menu:'<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+  check:'<path d="M9 11.5l2.5 2.5L20 5.5"/><path d="M20 12v6.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4H15"/>',
+  note:'<path d="M5 3.5h9L19 8.5V20a.5.5 0 0 1-.5.5h-13A.5.5 0 0 1 5 20Z"/><path d="M14 3.5V9h5"/>',
+  list:'<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  dumbbell:'<path d="M4 8v8"/><path d="M7.5 6v12"/><path d="M16.5 6v12"/><path d="M20 8v8"/><path d="M7.5 12h9"/>',
+  flame:'<path d="M12 3s5 3.6 5 8.5A5 5 0 0 1 7 11.5c0-1.6.9-2.7.9-2.7s.2 1.8 1.8 1.8c0-2.8 2.3-5.6 2.3-7.6Z"/>',
+  calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9.5h16"/><path d="M8 3v4"/><path d="M16 3v4"/>',
+  history:'<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8"/><path d="M3.5 4v4h4"/><path d="M12 8v4.2l3 1.8"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5l1.6 2.2 2.6-.6 .6 2.6 2.2 1.6-1.2 2.4 1.2 2.4-2.2 1.6-.6 2.6-2.6-.6L12 21.5l-1.6-2.2-2.6.6-.6-2.6-2.2-1.6 1.2-2.4-1.2-2.4 2.2-1.6.6-2.6 2.6.6Z"/>',
+  radio:'<circle cx="12" cy="12" r="2"/><path d="M8 8a5.5 5.5 0 0 0 0 8"/><path d="M16 8a5.5 5.5 0 0 1 0 8"/><path d="M5 5a9.5 9.5 0 0 0 0 14"/><path d="M19 5a9.5 9.5 0 0 1 0 14"/>',
+};
+function icon(name, size) { size = size || 20; const p = ICONS[name]; if (!p) return name || ''; return `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`; }
 
 /* ============================================================
    FIRST-RUN ONBOARDING — shown once to brand-new users only
