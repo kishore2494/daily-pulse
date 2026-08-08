@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v86';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v87';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3621,11 +3621,11 @@ function healthCardHTML() {
   const cell = (v, unit, label) => `<div class="ts-cell"><div class="ts-n">${v != null ? v : '—'}</div><div class="ts-l">${label}${v != null && unit ? ' ' + unit : ''}</div></div>`;
   const grid = h ? `<div class="task-summary" style="flex-wrap:wrap">
       ${cell(h.steps, '', 'steps')}${cell(h.distanceKm, 'km', 'distance')}${cell(h.calories, 'kcal', 'calories')}${cell(h.sleepMin != null ? (Math.floor(h.sleepMin / 60) + 'h' + (h.sleepMin % 60) + 'm') : null, '', 'sleep')}
-    </div>` : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today.' : 'Connect your phone\'s health data (Health Connect) in the installed app to auto-track steps, sleep, distance & calories.'}</div>`;
+    </div>` : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today — tap Sync.' : 'Auto steps, sleep, distance &amp; calories from your phone — <b>coming in a Play update</b>.'}</div>`;
   return `<div class="card">
-    <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && h.hr ? '❤ ' + h.hr + ' bpm' : 'auto from your phone'}</span></h2>
+    <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && h.hr ? '❤ ' + h.hr + ' bpm' : (hasPlugin ? 'auto from your phone' : 'coming soon')}</span></h2>
     ${grid}
-    <button class="btn ${hasPlugin ? 'btn-primary' : 'btn-ghost'} btn-sm" id="health-sync">${hasPlugin ? '↻ Sync health now' : 'How to connect health'}</button>
+    ${hasPlugin ? '<button class="btn btn-primary btn-sm" id="health-sync">↻ Sync health now</button>' : ''}
   </div>`;
 }
 function fullScreenPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FullScreenAlarm) || null; }
