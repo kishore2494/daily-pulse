@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v87';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v88';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -233,42 +233,64 @@ function prettyDate(str) {
 function isSunday(str) { return new Date(str + 'T00:00:00').getDay() === 0; }
 
 /* ---------- Voice dictation (speak → journal) ---------- */
-let _recog = null, _recogOn = false, _recogBtn = null, _userStopped = false;
+let _recog = null, _recogOn = false, _recogBtn = null, _userStopped = false, _natSR = false;
+const DICT_LANG = 'en-IN';
+function speechPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SpeechRecognition) || null; }
 // sel = a CSS selector for the input/textarea to dictate into.
 // MANUAL toggle: tap 🎤 to start recording, tap again to stop. No auto-restart, so no
 // repeated mic "ding" and no unpredictable cut-in/cut-out. `continuous = true` keeps it
 // listening through pauses on capable browsers; if the OS ends it during a long silence
 // (common on phones), the mic just turns off and you tap once to continue.
+function stopDictation() {
+  _userStopped = true;
+  if (_natSR) { const sp = speechPlugin(); try { sp && sp.stop && sp.stop(); sp && sp.removeAllListeners && sp.removeAllListeners(); } catch (_) {}
+    _recogOn = false; _natSR = false; if (_recogBtn) _recogBtn.classList.remove('rec'); }
+  else { try { _recog && _recog.stop(); } catch (_) {} }
+}
 async function dictateInto(sel, btn) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { toast('Voice input needs Chrome / Android', true); return; }
-  if (_recogOn) { _userStopped = true; try { _recog && _recog.stop(); } catch (_) {} return; }   // tap again = stop
   const ta = document.querySelector(sel); if (!ta) return;
-  // Proactively request mic permission so the OS shows its ALLOW/DENY prompt (instead of a silent block).
+  if (_recogOn) { stopDictation(); return; }   // tap again = stop
+  // 1) Native speech plugin (works INSIDE the installed app — the WebView has no Web Speech API)
+  const sp = speechPlugin();
+  if (sp) { return dictateNative(sp, ta, btn); }
+  // 2) Web Speech API (browser / installed PWA)
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast('Voice typing needs the latest app update — or open Daily Pulse in Chrome', true); return; }
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); }
     catch (err) {
-      if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError'))
-        toast('Enable microphone for this app in Settings › Apps › Daily Pulse › Permissions', true);
-      else toast('Microphone unavailable', true);
+      toast(err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
+        ? 'Enable microphone in Settings › Apps › Daily Pulse › Permissions' : 'Microphone unavailable', true);
       btn.classList.remove('rec'); return;
     }
   }
-  _userStopped = false; _recogOn = true; _recogBtn = btn; btn.classList.add('rec');
-  _recog = new SR(); _recog.lang = 'en-IN'; _recog.continuous = true; _recog.interimResults = false;
-  _recog.onresult = (ev) => {
-    let txt = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) txt += ev.results[i][0].transcript + ' ';
-    txt = txt.trim();
-    if (txt) { ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '') + txt; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+  const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
+  _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = false; btn.classList.add('rec');
+  _recog = new SR(); _recog.lang = DICT_LANG; _recog.continuous = true; _recog.interimResults = true;
+  _recog.onresult = (ev) => {   // rebuild from start each event so interim words show live, finals stick
+    let all = ''; for (let i = 0; i < ev.results.length; i++) all += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
+    ta.value = startText + all; ta.dispatchEvent(new Event('input', { bubbles: true }));
   };
   _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow microphone in Settings › Apps › Daily Pulse › Permissions', true); };
-  _recog.onend = () => {                       // NO auto-restart — purely manual
-    _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null;
-    if (!_userStopped) toast('Mic paused — tap 🎤 to continue');
-  };
-  try { _recog.start(); toast('🎙️ Recording — tap 🎤 again to stop'); }
+  _recog.onend = () => { _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null; if (!_userStopped) toast('Mic paused — tap 🎤 to continue'); };
+  try { _recog.start(); toast('🎙️ Listening — tap 🎤 to stop'); }
   catch (e) { _recogOn = false; btn.classList.remove('rec'); _recog = null; }
+}
+// Native speech-to-text via @capacitor-community/speech-recognition (added in a rebuild).
+async function dictateNative(sp, ta, btn) {
+  try {
+    if (sp.available) { const a = await sp.available(); if (a && a.available === false) { toast('Speech recognition not available on this device', true); return; } }
+    if (sp.requestPermissions) { try { await sp.requestPermissions(); } catch (_) {} }
+    else if (sp.requestPermission) { try { await sp.requestPermission(); } catch (_) {} }
+    const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
+    _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = true; btn.classList.add('rec');
+    if (sp.removeAllListeners) { try { await sp.removeAllListeners(); } catch (_) {} }
+    if (sp.addListener) sp.addListener('partialResults', (d) => {
+      const m = d && d.matches && d.matches[0]; if (m) { ta.value = startText + m; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    await sp.start({ language: DICT_LANG, partialResults: true, popup: false });
+    toast('🎙️ Listening — tap 🎤 to stop');
+  } catch (e) { _recogOn = false; _natSR = false; btn.classList.remove('rec'); toast("Couldn't start voice typing", true); }
 }
 document.addEventListener('click', (ev) => { const m = ev.target.closest('[data-mic]'); if (m) { ev.preventDefault(); dictateInto(m.dataset.mic, m); } });
 
