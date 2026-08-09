@@ -858,3 +858,6 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .habit .emoji .ic { width: 17px; height: 17px; display: block; color: var(--text-dim); }
 .habit.on .emoji .ic { color: var(--good); }
 .streak .ic { vertical-align: -1px; }
+
+/* ---------- v89: tabs editor back in Customize ---------- */
+.cfg-ico { flex: 0 0 24px; display: inline-flex; justify-content: center; color: var(--text-dim); }
