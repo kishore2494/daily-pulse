@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v88';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v89';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -2249,8 +2249,8 @@ function cfgRow(kind, item, deletable) {
 /* Customize is a HUB of cards; each opens its own sub-page (customPage). */
 let customPage = null;
 const CUSTOM_PAGES = [
-  // Tabs & navigation removed — the bottom bar is now fixed. Daily checklist removed —
-  // it's created/edited right on the Log home screen.
+  // Daily checklist removed — it's created/edited right on the Log home screen.
+  { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'choose your 4 bottom tabs + default' },
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
@@ -2273,16 +2273,16 @@ function cfgSectionHTML(page) {
     const pinnedCount = navCfg().filter(n => !n.hidden && n.primary).length;
     const navRows = navCfg().map(n => `<div class="cfg-row ${n.hidden ? 'hid' : ''}" data-id="${n.k}">
         <span class="drag-handle" data-drag>⠿</span>
-        <span style="flex:0 0 24px;text-align:center">${n.ico}</span>
+        <span class="cfg-ico">${icon(n.ico, 18)}</span>
         <input class="cfg-name" data-nav-label="${n.k}" value="${escapeHtml(n.label)}">
         <button class="cfg-star ${n.k === dt ? 'on' : ''}" data-nav-default="${n.k}" title="default opening tab">${n.k === dt ? '🎯' : '○'}</button>
         <button class="cfg-pin ${n.primary && !n.hidden ? 'on' : ''}" data-nav-pin="${n.k}" title="show in bottom bar" ${n.hidden ? 'disabled' : ''}>📌</button>
         ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
       </div>`).join('');
     return `<div class="card">
-      <h2>🧭 Tabs <span class="hint">📌 pin (${pinnedCount}) · 🎯 default · drag · 👁 hide</span></h2>
+      <h2>🧭 Tabs <span class="hint">📌 pinned ${pinnedCount}/${NAV_PRIMARY_MAX} · 🎯 default · drag · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
-      <div class="hint" style="margin-top:8px">Pin as many tabs as you like — pinned ones fill the bottom bar (in this order); the rest live under <b>More</b>. 🎯 is the tab the app opens to.</div></div>`;
+      <div class="hint" style="margin-top:8px">Pin up to <b>${NAV_PRIMARY_MAX}</b> tabs for the bottom bar (drag to set their order) — everything else stays one tap away in <b>☰ Menu</b>. 🎯 is the tab the app opens to.</div></div>`;
   }
   if (page === 'log') {
     return `<div class="card">
@@ -2529,8 +2529,11 @@ document.addEventListener('click', (ev) => {
     if (n && !n.noHide) { n.hidden = !n.hidden; if (n.hidden) n.primary = false; saveNavCfg(cfg); renderCustom(); } return; }
   const np = ev.target.closest('[data-nav-pin]');
   if (np) { const cfg = navCfg(); const n = cfg.find(x => x.k === np.dataset.navPin); if (!n || n.hidden) return;
+    // Bottom bar is fixed at 4 pinned tabs + Menu — pinning a 5th must swap, not silently drop.
+    if (!n.primary && cfg.filter(x => !x.hidden && x.primary).length >= NAV_PRIMARY_MAX) {
+      toast('Bottom bar fits ' + NAV_PRIMARY_MAX + ' tabs — unpin one first', true); return;
+    }
     n.primary = !n.primary; saveNavCfg(cfg); renderCustom();
-    if (n.primary && cfg.filter(x => !x.hidden && x.primary).length > 5) toast('Tip: 4–5 pinned tabs stay easiest to tap');
     return; }
   const nd = ev.target.closest('[data-nav-default]');
   if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; DB.saveSettings(s); renderCustom(); toast('Default tab set'); return; }
@@ -3891,7 +3894,7 @@ const NAV_DEF = [
   { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
   { k: 'habits',   ico: 'flame',    label: 'Habits' },
   { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
-  { k: 'cal',      ico: 'calendar', label: 'Cal',     primary: true },
+  { k: 'cal',      ico: 'calendar', label: 'Cal' },
   { k: 'write',    ico: 'pencil',   label: 'Write' },
   { k: 'history',  ico: 'history',  label: 'History' },
   { k: 'settings', ico: 'settings', label: 'Settings' },
@@ -3904,6 +3907,13 @@ function navCfg() {
   if (cfg.every(n => n.primary === undefined)) {
     cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); n.primary = !!(d && d.primary); n.hidden = n.k === 'history' ? false : n.hidden; });
   }
+  // Icons are not user data — always take them from NAV_DEF, so stored configs from the
+  // emoji era (pre-v82) render the professional line icons too.
+  cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); if (d) n.ico = d.ico; });
+  // Clamp legacy configs from the no-cap era: only the first NAV_PRIMARY_MAX pins count,
+  // so the editor and the bar always agree.
+  let pins = 0;
+  cfg.forEach(n => { if (n.primary && !n.hidden) { pins++; if (pins > NAV_PRIMARY_MAX) n.primary = false; } });
   return cfg;
 }
 function saveNavCfg(cfg) { localStorage.setItem('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); }
