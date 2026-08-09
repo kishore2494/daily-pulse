@@ -1,5 +1,8 @@
 # Log (reverse-chronological)
 
+## 2026-08-09 — v89: tab customization restored (live)
+User asked for tab customization back after v78 removed it. Re-added **Customize ▸ Tabs & navigation**: choose WHICH 4 tabs fill the fixed bottom bar (drag order, rename, hide, 🎯 default tab) — the bar itself stays 4 + ☰ Menu. Pin cap enforced with a toast (was silently dropping the 5th pin); NAV_DEF default pins trimmed 5→4 (`cal` unpinned) so defaults agree with the cap; `navCfg()` now always takes `ico` from NAV_DEF (fixes existing users' stored emoji-era configs showing emoji in the bar after v82) and clamps legacy >4-pin configs. Browser-verified end-to-end + 26/26 unit tests. Also earlier (v88, 2026-08-04): native speech build **103/63** uploaded to closed testing — only warning was the harmless deobfuscation note; awaiting on-device Speak test.
+
 ## 2026-08-03/04 — Big rework: v75→v85 (all live on web = live in native app too)
 Native app loads the remote GitHub Pages URL, so ALL of this reached the installed app with NO rebuild. Backups: `backup/v74-prerework`, `backup/v82-preicons` (both pushed).
 - **v75** dedup Settings in menu · bottom nav hides while typing (keyboard overlap) · How-to back→Settings (`index.html?go=settings`).
