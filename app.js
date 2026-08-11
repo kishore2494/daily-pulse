@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v89';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v90';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -3121,6 +3121,25 @@ function renderSettings() {
       </div>
       <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Newest edit wins.</div>
     </div>` : ''}
+    ${(() => { const at = autoTrackCfg();
+      const row = (k, label, sub) => `<div class="at-row ${at.on ? '' : 'at-dim'}">
+        <div class="at-txt"><div class="at-lbl">${label}</div>${sub ? `<div class="at-sub">${sub}</div>` : ''}</div>
+        <button class="at-tog ${at[k] ? 'on' : ''}" data-at-toggle="${k}" ${!at.on && k !== 'on' ? 'disabled' : ''}><span class="at-knob"></span></button>
+      </div>`;
+      return `<div class="card">
+      <h2>📈 Auto-tracking <span class="hint">${hcPlugin() ? 'from your phone' : 'coming in a Play update'}</span></h2>
+      <div class="at-row">
+        <div class="at-txt"><div class="at-lbl"><b>Auto health tracking</b></div><div class="at-sub">master switch — off = nothing is collected</div></div>
+        <button class="at-tog ${at.on ? 'on' : ''}" data-at-toggle="on"><span class="at-knob"></span></button>
+      </div>
+      ${row('sleep', '😴 Sleep', 'auto-fills your sleep from the phone')}
+      ${row('steps', '👟 Steps & distance', '')}
+      ${row('calories', '🔥 Calories', '')}
+      ${row('workouts', '🏃 Workouts / cardio', 'active minutes & sessions')}
+      ${row('hr', '❤️ Heart rate', 'needs a watch/band')}
+      ${row('screentime', '📱 Screen time', 'daily phone usage')}
+      <div class="hint" style="margin-top:8px">Everything stays on your phone. Sensor data needs the Play-update version of the app; these switches control what it's allowed to collect.</div>
+    </div>`; })()}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
       ${DB.reminders().length ? DB.reminders().map(r => `
@@ -3273,6 +3292,11 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (ev.target.closest('#open-report')) { downloadReport(); return; }
+  const att = ev.target.closest('[data-at-toggle]');
+  if (att) { const k = att.dataset.atToggle; const at = autoTrackCfg();
+    saveAutoTrack({ [k]: !at[k] }); renderSettings();
+    if (k === 'on') toast(!at.on ? 'Auto-tracking ON' : 'Auto-tracking OFF — nothing will be collected');
+    return; }
   if (ev.target.id === 'export') exportData();
   if (ev.target.id === 'export-csv') exportCSV();
   if (ev.target.id === 'import') document.getElementById('import-file').click();
@@ -3609,11 +3633,18 @@ function nativeShell() { return !!(window.Capacitor && window.Capacitor.Plugins 
    Degrades gracefully: on the web/PWA (no plugin) the Health card just invites you to
    use the app; nothing breaks. Data is cached per-day in dp.health and auto-fills sleep. */
 function hcPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.HealthConnect) || null; }
+/* Auto-tracking preferences — every tracked signal can be switched on/off in
+   Settings ▸ Auto-tracking. Master `on` gates everything. Defaults: all on. */
+const AUTOTRACK_DEF = { on: true, sleep: true, steps: true, calories: true, workouts: true, hr: true, screentime: true };
+function autoTrackCfg() { return Object.assign({}, AUTOTRACK_DEF, DB.settings().autoTrack || {}); }
+function saveAutoTrack(patch) { const s = DB.settings(); s.autoTrack = Object.assign(autoTrackCfg(), patch); DB.saveSettings(s); }
 function healthStore() { try { return JSON.parse(localStorage.getItem('dp.health') || '{}'); } catch (e) { return {}; } }
 function saveHealthStore(h) { localStorage.setItem('dp.health', JSON.stringify(h)); }
 function healthFor(date) { return healthStore()[date] || null; }
 async function syncHealth(opts) {
   opts = opts || {};
+  const at = autoTrackCfg();
+  if (!at.on) { if (!opts.silent) toast('Auto-tracking is off — enable it in Settings', true); return null; }
   const hc = hcPlugin();
   if (!hc) { if (!opts.silent) toast('Health sync works in the installed app', true); return null; }
   try {
@@ -3621,16 +3652,24 @@ async function syncHealth(opts) {
     if (hc.requestPermissions) { const p = await hc.requestPermissions(); if (p && p.granted === false) { if (!opts.silent) toast('Allow health permissions to sync', true); return null; } }
     const t = await hc.today();
     if (!t) return null;
+    // Screen time comes from a separate native module (UsageStats); optional in the contract.
+    let scr = null;
+    if (at.screentime && hc.screenTimeToday) { try { const r = await hc.screenTimeToday(); scr = r && r.screenTimeMinutes != null ? r.screenTimeMinutes : null; } catch (_) {} }
     const store = healthStore(); const key = todayStr();
+    // Only store what's switched ON — an off toggle means "don't collect", not "hide".
     store[key] = {
-      steps: t.steps ?? null, distanceKm: t.distanceMeters != null ? +(t.distanceMeters / 1000).toFixed(2) : null,
-      calories: t.caloriesKcal != null ? Math.round(t.caloriesKcal) : null,
-      sleepMin: t.sleepMinutes ?? null, exerciseMin: t.exerciseMinutes ?? null, hr: t.heartRateAvg ?? null,
+      steps: at.steps ? (t.steps ?? null) : null,
+      distanceKm: at.steps && t.distanceMeters != null ? +(t.distanceMeters / 1000).toFixed(2) : null,
+      calories: at.calories && t.caloriesKcal != null ? Math.round(t.caloriesKcal) : null,
+      sleepMin: at.sleep ? (t.sleepMinutes ?? null) : null,
+      exerciseMin: at.workouts ? (t.exerciseMinutes ?? null) : null,
+      hr: at.hr ? (t.heartRateAvg ?? null) : null,
+      screenMin: scr,
       at: new Date().toISOString(),
     };
     saveHealthStore(store);
     // auto-fill sleep from Health Connect if the user hasn't entered it for today
-    if (store[key].sleepMin && logDate === key) {
+    if (at.sleep && store[key].sleepMin && logDate === key) {
       const cur = draft.sleepHours;
       if (cur == null || cur === '') { draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2); saveDraftNow(key, draft); }
     }
@@ -3639,16 +3678,26 @@ async function syncHealth(opts) {
     return store[key];
   } catch (e) { if (!opts.silent) toast('Health sync failed', true); return null; }
 }
-// Compact Health card for the Log screen (shows today's synced metrics + a sync button).
+const fmtMin = m => m == null ? null : (Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm');
+// Compact Health card for the Log screen — shows ONLY the metrics enabled in Settings ▸ Auto-tracking.
 function healthCardHTML() {
+  const at = autoTrackCfg();
+  if (!at.on) return '';   // master switch off → no card at all
   const h = healthFor(todayStr());
   const hasPlugin = !!hcPlugin();
   const cell = (v, unit, label) => `<div class="ts-cell"><div class="ts-n">${v != null ? v : '—'}</div><div class="ts-l">${label}${v != null && unit ? ' ' + unit : ''}</div></div>`;
-  const grid = h ? `<div class="task-summary" style="flex-wrap:wrap">
-      ${cell(h.steps, '', 'steps')}${cell(h.distanceKm, 'km', 'distance')}${cell(h.calories, 'kcal', 'calories')}${cell(h.sleepMin != null ? (Math.floor(h.sleepMin / 60) + 'h' + (h.sleepMin % 60) + 'm') : null, '', 'sleep')}
-    </div>` : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today — tap Sync.' : 'Auto steps, sleep, distance &amp; calories from your phone — <b>coming in a Play update</b>.'}</div>`;
+  const cells = h ? [
+    at.steps ? cell(h.steps, '', 'steps') : '',
+    at.steps ? cell(h.distanceKm, 'km', 'distance') : '',
+    at.calories ? cell(h.calories, 'kcal', 'calories') : '',
+    at.sleep ? cell(fmtMin(h.sleepMin), '', 'sleep') : '',
+    at.workouts ? cell(fmtMin(h.exerciseMin), '', 'active') : '',
+    at.screentime ? cell(fmtMin(h.screenMin), '', 'screen time') : '',
+  ].join('') : '';
+  const grid = h ? `<div class="task-summary" style="flex-wrap:wrap">${cells}</div>`
+    : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today — tap Sync.' : 'Auto sleep, steps, calories &amp; screen time from your phone — <b>coming in a Play update</b>. Choose what to track in <b>Settings ▸ Auto-tracking</b>.'}</div>`;
   return `<div class="card">
-    <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && h.hr ? '❤ ' + h.hr + ' bpm' : (hasPlugin ? 'auto from your phone' : 'coming soon')}</span></h2>
+    <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && at.hr && h.hr ? '❤ ' + h.hr + ' bpm' : (hasPlugin ? 'auto from your phone' : 'coming soon')}</span></h2>
     ${grid}
     ${hasPlugin ? '<button class="btn btn-primary btn-sm" id="health-sync">↻ Sync health now</button>' : ''}
   </div>`;
