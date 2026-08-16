@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v92';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v93';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -574,6 +574,30 @@ function renderDeepSections() {
   }).join('');
 }
 
+/* ---------- "What's new" — one dismissible card per release wave ----------
+   Testers get silent web updates; this makes improvements visible so they keep
+   giving feedback. Bump WHATS_NEW.v to re-show with new items. */
+const WHATS_NEW = {
+  v: 'w3',
+  items: [
+    '🎙️ <b>Voice typing works in the app</b> — update Daily Pulse in the Play Store, then tap Speak',
+    '🎉 <b>Streak rewards</b> — full-screen celebration at 3, 5, 7, 10, 14… day streaks',
+    '🔗 <b>Connected insights</b> in Stats — how sleep drives your mood, week vs last week',
+    '⏱ <b>Time tracker fills your Log</b> — tracked Sleep/Work auto-fill the fields',
+    '🧭 <b>Choose your bottom tabs</b> — Settings ▸ Customize ▸ Tabs & navigation',
+    '📄 <b>PDF report + backup export</b> now work inside the app',
+  ],
+};
+function whatsNewHTML() {
+  if (localStorage.getItem('dp.whatsnew') === WHATS_NEW.v) return '';
+  return `<div class="card whatsnew">
+    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new</span> <button class="drawer-x" id="wn-close" aria-label="dismiss">✕</button></h2>
+    ${WHATS_NEW.items.map(i => `<div class="wn-item">${i}</div>`).join('')}
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target.id === 'wn-close') { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); const c = document.querySelector('.whatsnew'); if (c) c.remove(); }
+});
 function openToday() { loadDraft(); renderToday(); }
 function renderToday() {
   const isToday = logDate === todayStr();
@@ -620,6 +644,7 @@ function renderToday() {
       <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
 
   document.getElementById('s-today').innerHTML = `
+    ${whatsNewHTML()}
     <div class="card">
       <div class="field"><label>Date</label>
         <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
@@ -4473,6 +4498,7 @@ document.addEventListener('click', (ev) => {
       const cust = DB.timeacts(); let ch = false; cust.forEach(a => { if (obHideA.has(a.id)) { a.hidden = true; ch = true; } }); if (ch) DB.saveTimeacts(cust);
     }
     localStorage.setItem('dp.onboarded', '1');
+    localStorage.setItem('dp.whatsnew', WHATS_NEW.v);   // brand-new users: everything is new — skip the What's-new card
     el.classList.remove('on');
     show('today');
     toast('Welcome! Change anything later in More ▸ Customize 🎨');
