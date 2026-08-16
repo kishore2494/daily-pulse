@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v91';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v92';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -732,6 +732,7 @@ function showMilestone(n) {
   const confetti = Array.from({ length: 44 }, (_, i) =>
     `<span class="mf" style="left:${(i * 137) % 100}%;background:${['#6d8cff','#4ad6c0','#fbbf24','#f87171','#a78bfa','#34d399'][i % 6]};animation-delay:${(i % 11) * .14}s;animation-duration:${2.2 + (i % 5) * .35}s"></span>`).join('');
   const msg = n >= 100 ? 'Legendary. This is who you are now.' : n >= 30 ? 'A full month of showing up. Unreal.' :
+              n >= 21 ? 'Three weeks in — officially unstoppable.' :
               n >= 14 ? 'Two weeks strong — this is a habit now.' : n >= 7 ? 'A whole week, every single day!' : 'Momentum! Keep the chain alive.';
   m.innerHTML = `<div class="mf-wrap">${confetti}</div>
     <div class="ms-inner">
