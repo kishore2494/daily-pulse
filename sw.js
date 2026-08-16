@@ -1,7 +1,7 @@
 /* Daily Pulse service worker
    Strategy: NETWORK-FIRST for the app's own files (so you ALWAYS get the latest
    when online), with cache fallback so it still works fully offline. */
-const CACHE = 'daily-pulse-v91';
+const CACHE = 'daily-pulse-v92';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js',
   './workout-anims.js', './workout-plan.js',
