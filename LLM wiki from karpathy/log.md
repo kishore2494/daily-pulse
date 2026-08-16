@@ -1,5 +1,11 @@
 # Log (reverse-chronological)
 
+## 2026-08-16 — v96: global Search + onboarding reminder + backup nudge (live)
+- **🔍 Search screen** (`s-search`, in the Menu drawer; NAV_DEF k:'search'): searches entries (journal/wentWell/improve/weekWins/weekFocus), tasks, notes, plans (name+items), Write docs (title+blocks), events. Debounced input, grouped cards with counts, highlighted snippets (`snippet()`), deep links per type (log→that day, plan→curPlan, doc→curDoc, event→calendar day). Stats "Your topics" tag chips are now buttons (`data-searchtag`) that jump into a tag search.
+- **⏰ Onboarding step 4** (dots now 0-3): "Never miss a day" — checkbox (default on) + time (default 21:00) creates a 'Log my day' notify-mode reminder on finish + web Notification permission request. Retention lever for production.
+- **💾 Backup nudge:** boot check (2.5s delayed) — ≥10 entries & no backup 14d+ → weekly toast pointing at Settings ▸ Backup (`dp.backupNudge` throttle).
+- Verified: 5 result groups/highlights/deep-links, tag→search, onboarding reminder creation (20:30 test); 26/26 unit tests; 16 screens 0 errors.
+
 ## 2026-08-16 — v95: Stats surfaces everything we track (live)
 User: "we track screen time and more — where is it shown?" — the dp.health store was only visible on the Log's today card. Shipped:
 - **New ❤️ Health tab in Stats** (4th segment): averages grid (steps/screen/kcal/sleep/active/HR), per-metric date-axis bar charts gated by the Auto-tracking toggles, **Health ↔ You** correlations (screenMin→mood, steps→mood, steps→energy, exerciseMin→energy via `hPairs`+pearson, ≥5 paired days), and a screen-vs-deep-work ratio note ("4h45m/day — 1.7× your deep work"). Distinct states: master-off → "switched off in Settings"; no data → "coming in a Play update".
