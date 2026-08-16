@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v94';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v95';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2003,6 +2003,13 @@ function longestLoggedStreak() {
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
   return best;
 }
+function bestHabitStreak(key) {
+  const e = DB.entries();
+  const ds = Object.keys(e).filter(d => e[d].habits && e[d].habits[key]).sort();
+  let best = 0, cur = 0, prev = null;
+  ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
+  return best;
+}
 let dashRange = 7;
 let dashTab = 'overview';
 function renderDash() {
@@ -2015,6 +2022,13 @@ function renderDash() {
 
   const allDates = Object.keys(e);
   const avg = key => { const v = allDates.map(d=>e[d][key]).filter(x=>x!=null&&x!==''); return v.length ? (v.reduce((a,b)=>a+ +b,0)/v.length).toFixed(1) : '–'; };
+
+  // ---- Health-store helpers (steps / screen time / calories / active / HR from auto-tracking) ----
+  const hstore = healthStore();
+  const hFor = d => hstore[d] || {};
+  const hSeries = key => days.map(d => ({ x: d, y: hFor(d)[key] != null ? hFor(d)[key] : null }));
+  const hAvgR = (ds, key) => { const v = ds.map(d => hFor(d)[key]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const hDays = Object.keys(hstore).length;
 
   const last30 = []; for (let i = 29; i >= 0; i--) last30.push(addDays(todayStr(), -i));
   const habitBars = HABITS.map(h => {
@@ -2130,6 +2144,10 @@ function renderDash() {
   if (tA > 0 || tB > 0) wow('⏱ Time tracked', tA, tB, 'h', 0);
   const woA = thisW.filter(d => e[d] && +e[d].workoutsDone > 0).length, woB = lastW.filter(d => e[d] && +e[d].workoutsDone > 0).length;
   if (woA || woB) wow('💪 Workouts', woA, woB, '', 0);
+  const scA = hAvgR(thisW, 'screenMin'), scB = hAvgR(lastW, 'screenMin');
+  if (scA != null && scB != null) wow('📱 Screen time', scA / 60, scB / 60, 'h', 1);
+  const stA = hAvgR(thisW, 'steps'), stB = hAvgR(lastW, 'steps');
+  if (stA != null && stB != null) wow('👟 Steps', stA, stB, '', 0);
   const deepInsightsCard = (corrRows.length || wowRows.length) ? `<div class="card">
       <h2>🔗 Connected insights <span class="hint">how your metrics move together</span></h2>
       ${corrRows.join('')}
@@ -2162,6 +2180,30 @@ function renderDash() {
       </select>
     </div>`;
 
+  // ---- Best days in range (real, dated highlights) ----
+  const bestOf = (getV) => { let best = null; days.forEach(d => { const v = getV(d); if (v != null && v !== '' && !isNaN(+v) && (best == null || +v > best.v)) best = { d, v: +v }; }); return best; };
+  const bMood = bestOf(d => e[d] && e[d].mood);
+  const bFocus = bestOf(d => e[d] && e[d].deepWorkHours);
+  const bSteps = bestOf(d => hFor(d).steps);
+  const bTracked = bestOf(d => { const ms = segsForDay(d).reduce((s, x) => s + (x.b - x.a), 0); return ms > 0 ? ms : null; });
+  const bestRow = (label, best, fmt) => best ? `<div class="wow-row"><span class="name">${label}</span><span class="wow-vals">${fmt(best.v)}</span><span class="hint">${prettyDate(best.d).replace(/, \d{4}$/, '')}</span></div>` : '';
+  const bestDaysCard = (bMood || bFocus || bSteps || bTracked) ? `<div class="card">
+      <h2>🏅 Best days <span class="hint">in this range</span></h2>
+      ${bestRow('😊 Best mood', bMood, v => v + '/10')}
+      ${bestRow('🎯 Most deep work', bFocus, v => fmtH(v))}
+      ${bestRow('👟 Most steps', bSteps, v => Math.round(v).toLocaleString())}
+      ${bestRow('⏱ Most tracked', bTracked, v => fmtDur(v))}
+    </div>` : '';
+
+  // ---- Top journal #tags in range ----
+  const tagCount = {};
+  days.forEach(d => { const j = (e[d] && e[d].journal) || ''; (j.match(/#[\p{L}\d_]+/gu) || []).forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }); });
+  const topTags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const tagsCard = topTags.length ? `<div class="card">
+      <h2>#️⃣ Your topics <span class="hint">from journal #tags · this range</span></h2>
+      <div class="tag-cloud">${topTags.map(([t, n]) => `<span class="tag-chip">${escapeHtml(t)} <b>${n}</b></span>`).join('')}</div>
+    </div>` : '';
+
   const overviewHTML = `
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
@@ -2188,6 +2230,10 @@ function renderDash() {
     <div class="card"><h2>⚡ Energy <span class="hint">last ${N} days</span></h2>${barChart(series('energy'), '#4ad6c0', { max: 10 })}</div>
 
     ${deepInsightsCard}
+
+    ${bestDaysCard}
+
+    ${tagsCard}
 
     ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
       ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
@@ -2222,6 +2268,16 @@ function renderDash() {
 
     <div class="card"><h2>🔥 Habit consistency <span class="hint">last 30 days</span></h2>${habitBars || '<div class="empty">No habits yet.</div>'}</div>
 
+    ${(() => { // streak leaderboard: current vs best run per habit, sorted by current
+      const rows = HABITS.map(h => ({ h, cur: habitStreak(h.key), best: bestHabitStreak(h.key) }))
+        .filter(x => x.best > 0).sort((a, b) => b.cur - a.cur || b.best - a.best);
+      if (!rows.length) return '';
+      return `<div class="card"><h2>🏆 Streak leaderboard <span class="hint">current · best ever</span></h2>
+        ${rows.map((x, i) => `<div class="wow-row"><span class="name">${['🥇','🥈','🥉'][i] || '·'} ${escapeHtml(x.h.label)}</span>
+          <span class="wow-vals">🔥 ${x.cur} <span class="hint">now</span></span>
+          <span class="wow-delta up">best ${x.best}</span></div>`).join('')}</div>`;
+    })()}
+
     ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">out of 10</span></h2>${scaleBars}</div>` : ''}
 
     ${numAvgRows ? `<div class="card"><h2>🔢 Tracked numbers <span class="hint">all-time average</span></h2>${numAvgRows}</div>` : ''}
@@ -2234,8 +2290,54 @@ function renderDash() {
 
     <div class="card"><h2>Mood by weekday <span class="hint">all time</span></h2>${wdBars}</div>`;
 
-  const TABS = [['overview', '📊 Overview'], ['time', '⏱ Time'], ['check', '✅ Checklist']];
-  const body = { overview: overviewHTML, time: timeHTML, check: checkHTML }[dashTab] || overviewHTML;
+  // ---- HEALTH tab: everything auto-tracking captures, charted + connected to your mood ----
+  const at = autoTrackCfg();
+  const hAvg = key => hAvgR(days, key);
+  const hStat = (v, l) => v == null ? '' : `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const hChart = (key, label, color, fmtAvg) => {
+    const s = hSeries(key); if (!s.some(p => p.y != null)) return '';
+    const a = hAvg(key);
+    return `<div class="card"><h2>${label} <span class="hint">last ${N} days${a != null ? ' · avg ' + fmtAvg(a) : ''}</span></h2>${barChart(s, color)}</div>`;
+  };
+  // health ↔ mood/energy correlations across ALL days both exist
+  const hPairs = (hkey, ekey) => Object.keys(hstore)
+    .filter(d => hstore[d][hkey] != null && e[d] && e[d][ekey] != null && e[d][ekey] !== '')
+    .map(d => [+hstore[d][hkey], +e[d][ekey]]);
+  const hCorrRows = [];
+  [['screenMin', 'mood', '📱 Screen time → Mood'], ['steps', 'mood', '👟 Steps → Mood'], ['steps', 'energy', '👟 Steps → Energy'], ['exerciseMin', 'energy', '🏃 Active mins → Energy']]
+  .forEach(([hk, ek, label]) => {
+    const ps = hPairs(hk, ek); if (ps.length < 5) return;
+    const r = pearson(ps); if (r == null) return;
+    const mag = Math.abs(r);
+    hCorrRows.push(`<div class="corr-row"><span class="name">${label}</span>
+      <span class="corr-bar"><span class="corr-fill ${r >= 0 ? 'pos' : 'neg'}" style="width:${Math.round(mag * 100)}%"></span></span>
+      <span class="corr-val">${mag >= 0.6 ? 'strong' : mag >= 0.3 ? 'moderate' : 'weak'} ${r >= 0 ? '↗' : '↘'} · r=${r.toFixed(2)} · ${ps.length}d</span></div>`);
+  });
+  const scAvg = hAvg('screenMin'), dwAvg = (() => { const v = days.map(d => e[d] && e[d].deepWorkHours).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? v.reduce((a, b) => a + +b, 0) / v.length : null; })();
+  const screenVsWork = (scAvg != null && dwAvg > 0) ? `<div class="corr-note">📱 Screen time averages <b>${fmtMin(Math.round(scAvg))}</b>/day — <b>${(scAvg / 60 / dwAvg).toFixed(1)}×</b> your deep work (${fmtH(dwAvg)}).</div>` : '';
+  const healthHTML = !at.on
+    ? '<div class="card"><h2>❤️ Health</h2><div class="hint">Auto-tracking is switched off. Turn it on in <b>Settings ▸ Auto-tracking</b>.</div></div>'
+    : (hDays === 0
+      ? `<div class="card"><h2>❤️ Health <span class="hint">nothing synced yet</span></h2>
+          <div class="hint">Steps, screen time, calories, sleep and active minutes from your phone will appear here — <b>coming in a Play update</b>. Pick what to track in <b>Settings ▸ Auto-tracking</b>.</div></div>`
+      : `
+    <div class="card"><div class="stat-grid">
+      ${hStat(hAvg('steps') != null ? Math.round(hAvg('steps')).toLocaleString() : null, '👟 avg steps')}
+      ${hStat(hAvg('screenMin') != null ? fmtMin(Math.round(hAvg('screenMin'))) : null, '📱 avg screen')}
+      ${hStat(hAvg('calories') != null ? Math.round(hAvg('calories')) : null, '🔥 avg kcal')}
+      ${hStat(hAvg('sleepMin') != null ? fmtMin(Math.round(hAvg('sleepMin'))) : null, '😴 avg sleep')}
+      ${hStat(hAvg('exerciseMin') != null ? fmtMin(Math.round(hAvg('exerciseMin'))) : null, '🏃 avg active')}
+      ${hStat(hAvg('hr') != null ? Math.round(hAvg('hr')) + ' bpm' : null, '❤️ avg HR')}
+    </div></div>
+    ${at.screentime ? hChart('screenMin', '📱 Screen time', '#fb923c', v => fmtMin(Math.round(v))) : ''}
+    ${at.steps ? hChart('steps', '👟 Steps', '#34d399', v => Math.round(v).toLocaleString()) : ''}
+    ${at.calories ? hChart('calories', '🔥 Calories', '#f87171', v => Math.round(v) + ' kcal') : ''}
+    ${at.workouts ? hChart('exerciseMin', '🏃 Active minutes', '#4ad6c0', v => fmtMin(Math.round(v))) : ''}
+    ${at.sleep ? hChart('sleepMin', '😴 Sleep (auto)', '#a78bfa', v => fmtMin(Math.round(v))) : ''}
+    ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}`);
+
+  const TABS = [['overview', '📊 Overview'], ['time', '⏱ Time'], ['check', '✅ Checklist'], ['health', '❤️ Health']];
+  const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
   document.getElementById('s-dash').innerHTML = `
     <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
     ${dashTab === 'check' ? '' : rangeRow}

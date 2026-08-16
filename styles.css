@@ -922,3 +922,11 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .whatsnew h2 .drawer-x { margin-left: auto; }
 .wn-item { font-size: 13.5px; color: var(--text-dim); padding: 6px 0; border-bottom: 1px solid var(--border); line-height: 1.5; }
 .wn-item:last-child { border-bottom: none; }
+
+/* ---------- v95: Stats health tab + tags + leaderboard ---------- */
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-chip { font-size: 12.5px; padding: 6px 11px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
+.tag-chip b { opacity: .75; margin-left: 2px; }
+.seg-row { flex-wrap: wrap; }
+.seg-btn { min-width: 0; }
