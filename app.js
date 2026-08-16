@@ -5,7 +5,11 @@
 
 'use strict';
 
-const APP_VERSION = 'v93';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v94';   // shown in More ▸ About so you can confirm the build on each device
+
+/* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
+   real Android failure mode) must degrade to defaults, never white-screen the boot. */
+function safeParse(raw, fb) { if (raw == null) return fb; try { const v = JSON.parse(raw); return v == null ? fb : v; } catch (e) { return fb; } }
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -19,7 +23,7 @@ const DEFAULT_HABITS = [
   { key: 'reading',     emoji: '📖', label: 'Reading' },
   { key: 'healthyFood', emoji: '🥗', label: 'Healthy food', color: '#fb923c' },
 ];
-function habitCfg() { const s = localStorage.getItem('dp.habitcfg'); return s ? JSON.parse(s) : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
+function habitCfg() { const p = safeParse(localStorage.getItem('dp.habitcfg'), null); return Array.isArray(p) ? p : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
 function saveHabitCfg(cfg) { localStorage.setItem('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
@@ -66,7 +70,7 @@ const DEFAULT_DEEP_SECTIONS = [
 /* Deep-log customization: dp.deepcfg stores the user's edited copy of the
    sections (titles, hidden flags, renamed/hidden/added fields). DEEP_SECTIONS
    is the cooked, visible-only view the Today screen renders. */
-function deepCfg() { const s = localStorage.getItem('dp.deepcfg'); return s ? JSON.parse(s) : JSON.parse(JSON.stringify(DEFAULT_DEEP_SECTIONS)); }
+function deepCfg() { const v = safeParse(localStorage.getItem('dp.deepcfg'), null); return Array.isArray(v) ? v : JSON.parse(JSON.stringify(DEFAULT_DEEP_SECTIONS)); }
 function saveDeepCfg(cfg) { localStorage.setItem('dp.deepcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
 function cookDeep(cfg) {
   return cfg.filter(sec => !sec.hidden).map(sec => Object.assign({}, sec, {
@@ -93,8 +97,8 @@ const DEFAULT_CORE_FIELDS = [
   { key: 'journal',       label: 'Journal entry 📓',                 type: 'journal' },
 ];
 function coreCfg() {
-  const s = localStorage.getItem('dp.corecfg');
-  const cfg = s ? JSON.parse(s) : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
+  const v0 = safeParse(localStorage.getItem('dp.corecfg'), null);
+  const cfg = Array.isArray(v0) ? v0 : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
   DEFAULT_CORE_FIELDS.forEach(d => { if (!cfg.find(f => f.key === d.key)) cfg.push(Object.assign({}, d)); });
   // Backfill flags added in later versions onto older stored configs.
   cfg.forEach(f => { const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) {
@@ -179,47 +183,47 @@ function enableDrag(listEl, onReorder) {
 
 /* ---------- Storage ---------- */
 const DB = {
-  entries() { return JSON.parse(localStorage.getItem('dp.entries') || '{}'); },
+  entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
   saveEntries(e) { localStorage.setItem('dp.entries', JSON.stringify(e)); pushState(); },
   entry(date) { return this.entries()[date] || null; },
   putEntry(date, data) { const e = this.entries(); e[date] = data; this.saveEntries(e); },
 
-  tasks() { return JSON.parse(localStorage.getItem('dp.tasks') || '[]'); },
+  tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
   saveTasks(t) { localStorage.setItem('dp.tasks', JSON.stringify(t)); pushState(); },
 
-  exercises() { const s = localStorage.getItem('dp.exercises'); return s ? JSON.parse(s) : DEFAULT_EXERCISES.slice(); },
+  exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
   saveExercises(x) { localStorage.setItem('dp.exercises', JSON.stringify(x)); pushState(); },
-  gym() { return JSON.parse(localStorage.getItem('dp.gym') || '{}'); },
+  gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
   saveGym(g) { localStorage.setItem('dp.gym', JSON.stringify(g)); pushState(); },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; this.saveGym(g); },
 
-  reminders() { return JSON.parse(localStorage.getItem('dp.reminders') || '[]'); },
+  reminders() { return safeParse(localStorage.getItem('dp.reminders'), []); },
   saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); pushState(); },
 
-  notes() { return JSON.parse(localStorage.getItem('dp.notes') || '[]'); },
+  notes() { return safeParse(localStorage.getItem('dp.notes'), []); },
   saveNotes(n) { localStorage.setItem('dp.notes', JSON.stringify(n)); pushState(); },
 
-  plans() { return JSON.parse(localStorage.getItem('dp.plans') || '[]'); },
+  plans() { return safeParse(localStorage.getItem('dp.plans'), []); },
   savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
 
-  docs() { return JSON.parse(localStorage.getItem('dp.docs') || '[]'); },
+  docs() { return safeParse(localStorage.getItem('dp.docs'), []); },
   saveDocs(d) { localStorage.setItem('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
 
-  events() { return JSON.parse(localStorage.getItem('dp.events') || '[]'); },
+  events() { return safeParse(localStorage.getItem('dp.events'), []); },
   saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
 
-  pomo() { return JSON.parse(localStorage.getItem('dp.pomo') || 'null'); },
+  pomo() { return safeParse(localStorage.getItem('dp.pomo'), null); },
   savePomo(p) { localStorage.setItem('dp.pomo', JSON.stringify(p)); pushState(); },
-  timebox() { return JSON.parse(localStorage.getItem('dp.timebox') || '[]'); },
+  timebox() { return safeParse(localStorage.getItem('dp.timebox'), []); },
   saveTimebox(t) { localStorage.setItem('dp.timebox', JSON.stringify(t)); pushState(); },
 
-  timelog() { return JSON.parse(localStorage.getItem('dp.timelog') || '[]'); },
+  timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
   saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
-  timeacts() { return JSON.parse(localStorage.getItem('dp.timeacts') || '[]'); },   // custom activities
+  timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
   saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
 
-  settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, JSON.parse(localStorage.getItem('dp.settings') || '{}')); },
+  settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
   saveSettings(s) { localStorage.setItem('dp.settings', JSON.stringify(s)); },
 };
 
@@ -252,7 +256,7 @@ async function dictateInto(sel, btn) {
   if (_recogOn) { stopDictation(); return; }   // tap again = stop
   // 1) Native speech plugin (works INSIDE the installed app — the WebView has no Web Speech API)
   const sp = speechPlugin();
-  if (sp) { return dictateNative(sp, ta, btn); }
+  if (sp) { return dictateNative(sp, ta, btn, sel); }
   // 2) Web Speech API (browser / installed PWA)
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { toast('Voice typing needs the latest app update — or open Daily Pulse in Chrome', true); return; }
@@ -267,9 +271,10 @@ async function dictateInto(sel, btn) {
   const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
   _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = false; btn.classList.add('rec');
   _recog = new SR(); _recog.lang = DICT_LANG; _recog.continuous = true; _recog.interimResults = true;
+  const liveTa = () => document.querySelector(sel) || ta;   // survive re-renders mid-dictation
   _recog.onresult = (ev) => {   // rebuild from start each event so interim words show live, finals stick
     let all = ''; for (let i = 0; i < ev.results.length; i++) all += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
-    ta.value = startText + all; ta.dispatchEvent(new Event('input', { bubbles: true }));
+    const el = liveTa(); el.value = startText + all; el.dispatchEvent(new Event('input', { bubbles: true }));
   };
   _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow microphone in Settings › Apps › Daily Pulse › Permissions', true); };
   _recog.onend = () => { _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null; if (!_userStopped) toast('Mic paused — tap 🎤 to continue'); };
@@ -277,7 +282,7 @@ async function dictateInto(sel, btn) {
   catch (e) { _recogOn = false; btn.classList.remove('rec'); _recog = null; }
 }
 // Native speech-to-text via @capacitor-community/speech-recognition (added in a rebuild).
-async function dictateNative(sp, ta, btn) {
+async function dictateNative(sp, ta, btn, sel) {
   try {
     if (sp.available) { const a = await sp.available(); if (a && a.available === false) { toast('Speech recognition not available on this device', true); return; } }
     if (sp.requestPermissions) { try { await sp.requestPermissions(); } catch (_) {} }
@@ -285,10 +290,17 @@ async function dictateNative(sp, ta, btn) {
     const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
     _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = true; btn.classList.add('rec');
     if (sp.removeAllListeners) { try { await sp.removeAllListeners(); } catch (_) {} }
+    // Re-query by selector on every partial — a re-render mid-dictation detaches the
+    // original node (writes there are lost and the input event no longer bubbles).
+    const liveTa = () => (sel && document.querySelector(sel)) || ta;
     if (sp.addListener) sp.addListener('partialResults', (d) => {
-      const m = d && d.matches && d.matches[0]; if (m) { ta.value = startText + m; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+      const m = d && d.matches && d.matches[0];
+      if (m) { const el = liveTa(); el.value = startText + m; el.dispatchEvent(new Event('input', { bubbles: true })); }
     });
     await sp.start({ language: DICT_LANG, partialResults: true, popup: false });
+    // user tapped stop while start() was still resolving → shut the mic down for real
+    if (_userStopped) { try { sp.stop && sp.stop(); sp.removeAllListeners && sp.removeAllListeners(); } catch (_) {}
+      _recogOn = false; _natSR = false; btn.classList.remove('rec'); return; }
     toast('🎙️ Listening — tap 🎤 to stop');
   } catch (e) { _recogOn = false; _natSR = false; btn.classList.remove('rec'); toast("Couldn't start voice typing", true); }
 }
@@ -467,7 +479,10 @@ function applyRemoteState(remote) {
     renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
-    const cur = document.querySelector('.nav button.on'); if (cur) show(cur.dataset.screen);
+    // Re-render the VISIBLE screen. (The nav's active button can be the synthetic
+    // Menu '__menu' for unpinned screens — show('__menu') would blank the app.)
+    const curScr = ((document.querySelector('.screen.on') || {}).id || '').replace('s-', '');
+    if (curScr && RENDER[curScr]) show(curScr);
     toast('Synced from your other device ⬇️');
   }
 }
@@ -483,7 +498,9 @@ let draft = {};
    a "tracked" chip lets you adopt the tracked value with one tap). */
 let trackedInfo = { sleep: null, work: null };
 function trackedHours(date, actId) {
-  const ms = segsForDay(date).filter(x => x.seg.act === actId).reduce((s, x) => s + (x.b - x.a), 0);
+  // ENDED segments only — a still-running timer would freeze a partial mid-day value
+  // into the entry on the next autosave (e.g. deep-work stuck at 0.5h of an eventual 6h).
+  const ms = segsForDay(date).filter(x => x.seg.act === actId && x.seg.end != null).reduce((s, x) => s + (x.b - x.a), 0);
   return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;   // ignore sub-minute noise
 }
 // Sleep is special: "last night's sleep" = the FULL sleep segments that END on this date
@@ -746,7 +763,7 @@ function checkStreakMilestone() {
   if (!MILESTONES.includes(st)) return;
   const runStart = addDays(todayStr(), -(st - 1));            // identifies THIS streak run
   const key = st + ':' + runStart;
-  let shown; try { shown = JSON.parse(localStorage.getItem('dp.milestones') || '{}'); } catch (e) { shown = {}; }
+  let shown; try { shown = safeParse(localStorage.getItem('dp.milestones'), {}); } catch (e) { shown = {}; }
   if (shown[key]) return;
   shown[key] = 1; localStorage.setItem('dp.milestones', JSON.stringify(shown));
   showMilestone(st);
@@ -789,7 +806,13 @@ function saveDraftNow(date, d) {
   const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
 }
 document.addEventListener('change', (ev) => {
-  if (ev.target.id === 'log-date') { logDate = ev.target.value; openToday(); }
+  if (ev.target.id === 'log-date') {
+    // Android's date dialog has a Clear button → value=''. An empty/invalid date would
+    // store an entry keyed '' and permanently crash Stats — reject and restore instead.
+    const v = ev.target.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { ev.target.value = logDate; return; }
+    logDate = v; openToday();
+  }
   if (ev.target.id === 'dash-range') { dashRange = +ev.target.value; renderDash(); }   // Stats range dropdown (#stats)
 });
 // Sleep bed/wake → duration, and deep-work hours+minutes → decimal (#log-1, #log-2)
@@ -807,7 +830,8 @@ document.addEventListener('change', (ev) => {
   if (dur) {
     const key = dur.dataset.durH || dur.dataset.durM;
     const hs = document.querySelector(`[data-dur-h="${key}"]`), ms = document.querySelector(`[data-dur-m="${key}"]`);
-    const h = hs && hs.value !== '' ? +hs.value : null, m = ms ? +ms.value : 0;
+    const m = ms ? +ms.value : 0;
+    const h = hs && hs.value !== '' ? +hs.value : (m > 0 ? 0 : null);   // minutes-only picks count as 0h + m
     draft[key] = h == null ? '' : +(h + m / 60).toFixed(2);
     autosaveDraft(); return;
   }
@@ -825,13 +849,17 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'log-task-add') {
     const inp = document.getElementById('log-task-input'); const text = (inp && inp.value || '').trim(); if (!text) return;
     const tasks = DB.tasks(); tasks.unshift({ id: 't' + Date.now(), text, done: false, created: todayStr(), color: '' });
-    DB.saveTasks(tasks); renderToday(); toast('Task added ✅'); return;
+    DB.saveTasks(tasks); renderToday();
+    document.body.classList.remove('kbd-open');   // re-render removed the focused input → no focusout ever fires
+    toast('Task added ✅'); return;
   }
   if (ev.target.id === 'log-habit-add') {
     const inp = document.getElementById('log-habit-input'); const raw = (inp && inp.value || '').trim(); if (!raw) return;
     const em = emojiSplit(raw); const cfg = habitCfg();
     cfg.push({ key: 'ch' + Date.now(), emoji: em.emoji, label: em.name, custom: true });
-    saveHabitCfg(cfg); renderToday(); toast('Checklist item added'); return;
+    saveHabitCfg(cfg); renderToday();
+    document.body.classList.remove('kbd-open');
+    toast('Checklist item added'); return;
   }
   if (ev.target.id === 'log-open-gym') { gymDate = logDate; navigateTo('gym'); return; }   // gym reachable from Log home (#menu-7)
   const ut = ev.target.closest('[data-use-tracked]');
@@ -1152,7 +1180,7 @@ function gymCfg() { const s = localStorage.getItem('dp.gymcfg'); return s ? JSON
 function saveGymCfg(c) { localStorage.setItem('dp.gymcfg', JSON.stringify(c)); pushState(); }
 /* Custom muscle groups (dp.gymgroups) — brand-new groups whose exercises all
    live in gymCfg().custom[groupId]. */
-function gymGroups() { return JSON.parse(localStorage.getItem('dp.gymgroups') || '[]'); }
+function gymGroups() { return safeParse(localStorage.getItem('dp.gymgroups'), []); }
 function saveGymGroups(g) { localStorage.setItem('dp.gymgroups', JSON.stringify(g)); pushState(); }
 function anyGroupById(id) {
   const cg = gymGroups().find(g => g.id === id);
@@ -1350,7 +1378,7 @@ const DEFAULT_TIME_ACTS = [
   { id: 'social', emoji: '👥', name: 'Friends & family', color: '#22d3ee' },
 ];
 const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
-function actCfg() { const s = localStorage.getItem('dp.actcfg'); return s ? JSON.parse(s) : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
+function actCfg() { const v = safeParse(localStorage.getItem('dp.actcfg'), null); return Array.isArray(v) ? v : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
 function saveActCfg(cfg) { localStorage.setItem('dp.actcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
 let TIME_ACTS_ALL = actCfg();
 /* visible activities = non-hidden defaults + non-hidden customs */
@@ -1782,10 +1810,12 @@ async function saveFile(filename, content, mime) {
     a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast('Saved to your downloads'); return;
   }
-  // in-app, no share support: text → copy modal; binary (PDF) → open it so they can save/share via the viewer
+  // in-app, no share support: text → copy modal; binary (PDF) → try a viewer, but be honest if blocked
   if (typeof content === 'string') { showCopyModal(filename, content); return; }
   const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
-  window.open(url, '_blank'); toast('Opened — use the ⋮ menu to save or share');
+  const win = window.open(url, '_blank');
+  if (win) toast('Opened — use the ⋮ menu to save or share');
+  else toast('Your app version can\'t save files yet — update Daily Pulse in the Play Store', true);
 }
 function showCopyModal(filename, content) {
   let m = document.getElementById('copy-modal');
@@ -2040,7 +2070,7 @@ function renderDash() {
   // ---- Averages by weekday ----
   const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const wdAgg = wd.map(() => []);
-  allDates.forEach(d => { if (e[d].mood) wdAgg[new Date(d+'T00:00:00').getDay()].push(+e[d].mood); });
+  allDates.forEach(d => { if (!e[d].mood) return; const day = new Date(d + 'T00:00:00').getDay(); if (!isNaN(day)) wdAgg[day].push(+e[d].mood); });
   const wdAvg = i => wdAgg[i].length ? wdAgg[i].reduce((a,b)=>a+b,0)/wdAgg[i].length : 0;
   const wdBars = wd.map((name,i) => { const a = wdAvg(i); return `<div class="bar-row"><span class="name" style="width:40px">${name}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${a/10*100}%"></span></span><span class="pct">${a?a.toFixed(1):'–'}</span></div>`; }).join('');
@@ -2683,7 +2713,11 @@ document.addEventListener('click', (ev) => {
   if (tm) { const s = DB.settings(); s.mode = tm.dataset.thememode; DB.saveSettings(s); applyTheme(); renderCustom(); return; }
   const nh = ev.target.closest('[data-nav-hide]');
   if (nh) { const cfg = navCfg(); const n = cfg.find(x => x.k === nh.dataset.navHide);
-    if (n && !n.noHide) { n.hidden = !n.hidden; if (n.hidden) n.primary = false; saveNavCfg(cfg); renderCustom(); } return; }
+    if (n && !n.noHide) { n.hidden = !n.hidden;
+      if (n.hidden) n.primary = false;
+      // unhiding a legacy hidden+primary tab must not silently demote a visible pin
+      else if (n.primary && cfg.filter(x => !x.hidden && x.primary && x.k !== n.k).length >= NAV_PRIMARY_MAX) n.primary = false;
+      saveNavCfg(cfg); renderCustom(); } return; }
   const np = ev.target.closest('[data-nav-pin]');
   if (np) { const cfg = navCfg(); const n = cfg.find(x => x.k === np.dataset.navPin); if (!n || n.hidden) return;
     // Bottom bar is fixed at 4 pinned tabs + Menu — pinning a 5th must swap, not silently drop.
@@ -3050,7 +3084,7 @@ const WAVE_PRESETS = [
   { id: 'gamma', emoji: '🚀', name: 'Gamma', hz: 40,  use: 'Peak concentration', color: '#fb923c' },
 ];
 let _waveCtx = null, _waveNodes = null, _wavePlaying = null, _waveTimer = null, _waveEndsAt = 0;
-function waveSettings() { return Object.assign({ carrier: 200, vol: 0.25, minutes: 0 }, JSON.parse(localStorage.getItem('dp.waves') || '{}')); }
+function waveSettings() { return Object.assign({ carrier: 200, vol: 0.25, minutes: 0 }, safeParse(localStorage.getItem('dp.waves'), {})); }
 function saveWaveSettings(w) { localStorage.setItem('dp.waves', JSON.stringify(w)); }
 function wavesStop() {
   if (_waveNodes) { try { _waveNodes.oL.stop(); _waveNodes.oR.stop(); } catch (_) {} _waveNodes = null; }
@@ -3814,7 +3848,7 @@ function pushWidgetData() {
 const AUTOTRACK_DEF = { on: true, sleep: true, steps: true, calories: true, workouts: true, hr: true, screentime: true };
 function autoTrackCfg() { return Object.assign({}, AUTOTRACK_DEF, DB.settings().autoTrack || {}); }
 function saveAutoTrack(patch) { const s = DB.settings(); s.autoTrack = Object.assign(autoTrackCfg(), patch); DB.saveSettings(s); }
-function healthStore() { try { return JSON.parse(localStorage.getItem('dp.health') || '{}'); } catch (e) { return {}; } }
+function healthStore() { try { return safeParse(localStorage.getItem('dp.health'), {}); } catch (e) { return {}; } }
 function saveHealthStore(h) { localStorage.setItem('dp.health', JSON.stringify(h)); }
 function healthFor(date) { return healthStore()[date] || null; }
 async function syncHealth(opts) {
@@ -3844,10 +3878,15 @@ async function syncHealth(opts) {
       at: new Date().toISOString(),
     };
     saveHealthStore(store);
-    // auto-fill sleep from Health Connect if the user hasn't entered it for today
+    // auto-fill sleep from Health Connect if the user hasn't entered it for today.
+    // Only PERSIST when the day already has an entry — a health sync alone must not
+    // create a logged day (that would award streak/milestone credit the user never earned).
     if (at.sleep && store[key].sleepMin && logDate === key) {
       const cur = draft.sleepHours;
-      if (cur == null || cur === '') { draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2); saveDraftNow(key, draft); }
+      if (cur == null || cur === '') {
+        draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2);
+        if (DB.entry(key)) saveDraftNow(key, draft);
+      }
     }
     if (!opts.silent) toast('Health synced ✅');
     if (document.getElementById('s-today') && document.getElementById('s-today').classList.contains('on')) renderToday();
@@ -4125,12 +4164,12 @@ const NAV_DEF = [
   { k: 'settings', ico: 'settings', label: 'Settings' },
 ];
 function navCfg() {
-  const s = localStorage.getItem('dp.navcfg');
-  let cfg = s ? JSON.parse(s) : NAV_DEF.map(n => Object.assign({}, n));
+  const v0 = safeParse(localStorage.getItem('dp.navcfg'), null);
+  let cfg = Array.isArray(v0) ? v0 : NAV_DEF.map(n => Object.assign({}, n));
   NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.push(Object.assign({}, d)); });   // future tabs append
   // Migrate legacy configs (pre-v56 had no `primary`): seed pins from NAV_DEF defaults once.
   if (cfg.every(n => n.primary === undefined)) {
-    cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); n.primary = !!(d && d.primary); n.hidden = n.k === 'history' ? false : n.hidden; });
+    cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); n.primary = !!(d && d.primary) && !n.hidden; n.hidden = n.k === 'history' ? false : n.hidden; });
   }
   // Icons are not user data — always take them from NAV_DEF, so stored configs from the
   // emoji era (pre-v82) render the professional line icons too.
@@ -4226,6 +4265,8 @@ document.addEventListener('click', (ev) => {
   if (ev.target.closest('[data-exit-yes]')) { const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App; if (App && App.exitApp) App.exitApp(); else m.classList.remove('on'); }
 });
 function handleBack() {
+  // 0) a ringing alarm owns the screen — back must never dismiss it or poke things behind it
+  const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;
   // 1) an open overlay always closes first
   const drawer = document.getElementById('drawer');
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
@@ -4233,7 +4274,6 @@ function handleBack() {
   const ce = document.getElementById('confirm-exit'); if (ce && ce.classList.contains('on')) { ce.classList.remove('on'); return; }
   const ms = document.getElementById('milestone'); if (ms && ms.classList.contains('on')) { ms.classList.remove('on'); return; }
   if (document.body.classList.contains('reporting')) { document.body.classList.remove('reporting'); return; }
-  const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;   // don't let back dismiss a ringing alarm
   const onboard = document.getElementById('onboard'); if (onboard && onboard.classList.contains('on')) return;
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
   // 2) step back within a screen's sub-view first (mirror the on-screen "← back" buttons)
@@ -4282,11 +4322,11 @@ function renderMore() {
   document.getElementById('screen-sub').textContent = 'Everything else';
   const overflow = navCfg().filter(n => !n.hidden && !n.primary);
   const cards = overflow.map(n => `<button class="more-card" data-screen="${n.k}">
-    <span class="more-ico">${n.ico}</span><span class="more-lbl">${escapeHtml(n.label)}</span></button>`).join('');
+    <span class="more-ico">${icon(n.ico, 24)}</span><span class="more-lbl">${escapeHtml(n.label)}</span></button>`).join('');
   document.getElementById('s-more').innerHTML = `
     <div class="more-grid">${cards || '<div class="empty">All your tabs are pinned to the bottom bar.</div>'}</div>
     <div class="card" style="margin-top:6px">
-      <div class="hint">Pin up to 5 tabs to the bottom bar, reorder them, and choose your default opening tab in <b>Settings ▸ Customize ▸ Tabs</b>.</div>
+      <div class="hint">Pin up to ${NAV_PRIMARY_MAX} tabs to the bottom bar, reorder them, and choose your default opening tab in <b>Settings ▸ Customize ▸ Tabs</b>.</div>
     </div>`;
 }
 
@@ -4406,7 +4446,14 @@ let _decorTimer = null;
 try {
   new MutationObserver(() => {
     if (_decorTimer) return;
-    _decorTimer = setTimeout(() => { _decorTimer = null; const on = document.querySelector('.screen.on'); if (on) decorateHeaders(on); }, 30);
+    _decorTimer = setTimeout(() => {
+      _decorTimer = null;
+      const on = document.querySelector('.screen.on'); if (on) decorateHeaders(on);
+      // if a re-render destroyed the focused field, focusout never fired — unhide the nav
+      const a = document.activeElement;
+      if (document.body.classList.contains('kbd-open') && !(a && a.matches && a.matches('input, textarea, [contenteditable]')))
+        document.body.classList.remove('kbd-open');
+    }, 30);
   }).observe(document.body, { childList: true, subtree: true });
 } catch (e) {}
 
@@ -4506,6 +4553,16 @@ document.addEventListener('click', (ev) => {
 });
 
 /* ---------- Init ---------- */
+// Migration: purge invalid-key entries ('' or non-dates) that the old unvalidated
+// date picker could create — they crashed Stats and polluted exports.
+(function () {
+  try {
+    const raw = localStorage.getItem('dp.entries'); if (!raw) return;
+    const e = JSON.parse(raw); let dirty = false;
+    Object.keys(e).forEach(k => { if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) { delete e[k]; dirty = true; } });
+    if (dirty) localStorage.setItem('dp.entries', JSON.stringify(e));
+  } catch (_) {}
+})();
 cleanNotifiedFlags();
 applyTheme();
 renderNav();
