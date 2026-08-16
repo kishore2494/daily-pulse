@@ -1,5 +1,12 @@
 # Log (reverse-chronological)
 
+## 2026-08-16 — v95: Stats surfaces everything we track (live)
+User: "we track screen time and more — where is it shown?" — the dp.health store was only visible on the Log's today card. Shipped:
+- **New ❤️ Health tab in Stats** (4th segment): averages grid (steps/screen/kcal/sleep/active/HR), per-metric date-axis bar charts gated by the Auto-tracking toggles, **Health ↔ You** correlations (screenMin→mood, steps→mood, steps→energy, exerciseMin→energy via `hPairs`+pearson, ≥5 paired days), and a screen-vs-deep-work ratio note ("4h45m/day — 1.7× your deep work"). Distinct states: master-off → "switched off in Settings"; no data → "coming in a Play update".
+- **Overview additions:** 🏅 Best days (best mood / most deep work / most steps / most tracked, dated, range-scoped) + #️⃣ Your topics (journal #tag counts, top 8 chips). Week-over-week gained 📱 screen-time and 👟 steps deltas.
+- **Checklist tab:** 🏆 Streak leaderboard (current 🔥 vs best-ever per habit, medal-ranked; `bestHabitStreak()`).
+Verified with seeded health data (6 stats, 5 charts, corr rows, off/empty states); 26/26 unit tests; 15 screens clean.
+
 ## 2026-08-16 — v92–v94: asset refresh, What's-new, pre-production hardening (live)
 8 days left of closed testing (production apply ~Aug 24). Full-speed session per user.
 - **v92:** ALL visual assets regenerated from the live app (old ones showed the pre-v82 emoji design): Play phone screenshots 412x820 (log-with-tracked-chips / time / stats-analytics / habits / 21-day-streak-celebration hero), tablet 1920x1200 ×3, all 9 guide images (more.png now = side drawer). **USER: upload to Play listing.** +21-day milestone message tier.
