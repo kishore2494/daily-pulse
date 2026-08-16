@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v91';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v90';   // shown in More ▸ About so you can confirm the build on each device
 
 /* ---------- Config: your habits (from the Daily Pulse form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -478,40 +478,10 @@ function applyRemoteState(remote) {
 let logDate = todayStr();
 let draft = {};
 
-/* One source of truth: if you tracked Sleep/Work on the Time tab, the Log's
-   sleep & deep-work fields fill themselves from it (manual entry still wins —
-   a "tracked" chip lets you adopt the tracked value with one tap). */
-let trackedInfo = { sleep: null, work: null };
-function trackedHours(date, actId) {
-  const ms = segsForDay(date).filter(x => x.seg.act === actId).reduce((s, x) => s + (x.b - x.a), 0);
-  return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;   // ignore sub-minute noise
-}
-// Sleep is special: "last night's sleep" = the FULL sleep segments that END on this date
-// (a 23:00→07:00 night counts 8h toward the morning you woke up — no midnight clipping).
-function trackedSleepHours(date) {
-  const d0 = new Date(date + 'T00:00:00').getTime(), d1 = d0 + 86400000;
-  const ms = DB.timelog()
-    .filter(s => s.act === 'sleep' && s.end != null && s.end >= d0 && s.end < d1)
-    .reduce((sum, s) => sum + Math.min(s.end - s.start, 16 * 3600000), 0);   // cap a segment at 16h (bad edits)
-  return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;
-}
-function fmtH(v) { return v == null ? '' : Math.floor(v) + 'h ' + Math.round((v - Math.floor(v)) * 60) + 'm'; }
 function loadDraft() {
   const existing = DB.entry(logDate);
   draft = existing ? JSON.parse(JSON.stringify(existing)) : { habits: {} };
   if (!draft.habits) draft.habits = {};
-  trackedInfo = { sleep: trackedSleepHours(logDate), work: trackedHours(logDate, 'work') };
-  if ((draft.sleepHours == null || draft.sleepHours === '') && trackedInfo.sleep) draft.sleepHours = trackedInfo.sleep;
-  if ((draft.deepWorkHours == null || draft.deepWorkHours === '') && trackedInfo.work) draft.deepWorkHours = trackedInfo.work;
-}
-// chip shown under the field when the tracker has data: current value ≠ tracked → tap to adopt
-function trackedChip(key, tracked) {
-  if (tracked == null) return '';
-  const cur = draft[key];
-  const same = cur !== '' && cur != null && Math.abs(+cur - tracked) < 0.02;
-  return same
-    ? `<span class="tracked-chip on">${icon('clock', 12)} from your Time tracker</span>`
-    : `<button type="button" class="tracked-chip" data-use-tracked="${key}" data-tracked-val="${tracked}">${icon('clock', 12)} tracked ${fmtH(tracked)} — tap to use</button>`;
 }
 
 function scaleField(key, label, required) {
@@ -535,7 +505,7 @@ function bedwakeField(f) {
       <span class="bw-arrow">→</span>
       <span class="bw-cell"><span class="bw-lab">Wake</span><input type="time" data-wake="${f.key}" value="${draft.wakeTime || ''}"></span>
       <span class="bw-dur" data-bw-dur="${f.key}">${h || '—'}</span>
-    </div>${f.key === 'sleepHours' ? trackedChip('sleepHours', trackedInfo.sleep) : ''}</div>`;
+    </div></div>`;
 }
 // Deep work (or any duration field): hours + minutes selectors → decimal hours (#log-2)
 function durationField(f) {
@@ -546,7 +516,7 @@ function durationField(f) {
     <div class="dur-pick">
       <select data-dur-h="${f.key}"><option value="">–</option>${hopts}</select>
       <select data-dur-m="${f.key}">${mopts}</select>
-    </div>${f.key === 'deepWorkHours' ? trackedChip('deepWorkHours', trackedInfo.work) : ''}</div>`;
+    </div></div>`;
 }
 function txtField(f) {
   return `<div class="field"><label>${escapeHtml(f.label)}</label>
@@ -712,41 +682,6 @@ function autosaveDraft() {
   const targetDate = logDate, targetDraft = draft;
   _autosaveTimer = setTimeout(() => { _autosaveTimer = null; saveDraftNow(targetDate, targetDraft); }, 700);
 }
-/* ---------- Streak milestone celebrations ----------
-   Hitting 3/5/7/10/14/21/30/50/75/100/150/200/365 logged days in a row pops a
-   full-screen confetti reward — once per milestone per streak run. */
-const MILESTONES = [3, 5, 7, 10, 14, 21, 30, 50, 75, 100, 150, 200, 365];
-function checkStreakMilestone() {
-  const st = loggedStreak();
-  if (!MILESTONES.includes(st)) return;
-  const runStart = addDays(todayStr(), -(st - 1));            // identifies THIS streak run
-  const key = st + ':' + runStart;
-  let shown; try { shown = JSON.parse(localStorage.getItem('dp.milestones') || '{}'); } catch (e) { shown = {}; }
-  if (shown[key]) return;
-  shown[key] = 1; localStorage.setItem('dp.milestones', JSON.stringify(shown));
-  showMilestone(st);
-}
-function showMilestone(n) {
-  let m = document.getElementById('milestone');
-  if (!m) { m = document.createElement('div'); m.id = 'milestone'; m.className = 'milestone'; document.body.appendChild(m); }
-  const confetti = Array.from({ length: 44 }, (_, i) =>
-    `<span class="mf" style="left:${(i * 137) % 100}%;background:${['#6d8cff','#4ad6c0','#fbbf24','#f87171','#a78bfa','#34d399'][i % 6]};animation-delay:${(i % 11) * .14}s;animation-duration:${2.2 + (i % 5) * .35}s"></span>`).join('');
-  const msg = n >= 100 ? 'Legendary. This is who you are now.' : n >= 30 ? 'A full month of showing up. Unreal.' :
-              n >= 14 ? 'Two weeks strong — this is a habit now.' : n >= 7 ? 'A whole week, every single day!' : 'Momentum! Keep the chain alive.';
-  m.innerHTML = `<div class="mf-wrap">${confetti}</div>
-    <div class="ms-inner">
-      <div class="ms-fire">🔥</div>
-      <div class="ms-num">${n}</div>
-      <div class="ms-title">day streak!</div>
-      <div class="ms-msg">${msg}</div>
-      <button class="btn btn-primary" id="ms-close">Keep going →</button>
-    </div>`;
-  m.classList.add('on');
-  if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]);
-}
-document.addEventListener('click', (ev) => {
-  if (ev.target.id === 'ms-close' || (ev.target.id === 'milestone')) { const m = document.getElementById('milestone'); if (m) m.classList.remove('on'); }
-});
 function saveDraftNow(date, d) {
   d.updatedAt = new Date().toISOString();
   d.tasks = tasksForDate(date);
@@ -756,8 +691,6 @@ function saveDraftNow(date, d) {
   ['workoutsDone', 'workoutDetail', 'timeSummary'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
   DB.putEntry(date, d);
   refreshStreak();
-  if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
-  pushWidgetData();                                  // keep the (future native) home-screen widget fresh
   scheduleInactivityReminder();
   syncEntry(date, d);
   const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
@@ -808,10 +741,6 @@ document.addEventListener('click', (ev) => {
     saveHabitCfg(cfg); renderToday(); toast('Checklist item added'); return;
   }
   if (ev.target.id === 'log-open-gym') { gymDate = logDate; navigateTo('gym'); return; }   // gym reachable from Log home (#menu-7)
-  const ut = ev.target.closest('[data-use-tracked]');
-  if (ut) { const k = ut.dataset.useTracked; draft[k] = +ut.dataset.trackedVal;
-    if (k === 'sleepHours') { draft.bedTime = ''; draft.wakeTime = ''; }   // tracked value replaces manual bed/wake
-    renderToday(); autosaveDraft(); toast('Using your tracked time ⏱'); return; }
   if (ev.target.id === 'health-sync') {
     if (hcPlugin()) syncHealth();
     else toast('Open the installed app → this will read Health Connect (sleep, steps, distance, calories)', true);
@@ -1672,15 +1601,6 @@ function barChart(values, color, opts) {
   const axis = n > 1 ? `<div class="chart-x"><span>${lab(0)}</span>${n > 6 ? `<span>${lab(mid)}</span>` : ''}<span>${lab(n - 1)}</span></div>` : '';
   return `<svg class="chart chart-bar" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>${axis}`;
 }
-/* Pearson correlation over [x,y] pairs → -1..1, or null if degenerate (no variance). */
-function pearson(pairs) {
-  const n = pairs.length; if (n < 3) return null;
-  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-  pairs.forEach(([x, y]) => { sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; });
-  const cov = sxy - sx * sy / n, vx = sxx - sx * sx / n, vy = syy - sy * sy / n;
-  if (vx <= 0 || vy <= 0) return null;
-  return Math.max(-1, Math.min(1, cov / Math.sqrt(vx * vy)));
-}
 /* Polymath Index — one 0-100 score/day from 5 pillars. Missing metrics are skipped,
    so even a light day scores fairly (only what you logged counts). */
 function polymath(e) {
@@ -2031,55 +1951,6 @@ function renderDash() {
   const eLo = condAvg(d=>e[d].deepWorkHours!=null&&e[d].deepWorkHours!==''&&+e[d].deepWorkHours<4, 'energy');
   if (eHi!=null && eLo!=null) insights.push(`⚡ Deep-work 4h+ days: energy <b>${eHi.toFixed(1)}</b> vs <b>${eLo.toFixed(1)}</b>.`);
 
-  // ---- REAL analytics: correlations between paired daily metrics + week-over-week ----
-  const pairsOf = (kx, ky) => allDates
-    .map(d => [e[d][kx], e[d][ky]])
-    .filter(([x, y]) => x != null && x !== '' && y != null && y !== '' && !isNaN(+x) && !isNaN(+y))
-    .map(([x, y]) => [+x, +y]);
-  const corrRows = [];
-  [['sleepHours', 'mood', '😴 Sleep → Mood'], ['sleepHours', 'energy', '😴 Sleep → Energy'],
-   ['deepWorkHours', 'mood', '🎯 Deep work → Mood'], ['energy', 'deepWorkHours', '⚡ Energy → Deep work']]
-  .forEach(([kx, ky, label]) => {
-    const ps = pairsOf(kx, ky); if (ps.length < 5) return;   // need enough days to be honest
-    const r = pearson(ps); if (r == null) return;
-    const mag = Math.abs(r);
-    const strength = mag >= 0.6 ? 'strong' : mag >= 0.3 ? 'moderate' : 'weak';
-    const dir = r >= 0 ? '↗ together' : '↘ opposite';
-    corrRows.push(`<div class="corr-row"><span class="name">${label}</span>
-      <span class="corr-bar"><span class="corr-fill ${r >= 0 ? 'pos' : 'neg'}" style="width:${Math.round(mag * 100)}%"></span></span>
-      <span class="corr-val">${strength} ${dir} · r=${r.toFixed(2)} · ${ps.length}d</span></div>`);
-  });
-  const wMood = condAvg(d => e[d].habits && e[d].habits.workout, 'mood');
-  const nMood = condAvg(d => e[d].habits && !e[d].habits.workout, 'mood');
-  if (wMood != null && nMood != null && allDates.length >= 5)
-    corrRows.push(`<div class="corr-note">💪 Workout days: mood <b>${wMood.toFixed(1)}</b> vs <b>${nMood.toFixed(1)}</b> on rest days (${wMood > nMood ? '+' : ''}${(wMood - nMood).toFixed(1)}).</div>`);
-
-  // week (last 7 days) vs the 7 before — real deltas across sources
-  const wk = (off) => { const ds = []; for (let i = 0; i < 7; i++) ds.push(addDays(todayStr(), -(i + off))); return ds; };
-  const avgOver = (ds, k) => { const v = ds.map(d => e[d] && e[d][k]).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? v.reduce((a, b) => a + +b, 0) / v.length : null; };
-  const trackedTotal = ds => ds.reduce((s, d) => s + segsForDay(d).reduce((t, x) => t + (x.b - x.a), 0), 0);
-  const thisW = wk(0), lastW = wk(7);
-  const wowRows = [];
-  const wow = (label, a, b, unit, dec) => {
-    if (a == null || b == null) return;
-    const diff = a - b; const up = diff >= 0;
-    wowRows.push(`<div class="wow-row"><span class="name">${label}</span>
-      <span class="wow-vals">${a.toFixed(dec)}${unit} <span class="hint">vs ${b.toFixed(dec)}${unit}</span></span>
-      <span class="wow-delta ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(diff).toFixed(dec)}${unit}</span></div>`);
-  };
-  wow('😊 Mood', avgOver(thisW, 'mood'), avgOver(lastW, 'mood'), '', 1);
-  wow('😴 Sleep', avgOver(thisW, 'sleepHours'), avgOver(lastW, 'sleepHours'), 'h', 1);
-  wow('🎯 Deep work', avgOver(thisW, 'deepWorkHours'), avgOver(lastW, 'deepWorkHours'), 'h', 1);
-  const tA = trackedTotal(thisW) / 3600000, tB = trackedTotal(lastW) / 3600000;
-  if (tA > 0 || tB > 0) wow('⏱ Time tracked', tA, tB, 'h', 0);
-  const woA = thisW.filter(d => e[d] && +e[d].workoutsDone > 0).length, woB = lastW.filter(d => e[d] && +e[d].workoutsDone > 0).length;
-  if (woA || woB) wow('💪 Workouts', woA, woB, '', 0);
-  const deepInsightsCard = (corrRows.length || wowRows.length) ? `<div class="card">
-      <h2>🔗 Connected insights <span class="hint">how your metrics move together</span></h2>
-      ${corrRows.join('')}
-      ${wowRows.length ? `<h3 class="wow-head">This week vs last week</h3>${wowRows.join('')}` : ''}
-    </div>` : (allDates.length < 5 ? '<div class="card"><h2>🔗 Connected insights</h2><div class="hint">Log ~5 days and this unlocks: how sleep drives your mood, week-over-week trends, workout effects.</div></div>' : '');
-
   const woSeries = days.map(d => ({ x: d, y: e[d] && e[d].workoutsDone!=null && e[d].workoutsDone!=='' ? +e[d].workoutsDone : null }));
 
   // ---- Polymath Index ----
@@ -2130,8 +2001,6 @@ function renderDash() {
 
     <div class="card"><h2>😊 Mood <span class="hint">last ${N} days</span></h2>${barChart(series('mood'), '#6d8cff', { max: 10 })}</div>
     <div class="card"><h2>⚡ Energy <span class="hint">last ${N} days</span></h2>${barChart(series('energy'), '#4ad6c0', { max: 10 })}</div>
-
-    ${deepInsightsCard}
 
     ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
       ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
@@ -3764,25 +3633,6 @@ function nativeShell() { return !!(window.Capacitor && window.Capacitor.Plugins 
    Degrades gracefully: on the web/PWA (no plugin) the Health card just invites you to
    use the app; nothing breaks. Data is cached per-day in dp.health and auto-fills sleep. */
 function hcPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.HealthConnect) || null; }
-/* Home-screen widget bridge. Android widgets are pure native (RemoteViews) — they can't
-   run web code — so the app pushes a small summary to the native side after every save;
-   the (future) native WidgetBridge plugin stores it in SharedPreferences and refreshes
-   the AppWidget. No-op until that plugin ships in a rebuild. */
-function widgetPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WidgetBridge) || null; }
-function pushWidgetData() {
-  const w = widgetPlugin(); if (!w || !w.update) return;
-  try {
-    const en = DB.entry(todayStr()) || {}; const tc = taskCounts(todayStr()); const h = healthFor(todayStr()) || {};
-    const run = runningSeg(); const act = run ? actById(run.act) : null;
-    w.update({
-      streak: loggedStreak(), mood: en.mood ?? null,
-      tasksDone: tc.done, tasksPlanned: tc.planned,
-      steps: h.steps ?? null, sleepMin: h.sleepMin ?? null,
-      timing: act ? (act.emoji + ' ' + act.name) : null,
-      updated: Date.now(),
-    });
-  } catch (e) {}
-}
 /* Auto-tracking preferences — every tracked signal can be switched on/off in
    Settings ▸ Auto-tracking. Master `on` gates everything. Defaults: all on. */
 const AUTOTRACK_DEF = { on: true, sleep: true, steps: true, calories: true, workouts: true, hr: true, screentime: true };
@@ -4205,7 +4055,6 @@ function handleBack() {
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
   const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
   const ce = document.getElementById('confirm-exit'); if (ce && ce.classList.contains('on')) { ce.classList.remove('on'); return; }
-  const ms = document.getElementById('milestone'); if (ms && ms.classList.contains('on')) { ms.classList.remove('on'); return; }
   if (document.body.classList.contains('reporting')) { document.body.classList.remove('reporting'); return; }
   const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;   // don't let back dismiss a ringing alarm
   const onboard = document.getElementById('onboard'); if (onboard && onboard.classList.contains('on')) return;
