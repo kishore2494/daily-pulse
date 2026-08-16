@@ -47,5 +47,19 @@ Verify it has native alarms: `aapt dump xmltree DailyPulse.apk AndroidManifest.x
 - Line up the 12 testers.
 - Real-phone test of the full-screen alarm + timer notification (emulator can't; MIUI needs manual "show on lock screen" perms).
 
+## PRODUCTION CHECKLIST (apply ~Aug 24 when the 14-day window completes)
+1. **`SHOW_SYNC = false`** in app.js (Sheet sync is the future paid feature; also keeps the data-safety answer "collects nothing" unambiguous). Ship as a web push before applying.
+2. Store listing: **upload the v92 screenshots** (`store/assets/screenshot-1-log…5-streak.png` + `tablet-1..3.png` to BOTH tablet slots) — old ones show the pre-icon design.
+3. Verify latest closed-testing build is the one to promote (currently 103/63 with the speech plugin).
+4. Re-check "App content": data safety (no collection — still true), ads (none), target audience, privacy policy URL live.
+5. Landing page: swap "coming soon" pill → Get-it-on-Google-Play badge after approval.
+
+### Draft answers for Google's production-access questions
+- **How did you recruit testers?** "12+ personal contacts (friends/colleagues) recruited directly; they installed via the closed-testing opt-in link and used the app daily as their personal life tracker."
+- **How did you collect feedback?** "In-app feedback form (opens the developer's email), plus direct chat messages. Feedback was triaged into a public changelog; ~40 improvements shipped during testing."
+- **What did you change based on testing?** "Testers reported: unclear navigation → rebuilt as a fixed 5-tab bar + side menu; manual data entry duplication → time-tracker now auto-fills sleep/deep-work; export/PDF not working on-device → replaced with share-sheet + in-app PDF generation; voice typing not working → added a native speech plugin; plus dark/light theme fixes, streak rewards, and data-loss/stability fixes found via automated audits."
+- **Who is the app for?** "Adults who want a private, offline-first daily life tracker (mood, habits, time, workouts, journaling) with all data stored on-device."
+- **Expected installs?** modest/organic — personal-productivity niche, no ads.
+
 ## When the app goes live
 - Swap the landing page's "Coming soon to Google Play" pill for a real **Get it on Google Play** badge + set `product.play_url`.
