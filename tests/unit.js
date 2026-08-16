@@ -66,6 +66,51 @@
   ok('coreCfg sleep has bedwake', !!(cc.find(f => f.key === 'sleepHours') || {}).bedwake);
   ok('coreCfg deepwork has dur', !!(cc.find(f => f.key === 'deepWorkHours') || {}).dur);
 
+  // ---- safeParse (corruption-proof storage) ----
+  ok('safeParse valid', safeParse('{"a":1}', {}).a === 1);
+  ok('safeParse corrupt → fallback', safeParse('{corrupt', 'FB') === 'FB');
+  ok('safeParse null → fallback', safeParse(null, 42) === 42);
+  ok('safeParse "null" → fallback', safeParse('null', 7) === 7);
+
+  // ---- pearson correlation ----
+  ok('pearson perfect +1', approx(pearson([[1, 2], [2, 4], [3, 6], [4, 8]]), 1));
+  ok('pearson perfect -1', approx(pearson([[1, 8], [2, 6], [3, 4], [4, 2]]), -1));
+  ok('pearson no variance → null', pearson([[1, 5], [2, 5], [3, 5]]) === null);
+  ok('pearson tiny n → null', pearson([[1, 1], [2, 2]]) === null);
+
+  // ---- snippet (search highlighting) ----
+  ok('snippet highlights match', snippet('hello quarterly world', 'quarterly').includes('<b>quarterly</b>'));
+  ok('snippet escapes html', !snippet('<img src=x> quarterly', 'quarterly').includes('<img'));
+  ok('snippet truncates long text', snippet('x'.repeat(200) + ' quarterly ' + 'y'.repeat(200), 'quarterly').startsWith('…'));
+
+  // ---- bestHabitStreak (seeded entries) ----
+  const entSnap = localStorage.getItem('dp.entries');
+  const E = {};
+  ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-05', '2026-01-06'].forEach(d => { E[d] = { habits: { workout: true } }; });
+  localStorage.setItem('dp.entries', JSON.stringify(E));
+  ok('bestHabitStreak finds 3-run', bestHabitStreak('workout') === 3, bestHabitStreak('workout'));
+  ok('bestHabitStreak unknown habit 0', bestHabitStreak('nope') === 0);
+
+  // ---- trackedSleepHours (full night ending on date, no midnight clip) ----
+  const tlSnap = localStorage.getItem('dp.timelog');
+  const d0 = new Date('2026-01-10T00:00:00').getTime();
+  localStorage.setItem('dp.timelog', JSON.stringify([
+    { id: 'a', act: 'sleep', start: d0 - 3600000, end: d0 + 6 * 3600000, upd: 1 },      // 23:00→06:00 = 7h, ends Jan 10
+    { id: 'b', act: 'sleep', start: d0 + 14 * 3600000, end: d0 + 15 * 3600000, upd: 1 } // 1h nap same day
+  ]));
+  ok('trackedSleepHours full night + nap', trackedSleepHours('2026-01-10') === 8, trackedSleepHours('2026-01-10'));
+  ok('trackedSleepHours other day null', trackedSleepHours('2026-01-11') === null);
+  ok('trackedHours ended-only (running excluded)', (() => {
+    localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'r', act: 'work', start: Date.now() - 3600000, end: null, upd: 1 }]));
+    return trackedHours(todayStr(), 'work') === null;
+  })());
+  if (tlSnap != null) localStorage.setItem('dp.timelog', tlSnap); else localStorage.removeItem('dp.timelog');
+  if (entSnap != null) localStorage.setItem('dp.entries', entSnap); else localStorage.removeItem('dp.entries');
+
+  // ---- fmtMin ----
+  ok('fmtMin 445 → 7h25m', fmtMin(445) === '7h25m', fmtMin(445));
+  ok('fmtMin null → null', fmtMin(null) === null);
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
