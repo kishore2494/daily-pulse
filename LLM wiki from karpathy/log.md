@@ -1,5 +1,10 @@
 # Log (reverse-chronological)
 
+## 2026-08-16 — v97: 44-test suite + light onboarding fix (live)
+- tests/unit.js grew 26→44: safeParse, pearson (±1/degenerate), snippet (highlight/escape/truncate), bestHabitStreak, trackedSleepHours (cross-midnight + ended-only), fmtMin. All green.
+- Light-mode: `.ob-inner h1` used the white gradient → invisible on light (same class of bug as pm-score/nav-label); added the dark-gradient override.
+- Learned (harness): headless Chromium doesn't advance CSS animations without painted frames — a screenshot right after `navigateTo` can catch `.screen.on` at opacity 0. Force a paint (extra screenshot / delay) before judging "blank screen" from a shot; verify via DOM.
+
 ## 2026-08-16 — v96: global Search + onboarding reminder + backup nudge (live)
 - **🔍 Search screen** (`s-search`, in the Menu drawer; NAV_DEF k:'search'): searches entries (journal/wentWell/improve/weekWins/weekFocus), tasks, notes, plans (name+items), Write docs (title+blocks), events. Debounced input, grouped cards with counts, highlighted snippets (`snippet()`), deep links per type (log→that day, plan→curPlan, doc→curDoc, event→calendar day). Stats "Your topics" tag chips are now buttons (`data-searchtag`) that jump into a tag search.
 - **⏰ Onboarding step 4** (dots now 0-3): "Never miss a day" — checkbox (default on) + time (default 21:00) creates a 'Log my day' notify-mode reminder on finish + web Notification permission request. Retention lever for production.
