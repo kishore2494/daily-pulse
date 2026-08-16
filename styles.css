@@ -930,3 +930,12 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .tag-chip b { opacity: .75; margin-left: 2px; }
 .seg-row { flex-wrap: wrap; }
 .seg-btn { min-width: 0; }
+
+/* ---------- v96: global search ---------- */
+.sr-row { display: flex; gap: 10px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.sr-row:last-child { border-bottom: none; }
+.sr-row:active { background: rgba(127,127,127,.06); }
+.sr-when { flex: 0 0 auto; font-size: 11px; color: var(--text-faint); min-width: 64px; }
+.sr-snip { font-size: 13.5px; color: var(--text-dim); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+.sr-snip b { color: var(--accent); font-weight: 700; }
+#search-q { font-size: 16px; }

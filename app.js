@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v95';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v96';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2201,7 +2201,7 @@ function renderDash() {
   const topTags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const tagsCard = topTags.length ? `<div class="card">
       <h2>#️⃣ Your topics <span class="hint">from journal #tags · this range</span></h2>
-      <div class="tag-cloud">${topTags.map(([t, n]) => `<span class="tag-chip">${escapeHtml(t)} <b>${n}</b></span>`).join('')}</div>
+      <div class="tag-cloud">${topTags.map(([t, n]) => `<button class="tag-chip" data-searchtag="${escapeHtml(t)}">${escapeHtml(t)} <b>${n}</b></button>`).join('')}</div>
     </div>` : '';
 
   const overviewHTML = `
@@ -2343,6 +2343,92 @@ function renderDash() {
     ${dashTab === 'check' ? '' : rangeRow}
     ${body}`;
 }
+
+/* ============================================================
+   SCREEN: SEARCH — find anything you ever wrote, across the app.
+   Searches log entries (journal + reflections), tasks, notes,
+   plans, Write articles and calendar events; #tags work naturally.
+   Each result deep-links to its home screen.
+   ============================================================ */
+let searchQ = '';
+function renderSearch() {
+  document.getElementById('screen-title').textContent = 'Search';
+  document.getElementById('screen-sub').textContent = 'find anything you wrote';
+  document.getElementById('s-search').innerHTML = `
+    <div class="card">
+      <div class="task-add">
+        <input type="text" id="search-q" placeholder="Search journals, tasks, notes… or #tag" autocomplete="off" value="${escapeHtml(searchQ)}">
+      </div>
+    </div>
+    <div id="search-results">${searchQ ? runSearch(searchQ) : '<div class="empty">Type at least 2 characters. Tip: search a <b>#tag</b> to see every day you mentioned it.</div>'}</div>`;
+  const inp = document.getElementById('search-q');
+  if (inp && !searchQ) setTimeout(() => inp.focus(), 50);
+}
+function snippet(text, q) {
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return escapeHtml(text.slice(0, 80));
+  const a = Math.max(0, i - 34), b = Math.min(text.length, i + q.length + 46);
+  return (a > 0 ? '…' : '') + escapeHtml(text.slice(a, i)) + '<b>' + escapeHtml(text.slice(i, i + q.length)) + '</b>' + escapeHtml(text.slice(i + q.length, b)) + (b < text.length ? '…' : '');
+}
+function runSearch(q) {
+  q = q.trim(); if (q.length < 2) return '<div class="empty">Type at least 2 characters.</div>';
+  const ql = q.toLowerCase(); const hit = s => s && String(s).toLowerCase().includes(ql);
+  const groups = [];
+  // Log entries — journal + all text fields
+  const e = DB.entries();
+  const logRows = Object.keys(e).sort().reverse().map(d => {
+    const en = e[d];
+    const fields = ['journal', 'wentWell', 'improve', 'weekWins', 'weekFocus'];
+    const f = fields.find(k => hit(en[k]));
+    return f ? `<div class="sr-row" data-sr="log" data-d="${d}"><span class="sr-when">${prettyDate(d).replace(/, \d{4}$/, '')}</span><span class="sr-snip">${snippet(en[f], q)}</span></div>` : '';
+  }).filter(Boolean);
+  if (logRows.length) groups.push(['📝 Log entries', logRows]);
+  const taskRows = DB.tasks().filter(t => hit(t.text)).map(t =>
+    `<div class="sr-row" data-sr="task"><span class="sr-when">${t.done ? '✓ done' : 'open'}</span><span class="sr-snip">${snippet(t.text, q)}</span></div>`);
+  if (taskRows.length) groups.push(['✅ Tasks', taskRows]);
+  const noteRows = DB.notes().filter(n => hit(n.text)).map(n =>
+    `<div class="sr-row" data-sr="note"><span class="sr-when">${n.created || ''}</span><span class="sr-snip">${snippet(n.text, q)}</span></div>`);
+  if (noteRows.length) groups.push(['🗒️ Notes', noteRows]);
+  const planRows = [];
+  DB.plans().forEach(p => {
+    if (hit(p.name)) planRows.push(`<div class="sr-row" data-sr="plan" data-id="${p.id}"><span class="sr-when">plan</span><span class="sr-snip">${snippet(p.name, q)}</span></div>`);
+    (p.items || []).forEach(it => { if (hit(it.text)) planRows.push(`<div class="sr-row" data-sr="plan" data-id="${p.id}"><span class="sr-when">${escapeHtml((p.name || '').slice(0, 14))}</span><span class="sr-snip">${snippet(it.text, q)}</span></div>`); });
+  });
+  if (planRows.length) groups.push(['📋 Plans', planRows]);
+  const docRows = [];
+  DB.docs().forEach(dc => {
+    const inTitle = hit(dc.title); const blk = (dc.blocks || []).find(b => hit(b.text));
+    if (inTitle || blk) docRows.push(`<div class="sr-row" data-sr="doc" data-id="${dc.id}"><span class="sr-when">${escapeHtml((dc.title || 'untitled').slice(0, 14))}</span><span class="sr-snip">${snippet(inTitle ? dc.title : blk.text, q)}</span></div>`);
+  });
+  if (docRows.length) groups.push(['✍️ Articles', docRows]);
+  const evRows = DB.events().filter(x => hit(x.label)).map(x =>
+    `<div class="sr-row" data-sr="event" data-d="${x.date}"><span class="sr-when">${x.date}${x.time ? ' ' + x.time : ''}</span><span class="sr-snip">${snippet(x.label, q)}</span></div>`);
+  if (evRows.length) groups.push(['📌 Events', evRows]);
+  if (!groups.length) return `<div class="empty">Nothing found for “${escapeHtml(q)}”.</div>`;
+  const total = groups.reduce((s, [, r]) => s + r.length, 0);
+  return `<div class="hint" style="margin:2px 4px 8px">${total} result${total === 1 ? '' : 's'}</div>` +
+    groups.map(([title, rows]) => `<div class="card"><h2>${title} <span class="hint">${rows.length}</span></h2>${rows.join('')}</div>`).join('');
+}
+let _searchTimer;
+document.addEventListener('input', (ev) => {
+  if (ev.target.id !== 'search-q') return;
+  searchQ = ev.target.value;
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { const r = document.getElementById('search-results'); if (r) r.innerHTML = searchQ.trim().length >= 2 ? runSearch(searchQ) : '<div class="empty">Type at least 2 characters.</div>'; }, 220);
+});
+document.addEventListener('click', (ev) => {
+  // tag chips in Stats → search that tag
+  const tc = ev.target.closest('.tag-chip[data-searchtag]');
+  if (tc) { searchQ = tc.dataset.searchtag; navigateTo('search'); return; }
+  const row = ev.target.closest('.sr-row'); if (!row || !document.getElementById('s-search').classList.contains('on')) return;
+  const kind = row.dataset.sr;
+  if (kind === 'log') { logDate = row.dataset.d; show('today'); }
+  else if (kind === 'task') show('tasks');
+  else if (kind === 'note') show('notes');
+  else if (kind === 'plan') { curPlan = row.dataset.id; show('plans'); }
+  else if (kind === 'doc') { curDoc = row.dataset.id; show('write'); }
+  else if (kind === 'event') { calSel = row.dataset.d; calMonth = calSel.slice(0, 7); show('cal'); }
+});
 
 /* ============================================================
    SCREEN: HISTORY
@@ -4262,6 +4348,7 @@ const NAV_DEF = [
   { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
   { k: 'cal',      ico: 'calendar', label: 'Cal' },
   { k: 'write',    ico: 'pencil',   label: 'Write' },
+  { k: 'search',   ico: 'search',   label: 'Search' },
   { k: 'history',  ico: 'history',  label: 'History' },
   { k: 'settings', ico: 'settings', label: 'Settings' },
 ];
@@ -4433,7 +4520,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore };
+const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const sec = document.getElementById('s-' + name);
@@ -4515,6 +4602,7 @@ const ICONS = {
   star:'<path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17.3 6 20.4l1.4-6.3L2.6 9.8l6.4-.6Z"/>',
   plus:'<path d="M12 5v14"/><path d="M5 12h14"/>',
   dot:'<circle cx="12" cy="12" r="4"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/>',
 };
 // section id → icon, and default-habit key → icon (custom items keep their emoji)
 const SECTION_ICON = { mind:'lightbulb', wellbeing:'smile', health:'heart', work:'briefcase', learning:'book', finance:'wallet', digital:'phone', growth:'trending', haircare:'scissors', skincare:'droplet' };
@@ -4612,10 +4700,20 @@ function renderOnboard() {
       <button class="btn btn-primary btn-sm" id="ob-add-act">Add</button>
     </div>
     <p class="ob-note">Everything here is editable later in <b>More ▸ Customize</b>.</p>
+    <button class="btn btn-primary" data-ob-next>Next</button>`;
+  if (obStep === 3) body = `
+    <div class="ob-emoji">⏰</div>
+    <h1>Never miss a day</h1>
+    <p class="ob-lead">People who set a daily reminder keep their streak 3× longer.</p>
+    <div class="card" style="text-align:left">
+      <label class="ev-alarm-row" style="margin:0 0 10px"><input type="checkbox" id="ob-rem-on" checked> Remind me to log my day</label>
+      <div class="field"><label>At</label><input type="time" id="ob-rem-time" value="21:00"></div>
+    </div>
+    <p class="ob-note">Change or add more anytime in <b>Settings ▸ Reminders</b>.</p>
     <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
   el.innerHTML = `<div class="ob-inner">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
-    <div class="ob-dots">${[0, 1, 2].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+    <div class="ob-dots">${[0, 1, 2, 3].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
 }
 document.addEventListener('click', (ev) => {
   const el = document.getElementById('onboard');
@@ -4639,12 +4737,20 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
-    if (obStep < 2) { obStep++; renderOnboard(); return; }
+    if (obStep < 3) { obStep++; renderOnboard(); return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
     if (obHideA.size) {
       const cfg = actCfg(); cfg.forEach(a => { if (obHideA.has(a.id)) a.hidden = true; }); saveActCfg(cfg);
       const cust = DB.timeacts(); let ch = false; cust.forEach(a => { if (obHideA.has(a.id)) { a.hidden = true; ch = true; } }); if (ch) DB.saveTimeacts(cust);
+    }
+    // daily-log reminder from the new onboarding step (retention: streaks live on reminders)
+    const remOn = document.getElementById('ob-rem-on'), remT = document.getElementById('ob-rem-time');
+    if (remOn && remOn.checked) {
+      const rs = DB.reminders();
+      rs.push({ id: 'rem' + Date.now(), time: (remT && remT.value) || '21:00', label: 'Log my day', enabled: true, mode: 'notify' });
+      DB.saveReminders(rs); setupReminders();
+      if (!nativeShell() && 'Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (_) {} }
     }
     localStorage.setItem('dp.onboarded', '1');
     localStorage.setItem('dp.whatsnew', WHATS_NEW.v);   // brand-new users: everything is new — skip the What's-new card
@@ -4678,6 +4784,20 @@ if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); re
 else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();
 setTimeout(() => checkReminders(true), 1000);   // catch a reminder you missed while the app was closed
+// Gentle data-safety nudge: local-first means a lost phone = lost data. If there's real
+// data and no backup for 14+ days, remind once a week (toast only — never a blocker).
+setTimeout(() => {
+  try {
+    const n = Object.keys(DB.entries()).length; if (n < 10) return;
+    const last = +localStorage.getItem('dp.lastBackup') || 0;
+    const nudged = +localStorage.getItem('dp.backupNudge') || 0;
+    const D = 86400000;
+    if (Date.now() - last > 14 * D && Date.now() - nudged > 7 * D) {
+      localStorage.setItem('dp.backupNudge', String(Date.now()));
+      toast('💾 ' + n + ' days of data, no recent backup — export one in Settings ▸ Backup', true);
+    }
+  } catch (_) {}
+}, 2500);
 // Opened by tapping an ntfy push (?alarm=<label>) → go straight into the loud full-screen alarm.
 (function () {
   try {
