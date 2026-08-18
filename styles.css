@@ -981,3 +981,14 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .pat-sub b { color: var(--text); }
 #graph-svg { cursor: grab; }
 #graph-svg:active { cursor: grabbing; }
+
+/* ---------- v108: box typography — nothing truncates or squeezes ---------- */
+.rem-top input[type=time], #rem-new-time { flex: 0 0 112px; font-size: 14.5px; padding-left: 6px; padding-right: 4px; }
+.stat .v { font-size: clamp(17px, 5.4vw, 22px); white-space: nowrap; }
+.stat .l { font-size: 10.5px; }
+.ts-cell { padding: 10px 5px; min-width: 0; }
+.ts-n { font-size: clamp(16px, 5.2vw, 24px); white-space: nowrap; }
+.ts-l { font-size: 10px; letter-spacing: .2px; }
+.dur-pick select, .bw-cell input[type=time] { font-size: 14.5px; }
+.range-select { font-size: 14px; }
+.seg-btn { font-size: 12.5px; padding-left: 6px; padding-right: 6px; }
