@@ -107,6 +107,34 @@
   if (tlSnap != null) localStorage.setItem('dp.timelog', tlSnap); else localStorage.removeItem('dp.timelog');
   if (entSnap != null) localStorage.setItem('dp.entries', entSnap); else localStorage.removeItem('dp.entries');
 
+  // ---- pattern-mining helpers ----
+  ok('dpMedian odd', dpMedian([3, 1, 2]) === 2);
+  ok('dpMedian even', dpMedian([1, 2, 3, 4]) === 2.5);
+  ok('dpMedian empty → null', dpMedian([]) === null);
+  ok('dpStd known', approx(dpStd([2, 4, 4, 4, 5, 5, 7, 9]), 2.138, 0.01), dpStd([2, 4, 4, 4, 5, 5, 7, 9]));
+  ok('dpSlope up', approx(dpSlope([1, 2, 3, 4, 5]), 1));
+  ok('dpSlope flat', approx(dpSlope([4, 4, 4, 4, 4]), 0));
+  ok('dpSlope tiny n → null', dpSlope([1, 2]) === null);
+
+  // ---- computePatterns on crafted data ----
+  const pSnapE = localStorage.getItem('dp.entries'), pSnapT = localStorage.getItem('dp.timelog'), pSnapH = localStorage.getItem('dp.health');
+  const PE = {};
+  for (let i = 1; i <= 12; i++) {
+    const d = addDays(todayStr(), -i);
+    const good = i % 2 === 0;   // alternate good sleep+workout days vs short-sleep no-workout
+    PE[d] = { mood: good ? 8 : 5, energy: good ? 8 : 5, sleepHours: good ? 7.5 : 5.5, habits: { workout: good } };
+  }
+  localStorage.setItem('dp.entries', JSON.stringify(PE));
+  localStorage.removeItem('dp.timelog'); localStorage.removeItem('dp.health');
+  const pats = computePatterns();
+  ok('patterns found', pats.length >= 2, pats.length);
+  ok('sleep sweet spot detected', pats.some(p => /sleep sweet spot/i.test(p.head)), pats.map(p => p.head).join('|'));
+  ok('habit lift detected', pats.some(p => /lifts your mood/i.test(p.head)));
+  ok('patterns escape labels', !pats.some(p => /<img|onerror/i.test(p.head)));
+  if (pSnapE != null) localStorage.setItem('dp.entries', pSnapE); else localStorage.removeItem('dp.entries');
+  if (pSnapT != null) localStorage.setItem('dp.timelog', pSnapT); else localStorage.removeItem('dp.timelog');
+  if (pSnapH != null) localStorage.setItem('dp.health', pSnapH); else localStorage.removeItem('dp.health');
+
   // ---- fmtMin ----
   ok('fmtMin 445 → 7h25m', fmtMin(445) === '7h25m', fmtMin(445));
   ok('fmtMin null → null', fmtMin(null) === null);
