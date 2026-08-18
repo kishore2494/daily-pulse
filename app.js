@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v116';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v117';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -4252,6 +4252,40 @@ function nativeShell() { return !!(window.Capacitor && window.Capacitor.Plugins 
      HealthConnect.today() -> { steps, distanceMeters, caloriesKcal, sleepMinutes, exerciseMinutes, heartRateAvg }
    Degrades gracefully: on the web/PWA (no plugin) the Health card just invites you to
    use the app; nothing breaks. Data is cached per-day in dp.health and auto-fills sleep. */
+
+/* Play policy: a "prominent disclosure" must appear BEFORE requesting a restricted
+   permission (PACKAGE_USAGE_STATS), explaining what is accessed and why, with an
+   explicit user choice. This gate runs before any usage-access request. */
+function usageDisclosureAccepted() { return localStorage.getItem('dp.usageDisclosure') === '1'; }
+function showUsageDisclosure(onAccept) {
+  let m = document.getElementById('usage-disc');
+  if (!m) { m = document.createElement('div'); m.id = 'usage-disc'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="copy-box">
+    <h2 class="h2-icon">${hicon('phone')}<span>Enable screen-time tracking?</span></h2>
+    <p class="hint" style="line-height:1.6">To show your daily screen time, Daily Pulse needs Android's <b>Usage access</b> permission. Here's exactly what that means:</p>
+    <div class="wn-item">📱 It reads <b>how long your phone was in use today</b> — nothing else.</div>
+    <div class="wn-item">🔒 The number is stored <b>only on this phone</b>. It is never uploaded, shared or sold.</div>
+    <div class="wn-item">📊 It's used solely to show your screen time and compare it with your mood.</div>
+    <div class="wn-item">↩️ You can turn it off any time in <b>Settings ▸ Auto-tracking</b>, or revoke it in Android settings.</div>
+    <div class="copy-actions" style="justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost btn-sm" id="usage-no">Not now</button>
+      <button class="btn btn-primary btn-sm" id="usage-yes">Continue</button>
+    </div></div>`;
+  m.classList.add('on');
+  m._onAccept = onAccept;
+}
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest) return;
+  const m = document.getElementById('usage-disc');
+  if (ev.target.closest('#usage-no')) { if (m) m.remove(); toast('Screen-time tracking stays off'); return; }
+  if (ev.target.closest('#usage-yes')) {
+    localStorage.setItem('dp.usageDisclosure', '1');
+    const cb = m && m._onAccept; if (m) m.remove();
+    if (cb) cb();
+    return;
+  }
+});
+
 function hcPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.HealthConnect) || null; }
 /* Home-screen widget bridge. Android widgets are pure native (RemoteViews) — they can't
    run web code — so the app pushes a small summary to the native side after every save;
@@ -4291,6 +4325,7 @@ async function syncHealth(opts) {
     // Permission prompt only on EXPLICIT sync — the native side may open a system
     // settings page, which must never happen from a silent background sync.
     if (!opts.silent && hc.requestPermissions) {
+      if (!usageDisclosureAccepted()) { showUsageDisclosure(() => syncHealth(opts)); return null; }
       const p = await hc.requestPermissions();
       if (p && p.granted === false) { toast('Turn on Usage access for Daily Pulse (screen just opened), then tap Sync again', true); return null; }
     }
