@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v110';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v111';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5103,7 +5103,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'tour-next') { tourIdx++; showTourStep(); return; }
   if (ev.target.id === 'tour-back') { tourIdx = Math.max(0, tourIdx - 1); showTourStep(); return; }
   if (ev.target.id === 'tour-skip') { endTour(); return; }
-  if (ev.target.id === 'open-tour') { show('today'); startTour(); return; }
+  if (ev.target.closest && ev.target.closest('#open-tour')) { show('today'); startTour(); return; }
 });
 
 /* ---------- Init ---------- */
