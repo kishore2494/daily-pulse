@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v104';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v105';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2339,12 +2339,15 @@ function renderDash() {
   });
   const scAvg = hAvg('screenMin'), dwAvg = (() => { const v = days.map(d => e[d] && e[d].deepWorkHours).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? v.reduce((a, b) => a + +b, 0) / v.length : null; })();
   const screenVsWork = (scAvg != null && dwAvg > 0) ? `<div class="corr-note">📱 Screen time averages <b>${fmtMin(Math.round(scAvg))}</b>/day — <b>${(scAvg / 60 / dwAvg).toFixed(1)}×</b> your deep work (${fmtH(dwAvg)}).</div>` : '';
+  const sampleOn = !!localStorage.getItem('dp.sampleMeta');
+  const sampleBar = sampleOn ? `<div class="card sample-bar"><span>👀 Showing <b>sample data</b> — a preview of auto-tracking.</span><button class="btn btn-ghost btn-sm" id="hc-sample-clear">Clear sample</button></div>` : '';
   const healthHTML = !at.on
     ? '<div class="card"><h2>❤️ Health</h2><div class="hint">Auto-tracking is switched off. Turn it on in <b>Settings ▸ Auto-tracking</b>.</div></div>'
     : (hDays === 0
       ? `<div class="card"><h2>❤️ Health <span class="hint">nothing synced yet</span></h2>
-          <div class="hint">Steps, screen time, calories, sleep and active minutes from your phone will appear here — <b>coming in a Play update</b>. Pick what to track in <b>Settings ▸ Auto-tracking</b>.</div></div>`
-      : `
+          <div class="hint">Steps, screen time, calories, sleep and active minutes from your phone will appear here — <b>coming in a Play update</b>. Pick what to track in <b>Settings ▸ Auto-tracking</b>.</div>
+          <button class="btn btn-primary btn-sm" id="hc-sample" style="margin-top:10px">👀 Preview with sample data</button></div>`
+      : sampleBar + `
     <div class="card"><div class="stat-grid">
       ${hStat(hAvg('steps') != null ? Math.round(hAvg('steps')).toLocaleString() : null, '👟 avg steps')}
       ${hStat(hAvg('screenMin') != null ? fmtMin(Math.round(hAvg('screenMin'))) : null, '📱 avg screen')}
@@ -4117,6 +4120,63 @@ async function syncHealth(opts) {
   } catch (e) { if (!opts.silent) toast('Health sync failed', true); return null; }
 }
 const fmtMin = m => m == null ? null : (Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm');
+/* ---------- Sample data preview (auto-tracking) ----------
+   Seeds 14 PAST days (skipping yesterday & the day before, so the logged-streak
+   and today's real sync are untouched) of realistic health + focus + entry data,
+   all marked sample:true and listed in dp.sampleMeta for exact one-tap removal. */
+function seedSampleData() {
+  const meta = { dates: [], entries: [], pomo: [] };
+  const hs = healthStore();
+  const es = DB.entries();
+  const ph = safeParse(localStorage.getItem('dp.pomohist'), {});
+  const journals = [
+    'Deep work went great today, shipped the feature #work #focus',
+    'Long walk in the evening, felt refreshed #health',
+    'Read 30 pages before bed #learning',
+    'Too much scrolling today, need to cut down #digital',
+    'Solid gym session, energy high all day #health #gym',
+    'Planned the week, feeling organized #work',
+    'Quiet day, mostly recovery and reading #learning #health',
+  ];
+  for (let i = 3; i <= 16; i++) {
+    const d = addDays(todayStr(), -i);
+    const steps = 4200 + Math.round(Math.random() * 7000);
+    const screenMin = 160 + Math.round(Math.random() * 260);
+    const sleepMin = 360 + Math.round(Math.random() * 150);
+    const exerciseMin = steps > 8000 ? 30 + Math.round(Math.random() * 40) : Math.round(Math.random() * 25);
+    hs[d] = { steps, distanceKm: +(steps * 0.00072).toFixed(2), calories: 1750 + Math.round(steps * 0.06),
+      sleepMin, exerciseMin, hr: 64 + Math.round(Math.random() * 12), screenMin, at: new Date().toISOString(), sample: true };
+    meta.dates.push(d);
+    if (!es[d]) {
+      // mood/energy loosely follow the health story so the correlations demo honestly
+      const mood = Math.max(3, Math.min(9, Math.round(5 + steps / 4000 - screenMin / 200 + (sleepMin - 400) / 100)));
+      const energy = Math.max(3, Math.min(9, Math.round(4.5 + steps / 3500 + (sleepMin - 400) / 120)));
+      es[d] = { mood, energy, sleepHours: +(sleepMin / 60).toFixed(2), deepWorkHours: +(1.5 + Math.random() * 3).toFixed(1),
+        workoutsDone: exerciseMin > 30 ? 4 + (i % 3) : 0, tasksDone: i % 4, tasksPlanned: 3 + (i % 3),
+        journal: journals[i % journals.length],
+        habits: { workout: exerciseMin > 30, meditation: i % 3 !== 0, reading: i % 2 === 0, healthyFood: i % 3 !== 1 }, sample: true };
+      meta.entries.push(d);
+    }
+    if (ph[d] == null) { ph[d] = 2 + (i % 5); meta.pomo.push(d); }
+  }
+  localStorage.setItem('dp.entries', JSON.stringify(es));   // direct write — sample must not trigger sync/pushState
+  saveHealthStore(hs);
+  localStorage.setItem('dp.pomohist', JSON.stringify(ph));
+  localStorage.setItem('dp.sampleMeta', JSON.stringify(meta));
+}
+function clearSampleData() {
+  const meta = safeParse(localStorage.getItem('dp.sampleMeta'), null); if (!meta) return;
+  const hs = healthStore(); (meta.dates || []).forEach(d => { if (hs[d] && hs[d].sample) delete hs[d]; }); saveHealthStore(hs);
+  const es = DB.entries(); (meta.entries || []).forEach(d => { if (es[d] && es[d].sample) delete es[d]; });
+  localStorage.setItem('dp.entries', JSON.stringify(es));
+  const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); (meta.pomo || []).forEach(d => { delete ph[d]; });
+  localStorage.setItem('dp.pomohist', JSON.stringify(ph));
+  localStorage.removeItem('dp.sampleMeta');
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target.id === 'hc-sample') { seedSampleData(); dashRange = 30; dashTab = 'health'; renderDash(); refreshStreak(); toast('👀 Sample data loaded — explore Stats! Clear it anytime.'); return; }
+  if (ev.target.id === 'hc-sample-clear') { clearSampleData(); renderDash(); refreshStreak(); toast('Sample data removed'); return; }
+});
 // Compact Health card for the Log screen — shows ONLY the metrics enabled in Settings ▸ Auto-tracking.
 function healthCardHTML() {
   const at = autoTrackCfg();
