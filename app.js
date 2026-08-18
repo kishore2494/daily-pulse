@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v101';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v102';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -94,14 +94,15 @@ const DEFAULT_CORE_FIELDS = [
   { key: 'tasksPlanned',  label: 'Tasks planned',                    type: 'num' },
   { key: 'wentWell',      label: 'One thing that went well ✨',      type: 'text' },
   { key: 'improve',       label: 'One thing to improve tomorrow 🎯', type: 'text' },
-  { key: 'journal',       label: 'Journal entry 📓',                 type: 'journal' },
+  { key: 'journal',       label: 'Journal entry',                    type: 'journal' },
 ];
 function coreCfg() {
   const v0 = safeParse(localStorage.getItem('dp.corecfg'), null);
   const cfg = Array.isArray(v0) ? v0 : DEFAULT_CORE_FIELDS.map(f => Object.assign({}, f));
   DEFAULT_CORE_FIELDS.forEach(d => { if (!cfg.find(f => f.key === d.key)) cfg.push(Object.assign({}, d)); });
   // Backfill flags added in later versions onto older stored configs.
-  cfg.forEach(f => { const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) {
+  cfg.forEach(f => { if (f.key === 'journal') f.label = (f.label || '').replace(/\s*📓\s*/g, '').trim() || 'Journal entry';
+    const d = DEFAULT_CORE_FIELDS.find(x => x.key === f.key); if (d) {
     if (d.step && !f.step) f.step = d.step;
     if (d.bedwake) { f.bedwake = true; f.time = false; if (f.label === 'Sleep hrs') f.label = 'Sleep'; }
     if (d.dur) { f.dur = true; f.time = false; if (f.label === 'Deep work hrs') f.label = 'Deep work'; }
@@ -548,9 +549,9 @@ function bedwakeField(f) {
   const dur = draft[f.key]; const h = dur !== '' && dur != null ? Math.floor(dur) + 'h ' + Math.round((dur - Math.floor(dur)) * 60) + 'm' : '';
   return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''} <span class="hint">bed → wake</span></label>
     <div class="bedwake">
-      <span class="bw-cell"><span class="bw-lab">Bed</span><input type="time" data-bed="${f.key}" value="${draft.bedTime || ''}"></span>
+      <span class="bw-cell ${draft.bedTime ? '' : 'bw-empty'}"><span class="bw-lab">Bed</span><input type="time" data-bed="${f.key}" value="${draft.bedTime || ''}"></span>
       <span class="bw-arrow">→</span>
-      <span class="bw-cell"><span class="bw-lab">Wake</span><input type="time" data-wake="${f.key}" value="${draft.wakeTime || ''}"></span>
+      <span class="bw-cell ${draft.wakeTime ? '' : 'bw-empty'}"><span class="bw-lab">Wake</span><input type="time" data-wake="${f.key}" value="${draft.wakeTime || ''}"></span>
       <span class="bw-dur" data-bw-dur="${f.key}">${h || '—'}</span>
     </div>${f.key === 'sleepHours' ? trackedChip('sleepHours', trackedInfo.sleep) : ''}</div>`;
 }
@@ -821,6 +822,7 @@ document.addEventListener('change', (ev) => {
   if (bw) {
     const key = bw.dataset.bed || bw.dataset.wake;
     if (bw.dataset.bed !== undefined && bw.hasAttribute('data-bed')) draft.bedTime = bw.value; else draft.wakeTime = bw.value;
+    const cell = bw.closest('.bw-cell'); if (cell) cell.classList.toggle('bw-empty', !bw.value);
     draft[key] = bedwakeHours(draft.bedTime, draft.wakeTime);
     const disp = document.querySelector(`[data-bw-dur="${key}"]`);
     if (disp) { const d = draft[key]; disp.textContent = (d !== '' && d != null) ? (Math.floor(d) + 'h ' + Math.round((d - Math.floor(d)) * 60) + 'm') : '—'; }
@@ -2174,7 +2176,7 @@ function renderDash() {
   // ---------- three tabbed views (simplify + separate time vs checklist) ----------
   const RANGES = [[1, 'Today'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [90, 'Last 3 months']];
   const rangeRow = `<div class="range-row">
-      <label for="dash-range" class="range-lab">📅 Range</label>
+      <label for="dash-range" class="range-lab">${icon('calendar', 14)} Range</label>
       <select id="dash-range" class="range-select">
         ${RANGES.map(([v, l]) => `<option value="${v}" ${dashRange === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
@@ -2358,7 +2360,7 @@ function renderDash() {
     ${at.sleep ? hChart('sleepMin', '😴 Sleep (auto)', '#a78bfa', v => fmtMin(Math.round(v))) : ''}
     ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}`);
 
-  const TABS = [['overview', '📊 Overview'], ['time', '⏱ Time'], ['check', '✅ Checklist'], ['health', '❤️ Health']];
+  const TABS = [['overview', icon('chart', 15) + ' Overview'], ['time', icon('clock', 15) + ' Time'], ['check', icon('check', 15) + ' Checklist'], ['health', icon('heart', 15) + ' Health']];
   const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
   document.getElementById('s-dash').innerHTML = `
     <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
