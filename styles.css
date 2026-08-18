@@ -1036,3 +1036,4 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .sr-snip, .drawer-lbl, .menu-txt { min-width: 0; }
 .section-collapsible > h2 { overflow: hidden; }
 .screen svg { max-width: 100%; }
+#graph-wrap { overflow: hidden; border-radius: 12px; }
