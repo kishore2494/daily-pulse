@@ -61,6 +61,45 @@ New here? Take the 60-second guided tour inside the app (Settings ▸ Take the a
 
 Free. Private. Yours.
 
+
+## ⚠️ NAME RESEARCH (2026-08-18) — decide BEFORE publishing
+Renaming is cheap now, expensive after launch (URL/package stays either way; only the
+store title changes — package `io.github.kishore2494.dailypulse` never changes).
+
+**Findings — 4 live Play apps already named "Daily Pulse":**
+| App | Developer | Category | Installs | Collision |
+|---|---|---|---|---|
+| Daily Pulse | Syed Tasavour | Health & Fitness | 50+ | EXACT name; also a "privacy-focused, local-only, no-account" mood tracker |
+| DailyPulse: Mood & Energy | LGHDeveloper | Productivity | 10+ | EXACT name + near-clone features (mood, energy, deep-work hrs, correlations, streaks) |
+| Daily Pulse Tracker | AinulMardhiyah | Health | n/c | EXACT name, wellness/pulse logging |
+| Daily Pulse: Local | Asynk Tech | — | 10+ | Name only (unrelated) |
+
+**The bigger problem:** on Play, "Pulse" semantically means heart-rate/BP — pulse-ish
+queries return cardiac apps (Pulse Log, WellPulse, FITIV Pulse…). The name mis-files us
+away from habit/mood tracking, and "Daily Pulse" itself has ~zero search demand, wasting
+the highest-weight ASO field (the 30-char title). Trademark: no "Daily Pulse" software
+mark found, but PULSE is registered in software services (Reg. #5235848) — risk low-moderate,
+though an identical title in Health & Fitness adds duplicate-title review risk.
+
+**RECOMMENDATION: rename the store title; KEEP the pulse-line icon.**
+Cleanest candidates (collision-checked, none in our category):
+`Innerlog` (cleanest) · `Dayvault` (best privacy signal) · `Vitalog` · `Rhythmlog` · `Tallyday`
+Keep-Pulse options (small/unrelated collisions only): `SteadyPulse` · `Pulseboard` · `Pulsecraft`
+REJECTED (crowded): LifePulse, HabitPulse (5 apps), Cadence, Baseline, Pulse Log.
+
+**If renamed, titles (≤30):** `Innerlog: Habit & Mood Log` (26) · `Innerlog: Habit, Mood, Focus` (28)
+**Short descs (≤80):** `Habit tracker, mood log, screen time & focus timer. Offline, no account.` (72)
+
+**Keyword economics:** "habit tracker" = highest value (~2k searches/day, moderate difficulty);
+"mood tracker" = saturated (Daylio owns it); **"screen time" = our genuine edge** (high intent,
+almost no habit/mood app has it); "offline"/"no account" = low volume, low difficulty, high convert.
+→ Put habit+mood in the TITLE, spend the SHORT DESC on screen time + offline + no account.
+
+**Ranking levers that actually matter in 2026:** (1) retention/conversion now outweigh keywords —
+our streak+reminder loop is the lever; (2) free Play **Store Listing Experiments** to A/B icon +
+first 2 screenshots (lead with the screen-time analytics shot — no competitor shows it);
+(3) localize title+short desc into 5-8 languages (pt-BR, id, es, tr, hi far less contested).
+
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
 developer account, Google restricts health/finance/government-service apps, and that
