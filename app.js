@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v115';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v116';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -182,20 +182,79 @@ function enableDrag(listEl, onReorder) {
   });
 }
 
+
+/* ---------- Crash safety net ----------
+   A public app must never dead-end on a blank screen. Any uncaught error shows a
+   recovery sheet (retry / export backup / report) instead of nothing. Errors are
+   only ever stored locally; nothing is auto-sent. */
+let _crashShown = false;
+function reportCrash(msg, src) {
+  try {
+    const log = safeParse(localStorage.getItem('dp.errlog'), []);
+    log.unshift({ t: new Date().toISOString(), m: String(msg || '').slice(0, 300), s: String(src || '').slice(0, 120), v: APP_VERSION });
+    localStorage.setItem('dp.errlog', JSON.stringify(log.slice(0, 10)));
+  } catch (_) {}
+  if (_crashShown) return; _crashShown = true;
+  try {
+    const el = document.createElement('div');
+    el.className = 'copy-modal on'; el.id = 'crash-sheet';
+    el.innerHTML = '<div class="copy-box confirm-box">' +
+      '<h2>Something went wrong</h2>' +
+      '<p class="hint">Your data is safe on this phone. Reload to continue — or export a backup first, just in case.</p>' +
+      '<div class="copy-actions" style="justify-content:center">' +
+      '<button class="btn btn-primary btn-sm" id="crash-reload">Reload app</button>' +
+      '<button class="btn btn-ghost btn-sm" id="crash-backup">Export backup</button>' +
+      '<button class="btn btn-ghost btn-sm" id="crash-report">Report</button>' +
+      '</div></div>';
+    document.body.appendChild(el);
+  } catch (_) {}
+}
+window.addEventListener('error', (e) => { if (e && e.message) reportCrash(e.message, e.filename + ':' + e.lineno); });
+window.addEventListener('unhandledrejection', (e) => { reportCrash('promise: ' + (e && e.reason), 'async'); });
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest) return;
+  if (ev.target.closest('#crash-reload')) { location.reload(); return; }
+  if (ev.target.closest('#crash-backup')) { try { exportData(); } catch (_) {} return; }
+  if (ev.target.closest('#crash-report')) {
+    const log = safeParse(localStorage.getItem('dp.errlog'), []);
+    const body = encodeURIComponent('What I was doing:\n\n\n--- technical details ---\n' + JSON.stringify(log.slice(0, 3), null, 1));
+    location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + encodeURIComponent('Daily Pulse crash (' + APP_VERSION + ')') + '&body=' + body;
+    return;
+  }
+});
+
+/* ---------- Storage-quota safety ----------
+   localStorage can throw QuotaExceeded on long-term users (years of entries +
+   images in notes). Writes go through this so a full disk warns the user instead
+   of silently losing the save. */
+function safeSet(key, value) {
+  try { localStorage.setItem(key, value); return true; }
+  catch (e) {
+    try {
+      const now = Date.now();
+      if (now - (+localStorage.getItem('dp.quotaWarn') || 0) > 3600000) {
+        localStorage.setItem('dp.quotaWarn', String(now));
+        toast('Phone storage is full — export a backup and free up space', true);
+      }
+    } catch (_) {}
+    return false;
+  }
+}
+
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
-  saveEntries(e) { localStorage.setItem('dp.entries', JSON.stringify(e)); pushState(); },
+  saveEntries(e) { safeSet('dp.entries', JSON.stringify(e)); pushState(); },
   entry(date) { return this.entries()[date] || null; },
   putEntry(date, data) { const e = this.entries(); e[date] = data; this.saveEntries(e); },
 
   tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
-  saveTasks(t) { localStorage.setItem('dp.tasks', JSON.stringify(t)); pushState(); },
+  saveTasks(t) { safeSet('dp.tasks', JSON.stringify(t)); pushState(); },
 
   exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
   saveExercises(x) { localStorage.setItem('dp.exercises', JSON.stringify(x)); pushState(); },
   gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
-  saveGym(g) { localStorage.setItem('dp.gym', JSON.stringify(g)); pushState(); },
+  saveGym(g) { safeSet('dp.gym', JSON.stringify(g)); pushState(); },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; this.saveGym(g); },
 
@@ -203,13 +262,13 @@ const DB = {
   saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); pushState(); },
 
   notes() { return safeParse(localStorage.getItem('dp.notes'), []); },
-  saveNotes(n) { localStorage.setItem('dp.notes', JSON.stringify(n)); pushState(); },
+  saveNotes(n) { safeSet('dp.notes', JSON.stringify(n)); pushState(); },
 
   plans() { return safeParse(localStorage.getItem('dp.plans'), []); },
-  savePlans(p) { localStorage.setItem('dp.plans', JSON.stringify(p)); pushState(); },
+  savePlans(p) { safeSet('dp.plans', JSON.stringify(p)); pushState(); },
 
   docs() { return safeParse(localStorage.getItem('dp.docs'), []); },
-  saveDocs(d) { localStorage.setItem('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
+  saveDocs(d) { safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
 
   events() { return safeParse(localStorage.getItem('dp.events'), []); },
   saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
@@ -220,7 +279,7 @@ const DB = {
   saveTimebox(t) { localStorage.setItem('dp.timebox', JSON.stringify(t)); pushState(); },
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
-  saveTimelog(t) { localStorage.setItem('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
+  saveTimelog(t) { safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
   saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
 
@@ -411,7 +470,7 @@ function applyRemoteState(remote) {
       merged.habits = Object.assign({}, older.habits || {}, newer.habits || {});   // never drop a tick from either side
       if (JSON.stringify(merged) !== JSON.stringify(l)) { local[d] = merged; changed = true; }
     });
-    localStorage.setItem('dp.entries', JSON.stringify(local));
+    safeSet('dp.entries', JSON.stringify(local));
   }
   // Gym: merge by date, union of done/log — never lose a workout.
   if (remote.gym) {
@@ -422,7 +481,7 @@ function applyRemoteState(remote) {
       Object.keys(rd.done || {}).forEach(k => { if (rd.done[k] && !ld.done[k]) { ld.done[k] = true; changed = true; } });
       Object.keys(rd.log || {}).forEach(k => { if (rd.log[k] && !ld.log[k]) { ld.log[k] = rd.log[k]; changed = true; } });
     });
-    localStorage.setItem('dp.gym', JSON.stringify(local));
+    safeSet('dp.gym', JSON.stringify(local));
   }
   // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
   // Deletions: when the other device saved more recently, drop local segments it no longer has
@@ -452,7 +511,7 @@ function applyRemoteState(remote) {
       for (let i = 0; i < open.length - 1; i++) { open[i].end = open[i + 1].start > open[i].start ? open[i + 1].start : open[i].start; open[i].upd = Date.now(); }
       changed = true;
     }
-    localStorage.setItem('dp.timelog', JSON.stringify(merged));
+    safeSet('dp.timelog', JSON.stringify(merged));
   }
   // Tasks / Notes / Reminders / Exercises are LISTS that get completed, edited, reordered, deleted —
   // a union-of-ids would never propagate those. So when the other device changed more recently,
@@ -4326,8 +4385,8 @@ function seedSampleData() {
     meta.timelog.push(id + 'a', id + 'b', id + 'c');
   });
   tl.sort((a, b) => a.start - b.start);
-  localStorage.setItem('dp.timelog', JSON.stringify(tl));
-  localStorage.setItem('dp.entries', JSON.stringify(es));   // direct write — sample must not trigger sync/pushState
+  safeSet('dp.timelog', JSON.stringify(tl));
+  safeSet('dp.entries', JSON.stringify(es));   // direct write — sample must not trigger sync/pushState
   saveHealthStore(hs);
   localStorage.setItem('dp.pomohist', JSON.stringify(ph));
   localStorage.setItem('dp.sampleMeta', JSON.stringify(meta));
@@ -4336,12 +4395,12 @@ function clearSampleData() {
   const meta = safeParse(localStorage.getItem('dp.sampleMeta'), null); if (!meta) return;
   const hs = healthStore(); (meta.dates || []).forEach(d => { if (hs[d] && hs[d].sample) delete hs[d]; }); saveHealthStore(hs);
   const es = DB.entries(); (meta.entries || []).forEach(d => { if (es[d] && es[d].sample) delete es[d]; });
-  localStorage.setItem('dp.entries', JSON.stringify(es));
+  safeSet('dp.entries', JSON.stringify(es));
   const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); (meta.pomo || []).forEach(d => { delete ph[d]; });
   localStorage.setItem('dp.pomohist', JSON.stringify(ph));
   if (meta.timelog && meta.timelog.length) {
     const ids = new Set(meta.timelog);
-    localStorage.setItem('dp.timelog', JSON.stringify(safeParse(localStorage.getItem('dp.timelog'), []).filter(s => !ids.has(s.id))));
+    safeSet('dp.timelog', JSON.stringify(safeParse(localStorage.getItem('dp.timelog'), []).filter(s => !ids.has(s.id))));
   }
   localStorage.removeItem('dp.sampleMeta');
 }
@@ -5122,7 +5181,7 @@ document.addEventListener('click', (ev) => {
     const raw = localStorage.getItem('dp.entries'); if (!raw) return;
     const e = JSON.parse(raw); let dirty = false;
     Object.keys(e).forEach(k => { if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) { delete e[k]; dirty = true; } });
-    if (dirty) localStorage.setItem('dp.entries', JSON.stringify(e));
+    if (dirty) safeSet('dp.entries', JSON.stringify(e));
   } catch (_) {}
 })();
 cleanNotifiedFlags();
