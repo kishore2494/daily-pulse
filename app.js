@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v108';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v109';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -600,6 +600,7 @@ const WHATS_NEW = {
   items: [
     '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
     '🕸️ <b>Explore your Connections graph</b> — drag to pan, pinch to zoom',
+    '🧭 <b>Pin any tabs you want</b> to the bottom bar — ☰ Menu ▸ Edit tabs',
     '🎙️ <b>Voice typing works in the app</b> — update Daily Pulse in the Play Store, then tap Speak',
     '🎉 <b>Streak rewards</b> — full-screen celebration at 3, 5, 7, 10, 14… day streaks',
     '🔗 <b>Connected insights</b> in Stats — how sleep drives your mood, week vs last week',
@@ -2796,7 +2797,7 @@ function cfgRow(kind, item, deletable) {
 let customPage = null;
 const CUSTOM_PAGES = [
   // Daily checklist removed — it's created/edited right on the Log home screen.
-  { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'choose your 4 bottom tabs + default' },
+  { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'pin your bottom tabs + default' },
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
@@ -2826,9 +2827,9 @@ function cfgSectionHTML(page) {
         ${n.noHide ? '<span style="width:24px"></span>' : `<button class="cfg-hide" data-nav-hide="${n.k}">${n.hidden ? '🙈' : '👁'}</button>`}
       </div>`).join('');
     return `<div class="card">
-      <h2>🧭 Tabs <span class="hint">📌 pinned ${pinnedCount}/${NAV_PRIMARY_MAX} · 🎯 default · drag · 👁 hide</span></h2>
+      <h2>🧭 Tabs <span class="hint">📌 pinned ${pinnedCount} · 🎯 default · drag · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
-      <div class="hint" style="margin-top:8px">Pin up to <b>${NAV_PRIMARY_MAX}</b> tabs for the bottom bar (drag to set their order) — everything else stays one tap away in <b>☰ Menu</b>. 🎯 is the tab the app opens to.</div></div>`;
+      <div class="hint" style="margin-top:8px">Pin as many tabs as you like (4–5 stay easiest to tap) — pinned tabs fill the bottom bar in this order, everything else lives in <b>☰ Menu</b>. 🎯 is the tab the app opens to.</div></div>`;
   }
   if (page === 'log') {
     return `<div class="card">
@@ -3074,16 +3075,11 @@ document.addEventListener('click', (ev) => {
   if (nh) { const cfg = navCfg(); const n = cfg.find(x => x.k === nh.dataset.navHide);
     if (n && !n.noHide) { n.hidden = !n.hidden;
       if (n.hidden) n.primary = false;
-      // unhiding a legacy hidden+primary tab must not silently demote a visible pin
-      else if (n.primary && cfg.filter(x => !x.hidden && x.primary && x.k !== n.k).length >= NAV_PRIMARY_MAX) n.primary = false;
       saveNavCfg(cfg); renderCustom(); } return; }
   const np = ev.target.closest('[data-nav-pin]');
   if (np) { const cfg = navCfg(); const n = cfg.find(x => x.k === np.dataset.navPin); if (!n || n.hidden) return;
-    // Bottom bar is fixed at 4 pinned tabs + Menu — pinning a 5th must swap, not silently drop.
-    if (!n.primary && cfg.filter(x => !x.hidden && x.primary).length >= NAV_PRIMARY_MAX) {
-      toast('Bottom bar fits ' + NAV_PRIMARY_MAX + ' tabs — unpin one first', true); return;
-    }
     n.primary = !n.primary; saveNavCfg(cfg); renderCustom();
+    if (n.primary && cfg.filter(x => !x.hidden && x.primary).length > 5) toast('Tip: 4–5 pinned tabs stay easiest to tap');
     return; }
   const nd = ev.target.closest('[data-nav-default]');
   if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; DB.saveSettings(s); renderCustom(); toast('Default tab set'); return; }
@@ -4622,10 +4618,6 @@ function navCfg() {
   // Icons are not user data — always take them from NAV_DEF, so stored configs from the
   // emoji era (pre-v82) render the professional line icons too.
   cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); if (d) n.ico = d.ico; });
-  // Clamp legacy configs from the no-cap era: only the first NAV_PRIMARY_MAX pins count,
-  // so the editor and the bar always agree.
-  let pins = 0;
-  cfg.forEach(n => { if (n.primary && !n.hidden) { pins++; if (pins > NAV_PRIMARY_MAX) n.primary = false; } });
   return cfg;
 }
 function saveNavCfg(cfg) { localStorage.setItem('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); }
@@ -4639,7 +4631,7 @@ function renderNav() {
   const cur = (document.querySelector('.screen.on') || {}).id || 's-today';
   const curKey = cur.replace('s-', '');
   const items = navCfg().filter(n => !n.hidden);
-  const primary = items.filter(n => n.primary).slice(0, NAV_PRIMARY_MAX);   // hard cap so the bar never exceeds 5
+  const primary = items.filter(n => n.primary);   // user's choice how many — Menu is always appended
   const primaryKeys = new Set(primary.map(n => n.k));
   const btns = primary.map(n => `<button data-screen="${n.k}" class="${'s-' + n.k === cur ? 'on' : ''}"><span class="ico">${icon(n.ico)}</span>${escapeHtml(n.label)}</button>`);
   // synthetic Menu button — always present, opens the side drawer with everything
@@ -4655,13 +4647,17 @@ function renderNav() {
 function renderDrawer() {
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
   // Menu lists only what's NOT already in the fixed bottom bar (#menu-3).
-  const bottom = new Set(navCfg().filter(n => !n.hidden && n.primary).slice(0, NAV_PRIMARY_MAX).map(n => n.k));
+  const bottom = new Set(navCfg().filter(n => !n.hidden && n.primary).map(n => n.k));
   const items = navCfg().filter(n => !n.hidden && !bottom.has(n.k));
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
     <span class="drawer-ico">${icon(n.ico, 22)}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
-  document.getElementById('drawer-list').innerHTML = rows;   // 'settings' is already in the list — no duplicate row
+  document.getElementById('drawer-list').innerHTML = rows +
+    `<button class="drawer-row drawer-edit" id="drawer-edit-tabs">${icon('pencil', 20)}<span class="drawer-lbl" style="margin-left:12px">Edit tabs &amp; this menu…</span></button>`;
 }
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest && ev.target.closest('#drawer-edit-tabs')) { closeDrawer(); customPage = 'tabs'; navigateTo('custom'); }
+});
 // Hide the fixed bottom nav while a text field is focused, so the on-screen keyboard
 // never pushes the nav up over the input (affects every screen). (#log-5)
 document.addEventListener('focusin', (e) => {
@@ -4782,7 +4778,7 @@ function renderMore() {
   document.getElementById('s-more').innerHTML = `
     <div class="more-grid">${cards || '<div class="empty">All your tabs are pinned to the bottom bar.</div>'}</div>
     <div class="card" style="margin-top:6px">
-      <div class="hint">Pin up to ${NAV_PRIMARY_MAX} tabs to the bottom bar, reorder them, and choose your default opening tab in <b>Settings ▸ Customize ▸ Tabs</b>.</div>
+      <div class="hint">Pin your favourite tabs to the bottom bar, reorder them, and choose your default opening tab in <b>Settings ▸ Customize ▸ Tabs</b>.</div>
     </div>`;
 }
 
