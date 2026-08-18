@@ -1,5 +1,12 @@
 # Log (reverse-chronological)
 
+## 2026-08-18 (pt 4) — v107–v109: insight engine, graph explorer, device photo shoot
+- **v107 — 🧠 'Your patterns' engine** (the Play-Store differentiator): on-device pattern mining with honest sample guards — sleep sweet spot (mood by sleep bucket), biggest habit mood-lift, mood trend slope, natural bed→wake ±consistency (from tracked sleep), peak 2h focus window (from tracked work), heavy-screen mood cost (terciles), weekday logging blind spot, sleep-regularity score. Pure helpers dpMedian/dpStd/dpSlope; top card in Stats Overview; sample seeder now also writes sleep/work timelog segments so ALL patterns demo. **Connections graph**: pan (1-finger), pinch + wheel zoom via viewBox; pan suppresses node-tap. **BUG: .bar-fill/.bar-track inline spans ignored width/height → Stats bars were NEVER rendering** (user caught it in light mode) → display:block. Tests 44→55. Play-listing gained the insights paragraph.
+- **v108** — box typography: reminder time selects no longer clip ('9:00 pr'), stat/health cells clamp() + nowrap ('69 bpm' one line), comfortable select fonts.
+- **v109** — pin cap REMOVED (user decision: user's choice; soft tip past 5); '✎ Edit tabs & this menu…' discoverability row at the drawer bottom → Customize▸Tabs.
+- **Real-device photo shoot (POCO, v108)**: `store/assets/device-shots/{light,dark}/` — raw 720×1600 + play-ready 720×1440 (2:1, status bar cropped) for log/patterns/health/time/focus/menu in BOTH themes. Patterns card verified on-device in both themes with 6 mined insights. Theme restored to light after the dark set.
+- Play note: build 105 upload showed only the harmless deobfuscation warning → safe to roll out.
+
 ## 2026-08-18 (pt 3) — v105/v106: sample-data preview for auto-tracking (live, demoed on POCO)
 User: "add sample data for all the auto tracking things so I can see how it looks."
 - **'👀 Preview with sample data'** on the Stats Health tab (shown when empty OR <5 real days): `seedSampleData()` writes 14 realistic PAST days — health metrics (steps/screen/calories/sleep/active/HR), pomodoro history, and sample entries whose mood/energy honestly correlate with the health story (+ tagged journals so Topics fills). Safety: skips yesterday & day-before (**loggedStreak can't be faked** — verified stays 1), every record `sample:true`, exact removal via `dp.sampleMeta` + **Clear sample** button (yellow banner), direct localStorage writes (no sync/pushState).
