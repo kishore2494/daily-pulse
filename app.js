@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v100';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v101';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -4689,6 +4689,9 @@ try {
    ============================================================ */
 let obStep = 0;
 const obHideH = new Set(), obHideA = new Set();
+// Deep-log sections: start light — only the core four preselected; the rest are
+// opt-in here (and re-enableable anytime in Customize ▸ Deep log).
+const obHideD = new Set(['health', 'finance', 'digital', 'growth', 'haircare', 'skincare']);
 function needsOnboard() {
   return !localStorage.getItem('dp.onboarded')
     && !Object.keys(DB.entries()).length && !DB.timelog().length
@@ -4701,6 +4704,7 @@ function renderOnboard() {
     <div class="ob-emoji">🔥</div>
     <h1>Daily Pulse</h1>
     <p class="ob-lead">Your whole life in one private tracker.</p>
+    <div class="ob-privacy">🔒 <b>No Google account. No sign-up. No cloud.</b><br>Your data lives only on this phone — nothing is ever uploaded.</div>
     <div class="ob-points">
       <div>🔒 <b>Private by design</b> — everything stays on your phone. No account, no cloud, no tracking.</div>
       <div>⏱ <b>Track anything</b> — habits, mood, your day hour-by-hour, gym, journal, plans.</div>
@@ -4735,6 +4739,15 @@ function renderOnboard() {
     <p class="ob-note">Everything here is editable later in <b>More ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Next</button>`;
   if (obStep === 3) body = `
+    <h1>How deep do you want to go?</h1>
+    <p class="ob-lead">The optional Deep log adds richer daily metrics. Pick only what you'll actually use.</p>
+    <div class="habits ob-grid">${deepCfg().map(s => `
+      <div class="habit ${obHideD.has(s.id) ? '' : 'on'}" data-ob-deep="${s.id}">
+        <span class="check">✓</span><span class="emoji">${icon(SECTION_ICON[s.id] || 'layers', 16)}</span><span>${escapeHtml(stripLeadEmoji(s.title))}</span>
+      </div>`).join('')}</div>
+    <p class="ob-note">Skipped sections stay hidden — turn them on anytime in <b>Customize ▸ Deep log</b>.</p>
+    <button class="btn btn-primary" data-ob-next>Next</button>`;
+  if (obStep === 4) body = `
     <div class="ob-emoji">⏰</div>
     <h1>Never miss a day</h1>
     <p class="ob-lead">People who set a daily reminder keep their streak 3× longer.</p>
@@ -4746,7 +4759,7 @@ function renderOnboard() {
     <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
   el.innerHTML = `<div class="ob-inner">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
-    <div class="ob-dots">${[0, 1, 2, 3].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+    <div class="ob-dots">${[0, 1, 2, 3, 4].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
 }
 document.addEventListener('click', (ev) => {
   const el = document.getElementById('onboard');
@@ -4755,6 +4768,8 @@ document.addEventListener('click', (ev) => {
   if (hb) { const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard(); return; }
   const ac = ev.target.closest('[data-ob-act]');
   if (ac) { const k = ac.dataset.obAct; obHideA.has(k) ? obHideA.delete(k) : obHideA.add(k); renderOnboard(); return; }
+  const dp = ev.target.closest('[data-ob-deep]');
+  if (dp) { const k = dp.dataset.obDeep; obHideD.has(k) ? obHideD.delete(k) : obHideD.add(k); renderOnboard(); return; }
   if (ev.target.id === 'ob-add-habit') {
     const inp = document.getElementById('ob-new-habit'); const raw = (inp.value || '').trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
@@ -4770,13 +4785,14 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
-    if (obStep < 3) { obStep++; renderOnboard(); return; }
+    if (obStep < 4) { obStep++; renderOnboard(); return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
     if (obHideA.size) {
       const cfg = actCfg(); cfg.forEach(a => { if (obHideA.has(a.id)) a.hidden = true; }); saveActCfg(cfg);
       const cust = DB.timeacts(); let ch = false; cust.forEach(a => { if (obHideA.has(a.id)) { a.hidden = true; ch = true; } }); if (ch) DB.saveTimeacts(cust);
     }
+    if (obHideD.size) { const dc = deepCfg(); dc.forEach(s => { if (obHideD.has(s.id)) s.hidden = true; }); saveDeepCfg(dc); }
     // daily-log reminder from the new onboarding step (retention: streaks live on reminders)
     const remOn = document.getElementById('ob-rem-on'), remT = document.getElementById('ob-rem-time');
     if (remOn && remOn.checked) {
