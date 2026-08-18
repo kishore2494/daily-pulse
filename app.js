@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v109';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v110';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -596,8 +596,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w4',
+  v: 'w5',
   items: [
+    '🎓 <b>Guided tour</b> — a 60-second walkthrough of everything (Settings ▸ Take the app tour)',
     '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
     '🕸️ <b>Explore your Connections graph</b> — drag to pan, pinch to zoom',
     '🧭 <b>Pin any tabs you want</b> to the bottom bar — ☰ Menu ▸ Edit tabs',
@@ -3647,6 +3648,8 @@ function renderSettings() {
         <span class="menu-txt"><span class="menu-lbl">Customize</span><span class="menu-sub">tabs, habits, log fields, gym, deep log, theme</span></span><span class="menu-go">›</span></button>
       <button class="menu-row" id="open-report"><span class="menu-ico">📄</span>
         <span class="menu-txt"><span class="menu-lbl">Download report (PDF)</span><span class="menu-sub">your full stats as a printable report</span></span><span class="menu-go">›</span></button>
+      <button class="menu-row" id="open-tour"><span class="menu-ico">🎓</span>
+        <span class="menu-txt"><span class="menu-lbl">Take the app tour</span><span class="menu-sub">60-second guided walkthrough</span></span><span class="menu-go">›</span></button>
       <a class="menu-row" href="guide.html"><span class="menu-ico">📖</span>
         <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
@@ -4712,6 +4715,7 @@ function handleBack() {
   // 0) a ringing alarm owns the screen — back must never dismiss it or poke things behind it
   const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;
   // 1) an open overlay always closes first
+  const tr = document.getElementById('tour'); if (tr) { endTour(); return; }
   const drawer = document.getElementById('drawer');
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
   const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
@@ -5036,8 +5040,70 @@ document.addEventListener('click', (ev) => {
     localStorage.setItem('dp.whatsnew', WHATS_NEW.v);   // brand-new users: everything is new — skip the What's-new card
     el.classList.remove('on');
     show('today');
-    toast('Welcome! Change anything later in More ▸ Customize 🎨');
+    startTour();   // walk brand-new users through everything once
   }
+});
+
+
+/* ============================================================
+   GUIDED TOUR — spotlight walkthrough of the whole app.
+   Auto-starts after onboarding; replayable from Settings.
+   Each step navigates to the right screen, highlights the real
+   element (spotlight cutout) and explains it. ============================================================ */
+const TOUR = [
+  { s: 'today', t: '.scale', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
+  { s: 'today', t: '#log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
+  { s: 'today', t: '#health-sync', alt: '.h2-icon', h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
+  { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
+  { s: 'dash', t: '.pat-row', alt: '.pm-card', h: 'Your patterns', b: 'Daily Pulse mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
+  { s: 'dash', t: '[data-dashtab="health"]', h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
+  { s: '__menu', t: '.drawer-row[data-screen="search"]', alt: '.drawer-list', h: 'Everything else lives in Menu', b: 'Search your entire life, History, Gym, Calendar, Focus timers… and pin ANY of these to the bottom bar with “Edit tabs”.' },
+  { s: null, t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
+];
+let tourIdx = -1;
+function startTour() { tourIdx = 0; showTourStep(); }
+function endTour() {
+  tourIdx = -1; const o = document.getElementById('tour'); if (o) o.remove();
+  try { closeDrawer(); } catch (_) {}
+  localStorage.setItem('dp.toured', '1');
+}
+function showTourStep() {
+  const st = TOUR[tourIdx];
+  if (!st) { endTour(); toast('Enjoy Daily Pulse 🔥'); return; }
+  if (st.s === '__menu') { try { openDrawer(); } catch (_) {} }
+  else { try { closeDrawer(); } catch (_) {} if (st.s) navigateTo(st.s); }
+  setTimeout(() => {
+    let el = st.t ? document.querySelector(st.t) : null;
+    if (!el && st.alt) el = document.querySelector(st.alt);
+    if (el) { try { el.scrollIntoView({ block: 'center' }); } catch (_) {} }
+    setTimeout(() => renderTourOverlay(st, el), el ? 260 : 30);
+  }, 380);
+}
+function renderTourOverlay(st, el) {
+  let o = document.getElementById('tour');
+  if (!o) { o = document.createElement('div'); o.id = 'tour'; document.body.appendChild(o); }
+  const r = el ? el.getBoundingClientRect() : null;
+  const pad = 8;
+  const spot = r
+    ? `<div class="tour-spot" style="top:${Math.max(2, r.top - pad)}px;left:${Math.max(4, r.left - pad)}px;width:${Math.min(window.innerWidth - 8, r.width + pad * 2)}px;height:${r.height + pad * 2}px"></div>`
+    : '<div class="tour-spot tour-none"></div>';
+  const below = !r || r.top < window.innerHeight / 2;
+  const pos = r ? (below ? `top:${Math.min(window.innerHeight - 220, r.bottom + pad + 12)}px` : `bottom:${window.innerHeight - r.top + pad + 12}px`) : 'top:50%;transform:translateY(-50%)';
+  o.innerHTML = `${spot}<div class="tour-card" style="${pos}">
+    <div class="tour-step">${tourIdx + 1} / ${TOUR.length}</div>
+    <div class="tour-h">${st.h}</div>
+    <div class="tour-b">${st.b}</div>
+    <div class="tour-btns">
+      <button class="btn btn-ghost btn-sm" id="tour-skip">Skip</button>
+      ${tourIdx > 0 ? '<button class="btn btn-ghost btn-sm" id="tour-back">‹ Back</button>' : ''}
+      <button class="btn btn-primary btn-sm" id="tour-next">${tourIdx === TOUR.length - 1 ? 'Done 🔥' : 'Next ›'}</button>
+    </div></div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target.id === 'tour-next') { tourIdx++; showTourStep(); return; }
+  if (ev.target.id === 'tour-back') { tourIdx = Math.max(0, tourIdx - 1); showTourStep(); return; }
+  if (ev.target.id === 'tour-skip') { endTour(); return; }
+  if (ev.target.id === 'open-tour') { show('today'); startTour(); return; }
 });
 
 /* ---------- Init ---------- */
