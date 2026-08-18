@@ -6,7 +6,10 @@ Daily Pulse: Private Life Log
 ## Short description (80 chars max)
 Habits, mood, 24h time tracking, gym & journal — 100% private, works offline.
 
-## Full description (4000 chars max)
+## Full description
+
+**🧠 An insights engine that actually knows YOU.** Daily Pulse doesn't just draw charts — it mines your own data, on your phone, and tells you things like: *"Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 on short nights"*, *"Workout days lift your mood by +1.4"*, *"Your peak focus window is 9–11am"*, *"Heavy screen days cost you −1.2 mood."* Every insight is computed from your real entries with honest minimum sample sizes — and none of it ever leaves your device.
+ (4000 chars max)
 
 **Your whole life in one tracker. And it never leaves your phone.**
 

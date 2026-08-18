@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v106';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v107';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -596,8 +596,10 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w3',
+  v: 'w4',
   items: [
+    '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
+    '🕸️ <b>Explore your Connections graph</b> — drag to pan, pinch to zoom',
     '🎙️ <b>Voice typing works in the app</b> — update Daily Pulse in the Play Store, then tap Speak',
     '🎉 <b>Streak rewards</b> — full-screen celebration at 3, 5, 7, 10, 14… day streaks',
     '🔗 <b>Connected insights</b> in Stats — how sleep drives your mood, week vs last week',
@@ -1729,6 +1731,100 @@ function barChart(values, color, opts) {
   return `<svg class="chart chart-bar" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>${axis}`;
 }
 /* Pearson correlation over [x,y] pairs → -1..1, or null if degenerate (no variance). */
+/* ---------- Pattern-mining helpers (pure, unit-tested) ---------- */
+function dpMedian(a) { if (!a || !a.length) return null; const s = [...a].sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+function dpStd(a) { if (!a || a.length < 2) return null; const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((s, v) => s + (v - m) * (v - m), 0) / (a.length - 1)); }
+function dpSlope(ys) { const n = ys.length; if (n < 5) return null; const xm = (n - 1) / 2; const ym = ys.reduce((a, b) => a + b, 0) / n; let num = 0, den = 0; ys.forEach((y, i) => { num += (i - xm) * (y - ym); den += (i - xm) * (i - xm); }); return den ? num / den : null; }
+
+/* ---------- "Your patterns" — real insights mined from the raw data.
+   Every pattern has an honest minimum-sample guard; nothing is claimed
+   from thin data. Runs 100% on-device. Returns [{ico, head, sub, w}]. ---------- */
+function computePatterns() {
+  const e = DB.entries(); const dates = Object.keys(e).sort();
+  const out = [];
+  const num = (d, k) => { const v = e[d] && e[d][k]; return v != null && v !== '' && !isNaN(+v) ? +v : null; };
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+
+  // 1 — YOUR optimal sleep window (mood by sleep bucket)
+  const buckets = { 'under 6h': [], '6–7h': [], '7–8h': [], '8h+': [] };
+  dates.forEach(d => { const s = num(d, 'sleepHours'), m = num(d, 'mood'); if (s == null || m == null) return;
+    (s < 6 ? buckets['under 6h'] : s < 7 ? buckets['6–7h'] : s < 8 ? buckets['7–8h'] : buckets['8h+']).push(m); });
+  const elig = Object.entries(buckets).filter(([, v]) => v.length >= 3).map(([k, v]) => ({ k, avg: avg(v), n: v.length }));
+  if (elig.length >= 2) { elig.sort((a, b) => b.avg - a.avg); const best = elig[0], worst = elig[elig.length - 1];
+    if (best.avg - worst.avg >= 0.7) out.push({ ico: 'moon', w: 5, head: `Your sleep sweet spot: ${best.k}`,
+      sub: `Mood averages <b>${best.avg.toFixed(1)}</b> after ${best.k} nights vs <b>${worst.avg.toFixed(1)}</b> after ${worst.k} (${best.n}+${worst.n} nights compared).` }); }
+
+  // 2 — which habit ACTUALLY moves your mood (biggest lift, both sides sampled)
+  const lifts = [];
+  HABITS.forEach(h => { const on = [], off = [];
+    dates.forEach(d => { const m = num(d, 'mood'); if (m == null || !e[d].habits) return; (e[d].habits[h.key] ? on : off).push(m); });
+    if (on.length >= 3 && off.length >= 3) lifts.push({ h, lift: avg(on) - avg(off), n: on.length + off.length }); });
+  lifts.sort((a, b) => Math.abs(b.lift) - Math.abs(a.lift));
+  if (lifts.length && Math.abs(lifts[0].lift) >= 0.5) { const L = lifts[0];
+    out.push({ ico: 'flame', w: 5, head: `${escapeHtml(L.h.label)} ${L.lift > 0 ? 'lifts' : 'drags'} your mood by ${Math.abs(L.lift).toFixed(1)}`,
+      sub: `Across ${L.n} days, your mood runs <b>${L.lift > 0 ? '+' : '−'}${Math.abs(L.lift).toFixed(1)}</b> on ${escapeHtml(L.h.label)} days. ${L.lift > 0 ? 'Protect this habit.' : 'Worth a rethink.'}` }); }
+
+  // 3 — mood momentum (least-squares trend over the last 14 logged days)
+  const seq = dates.slice(-14).map(d => num(d, 'mood')).filter(v => v != null);
+  const sl = dpSlope(seq);
+  if (sl != null && Math.abs(sl * 7) >= 0.3) out.push({ ico: 'trending', w: 4,
+    head: `Mood trending ${sl > 0 ? 'up' : 'down'} ${Math.abs(sl * 7).toFixed(1)}/week`,
+    sub: sl > 0 ? 'Whatever you changed recently — it\'s working. Keep the streak.' : 'Sliding for about two weeks — check your sleep window and screen time.' });
+
+  // 4 — natural bed → wake time + consistency (from ended sleep segments)
+  const wakes = [], beds = [];
+  DB.timelog().forEach(s => { if (s.act !== 'sleep' || s.end == null) return; const dur = s.end - s.start; if (dur < 3 * 3.6e6 || dur > 14 * 3.6e6) return;
+    const wd = new Date(s.end); wakes.push(wd.getHours() * 60 + wd.getMinutes());
+    const bd = new Date(s.start); let bm = bd.getHours() * 60 + bd.getMinutes(); if (bm < 720) bm += 1440; beds.push(bm); });
+  if (wakes.length >= 4) {
+    const fmtT = m => { const h = Math.floor(m / 60) % 24, mm = Math.round(m % 60); const ap = h >= 12 ? 'pm' : 'am'; return (((h + 11) % 12) + 1) + ':' + String(mm).padStart(2, '0') + ap; };
+    const sd = dpStd(wakes);
+    out.push({ ico: 'clock', w: 3, head: `Your natural night: ${fmtT(dpMedian(beds))} → ${fmtT(dpMedian(wakes))}`,
+      sub: sd == null ? '' : (sd <= 35 ? `Impressively consistent wake time (±${Math.round(sd)}m over ${wakes.length} nights).`
+        : `Wake time swings ±${Math.round(sd)}m — steadier mornings usually mean steadier energy.`) });
+  }
+
+  // 5 — peak focus window (which 2 hours hold the most tracked work)
+  const hourMs = Array(24).fill(0);
+  DB.timelog().forEach(s => { if (s.act !== 'work') return; const end = s.end == null ? Date.now() : s.end; let t = s.start;
+    while (t < end) { const d = new Date(t); const hEnd = new Date(d); hEnd.setMinutes(59, 59, 999); const chunk = Math.min(end, hEnd.getTime() + 1) - t; hourMs[d.getHours()] += chunk; t += chunk; } });
+  if (hourMs.reduce((a, b) => a + b, 0) >= 5 * 3.6e6) {
+    let best = 0; for (let i = 0; i < 23; i++) if (hourMs[i] + hourMs[i + 1] > hourMs[best] + (hourMs[best + 1] || 0)) best = i;
+    const fH = h => { h = h % 24; const ap = h >= 12 ? 'pm' : 'am'; return (((h + 11) % 12) + 1) + ap; };
+    out.push({ ico: 'target', w: 3, head: `Peak focus window: ${fH(best)}–${fH(best + 2)}`,
+      sub: `<b>${fmtDur(hourMs[best] + (hourMs[best + 1] || 0))}</b> of your tracked work lands here — guard it for deep work, schedule meetings elsewhere.` });
+  }
+
+  // 6 — what heavy screen days cost you (top vs bottom third)
+  const hsAll = healthStore(); const scrPairs = [];
+  Object.keys(hsAll).forEach(d => { const sc = hsAll[d].screenMin, m = num(d, 'mood'); if (sc != null && m != null) scrPairs.push([sc, m]); });
+  if (scrPairs.length >= 6) { const sorted = [...scrPairs].sort((a, b) => a[0] - b[0]); const third = Math.floor(sorted.length / 3);
+    const lo = sorted.slice(0, third), hi = sorted.slice(-third);
+    if (lo.length >= 2 && hi.length >= 2) { const dlt = avg(lo.map(p => p[1])) - avg(hi.map(p => p[1]));
+      if (dlt >= 0.7) out.push({ ico: 'phone', w: 4, head: `Heavy screen days cost you −${dlt.toFixed(1)} mood`,
+        sub: `Your heaviest screen days (~${fmtMin(Math.round(dpMedian(hi.map(p => p[0]))))}) average mood <b>${avg(hi.map(p => p[1])).toFixed(1)}</b> vs <b>${avg(lo.map(p => p[1])).toFixed(1)}</b> on the lightest.` }); } }
+
+  // 7 — your logging blind spot (weekday you most often miss, last 28 days)
+  if (dates.length >= 7) {
+    const missByWd = Array(7).fill(0), possByWd = Array(7).fill(0);
+    for (let i = 1; i <= 28; i++) { const d = addDays(todayStr(), -i); const wd = new Date(d + 'T00:00:00').getDay(); possByWd[wd]++; if (!e[d]) missByWd[wd]++; }
+    let worst = -1, rate = 0;
+    for (let w = 0; w < 7; w++) { const r = possByWd[w] ? missByWd[w] / possByWd[w] : 0; if (missByWd[w] >= 3 && r > rate) { rate = r; worst = w; } }
+    const totMiss = missByWd.reduce((a, b) => a + b, 0);
+    if (worst >= 0 && rate >= 0.6 && totMiss < 25) { const names = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
+      out.push({ ico: 'calendar', w: 2, head: `${names[worst]} are your blind spot`,
+        sub: `You missed logging ${missByWd[worst]} of the last ${possByWd[worst]} ${names[worst]} — a weekend reminder could protect the streak.` }); } }
+
+  // 8 — sleep regularity score
+  const sh = dates.map(d => num(d, 'sleepHours')).filter(v => v != null);
+  if (sh.length >= 7) { const sd = dpStd(sh);
+    if (sd != null) { const score = Math.max(0, Math.min(100, Math.round(100 - sd * 28)));
+      out.push({ ico: 'moon', w: sd > 1.2 ? 3 : 1, head: `Sleep consistency: ${score}%`,
+        sub: sd <= 0.8 ? 'Your sleep schedule is steady — a genuine superpower.' : `Your nights swing by ±${sd.toFixed(1)}h — evening out bedtime is the cheapest mood upgrade there is.` }); } }
+
+  out.sort((a, b) => b.w - a.w);
+  return out.slice(0, 6);
+}
 function pearson(pairs) {
   const n = pairs.length; if (n < 3) return null;
   let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
@@ -1892,6 +1988,42 @@ function layoutGraph(g, W, H) {
     g.nodes.forEach(n => { n.vx += (W / 2 - n.x) * 0.003; n.vy += (H / 2 - n.y) * 0.003; n.x += Math.max(-7, Math.min(7, n.vx)); n.y += Math.max(-7, Math.min(7, n.vy)); n.vx *= 0.86; n.vy *= 0.86; n.x = Math.max(12, Math.min(W - 12, n.x)); n.y = Math.max(14, Math.min(H - 8, n.y)); });
   }
 }
+/* Connections graph explorer: one-finger pan, two-finger pinch zoom, wheel zoom.
+   Works by mutating the SVG viewBox — cheap enough for low-end phones. */
+const _gPts = new Map(); let _gv = null, _gMovedAt = 0;
+function _graphViewOf(svg) {
+  if (!svg.dataset.vbInit) { const vb = svg.getAttribute('viewBox').split(' ').map(Number); _gv = { x: vb[0], y: vb[1], w: vb[2], h: vb[3], W: vb[2], H: vb[3] }; svg.dataset.vbInit = '1'; }
+  return _gv;
+}
+document.addEventListener('pointerdown', (e) => { const svg = e.target.closest('#graph-svg'); if (!svg) return; _gPts.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { svg.setPointerCapture(e.pointerId); } catch (_) {} });
+document.addEventListener('pointermove', (e) => {
+  if (!_gPts.has(e.pointerId)) return;
+  const svg = document.getElementById('graph-svg'); if (!svg) { _gPts.clear(); return; }
+  const v = _graphViewOf(svg); const rect = svg.getBoundingClientRect(); const scale = v.w / Math.max(1, rect.width);
+  if (_gPts.size === 1) {
+    const p = _gPts.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) _gMovedAt = Date.now();
+    v.x -= dx * scale; v.y -= dy * scale; p.x = e.clientX; p.y = e.clientY;
+  } else if (_gPts.size === 2) {
+    const before = [..._gPts.values()]; const dOld = Math.hypot(before[0].x - before[1].x, before[0].y - before[1].y);
+    const p = _gPts.get(e.pointerId); p.x = e.clientX; p.y = e.clientY;
+    const after = [..._gPts.values()]; const dNew = Math.hypot(after[0].x - after[1].x, after[0].y - after[1].y);
+    if (dOld > 0 && dNew > 0) { const f = dOld / dNew; const cx = v.x + v.w / 2, cy = v.y + v.h / 2;
+      v.w = Math.max(v.W / 5, Math.min(v.W * 3, v.w * f)); v.h = Math.max(v.H / 5, Math.min(v.H * 3, v.h * f)); v.x = cx - v.w / 2; v.y = cy - v.h / 2; }
+    _gMovedAt = Date.now();
+  }
+  svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h);
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('pointerup', (e) => _gPts.delete(e.pointerId));
+document.addEventListener('pointercancel', (e) => _gPts.delete(e.pointerId));
+document.addEventListener('wheel', (e) => {
+  const svg = e.target.closest && e.target.closest('#graph-svg'); if (!svg) return;
+  const v = _graphViewOf(svg); const f = e.deltaY > 0 ? 1.12 : 0.89;
+  const cx = v.x + v.w / 2, cy = v.y + v.h / 2;
+  v.w = Math.max(v.W / 5, Math.min(v.W * 3, v.w * f)); v.h = Math.max(v.H / 5, Math.min(v.H * 3, v.h * f)); v.x = cx - v.w / 2; v.y = cy - v.h / 2;
+  svg.setAttribute('viewBox', v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h); e.preventDefault();
+}, { passive: false });
 function graphSVG() {
   const g = buildGraph();
   if (g.nodes.length < 2) return '<div class="empty">Log a few days with topics &amp; habits — your graph grows here.</div>';
@@ -1904,6 +2036,7 @@ function graphSVG() {
   const circ = g.nodes.map(n => { const r = Math.min(12, 4 + n.deg * 0.8); const dim = focus && !near.has(n.id); const showLabel = n.id === focus || (n.type !== 'day' && n.deg >= 2);
     return `<g opacity="${dim ? 0.18 : 1}"><circle data-node="${escapeHtml(n.id)}" cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${r}" fill="${col(n.type)}" stroke="${n.id === focus ? '#fff' : 'none'}" stroke-width="2"/>${showLabel ? `<text x="${n.x.toFixed(1)}" y="${(n.y - r - 3).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--text-dim)">${escapeHtml(n.label)}</text>` : ''}</g>`; }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;touch-action:none" id="graph-svg">${edges}${circ}</svg>
+    <div class="hint" style="margin:4px 0 2px">🖐 drag to pan · pinch to zoom · tap a node to focus</div>
     <div class="legend"><span><span class="dot" style="background:#6d8cff"></span>Day</span><span><span class="dot" style="background:#fbbf24"></span>Topic</span><span><span class="dot" style="background:#34d399"></span>Habit</span><span><span class="dot" style="background:#ec4899"></span>#tag</span><span><span class="dot" style="background:#a78bfa"></span>Note</span></div>
     <div class="hint" style="margin-top:4px">${focus ? `Connections for <b style="color:var(--text)">${escapeHtml(pos[focus].label)}</b> · tap it again to reset` : 'Tap a node · add #tags in journals/notes to link them'}</div>`;
 }
@@ -2226,6 +2359,14 @@ function renderDash() {
       <div class="tag-cloud">${topTags.map(([t, n]) => `<button class="tag-chip" data-searchtag="${escapeHtml(t)}">${escapeHtml(t)} <b>${n}</b></button>`).join('')}</div>
     </div>` : '';
 
+  const patterns = computePatterns();
+  const patternsCard = patterns.length
+    ? `<div class="card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span> <span class="hint">mined from your data · on-device</span></h2>
+        ${patterns.map(p => `<div class="pat-row"><span class="pat-ico">${icon(p.ico, 18)}</span><div class="pat-txt"><div class="pat-head">${p.head}</div>${p.sub ? `<div class="pat-sub">${p.sub}</div>` : ''}</div></div>`).join('')}
+      </div>`
+    : `<div class="card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span></h2>
+        <div class="hint">Log about a week of days and your personal patterns appear here — your sleep sweet spot, which habits actually lift your mood, your peak focus hours. Computed on your phone, never uploaded.</div></div>`;
+
   const overviewHTML = `
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
@@ -2235,6 +2376,8 @@ function renderDash() {
       <div class="stat"><div class="v">${avg('energy')}</div><div class="l">avg energy</div></div>
       <div class="stat"><div class="v">${pmAvg}</div><div class="l">🧭 polymath</div></div>
     </div></div>
+
+    ${patternsCard}
 
     <div class="card pm-card">
       <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
@@ -4160,6 +4303,22 @@ function seedSampleData() {
     }
     if (ph[d] == null) { ph[d] = 2 + (i % 5); meta.pomo.push(d); }
   }
+  // timelog: a night of sleep + two work blocks per sample day (unlocks wake-time & focus-window patterns)
+  const tl = DB.timelog ? safeParse(localStorage.getItem('dp.timelog'), []) : [];
+  meta.timelog = [];
+  meta.dates.forEach((d, idx) => {
+    const d0 = new Date(d + 'T00:00:00').getTime();
+    const jitter = (m) => Math.round((Math.random() - 0.5) * 2 * m) * 60000;
+    const bed = d0 - 45 * 60000 + jitter(35);                       // ~23:15 the night before
+    const wake = d0 + (6.7 * 60 + Math.round(Math.random() * 50)) * 60000;  // ~06:40–07:30
+    const id = 'smp' + d.replace(/-/g, '') ;
+    tl.push({ id: id + 'a', act: 'sleep', start: bed, end: wake, upd: d0, sample: true });
+    tl.push({ id: id + 'b', act: 'work', start: d0 + 9.5 * 3.6e6 + jitter(20), end: d0 + 12.4 * 3.6e6 + jitter(15), upd: d0, sample: true });
+    tl.push({ id: id + 'c', act: 'work', start: d0 + 14 * 3.6e6 + jitter(20), end: d0 + 16.6 * 3.6e6 + jitter(20), upd: d0, sample: true });
+    meta.timelog.push(id + 'a', id + 'b', id + 'c');
+  });
+  tl.sort((a, b) => a.start - b.start);
+  localStorage.setItem('dp.timelog', JSON.stringify(tl));
   localStorage.setItem('dp.entries', JSON.stringify(es));   // direct write — sample must not trigger sync/pushState
   saveHealthStore(hs);
   localStorage.setItem('dp.pomohist', JSON.stringify(ph));
@@ -4172,6 +4331,10 @@ function clearSampleData() {
   localStorage.setItem('dp.entries', JSON.stringify(es));
   const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); (meta.pomo || []).forEach(d => { delete ph[d]; });
   localStorage.setItem('dp.pomohist', JSON.stringify(ph));
+  if (meta.timelog && meta.timelog.length) {
+    const ids = new Set(meta.timelog);
+    localStorage.setItem('dp.timelog', JSON.stringify(safeParse(localStorage.getItem('dp.timelog'), []).filter(s => !ids.has(s.id))));
+  }
   localStorage.removeItem('dp.sampleMeta');
 }
 document.addEventListener('click', (ev) => {
@@ -4637,6 +4800,7 @@ function show(name) {
 document.addEventListener('click', (ev) => {
   const gn = ev.target.closest('[data-node]');
   if (gn && document.getElementById('s-dash').classList.contains('on')) {
+    if (Date.now() - _gMovedAt < 250) return;   // that tap was the end of a pan
     graphFocus = (graphFocus === gn.dataset.node) ? null : gn.dataset.node;
     const w = document.getElementById('graph-wrap');   // update ONLY the graph — page doesn't move
     if (w) w.innerHTML = graphSVG();
