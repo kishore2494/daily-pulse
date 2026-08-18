@@ -17,8 +17,14 @@
 - Whether to make the Sheet's `Log` columns dynamic (so custom deep-log fields get Sheet columns) — currently fixed.
 - Marketing: a large programmatic-SEO page factory already exists (`daily-pulse-factory/`, ~128 pages) — separate track.
 
+## Phase 2 — iOS (decided 2026-08-16: AFTER Android production ships)
+Android-first confirmed by Kishore. When Android is live:
+- `npx cap add ios` in daily-pulse-native (Xcode 26.4 already on this Mac); simulator proof is FREE — no account needed. Distribution/TestFlight needs the **$99/yr Apple Developer account** (Kishore's call).
+- iOS differences to plan for: bundle web assets IN the app (Apple rejects remote-URL wrappers; updates then ship via App Store releases), full-screen alarm impossible (degrade to notifications), Health = **HealthKit** not Health Connect, screen time NOT available (FamilyControls is parental-control-only), widgets = WidgetKit/SwiftUI. Speech plugin already supports iOS.
+- Zero-cost interim: iPhone users can install the **PWA** (Safari → Add to Home Screen) today.
+
 ## Nice-to-haves (not committed)
-- Pomodoro count → Stats card. Widget. Apple/iOS store via the same Capacitor project. Data-viz polish on Stats.
+- Pomodoro count → Stats card. Widget. Data-viz polish on Stats.
 
 ## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
 - **Sync robustness**: list/config stores are last-writer-wins whole-list → concurrent multi-device edits can drop items. Move to id-keyed merge + tombstones + per-item stamps. Gym merge is union-only (uncheck/edit doesn't propagate).
