@@ -1005,3 +1005,8 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .tour-h { font-family: var(--font-display); font-size: 18px; font-weight: 800; margin: 4px 0 6px; }
 .tour-b { font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
 .tour-btns { display: flex; gap: 8px; margin-top: 13px; justify-content: flex-end; }
+
+/* ---------- v112: tour card pinned bottom + whatsnew popup ---------- */
+.tour-card-bottom { position: fixed; left: 14px; right: 14px; bottom: calc(84px + var(--safe-bottom)); }
+#wn-pop .wn-item { font-size: 13px; }
+#wn-pop .copy-box { max-height: 74vh; overflow-y: auto; }

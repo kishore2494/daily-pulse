@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v111';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v112';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -596,7 +596,7 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w5',
+  v: 'w6',
   items: [
     '🎓 <b>Guided tour</b> — a 60-second walkthrough of everything (Settings ▸ Take the app tour)',
     '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
@@ -610,15 +610,24 @@ const WHATS_NEW = {
     '📄 <b>PDF report + backup export</b> now work inside the app',
   ],
 };
-function whatsNewHTML() {
-  if (localStorage.getItem('dp.whatsnew') === WHATS_NEW.v) return '';
-  return `<div class="card whatsnew">
-    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new</span> <button class="drawer-x" id="wn-close" aria-label="dismiss">✕</button></h2>
+function whatsNewHTML() { return ''; }   // replaced by the popup (showWhatsNewPopup)
+function showWhatsNewPopup() {
+  if (localStorage.getItem('dp.whatsnew') === WHATS_NEW.v) return;
+  let m = document.getElementById('wn-pop');
+  if (!m) { m = document.createElement('div'); m.id = 'wn-pop'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="copy-box">
+    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new in Daily Pulse</span></h2>
     ${WHATS_NEW.items.map(i => `<div class="wn-item">${i}</div>`).join('')}
-  </div>`;
+    <div class="copy-actions" style="justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-ghost btn-sm" id="wn-tour">🎓 Take the tour</button>
+      <button class="btn btn-primary btn-sm" id="wn-ok">Got it ✓</button>
+    </div></div>`;
+  m.classList.add('on');
 }
 document.addEventListener('click', (ev) => {
-  if (ev.target.id === 'wn-close') { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); const c = document.querySelector('.whatsnew'); if (c) c.remove(); }
+  const done = () => { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); const m = document.getElementById('wn-pop'); if (m) m.remove(); };
+  if (ev.target.closest && ev.target.closest('#wn-ok')) { done(); return; }
+  if (ev.target.closest && ev.target.closest('#wn-tour')) { done(); show('today'); startTour(); return; }
 });
 function openToday() { loadDraft(); renderToday(); }
 function renderToday() {
@@ -4716,6 +4725,7 @@ function handleBack() {
   const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;
   // 1) an open overlay always closes first
   const tr = document.getElementById('tour'); if (tr) { endTour(); return; }
+  const wn = document.getElementById('wn-pop'); if (wn) { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); wn.remove(); return; }
   const drawer = document.getElementById('drawer');
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
   const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
@@ -5087,9 +5097,7 @@ function renderTourOverlay(st, el) {
   const spot = r
     ? `<div class="tour-spot" style="top:${Math.max(2, r.top - pad)}px;left:${Math.max(4, r.left - pad)}px;width:${Math.min(window.innerWidth - 8, r.width + pad * 2)}px;height:${r.height + pad * 2}px"></div>`
     : '<div class="tour-spot tour-none"></div>';
-  const below = !r || r.top < window.innerHeight / 2;
-  const pos = r ? (below ? `top:${Math.min(window.innerHeight - 220, r.bottom + pad + 12)}px` : `bottom:${window.innerHeight - r.top + pad + 12}px`) : 'top:50%;transform:translateY(-50%)';
-  o.innerHTML = `${spot}<div class="tour-card" style="${pos}">
+  o.innerHTML = `${spot}<div class="tour-card tour-card-bottom">
     <div class="tour-step">${tourIdx + 1} / ${TOUR.length}</div>
     <div class="tour-h">${st.h}</div>
     <div class="tour-b">${st.b}</div>
@@ -5129,6 +5137,7 @@ if (_go) history.replaceState(null, '', location.pathname);   // clean the URL s
 if (needsOnboard()) { document.getElementById('onboard').classList.add('on'); renderOnboard(); }
 else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();
+setTimeout(() => { if (localStorage.getItem('dp.onboarded') && !document.getElementById('onboard').classList.contains('on')) showWhatsNewPopup(); }, 1200);
 setTimeout(() => checkReminders(true), 1000);   // catch a reminder you missed while the app was closed
 // Gentle data-safety nudge: local-first means a lost phone = lost data. If there's real
 // data and no backup for 14+ days, remind once a week (toast only — never a blocker).
