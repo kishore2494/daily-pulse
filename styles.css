@@ -195,13 +195,14 @@ textarea { resize: vertical; min-height: 64px; }
 .carry { font-size: 11.5px; color: var(--warn); background: rgba(251, 191, 36, .12); padding: 2px 7px; border-radius: 6px; }
 
 /* Reminders */
-.rem { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.rem { display: block; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .rem.off { opacity: .5; }
+.rem-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rem-toggle { background: none; border: none; font-size: 20px; cursor: pointer; flex: 0 0 auto; padding: 0; }
-.rem-body { flex: 1; display: flex; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.rem-body input[type=time] { max-width: 112px; flex: 0 0 auto; }
-.rem-body input[type=text] { flex: 1; min-width: 0; }
-.rem-mode { flex: 1 0 100%; text-align: left; background: rgba(255, 255, 255, .05);
+.rem-top input[type=time] { flex: 0 0 96px; min-width: 0; padding-left: 8px; padding-right: 8px; }
+.rem-top input[type=text] { flex: 1 1 40px; min-width: 0; }
+.rem-top .del { flex: 0 0 auto; }
+.rem-mode { display: block; width: 100%; margin-top: 8px; text-align: left; background: rgba(127, 127, 127, .08);
   border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 10px;
   font-size: 12.5px; cursor: pointer; }
 .rem-mode:hover { border-color: var(--accent); }
@@ -732,8 +733,7 @@ img, svg, table, pre, .chart { max-width: 100%; }
 /* even out checklist chip heights so 1-line and 2-line items align in the grid */
 .habit { min-height: 52px; }
 /* reminders: let each row breathe on narrow screens */
-.rem-body { row-gap: 6px; }
-.rem-body input[type=time] { max-width: 120px; }
+
 
 /* ---------- v63: side drawer, back button, time picker ---------- */
 .topbar-l { display: flex; flex-direction: column; gap: 0; min-width: 0; }
@@ -956,3 +956,10 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .seg-btn .ic { flex: 0 0 auto; }
 .range-lab { display: inline-flex; align-items: center; gap: 5px; }
+
+
+/* ---------- v103: reminders add-row + test-button wrap safety ---------- */
+#rem-new-time { flex: 0 0 96px; min-width: 0; padding-left: 8px; padding-right: 8px; }
+#rem-new-label { flex: 1 1 40px; min-width: 0; }
+.btn-row { flex-wrap: wrap; }
+.btn-row .btn { min-width: 0; }
