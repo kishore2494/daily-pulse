@@ -993,3 +993,15 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .range-select { font-size: 14px; }
 .seg-btn { font-size: 12.5px; padding-left: 6px; padding-right: 6px; }
 .drawer-edit { border-top: 1px solid var(--border); margin-top: 6px; color: var(--text-dim); }
+
+/* ---------- v110: guided tour ---------- */
+#tour { position: fixed; inset: 0; z-index: 95; }
+.tour-spot { position: absolute; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(2, 6, 18, .74);
+  transition: top .3s, left .3s, width .3s, height .3s; pointer-events: none; }
+.tour-none { top: 50%; left: 50%; width: 0; height: 0; }
+.tour-card { position: absolute; left: 14px; right: 14px; background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.45); }
+.tour-step { font-size: 11px; color: var(--text-faint); font-weight: 700; letter-spacing: .4px; }
+.tour-h { font-family: var(--font-display); font-size: 18px; font-weight: 800; margin: 4px 0 6px; }
+.tour-b { font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
+.tour-btns { display: flex; gap: 8px; margin-top: 13px; justify-content: flex-end; }
