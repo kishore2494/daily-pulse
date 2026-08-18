@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v97';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v98';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2180,6 +2180,26 @@ function renderDash() {
       </select>
     </div>`;
 
+  // ---- Auto-collected productivity: pomodoros / tasks done / words written ----
+  const pomoHist = safeParse(localStorage.getItem('dp.pomohist'), {});
+  const pNow = DB.pomo();
+  if (pNow && pNow.done && pNow.done.d && pNow.done.n) pomoHist[pNow.done.d] = Math.max(pomoHist[pNow.done.d] || 0, pNow.done.n);   // merge pre-history today count
+  const pomoSeries = days.map(d => ({ x: d, y: pomoHist[d] || null }));
+  const pomoTotal = days.reduce((s, d) => s + (pomoHist[d] || 0), 0);
+  const focusMin = (pNow && pNow.cfg && pNow.cfg.focus) ? pomoTotal * pNow.cfg.focus : null;
+  const wcOf = d => { const en = e[d]; if (!en) return null;
+    const t = ['journal', 'wentWell', 'improve', 'weekWins', 'weekFocus'].map(k => en[k] || '').join(' ').trim();
+    return t ? t.split(/\s+/).filter(Boolean).length : null; };
+  const wordsSeries = days.map(d => ({ x: d, y: wcOf(d) }));
+  const wordsTotal = days.reduce((s, d) => s + (wcOf(d) || 0), 0);
+  const tasksSeries = days.map(d => ({ x: d, y: (e[d] && e[d].tasksDone != null && e[d].tasksDone !== '') ? +e[d].tasksDone : null }));
+  const tasksDoneTotal = days.reduce((s, d) => s + ((e[d] && +e[d].tasksDone) || 0), 0);
+  const autoCards = [
+    pomoTotal ? `<div class="card"><h2>🍅 Focus sessions <span class="hint">auto · last ${N} days · ${pomoTotal} total${focusMin ? ' · ' + fmtH(focusMin / 60) : ''}</span></h2>${barChart(pomoSeries, '#f87171')}</div>` : '',
+    tasksDoneTotal ? `<div class="card"><h2>✅ Tasks completed <span class="hint">auto · last ${N} days · ${tasksDoneTotal} total</span></h2>${barChart(tasksSeries, '#34d399')}</div>` : '',
+    wordsTotal ? `<div class="card"><h2>✍️ Words written <span class="hint">auto from journal+reflections · ${wordsTotal.toLocaleString()} total</span></h2>${barChart(wordsSeries, '#8b9dff')}</div>` : '',
+  ].join('');
+
   // ---- Best days in range (real, dated highlights) ----
   const bestOf = (getV) => { let best = null; days.forEach(d => { const v = getV(d); if (v != null && v !== '' && !isNaN(+v) && (best == null || +v > best.v)) best = { d, v: +v }; }); return best; };
   const bMood = bestOf(d => e[d] && e[d].mood);
@@ -2232,6 +2252,8 @@ function renderDash() {
     ${deepInsightsCard}
 
     ${bestDaysCard}
+
+    ${autoCards}
 
     ${tagsCard}
 
@@ -3039,6 +3061,8 @@ function pomoAdvance(silent) {
   let round = p.run.round;
   if (wasFocus) {
     p.done = { d: todayStr(), n: pomoDoneToday(p) + 1 };
+    // keep a per-day history (p.done only remembers today) so Stats can chart focus sessions
+    try { const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); ph[todayStr()] = p.done.n; localStorage.setItem('dp.pomohist', JSON.stringify(ph)); } catch (_) {}
     const next = (round >= p.cfg.rounds) ? 'long' : 'short';
     if (next === 'long') round = 1; else round = round + 1;
     p.run = { phase: next, endsAt: Date.now() + phaseMin(p.cfg, next) * 60000, round };
@@ -3828,7 +3852,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health'];
 function exportData() {
   const out = { settings: DB.settings() };
   BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
