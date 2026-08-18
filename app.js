@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v103';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v104';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2659,7 +2659,7 @@ const CUSTOM_PAGES = [
 function cfgSectionHTML(page) {
   if (page === 'theme') {
     const curAccent = DB.settings().accent || 'indigo';
-    const curMode = DB.settings().mode || 'navy';
+    const curMode = DB.settings().mode || 'light';
     return `<div class="card"><h2>🌗 Appearance</h2>
       <div class="mode-row">${THEME_MODES.map(m => `<button class="mode-btn ${m.id === curMode ? 'on' : ''}" data-thememode="${m.id}">
         <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>
@@ -4537,6 +4537,10 @@ function applyTheme() {
   // keep the Android status bar in step with the theme
   const _tc = { light: '#f4f6fb', navy: '#070b14', black: '#000000' }[_mode] || '#f4f6fb';
   const _meta = document.querySelector('meta[name="theme-color"]'); if (_meta) _meta.setAttribute('content', _tc);
+  // Tell the WebView we handle theming ourselves — otherwise system dark mode
+  // force-darkens the light theme (auto-inversion; found on MIUI/POCO).
+  document.documentElement.style.colorScheme = _mode === 'light' ? 'light' : 'dark';
+  const _cs = document.querySelector('meta[name="color-scheme"]'); if (_cs) _cs.setAttribute('content', _mode === 'light' ? 'light' : 'dark');
   const t = THEMES.find(x => x.id === (DB.settings().accent || 'indigo')) || THEMES[0];
   const r = document.documentElement.style;
   r.setProperty('--accent', t.a);
