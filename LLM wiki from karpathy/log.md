@@ -1,5 +1,12 @@
 # Log (reverse-chronological)
 
+## 2026-08-18 (pt 8) — v117: Play REJECTION-RISK audit + compliance fixes (pre-launch)
+User asked: "do we need to do anything new, or are there chances Google rejects us?" → audited the shipping bundle against Play policy and found TWO high-severity rejection risks, both fixed:
+1. **PACKAGE_USAGE_STATS is a restricted permission** — Play requires a *prominent disclosure BEFORE* requesting it. We were requesting it with only a post-hoc toast. Added a pre-request sheet (what's read: "how long your phone was in use today"; stays on-device; why; how to turn off) with Not now / Continue; the native request now fires only after explicit consent (`dp.usageDisclosure`), and silent background syncs never prompt. All 4 paths verified.
+2. **privacy.html disclosed none of it** — zero mentions of screen time, usage access, microphone or health data (it predated those features); a policy/behaviour mismatch is a classic rejection + Data-safety violation. Added "Device permissions and what they're used for" (usage access, mic, notifications/alarms, boot, internet) + "Health-related data" (not a medical device, nothing shared); fixed a stale backup-path reference.
+Also recorded a full 8-row **rejection-risk table** + ready-to-paste **review notes** in play-store.md (remaining items are Console-side: sensitive-permissions declaration, data-safety re-verify, keep Productivity category, rename resolves the duplicate-title risk).
+Earlier in the session: v116 crash-net + storage-quota guard; Play listing rewritten (2649/4000 chars, title/short-desc options with counts). 55/55 tests throughout.
+
 ## 2026-08-18 (pt 7) — v116 launch hardening + listing rewrite + NAME RESEARCH (rename recommended)
 3–4 days from publishing, so: harden for strangers, then fix discoverability.
 - **v116 — crash safety net**: global error + unhandledrejection handlers show a recovery sheet (Reload / Export backup / Report) instead of a dead blank screen; last 10 errors stored LOCALLY only (`dp.errlog`), Report opens mail with details. **Storage-quota guard**: `safeSet()` wraps all major writes (entries/tasks/notes/docs/timelog/gym/plans) — QuotaExceeded now shows a throttled "storage full, export a backup" toast instead of a silent lost save or crash. Verified: sheet+3 actions+logging, quota no longer throws, every screen has a real empty state, 55/55 tests, 16 screens 0 errors, device-verified on POCO.
