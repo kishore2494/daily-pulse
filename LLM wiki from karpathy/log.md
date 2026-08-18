@@ -1,5 +1,11 @@
 # Log (reverse-chronological)
 
+## 2026-08-16 — v99 + native 104/64: REAL screen-time tracking (aab awaiting upload)
+User: auto-tracking must show real data with analysis. Shipped phase 1 of the native module:
+- **Native build 104/64**: `HealthConnectPlugin.java` (Java, registered in MainActivity) — `screenTimeToday()` via UsageStatsManager **event pairing** (ACTIVITY_RESUMED→PAUSED/STOPPED per package + open tail to now — the accurate method, not the lossy daily-bucket sum); `requestPermissions()` checks AppOps OPSTR_GET_USAGE_STATS and auto-opens ACTION_USAGE_ACCESS_SETTINGS; `today()` returns nulls (HC client = phase 2); `isAvailable()` reports {screenTime:true, healthConnect:false}. Manifest: PACKAGE_USAGE_STATS (tools:ignore=ProtectedPermissions). Compiled clean; verified in .apk. In store/assets, **user must upload**.
+- **Web v99**: silent syncs skip requestPermissions entirely (native may open a settings page — must never happen in background); explicit Sync guides to Usage access; all-null days never stored; **auto-sync on app open (4s) + resume** so screen time flows into the Health card/tab/correlations/WoW hands-free.
+- Play note for production: PACKAGE_USAGE_STATS is a sensitive permission — production review will ask for a declaration; Daily Pulse fits the permitted "digital wellbeing" use case. Phase 2 = Health Connect client (Kotlin, minSdk 24→26 bump, HC permission contract) for steps/sleep/calories/HR.
+
 ## 2026-08-16 — v98: auto-collected data surfaced in Stats (live)
 User: "we collect automatically — where is it shown in Stats? show it properly." Found + fixed a real gap: **pomodoro history was being discarded** (only today's count in `p.done`). Now `pomoAdvance` persists `dp.pomohist[date]=n`; Stats Overview gained three "auto" cards: 🍅 Focus sessions (chart + total + total focus time from cfg.focus), ✅ Tasks completed/day (the v76 auto counts, first time charted), ✍️ Words written/day (journal+reflections word counts). Cards hide with no data. `dp.pomohist` + `dp.health` added to BACKUP_KEYS. Sensor metrics (steps/screen/etc.) already have the v95 Health tab — still awaiting the native module for real data. 44/44 tests.
 Harness note: browse-daemon page context does NOT survive across separate Bash invocations — always run server+goto+js in ONE block.
