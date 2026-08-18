@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v105';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v106';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2361,7 +2361,8 @@ function renderDash() {
     ${at.calories ? hChart('calories', '🔥 Calories', '#f87171', v => Math.round(v) + ' kcal') : ''}
     ${at.workouts ? hChart('exerciseMin', '🏃 Active minutes', '#4ad6c0', v => fmtMin(Math.round(v))) : ''}
     ${at.sleep ? hChart('sleepMin', '😴 Sleep (auto)', '#a78bfa', v => fmtMin(Math.round(v))) : ''}
-    ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}`);
+    ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}
+    ${(!sampleOn && hDays < 5) ? '<button class="btn btn-ghost btn-sm" id="hc-sample">👀 Preview with sample data</button>' : ''}`);
 
   const TABS = [['overview', icon('chart', 15) + ' Overview'], ['time', icon('clock', 15) + ' Time'], ['check', icon('check', 15) + ' Checklist'], ['health', icon('heart', 15) + ' Health']];
   const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
