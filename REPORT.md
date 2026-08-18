@@ -1,4 +1,4 @@
-# Daily Pulse — Overnight Audit & Hardening Report
+# Daylog — Overnight Audit & Hardening Report
 _2026-07-24 · v52 → v53 · autonomous session while you slept_
 
 ## TL;DR
@@ -25,7 +25,7 @@ Applied **12 safe, browser-verified fixes** (shipped as v53, live on both repos)
 - **[MEDIUM] List and config stores use last-writer-wins whole-list replacement — concurrent edits on the earlier-touched d**
   - Why deferred: risk=risky. Move list stores to id-keyed merge with tombstones (deleted-id set) and per-item updated stamps so add/edit/delete/reorder all converge without dropping the other device's items; configs can keep LWW 
 - **[MEDIUM] Reminder and calendar-event labels sent in plaintext to public third-party ntfy.sh**
-  - Why deferred: risk=moderate. At minimum surface this clearly in the privacy policy/UI; prefer a generic message (e.g. 'Daily Pulse reminder') rather than the raw label, or make label inclusion opt-in. Consider a longer/full-entro
+  - Why deferred: risk=moderate. At minimum surface this clearly in the privacy policy/UI; prefer a generic message (e.g. 'Daylog reminder') rather than the raw label, or make label inclusion opt-in. Consider a longer/full-entro
 - **[MEDIUM] Sync URL is an unauthenticated bearer credential to all personal data; pull uses JSONP (arbitrary code executi**
   - Why deferred: risk=risky. Document that the sync URL grants full data access and must be kept secret; consider a shared-secret token validated in doPost/doGet, and replace JSONP pull with a CORS-enabled fetch + strict shape va
 - **[MEDIUM] 12-tab bottom nav: ~27-30px per tab, 9px labels wrap/clip on small screens**
