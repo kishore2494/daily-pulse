@@ -1014,3 +1014,25 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 /* ---------- v113: health card cells = proper 3-col grid (they were crushing into one row) ---------- */
 .health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
 .health-grid .ts-cell { width: auto; }
+
+/* ---------- v114: fluid-layout guards — responsive on ANY screen width ----------
+   No device-specific values: grids use minmax(0,1fr) so cells can always shrink,
+   headers/rows wrap instead of clipping, media never exceeds its container. */
+.habits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.habit { min-width: 0; }
+.h2-icon { flex-wrap: wrap; }
+.h2-icon > span { min-width: 0; }
+h2 .hint { min-width: 0; overflow-wrap: anywhere; }
+.corr-row { flex-wrap: wrap; row-gap: 4px; }
+.corr-row .name { min-width: 0; }
+.corr-row .corr-val { min-width: 0; overflow-wrap: anywhere; }
+svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
+.tt-now-info, .tt-now-name, .tt-now-sub { min-width: 0; overflow-wrap: anywhere; }
+.act-chip, .act-chip span { min-width: 0; }
+.wow-row { flex-wrap: wrap; row-gap: 2px; }
+.stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.task-summary .ts-cell { min-width: 0; }
+.pat-txt { min-width: 0; }
+.sr-snip, .drawer-lbl, .menu-txt { min-width: 0; }
+.section-collapsible > h2 { overflow: hidden; }
+.screen svg { max-width: 100%; }
