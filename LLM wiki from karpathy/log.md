@@ -1,5 +1,12 @@
 # Log (reverse-chronological)
 
+## 2026-08-18 (pt 6) — v113–v115: systematic RESPONSIVE audit (no per-device hacks)
+User reported the Log ▸ Health card overflowing, then correctly pushed back: "don't configure for THIS mobile — make it responsive for ALL mobiles properly."
+- **Root cause**: the health card reused `.task-summary` (flex row) → 6 cells crushed into one row and clipped values ("4h15m" cut off). Fixed as a real `minmax(0,1fr)` 3-col grid (`.health-grid`).
+- **Then built an automated overflow detector** (headless): for widths **320/360/412/480/600/768** it walks every element of every screen + all four Stats tabs, flags `scrollWidth-clientWidth>6px`, excluding native input scroll and intentional ellipsis. Found and fixed with FLUID rules only: habit grid + chips `minmax(0,1fr)`/`min-width:0` (chips crushed at 320px), `.h2-icon` wrap + `.section-collapsible>h2` clip (deep-log chevron poked out on every width), `.corr-row`/`.wow-row` wrap, act-chip label ellipsis, stat grids minmax, `.screen svg{max-width:100%}`, and finally the Connections graph: SVG `<text>` can't be constrained by CSS → node labels clamped to the plot area + truncated to 14 chars, `#graph-wrap{overflow:hidden}`.
+- **Result: CLEAN at every audited width (320→768) across all screens and Stats tabs.** 55/55 tests. Device-verified on the POCO: health card now a tidy 3×2 grid with "4h37m SCREEN TIME" fully visible.
+- LESSON: prefer `grid + minmax(0,1fr)` + `min-width:0` over flex rows for any multi-cell card; audit by measurement across widths, never by eyeballing one device.
+
 ## 2026-08-18 (pt 5) — v110–v112: guided tour, What's-new popup, SEO'd docs (all device-verified)
 User: "we need to show them and take a tour of all these functionalities" + "What's-new must be a popup, I never saw the ✕" + "document everything permanently + make the doc page SEO-able".
 - **v110 — 🎓 Guided tour**: 8-step coach-mark walkthrough (mood/checklist → auto tasks → auto-tracking → time tracker → Your patterns → Health analytics → Menu/search/pin-tabs → wrap). Spotlight = .tour-spot with 9999px box-shadow cutout over the live element; per-step navigation incl. opening the drawer; auto-starts once after onboarding; replayable via Settings ▸ 'Take the app tour'; hardware back closes.
