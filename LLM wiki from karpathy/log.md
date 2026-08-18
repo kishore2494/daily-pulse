@@ -1,5 +1,11 @@
 # Log (reverse-chronological)
 
+## 2026-08-18 (pt 3) — v105/v106: sample-data preview for auto-tracking (live, demoed on POCO)
+User: "add sample data for all the auto tracking things so I can see how it looks."
+- **'👀 Preview with sample data'** on the Stats Health tab (shown when empty OR <5 real days): `seedSampleData()` writes 14 realistic PAST days — health metrics (steps/screen/calories/sleep/active/HR), pomodoro history, and sample entries whose mood/energy honestly correlate with the health story (+ tagged journals so Topics fills). Safety: skips yesterday & day-before (**loggedStreak can't be faked** — verified stays 1), every record `sample:true`, exact removal via `dp.sampleMeta` + **Clear sample** button (yellow banner), direct localStorage writes (no sync/pushState).
+- **Demoed on the POCO:** averages grid (6,948 steps · 4h04m screen · 2167 kcal · 7h27m sleep · 69bpm), populated charts incl. today's REAL screen-time bar (2h27m — auto-sync kept updating all day), **Health ↔ You: screen→mood r=-0.68 strong↘, steps→energy r=0.85 strong↗**, "screen = 1.4× your deep work" note; Overview: mood/energy charts + Connected insights (sleep→mood r=0.78). Sample left loaded on the device for the user to browse.
+- 44/44 tests; range auto-switches to 30d on seed. Ops: phone screen sleeps during long CDN waits (keyevent 224 + 82 to wake); plain-URL cache ~10min — poll before device checks.
+
 ## 2026-08-18 (pt 2) — Theme overhaul + FULL functional pass on the POCO (v103/v104 web, native 105/65)
 User demands: light theme broken → make LIGHT the DEFAULT; reminders card boxes overflowing; guide must follow the app theme; test everything end-to-end.
 - **v103:** light = default theme (fallback navy→light, THEME_MODES reordered, meta theme-color follows mode); **reminders card redesigned** (row = bell·time·label·× + full-width mode pill; add-row/test-buttons wrap at 360px); **guide.html follows the app theme** (reads dp.settings.mode pre-paint; full light palette + light backbar).
