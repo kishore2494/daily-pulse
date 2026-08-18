@@ -992,3 +992,4 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .dur-pick select, .bw-cell input[type=time] { font-size: 14.5px; }
 .range-select { font-size: 14px; }
 .seg-btn { font-size: 12.5px; padding-left: 6px; padding-right: 6px; }
+.drawer-edit { border-top: 1px solid var(--border); margin-top: 6px; color: var(--text-dim); }
