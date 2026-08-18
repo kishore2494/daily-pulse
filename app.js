@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v102';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v103';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -3549,13 +3549,13 @@ function renderSettings() {
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
       ${DB.reminders().length ? DB.reminders().map(r => `
         <div class="rem ${r.enabled?'':'off'}" data-remid="${r.id}">
-          <button class="rem-toggle" data-rem-toggle="${r.id}" title="on/off">${r.enabled?'🔔':'🔕'}</button>
-          <div class="rem-body">
+          <div class="rem-top">
+            <button class="rem-toggle" data-rem-toggle="${r.id}" title="on/off">${r.enabled?'🔔':'🔕'}</button>
             <input type="time" data-rem-time="${r.id}" value="${r.time||''}">
-            <input type="text" data-rem-label="${r.id}" value="${escapeHtml(r.label||'')}" placeholder="What for? (e.g. Log my day, Drink water)">
-            <button class="rem-mode" data-rem-mode="${r.id}" title="tap to switch">${(r.mode||'alarm')==='alarm'?'⏰ Full-screen alarm':'🔔 Just a notification'}</button>
+            <input type="text" data-rem-label="${r.id}" value="${escapeHtml(r.label||'')}" placeholder="What for?">
+            <button class="del" data-rem-del="${r.id}">×</button>
           </div>
-          <button class="del" data-rem-del="${r.id}">×</button>
+          <button class="rem-mode" data-rem-mode="${r.id}" title="tap to switch">${(r.mode||'alarm')==='alarm'?'⏰ Full-screen alarm':'🔔 Just a notification'}</button>
         </div>`).join('') : '<div class="empty">No reminders yet. Add one below 👇</div>'}
       <div class="task-add">
         <input type="time" id="rem-new-time" value="21:00" style="max-width:120px">
@@ -4527,12 +4527,16 @@ const THEMES = [
   { id: 'red',    a: '#f87171', b: '#fb7185' },
 ];
 const THEME_MODES = [
-  { id: 'navy',  label: 'Dark (default)', chip: '#141c2e' },
-  { id: 'black', label: 'Black',          chip: '#000000' },
-  { id: 'light', label: 'Light',          chip: '#f4f6fb' },
+  { id: 'light', label: 'Light (default)', chip: '#f4f6fb' },
+  { id: 'navy',  label: 'Dark navy',       chip: '#141c2e' },
+  { id: 'black', label: 'Black',           chip: '#000000' },
 ];
 function applyTheme() {
-  document.documentElement.setAttribute('data-mode', DB.settings().mode || 'navy');
+  const _mode = DB.settings().mode || 'light';
+  document.documentElement.setAttribute('data-mode', _mode);
+  // keep the Android status bar in step with the theme
+  const _tc = { light: '#f4f6fb', navy: '#070b14', black: '#000000' }[_mode] || '#f4f6fb';
+  const _meta = document.querySelector('meta[name="theme-color"]'); if (_meta) _meta.setAttribute('content', _tc);
   const t = THEMES.find(x => x.id === (DB.settings().accent || 'indigo')) || THEMES[0];
   const r = document.documentElement.style;
   r.setProperty('--accent', t.a);
