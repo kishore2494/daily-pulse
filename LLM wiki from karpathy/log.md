@@ -1,5 +1,9 @@
 # Log (reverse-chronological)
 
+## 2026-08-16 — v98: auto-collected data surfaced in Stats (live)
+User: "we collect automatically — where is it shown in Stats? show it properly." Found + fixed a real gap: **pomodoro history was being discarded** (only today's count in `p.done`). Now `pomoAdvance` persists `dp.pomohist[date]=n`; Stats Overview gained three "auto" cards: 🍅 Focus sessions (chart + total + total focus time from cfg.focus), ✅ Tasks completed/day (the v76 auto counts, first time charted), ✍️ Words written/day (journal+reflections word counts). Cards hide with no data. `dp.pomohist` + `dp.health` added to BACKUP_KEYS. Sensor metrics (steps/screen/etc.) already have the v95 Health tab — still awaiting the native module for real data. 44/44 tests.
+Harness note: browse-daemon page context does NOT survive across separate Bash invocations — always run server+goto+js in ONE block.
+
 ## 2026-08-16 — v97: 44-test suite + light onboarding fix (live)
 - tests/unit.js grew 26→44: safeParse, pearson (±1/degenerate), snippet (highlight/escape/truncate), bestHabitStreak, trackedSleepHours (cross-midnight + ended-only), fmtMin. All green.
 - Light-mode: `.ob-inner h1` used the white gradient → invisible on light (same class of bug as pm-score/nav-label); added the dark-gradient override.
