@@ -23,6 +23,9 @@ Android-first confirmed by Kishore. When Android is live:
 - iOS differences to plan for: bundle web assets IN the app (Apple rejects remote-URL wrappers; updates then ship via App Store releases), full-screen alarm impossible (degrade to notifications), Health = **HealthKit** not Health Connect, screen time NOT available (FamilyControls is parental-control-only), widgets = WidgetKit/SwiftUI. Speech plugin already supports iOS.
 - Zero-cost interim: iPhone users can install the **PWA** (Safari → Add to Home Screen) today.
 
+## From competitor research (2026-08-18) — ranked web-shippable wins
+1. Year in Pixels (S) · 2. streak grace + flexible habit schedules e.g. 3x/week (M) · 3. PIN lock (S) · 4. CSV import (S) · 5. notes per habit check-in + week-start setting (S). Native-only gaps: widgets, Wear OS. Monetization: one-time unlock or free (fits privacy brand).
+
 ## Nice-to-haves (not committed)
 - Pomodoro count → Stats card. Widget. Data-viz polish on Stats.
 
