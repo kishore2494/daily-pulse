@@ -1,6 +1,6 @@
-# Daily Pulse — your life tracker app
+# Daylog — your life tracker app
 
-A fast, offline, installable app version of your **Daily Pulse** Google Form.
+A fast, offline, installable app version of your **Daylog** Google Form.
 One tap to log mood, energy, habits, journal + tasks. Saves on your device and
 (optionally) syncs every entry to a Google Sheet.
 
@@ -43,7 +43,7 @@ Sheet** to back-fill everything you've logged so far.
 ---
 
 ## Features
-- **Log** — your full Daily Pulse: mood, energy, sleep, deep-work, tasks done/planned,
+- **Log** — your full Daylog: mood, energy, sleep, deep-work, tasks done/planned,
   10-habit checklist, "went well / improve / journal", + a **Deep log** organised into
   collapsible sections (🧠 Mind & Focus · 😌 Wellbeing · 🩺 Health · 💼 Work · 📚 Learning ·
   💰 Finance · 📱 Digital · 🌱 Growth) — the bridge to your full 255-field Life Intelligence

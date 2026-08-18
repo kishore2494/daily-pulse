@@ -1,17 +1,17 @@
 /* ============================================================
-   Daily Pulse — local-first life tracker (PWA)
+   Daylog — local-first life tracker (PWA)
    Data lives in localStorage; optionally syncs to a Google Sheet.
    ============================================================ */
 
 'use strict';
 
-const APP_VERSION = 'v117';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v118';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
 function safeParse(raw, fb) { if (raw == null) return fb; try { const v = JSON.parse(raw); return v == null ? fb : v; } catch (e) { return fb; } }
 
-/* ---------- Config: your habits (from the Daily Pulse form) ----------
+/* ---------- Config: your habits (from the Daylog form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
    (More ▸ Customize) saves your own list to dp.habitcfg, and HABITS
    is rebuilt from it (hidden ones excluded) via reloadCfg(). */
@@ -218,7 +218,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.closest('#crash-report')) {
     const log = safeParse(localStorage.getItem('dp.errlog'), []);
     const body = encodeURIComponent('What I was doing:\n\n\n--- technical details ---\n' + JSON.stringify(log.slice(0, 3), null, 1));
-    location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + encodeURIComponent('Daily Pulse crash (' + APP_VERSION + ')') + '&body=' + body;
+    location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + encodeURIComponent('Daylog crash (' + APP_VERSION + ')') + '&body=' + body;
     return;
   }
 });
@@ -319,12 +319,12 @@ async function dictateInto(sel, btn) {
   if (sp) { return dictateNative(sp, ta, btn, sel); }
   // 2) Web Speech API (browser / installed PWA)
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { toast('Voice typing needs the latest app update — or open Daily Pulse in Chrome', true); return; }
+  if (!SR) { toast('Voice typing needs the latest app update — or open Daylog in Chrome', true); return; }
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); }
     catch (err) {
       toast(err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-        ? 'Enable microphone in Settings › Apps › Daily Pulse › Permissions' : 'Microphone unavailable', true);
+        ? 'Enable microphone in Settings › Apps › Daylog › Permissions' : 'Microphone unavailable', true);
       btn.classList.remove('rec'); return;
     }
   }
@@ -336,7 +336,7 @@ async function dictateInto(sel, btn) {
     let all = ''; for (let i = 0; i < ev.results.length; i++) all += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
     const el = liveTa(); el.value = startText + all; el.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow microphone in Settings › Apps › Daily Pulse › Permissions', true); };
+  _recog.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow microphone in Settings › Apps › Daylog › Permissions', true); };
   _recog.onend = () => { _recogOn = false; if (_recogBtn) _recogBtn.classList.remove('rec'); _recog = null; if (!_userStopped) toast('Mic paused — tap 🎤 to continue'); };
   try { _recog.start(); toast('🎙️ Listening — tap 🎤 to stop'); }
   catch (e) { _recogOn = false; btn.classList.remove('rec'); _recog = null; }
@@ -661,7 +661,7 @@ const WHATS_NEW = {
     '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
     '🕸️ <b>Explore your Connections graph</b> — drag to pan, pinch to zoom',
     '🧭 <b>Pin any tabs you want</b> to the bottom bar — ☰ Menu ▸ Edit tabs',
-    '🎙️ <b>Voice typing works in the app</b> — update Daily Pulse in the Play Store, then tap Speak',
+    '🎙️ <b>Voice typing works in the app</b> — update Daylog in the Play Store, then tap Speak',
     '🎉 <b>Streak rewards</b> — full-screen celebration at 3, 5, 7, 10, 14… day streaks',
     '🔗 <b>Connected insights</b> in Stats — how sleep drives your mood, week vs last week',
     '⏱ <b>Time tracker fills your Log</b> — tracked Sleep/Work auto-fill the fields',
@@ -675,7 +675,7 @@ function showWhatsNewPopup() {
   let m = document.getElementById('wn-pop');
   if (!m) { m = document.createElement('div'); m.id = 'wn-pop'; m.className = 'copy-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="copy-box">
-    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new in Daily Pulse</span></h2>
+    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new in Daylog</span></h2>
     ${WHATS_NEW.items.map(i => `<div class="wn-item">${i}</div>`).join('')}
     <div class="copy-actions" style="justify-content:flex-end;margin-top:6px">
       <button class="btn btn-ghost btn-sm" id="wn-tour">🎓 Take the tour</button>
@@ -692,7 +692,7 @@ function openToday() { loadDraft(); renderToday(); }
 function renderToday() {
   const isToday = logDate === todayStr();
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
-  document.getElementById('screen-sub').textContent = isToday ? prettyDate(logDate) + ' · Daily Pulse' : 'Editing past entry';
+  document.getElementById('screen-sub').textContent = isToday ? prettyDate(logDate) + ' · Daylog' : 'Editing past entry';
 
   const habitChips = HABITS.map(h => {
     const on = !!draft.habits[h.key];
@@ -1983,7 +1983,7 @@ async function saveFile(filename, content, mime) {
   const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
   const win = window.open(url, '_blank');
   if (win) toast('Opened — use the ⋮ menu to save or share');
-  else toast('Your app version can\'t save files yet — update Daily Pulse in the Play Store', true);
+  else toast('Your app version can\'t save files yet — update Daylog in the Play Store', true);
 }
 function showCopyModal(filename, content) {
   let m = document.getElementById('copy-modal');
@@ -2964,7 +2964,7 @@ function renderCustom() {
   const el = document.getElementById('s-custom');
   if (!customPage) {
     document.getElementById('screen-title').textContent = 'Customize';
-    document.getElementById('screen-sub').textContent = 'Make Daily Pulse yours';
+    document.getElementById('screen-sub').textContent = 'Make Daylog yours';
     el.innerHTML = `<button class="back-btn" id="custom-back">← Back to Settings</button>
       <div class="card" style="padding:6px 10px">
         ${CUSTOM_PAGES.map(p => `<button class="menu-row" data-custompage="${p.id}">
@@ -3719,7 +3719,7 @@ function renderSettings() {
       <button class="menu-row" id="open-tour"><span class="menu-ico">🎓</span>
         <span class="menu-txt"><span class="menu-lbl">Take the app tour</span><span class="menu-sub">60-second guided walkthrough</span></span><span class="menu-go">›</span></button>
       <a class="menu-row" href="guide.html"><span class="menu-ico">📖</span>
-        <span class="menu-txt"><span class="menu-lbl">How to use Daily Pulse</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
+        <span class="menu-txt"><span class="menu-lbl">How to use Daylog</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
     <div class="card">
       <h2>💬 Feedback <span class="hint">private · no sign-in</span></h2>
@@ -3812,7 +3812,7 @@ function renderSettings() {
       <input type="file" id="import-file" accept="application/json" style="display:none">
     </div>
     <div class="card"><h2>ℹ️ About</h2>
-      <div class="hint">Daily Pulse · <b>${APP_VERSION}</b> · local-first. Your data stays on this device${s.syncUrl?' and syncs to your Google Sheet':''}.
+      <div class="hint">Daylog · <b>${APP_VERSION}</b> · local-first. Your data stays on this device${s.syncUrl?' and syncs to your Google Sheet':''}.
       Add to Home Screen to use it like a native app, offline. · <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></div></div>
   `;
 }
@@ -3860,7 +3860,7 @@ document.addEventListener('click', async (ev) => {
     (async () => {
       const perm = await LN.requestPermissions();
       if (perm.display !== 'granted') { toast('Allow notifications first', true); return; }
-      await LN.schedule({ notifications: [{ id: 424242, title: '⏰ Daily Pulse native alarm',
+      await LN.schedule({ notifications: [{ id: 424242, title: '⏰ Daylog native alarm',
         body: 'It works — this rang even with the app closed! 🎉',
         schedule: { at: new Date(Date.now() + 60000), allowWhileIdle: true }, sound: 'default' }] });
       toast('Scheduled for 1 min — now swipe the app away and wait 📴');
@@ -3871,7 +3871,7 @@ document.addEventListener('click', async (ev) => {
     const FS = fullScreenPlugin();
     if (!FS) { toast('Full-screen alarm needs the app update', true); return; }
     FS.schedule({ alarms: [{ id: 399, at: Date.now() + 60000,
-      title: 'Daily Pulse alarm ⏰', body: 'Full-screen alarm — it works even when locked! 🎉' }] });
+      title: 'Daylog alarm ⏰', body: 'Full-screen alarm — it works even when locked! 🎉' }] });
     toast('Full-screen alarm in 1 min — lock your phone & wait 🔔');
     return;
   }
@@ -3954,7 +3954,7 @@ async function generatePdfReport() {
   const fmt = (v, d = 1) => v == null ? '–' : (+v).toFixed(d);
   const heading = t => { ensure(34); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(70, 90, 210); doc.text(t, M, y); y += 6; doc.setDrawColor(222, 226, 238); doc.line(M, y, W - M, y); y += 15; };
   const row = (l, r) => { ensure(18); doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(45, 45, 60); doc.text(String(l), M, y); doc.text(String(r), W - M, y, { align: 'right' }); y += 18; };
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(22, 22, 34); doc.text('Daily Pulse — Report', M, y); y += 22;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(22, 22, 34); doc.text('Daylog — Report', M, y); y += 22;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 142);
   const name = (DB.settings().name || '').trim();
   doc.text((name ? name + ' · ' : '') + prettyDate(todayStr()) + ' · ' + dates.length + ' days logged', M, y); y += 26;
@@ -3976,10 +3976,10 @@ async function generatePdfReport() {
   if (actIds.length) { heading('Where your time goes (last 30 days)'); actIds.forEach(id => row(actById(id).name, fmtDur(tt[id]) + ' · ' + fmtDur(tt[id] / 30) + '/day')); y += 8; }
   const wb = []; deepCfg().filter(s => !s.hidden).forEach(sec => (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(f.key); if (a != null) wb.push([f.label, fmt(a) + ' / 10']); }));
   if (wb.length) { heading('Wellbeing & focus (avg)'); wb.forEach(([l, r]) => row(l, r)); }
-  doc.setFontSize(9); doc.setTextColor(150, 150, 168); doc.text('Generated by Daily Pulse · private & offline · ' + APP_VERSION, M, H - 24);
+  doc.setFontSize(9); doc.setTextColor(150, 150, 168); doc.text('Generated by Daylog · private & offline · ' + APP_VERSION, M, H - 24);
   await saveFile('daily-pulse-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
   toast('Report PDF ready 📄');
-  if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, title: 'Daily Pulse', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
+  if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, title: 'Daylog', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
 }
 function downloadReport() {
   const e = DB.entries();
@@ -4020,7 +4020,7 @@ function downloadReport() {
   document.getElementById('print-report').innerHTML = `
     <div class="rep">
       <div class="rep-head"><div class="rep-fire">🔥</div><div>
-        <div class="rep-title">Daily Pulse — Report</div>
+        <div class="rep-title">Daylog — Report</div>
         <div class="rep-meta">${name ? escapeHtml(name) + ' · ' : ''}${prettyDate(todayStr())} · ${dates.length} days logged</div></div></div>
       ${pmAvg != null ? `<div class="rep-score">Polymath Index (30-day avg): <b>${pmAvg}/100</b></div>` : ''}
       <h3>Overview</h3>
@@ -4036,7 +4036,7 @@ function downloadReport() {
       ${tbl('Where your time goes (last 30 days)', timeRows, ['Activity','Total','Average'])}
       ${tbl('Wellbeing &amp; focus (all-time avg)', scaleRows.join(''), ['Metric','Average'])}
       ${tbl('Tracked numbers (all-time avg)', numRows.join(''), ['Metric','Average'])}
-      <div class="rep-foot">Generated by Daily Pulse · private &amp; offline · ${APP_VERSION}</div>
+      <div class="rep-foot">Generated by Daylog · private &amp; offline · ${APP_VERSION}</div>
     </div>
     <div class="rep-actions">
       <button class="btn btn-primary" id="rep-print">⬇ Download PDF</button>
@@ -4060,8 +4060,8 @@ function sendFeedback(text, contact) {
     return;
   }
   // No silent endpoint set → open the mail app to the developer (no GitHub login, no account).
-  const subject = encodeURIComponent('Daily Pulse feedback (' + APP_VERSION + ')');
-  const body = encodeURIComponent(text + '\n\n— sent from Daily Pulse ' + APP_VERSION);
+  const subject = encodeURIComponent('Daylog feedback (' + APP_VERSION + ')');
+  const body = encodeURIComponent(text + '\n\n— sent from Daylog ' + APP_VERSION);
   location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + subject + '&body=' + body;
   const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
   toast('Opening your mail app…');
@@ -4118,7 +4118,7 @@ function checkReminders(catchUp) {
     if (!due) return;
     localStorage.setItem(flag, '1');
     if ('Notification' in window && Notification.permission === 'granted')
-      new Notification('⏰ ' + (r.label || 'Daily Pulse'), { body: r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥', tag: r.id });
+      new Notification('⏰ ' + (r.label || 'Daylog'), { body: r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥', tag: r.id });
     if ((r.mode || 'alarm') === 'alarm') fireAlarm(r.label || 'Reminder', r.time, catchUp && curMin !== remMin);
     else toast('🔔 ' + (r.label || 'Reminder'));   // "just a notification" mode — no full-screen alarm
   });
@@ -4218,10 +4218,10 @@ function exportReminderCalendar() {
     'T' + pad(now.getUTCHours()) + pad(now.getUTCMinutes()) + pad(now.getUTCSeconds()) + 'Z';
   const start = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate());   // start recurring today (local)
   const esc = s => String(s).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
-  let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Daily Pulse//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
+  let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Daylog//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
   rs.forEach((r) => {
     const [h, m] = r.time.split(':');
-    const label = esc(r.label || 'Daily Pulse reminder');
+    const label = esc(r.label || 'Daylog reminder');
     ics += 'BEGIN:VEVENT\r\n' +
       'UID:dailypulse-' + r.id + '@jurnal\r\n' +
       'DTSTAMP:' + stamp + '\r\n' +
@@ -4237,7 +4237,7 @@ function exportReminderCalendar() {
 }
 
 /* ---------- Native alarms (Capacitor shell) ----------
-   When the site runs inside the Daily Pulse Android app (Capacitor WebView),
+   When the site runs inside the Daylog Android app (Capacitor WebView),
    window.Capacitor exposes LocalNotifications — REAL exact alarms that ring
    with the app closed, no ntfy needed. In a plain browser this whole block
    no-ops. Reminder n uses ids n*1000+day, events use hash ids — cancelled
@@ -4262,7 +4262,7 @@ function showUsageDisclosure(onAccept) {
   if (!m) { m = document.createElement('div'); m.id = 'usage-disc'; m.className = 'copy-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="copy-box">
     <h2 class="h2-icon">${hicon('phone')}<span>Enable screen-time tracking?</span></h2>
-    <p class="hint" style="line-height:1.6">To show your daily screen time, Daily Pulse needs Android's <b>Usage access</b> permission. Here's exactly what that means:</p>
+    <p class="hint" style="line-height:1.6">To show your daily screen time, Daylog needs Android's <b>Usage access</b> permission. Here's exactly what that means:</p>
     <div class="wn-item">📱 It reads <b>how long your phone was in use today</b> — nothing else.</div>
     <div class="wn-item">🔒 The number is stored <b>only on this phone</b>. It is never uploaded, shared or sold.</div>
     <div class="wn-item">📊 It's used solely to show your screen time and compare it with your mood.</div>
@@ -4327,7 +4327,7 @@ async function syncHealth(opts) {
     if (!opts.silent && hc.requestPermissions) {
       if (!usageDisclosureAccepted()) { showUsageDisclosure(() => syncHealth(opts)); return null; }
       const p = await hc.requestPermissions();
-      if (p && p.granted === false) { toast('Turn on Usage access for Daily Pulse (screen just opened), then tap Sync again', true); return null; }
+      if (p && p.granted === false) { toast('Turn on Usage access for Daylog (screen just opened), then tap Sync again', true); return null; }
     }
     const t = await hc.today();
     if (!t) return null;
@@ -4500,7 +4500,7 @@ async function scheduleNativeAlarms() {
       for (let d = 0; d < 7; d++) {
         const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);
         if (t.getTime() <= now) continue;
-        add(t, '⏰ ' + (r.label || 'Daily Pulse'),
+        add(t, '⏰ ' + (r.label || 'Daylog'),
           r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥', wantsAlarm(r.mode));
       }
     });
@@ -4612,7 +4612,7 @@ async function ntfyPublish(topic, message, atEpochSec, mode) {
     const clickUrl = alarm ? appUrl + '?alarm=' + encodeURIComponent(message || 'Reminder') : appUrl;
     const body = {
       topic: topic,
-      title: '⏰ ' + (message || 'Daily Pulse'),
+      title: '⏰ ' + (message || 'Daylog'),
       message: message || 'Time for your daily log 🔥',
       priority: alarm ? 5 : 3,           // 5 = max/loud heads-up; 3 = normal notification
       tags: [alarm ? 'alarm_clock' : 'bell'],
@@ -4646,7 +4646,7 @@ async function scheduleNtfy() {
       if (ts <= now + 30000 || ts > horizon) continue;       // must be ≥10s out and within 3 days
       const key = r.id + '@' + ts;
       if (sent[key]) continue;
-      const ok = await ntfyPublish(s.ntfyTopic, r.label || 'Daily Pulse reminder', Math.floor(ts / 1000), r.mode);
+      const ok = await ntfyPublish(s.ntfyTopic, r.label || 'Daylog reminder', Math.floor(ts / 1000), r.mode);
       if (ok) sent[key] = 1;
     }
   }
@@ -4682,7 +4682,7 @@ async function scheduleBackgroundNotifications() {
       for (let d = 0; d < 14; d++) {
         const t = new Date(now); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);
         if (t.getTime() <= now.getTime()) continue;
-        await reg.showNotification('⏰ ' + (r.label || 'Daily Pulse'), {
+        await reg.showNotification('⏰ ' + (r.label || 'Daylog'), {
           tag: 'dp-rem-' + r.id + '-' + d,
           body: r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥',
           showTrigger: new TimestampTrigger(t.getTime()),
@@ -4801,7 +4801,7 @@ function showExitConfirm() {
   let m = document.getElementById('confirm-exit');
   if (!m) { m = document.createElement('div'); m.id = 'confirm-exit'; m.className = 'copy-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="copy-box confirm-box">
-    <h2>Exit Daily Pulse?</h2>
+    <h2>Exit Daylog?</h2>
     <p class="hint">Your day is saved automatically — nothing will be lost.</p>
     <div class="copy-actions" style="justify-content:center">
       <button class="btn btn-ghost btn-sm" data-exit-cancel>Stay</button>
@@ -5041,7 +5041,7 @@ function renderOnboard() {
   let body = '';
   if (obStep === 0) body = `
     <div class="ob-emoji">🔥</div>
-    <h1>Daily Pulse</h1>
+    <h1>Daylog</h1>
     <p class="ob-lead">Your whole life in one private tracker.</p>
     <div class="ob-privacy">🔒 <b>No Google account. No sign-up. No cloud.</b><br>Your data lives only on this phone — nothing is ever uploaded.</div>
     <div class="ob-points">
@@ -5159,7 +5159,7 @@ const TOUR = [
   { s: 'today', t: '#log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
   { s: 'today', t: '#health-sync', alt: '.h2-icon', h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
   { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
-  { s: 'dash', t: '.pat-row', alt: '.pm-card', h: 'Your patterns', b: 'Daily Pulse mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
+  { s: 'dash', t: '.pat-row', alt: '.pm-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
   { s: 'dash', t: '[data-dashtab="health"]', h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
   { s: '__menu', t: '.drawer-row[data-screen="search"]', alt: '.drawer-list', h: 'Everything else lives in Menu', b: 'Search your entire life, History, Gym, Calendar, Focus timers… and pin ANY of these to the bottom bar with “Edit tabs”.' },
   { s: null, t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
@@ -5173,7 +5173,7 @@ function endTour() {
 }
 function showTourStep() {
   const st = TOUR[tourIdx];
-  if (!st) { endTour(); toast('Enjoy Daily Pulse 🔥'); return; }
+  if (!st) { endTour(); toast('Enjoy Daylog 🔥'); return; }
   if (st.s === '__menu') { try { openDrawer(); } catch (_) {} }
   else { try { closeDrawer(); } catch (_) {} if (st.s) navigateTo(st.s); }
   setTimeout(() => {

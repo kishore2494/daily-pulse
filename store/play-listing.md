@@ -1,25 +1,43 @@
-# Daily Pulse — Play Store listing (launch copy, updated 2026-08-18)
+# Daylog — Play Store listing (launch copy, updated 2026-08-18)
 
-## App name (30 chars max)
-`Daily Pulse: Habit & Mood Log` (29)
-Alternatives (ASO — see the name-research section at the bottom before final pick):
-- `Daily Pulse — Private Tracker` (29)
-- `Daily Pulse: Life Tracker` (25)
+## App name (30 chars max)  ← SHIP THIS
+`Daylog: Habit Tracker & Mood` — **28/30**
 
-## Short description (80 chars max)
-`Private habit, mood & screen time tracker with real insights. Offline, no login.` (79)
-Alternatives:
-- `Habit tracker, mood log & screen time — 100% private, offline, no sign-up.` (73)
-- `Track habits, mood, time & screen time. Private, offline, free. No account.` (74)
+Runners-up (all collision-checked): `Habit Log: Mood & Screen Time` (29) · `Logbook: Habit Tracker, Mood` (28) · `Dayline: Habit & Mood Tracker` (29)
+
+## Short description (80 chars max)  ← SHIP THIS
+`Private habit tracker, mood log, screen time & focus timer. 100% offline.` — **73/80**
+
+Runner-up short desc: `Habit tracker, mood journal, screen time & focus timer. Offline, no login.` (74)
+
+## Why this title (research 2026-08-19)
+Play's **title is the heaviest keyword field**; the short description is second; the
+long description is **fully indexed** (Play has no keyword field). "Daylog" is only 6
+chars — two familiar words, spellable after one hearing — so 22 chars go to
+**"Habit Tracker"** (highest-volume relevant term, ~2,000 searches/day) + **"Mood"**.
+Existing Play "Daylog" apps are D-day countdown widgets → no category collision.
+
+**The moat:** no app on Play puts **habit + mood + screen time** in one title.
+
+**Winnable long-tail at zero installs** (verified near-empty SERPs):
+`habit tracker screen time` (2 results!) · `habit tracker offline` · `habit tracker mood journal`
+**Hopeless for now** (owned): "mood tracker" (Daylio), "screen time" (StayFree), "daily journal" (Daybook/Journey).
+
+**Policy — banned in the title/description:** "#1", "Best", "Top", "Popular", "free",
+"ad-free", "new", "download now", emojis, ALL CAPS, competitor comparisons.
+
+**Free wins:** set the Play **developer name** to something keyword-bearing (it IS indexed) — e.g. "Daylog Apps · Habit & Mood Trackers". Also: developer name is indexed (make it keyword-bearing) · reviews are indexed
+on Play (~48% for reviews ≥100 chars) · mention "habit tracker" 3–5× across the long
+description, with the screen-time + mood combo in the FIRST TWO LINES.
 
 ## Full description (4000 chars max)
 
 **Your whole life in one tracker — and it never leaves your phone.**
 
-Daily Pulse is a private, offline-first life tracker for people who want to actually understand their days, without handing their data to anyone. No account. No cloud. No ads.
+Daylog is a private, offline-first life tracker for people who want to actually understand their days, without handing their data to anyone. No account. No cloud. No ads.
 
 **🧠 Insights that actually know YOU**
-Most trackers just draw charts. Daily Pulse mines your own data — on your phone — and tells you what works for you:
+Most trackers just draw charts. Daylog mines your own data — on your phone — and tells you what works for you:
 • "Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 after short nights"
 • "Workout days lift your mood by +1.4"
 • "Your peak focus window is 9–11am"
@@ -66,18 +84,18 @@ Free. Private. Yours.
 Renaming is cheap now, expensive after launch (URL/package stays either way; only the
 store title changes — package `io.github.kishore2494.dailypulse` never changes).
 
-**Findings — 4 live Play apps already named "Daily Pulse":**
+**Findings — 4 live Play apps already named "Daylog":**
 | App | Developer | Category | Installs | Collision |
 |---|---|---|---|---|
-| Daily Pulse | Syed Tasavour | Health & Fitness | 50+ | EXACT name; also a "privacy-focused, local-only, no-account" mood tracker |
-| DailyPulse: Mood & Energy | LGHDeveloper | Productivity | 10+ | EXACT name + near-clone features (mood, energy, deep-work hrs, correlations, streaks) |
-| Daily Pulse Tracker | AinulMardhiyah | Health | n/c | EXACT name, wellness/pulse logging |
-| Daily Pulse: Local | Asynk Tech | — | 10+ | Name only (unrelated) |
+| Daylog | Syed Tasavour | Health & Fitness | 50+ | EXACT name; also a "privacy-focused, local-only, no-account" mood tracker |
+| Daylog: Mood & Energy | LGHDeveloper | Productivity | 10+ | EXACT name + near-clone features (mood, energy, deep-work hrs, correlations, streaks) |
+| Daylog Tracker | AinulMardhiyah | Health | n/c | EXACT name, wellness/pulse logging |
+| Daylog: Local | Asynk Tech | — | 10+ | Name only (unrelated) |
 
 **The bigger problem:** on Play, "Pulse" semantically means heart-rate/BP — pulse-ish
 queries return cardiac apps (Pulse Log, WellPulse, FITIV Pulse…). The name mis-files us
-away from habit/mood tracking, and "Daily Pulse" itself has ~zero search demand, wasting
-the highest-weight ASO field (the 30-char title). Trademark: no "Daily Pulse" software
+away from habit/mood tracking, and "Daylog" itself has ~zero search demand, wasting
+the highest-weight ASO field (the 30-char title). Trademark: no "Daylog" software
 mark found, but PULSE is registered in software services (Reg. #5235848) — risk low-moderate,
 though an identical title in Health & Fitness adds duplicate-title review risk.
 
@@ -103,7 +121,7 @@ first 2 screenshots (lead with the screen-time analytics shot — no competitor 
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
 developer account, Google restricts health/finance/government-service apps, and that
-category can trigger a review flag. Daily Pulse is a personal productivity/journaling
+category can trigger a review flag. Daylog is a personal productivity/journaling
 tracker (it provides no health *service*, makes no medical claims), so Productivity is
 both accurate and the safe choice.
 

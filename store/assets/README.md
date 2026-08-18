@@ -1,4 +1,4 @@
-# Daily Pulse — Store assets (safe, in-project location)
+# Daylog — Store assets (safe, in-project location)
 
 Regenerable marketing/build assets. Kept HERE (not the Desktop) so they aren't auto-cleaned.
 

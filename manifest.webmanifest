@@ -1,6 +1,6 @@
 {
-  "name": "Daily Pulse — Life Tracker",
-  "short_name": "Daily Pulse",
+  "name": "Daylog — Life Tracker",
+  "short_name": "Daylog",
   "description": "Your 60-second daily log: mood, energy, habits, journal, tasks — all in one place, offline.",
   "start_url": "./index.html",
   "scope": "./",

@@ -1,4 +1,4 @@
-/* Daily Pulse — unit tests for the pure logic.
+/* Daylog — unit tests for the pure logic.
    Run: load index.html in a browser, then in the console:  fetch('tests/unit.js').then(r=>r.text()).then(eval)
    (or the headless harness injects it). Tests the REAL app functions, not copies.
    Returns a {pass, fail, results[]} summary and logs it. */
