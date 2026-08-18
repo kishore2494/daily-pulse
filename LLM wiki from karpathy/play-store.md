@@ -48,6 +48,31 @@ Verify it has native alarms: `aapt dump xmltree DailyPulse.apk AndroidManifest.x
 - Line up the 12 testers.
 - Real-phone test of the full-screen alarm + timer notification (emulator can't; MIUI needs manual "show on lock screen" perms).
 
+
+## 🚨 REJECTION-RISK AUDIT (2026-08-18) — do these before submitting
+Audited the shipping bundle (106/66) against Play policy. Findings and status:
+
+| # | Risk | Severity | Status |
+|---|---|---|---|
+| 1 | **PACKAGE_USAGE_STATS** is a *restricted* permission. Play requires (a) a **prominent in-app disclosure BEFORE** the request, (b) the policy page to disclose it, (c) core-functionality use only. Missing = likely rejection. | HIGH | ✅ FIXED v117 (pre-request disclosure sheet w/ Not-now/Continue; native request only after consent; silent syncs never prompt) |
+| 2 | privacy.html had **zero mentions** of screen time / usage access / microphone / health data (predated those features). Mismatch between declared behaviour and app behaviour = rejection + Data-safety violation. | HIGH | ✅ FIXED v117 (new "Device permissions" + "Health-related data" sections) |
+| 3 | **Permissions declaration form** in Console must be filled for SCHEDULE_EXACT_ALARM + USE_FULL_SCREEN_INTENT (already answered "Other") and now **usage access** if asked. | MED | ⏳ USER: re-check "App content ▸ Sensitive permissions" after uploading 106 |
+| 4 | **Data safety form** must stay accurate: still "collects no data / shares no data". Screen time & mic are on-device only → answer stays No-collection, but be ready to explain in review notes. | MED | ⏳ USER: re-verify, no change expected |
+| 5 | **Health & Fitness category = avoid.** Personal dev accounts get extra scrutiny; keep **Productivity**. App makes no medical claims (now stated in the policy too). | MED | ✅ Documented; keep Productivity |
+| 6 | RECORD_AUDIO: mic is foreground-only, user-initiated, marked `required=false`. Must be explained in the listing/policy. | LOW | ✅ FIXED v117 (policy) |
+| 7 | Duplicate/misleading title: an identical "Daily Pulse" already exists in Health & Fitness. | MED | ⏳ Resolves with the rename (in progress) |
+| 8 | targetSdk 36, minSdk 24, signed, no obfuscation → the deobfuscation warning is benign. | NONE | ✅ Fine |
+
+**Review-notes text to paste in Console (helps a human reviewer approve fast):**
+> Daily Pulse is a private, offline personal-tracking app. There is no login — all
+> functionality is available immediately. Usage access (PACKAGE_USAGE_STATS) is used
+> only for the app's optional digital-wellbeing feature: it shows the user their own
+> daily screen time on-device and charts it against their mood. The user sees a
+> prominent in-app disclosure and must explicitly opt in; the value never leaves the
+> device. The microphone is used only while the user taps the on-screen "Speak"
+> button to dictate a journal entry, via Android's own speech service. No data is
+> collected, transmitted, sold or shared. Not a medical app; no health claims.
+
 ## PRODUCTION CHECKLIST (apply ~Aug 24 when the 14-day window completes)
 1. **`SHOW_SYNC = false`** in app.js (Sheet sync is the future paid feature; also keeps the data-safety answer "collects nothing" unambiguous). Ship as a web push before applying.
 2. Store listing: **upload the v92 screenshots** (`store/assets/screenshot-1-log…5-streak.png` + `tablet-1..3.png` to BOTH tablet slots) — old ones show the pre-icon design.
