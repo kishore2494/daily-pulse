@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v112';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v113';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -4364,7 +4364,7 @@ function healthCardHTML() {
     at.workouts ? cell(fmtMin(h.exerciseMin), '', 'active') : '',
     at.screentime ? cell(fmtMin(h.screenMin), '', 'screen time') : '',
   ].join('') : '';
-  const grid = h ? `<div class="task-summary" style="flex-wrap:wrap">${cells}</div>`
+  const grid = h ? `<div class="health-grid">${cells}</div>`
     : `<div class="hint" style="padding:4px 0 8px">${hasPlugin ? 'Not synced yet today — tap Sync.' : 'Auto sleep, steps, calories &amp; screen time from your phone — <b>coming in a Play update</b>. Choose what to track in <b>Settings ▸ Auto-tracking</b>.'}</div>`;
   return `<div class="card">
     <h2 class="h2-icon">${hicon('heart')}<span>Health</span> <span class="hint">${h && at.hr && h.hr ? '❤ ' + h.hr + ' bpm' : (hasPlugin ? 'auto from your phone' : 'coming soon')}</span></h2>

@@ -1010,3 +1010,7 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .tour-card-bottom { position: fixed; left: 14px; right: 14px; bottom: calc(84px + var(--safe-bottom)); }
 #wn-pop .wn-item { font-size: 13px; }
 #wn-pop .copy-box { max-height: 74vh; overflow-y: auto; }
+
+/* ---------- v113: health card cells = proper 3-col grid (they were crushing into one row) ---------- */
+.health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.health-grid .ts-cell { width: auto; }
