@@ -1,62 +1,63 @@
-# Daily Pulse — Play Store listing (draft)
+# Daily Pulse — Play Store listing (launch copy, updated 2026-08-18)
 
 ## App name (30 chars max)
-Daily Pulse: Private Life Log
+`Daily Pulse: Habit & Mood Log` (29)
+Alternatives (ASO — see the name-research section at the bottom before final pick):
+- `Daily Pulse — Private Tracker` (29)
+- `Daily Pulse: Life Tracker` (25)
 
 ## Short description (80 chars max)
-Habits, mood, 24h time tracking, gym & journal — 100% private, works offline.
+`Private habit, mood & screen time tracker with real insights. Offline, no login.` (79)
+Alternatives:
+- `Habit tracker, mood log & screen time — 100% private, offline, no sign-up.` (73)
+- `Track habits, mood, time & screen time. Private, offline, free. No account.` (74)
 
-## Full description
+## Full description (4000 chars max)
 
-**🧠 An insights engine that actually knows YOU.** Daily Pulse doesn't just draw charts — it mines your own data, on your phone, and tells you things like: *"Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 on short nights"*, *"Workout days lift your mood by +1.4"*, *"Your peak focus window is 9–11am"*, *"Heavy screen days cost you −1.2 mood."* Every insight is computed from your real entries with honest minimum sample sizes — and none of it ever leaves your device.
- (4000 chars max)
+**Your whole life in one tracker — and it never leaves your phone.**
 
-**Your whole life in one tracker. And it never leaves your phone.**
+Daily Pulse is a private, offline-first life tracker for people who want to actually understand their days, without handing their data to anyone. No account. No cloud. No ads.
 
-Daily Pulse is a private, offline-first life tracker for people who want to
-actually understand their days — without giving their data to anyone.
+**🧠 Insights that actually know YOU**
+Most trackers just draw charts. Daily Pulse mines your own data — on your phone — and tells you what works for you:
+• "Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 after short nights"
+• "Workout days lift your mood by +1.4"
+• "Your peak focus window is 9–11am"
+• "Heavy screen days cost you −1.2 mood"
+Every insight uses honest minimum sample sizes, and none of it is ever uploaded.
 
-**🔒 Private by design**
-• No account. No sign-up. No cloud.
-• Everything is stored on your device only.
-• No ads, no analytics, no trackers. Ever.
+**📱 Automatic screen-time tracking**
+Your daily screen time is tracked for you, charted, and connected to your mood — so you can see what your phone is actually costing you. Every auto-tracked signal has an on/off switch.
 
-**⏱ Track your day on a 24-hour scale**
-Tap an activity when you start it — travel, work, eating, gym, scrolling —
-and tap the next one when you switch. See your entire day as a colored
-timeline and learn where your hours actually go.
+**⏱ The one-tap time tracker**
+Tap an activity when you start — work, travel, gym, scrolling — and tap the next one when you switch. Your whole day becomes a colored 24-hour timeline, and tracked Sleep and Work fill your log automatically.
 
 **✅ Habits that stick**
-Daily checklist with streaks, 90-day heatmaps and consistency stats.
-Every habit is yours to create, rename, color and reorder.
+Daily checklist with streaks, 90-day heatmaps, consistency stats and a streak leaderboard. Full-screen celebrations when you hit 3, 5, 7, 10, 14+ days. Every habit is yours to create, rename, colour and reorder.
 
-**📊 Stats that tell you something**
-Mood & energy trends, sleep vs. mood insights, time-analysis with per-activity
-averages ("commute costs you 2h 20m a day"), a weekly auto-review, and a
-Polymath Index that scores your day across body, mind, work, learning and
-discipline.
+**📊 Stats worth opening**
+Mood and energy trends, connected insights (how sleep drives your mood, this week vs last), best days, your journal topics, focus sessions, tasks completed, words written, and a Polymath Index scoring body, mind, work, learning and discipline.
 
-**🏋️ A real gym companion**
-6-day split with animated exercise demos, form tips, per-set logging and
-muscle-group breakdowns. Fully editable — your split, your exercises.
+**🍅 Focus & 🏋️ gym**
+Pomodoro with an ongoing notification, timeboxing, binaural focus sounds. A real gym companion: editable split, animated exercise demos, per-set logging and muscle-group breakdowns.
 
-**✍️ Journal & inner blog**
-Daily journal with voice dictation, plus a block-based writer for articles
-with headings, checklists and bullets.
+**📝 Journal, notes & search**
+Daily journal with voice typing (just talk), reflections, notes, plans, and a block-based writer. Search everything you ever wrote — including #tags.
 
-**📆 Calendar & events**
-A month view tinted by your mood, with dots for gym days, tracked time and
-events. Add appointments with loud alarms.
+**⏰ Reminders that actually wake you**
+Daily reminders with notifications or full-screen alarms, plus calendar events.
 
-**🎨 Customize everything**
-Every field, section, habit, activity, workout, tab and theme color can be
-renamed, hidden, reordered or replaced. The app adapts to your life — not
-the other way around.
+**🎨 Yours to shape**
+Light, dark navy and black themes. Pin whichever tabs you want to the bottom bar. Every field, section, habit, activity and workout can be renamed, hidden or replaced.
 
-**And more**
-• Tasks with priorities and colors • Named plans with checklists
-• Notes with drag-reorder • Reminders with full-screen alarms
-• Full backup export/import • Works 100% offline
+**🔒 Truly private**
+• No account, no sign-up, no cloud
+• Nothing is uploaded — ever
+• No ads, no analytics, no trackers
+• Works 100% offline
+• Export a full backup any time (JSON, CSV or PDF report)
+
+New here? Take the 60-second guided tour inside the app (Settings ▸ Take the app tour).
 
 Free. Private. Yours.
 
