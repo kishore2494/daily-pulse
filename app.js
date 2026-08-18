@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v98';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v99';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -3983,7 +3983,8 @@ document.addEventListener('click', (ev) => {
     toast('Snoozed 5 min'); setTimeout(() => fireAlarm(label, '', true), 5 * 60000);
   }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(true); scheduleNtfy(); syncTimelog(); refreshTimerNotif(); scheduleInactivityReminder(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(true); scheduleNtfy(); syncTimelog(); refreshTimerNotif(); scheduleInactivityReminder(); if (hcPlugin()) syncHealth({ silent: true }); } });
+if (hcPlugin()) setTimeout(() => syncHealth({ silent: true }), 4000);   // pull today's screen time/health shortly after open
 // Push the reminders list to the Sheet (a "Reminders" tab)
 function syncReminders() {
   const url = DB.settings().syncUrl; if (!url) return;
@@ -4071,7 +4072,12 @@ async function syncHealth(opts) {
   if (!hc) { if (!opts.silent) toast('Health sync works in the installed app', true); return null; }
   try {
     if (hc.isAvailable) { const a = await hc.isAvailable(); if (a && a.available === false) { if (!opts.silent) toast('Enable Health Connect on your phone first', true); return null; } }
-    if (hc.requestPermissions) { const p = await hc.requestPermissions(); if (p && p.granted === false) { if (!opts.silent) toast('Allow health permissions to sync', true); return null; } }
+    // Permission prompt only on EXPLICIT sync — the native side may open a system
+    // settings page, which must never happen from a silent background sync.
+    if (!opts.silent && hc.requestPermissions) {
+      const p = await hc.requestPermissions();
+      if (p && p.granted === false) { toast('Turn on Usage access for Daily Pulse (screen just opened), then tap Sync again', true); return null; }
+    }
     const t = await hc.today();
     if (!t) return null;
     // Screen time comes from a separate native module (UsageStats); optional in the contract.
@@ -4089,6 +4095,9 @@ async function syncHealth(opts) {
       screenMin: scr,
       at: new Date().toISOString(),
     };
+    // don't store an all-null day (e.g. silent sync before Usage access is granted)
+    const hasAny = ['steps', 'distanceKm', 'calories', 'sleepMin', 'exerciseMin', 'hr', 'screenMin'].some(k => store[key][k] != null);
+    if (!hasAny) { if (!opts.silent) toast('No health data yet — grant Usage access first', true); return null; }
     saveHealthStore(store);
     // auto-fill sleep from Health Connect if the user hasn't entered it for today.
     // Only PERSIST when the day already has an entry — a health sync alone must not
