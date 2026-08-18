@@ -12,6 +12,7 @@
   font-display: swap;
 }
 :root {
+  color-scheme: dark;
   --bg: #070b14;
   --bg-elev: #111827;
   --bg-card: #141c2e;
@@ -709,6 +710,7 @@ img, svg, table, pre, .chart { max-width: 100%; }
 
 /* ===== LIGHT mode (everything white) ===== */
 :root[data-mode="light"] {
+  color-scheme: light;
   --bg: #f4f6fb; --bg-elev: #ffffff; --bg-card: #ffffff; --bg-card-2: #ffffffcc; --bg-input: #eef1f7;
   --border: #dfe4ee; --border-hi: #cfd6e4; --text: #101626; --text-dim: #4a5570; --text-faint: #8b95ab;
   --line: #dfe4ee; --shadow: 0 10px 34px rgba(30,42,70,.12); --shadow-card: 0 2px 12px rgba(30,42,70,.07);
