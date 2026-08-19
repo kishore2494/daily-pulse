@@ -34,7 +34,7 @@ description, with the screen-time + mood combo in the FIRST TWO LINES.
 
 **A habit tracker, mood log and screen time tracker in one — and it works completely offline, with no account and no cloud.**
 
-Daylog is a private habit tracker for people who want to understand their own days. Track habits and streaks, log your mood and energy, see your screen time, time your focus sessions — and get real insights back. Nothing is uploaded. No sign-up, no data collected, everything stays on your device.
+Daylog is a private habit tracker and daily log for people who want to understand their own days. Track habits and streaks, log your mood and energy, see your screen time, time your focus sessions — and get real insights back. Nothing is uploaded. No sign-up, no data collected, everything stays on your device.
 
 **Insights that actually know you**
 Most trackers just draw charts. Daylog reads your own data, on your phone, and tells you what works for you:
@@ -77,7 +77,7 @@ Light, dark and black themes. Pin whichever tabs you want to the bottom bar. Ren
 
 New here? Take the 60-second guided tour inside the app (Settings ▸ Take the app tour).
 
-An offline habit tracker, mood journal, screen time tracker and daily time log — private by design.
+An offline habit tracker, mood journal, daily log, screen time tracker and daily time log — private by design.
 
 ## 🔑 KEYWORD PLAN (4 research passes, live Play SERPs Aug 2026 — IN + US)
 
@@ -154,6 +154,23 @@ All 412×820 (ratio 1.99, inside Play's ≤2:1 limit). **Dark-theme alternates**
 light vs dark (conversion rate is a direct ranking input).
 
 ✅ **Feature graphic regenerated** with the Daylog name + keyword tagline ("Habits, mood & screen time — all on your phone") and the pulse mark kept for icon continuity. Source: `tools/feature-graphic.html` (edit + re-screenshot at 1024×500 to change it).
+
+
+## ❓ "Daily Logs" — considered and rejected as a NAME (checked live 2026-08-19)
+Searching **"daily log" / "daily logs"** on Play returns the journal GIANTS:
+**Daylio (10M+), Daybook (1M+), Journey (5M+), Day One, My Diary, Daily Diary, DailyLife**.
+There is no bare exact-match app called "Daily Log" — but that is the trap, not the opening:
+the SERP is fully owned, so a generic name means **our own brand search returns competitors**.
+It also repeats the "Daily Pulse" mistake (generic + owned SERP), and Google explicitly advises
+titles "be unique and accessible, avoid common terms".
+
+Searching **"daylog"** by contrast returns only *Daylog – D-Day widget* (wrong category) and
+*Daylogs | Login App* (a corporate login tool) — so we can own our own brand query fast.
+
+**Resolution: keep `Daylog` as the brand — it IS "daily log" contracted — and carry "daily log"
+as a KEYWORD in the description** (sourced 72 traffic / 44 difficulty — a better ratio than
+"mood tracker" at 68/73). Play stems and fuzzy-matches, so title "Daylog" + description
+"daily log" covers both queries without sacrificing distinctiveness.
 
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
