@@ -1,31 +1,30 @@
 # Roadmap — decided but not built
 
 ## Agreed, queued
-- **Cloud sync (₹9/mo / ₹99 lifetime) — PLANNED 2026-08-19, supersedes the Firebase idea.**
-  **Design: zero-knowledge encrypted-blob sync, no accounts.** The phone AES-GCM-encrypts the
-  full `pushState()` payload with a key derived (PBKDF2) from a secret **sync code** (8 random
-  words / `dl_`+24 chars; pair devices via QR). Server = **one Cloudflare Worker (~150 lines) +
-  R2**: `PUT/GET/DELETE /v1/blob/:syncId` where `syncId = SHA-256(code)` — the server stores an
-  opaque blob it cannot read, so the listing can truthfully say "even with sync on, we cannot
-  read your data". One blob per user (`{blob, rev, updatedAt}`) — **no real database schema
-  needed**, and E2EE means there couldn't be one anyway.
-  - **Conflict handling: reuse the existing `applyRemoteState` merge as-is** (per-store,
-    per-id, `upd`-timestamp, deletion-aware). Pull → decrypt → merge → re-encrypt → push with
-    `If-Match: rev`; on mismatch, pull-merge-retry. Client is ~80% done already.
-  - **Why not Firebase**: Firestore 1 MB doc limit forces chunking, heavy SDK for vanilla JS,
-    plaintext-in-Google undercuts the privacy brand, and Google Sign-In contradicts
-    "no account". Why not the VPS: it's work infra, no HTTPS/backups, never a data home.
-    The Google Sheet path stays as the free/legacy option.
-  - **Billing**: Play Billing via Capacitor plugin; RevenueCat free tier for receipt
-    validation. v1 = client-side gate; v2 = Worker checks a RevenueCat-webhook allowlist of
-    syncIds. Blocked on Kishore's Play merchant profile (PAN + bank).
-  - **Costs**: Cloudflare free tier (100k req/day, R2 10 GB) ≈ thousands of users at ₹0.
-  - **Phases**: (0) flip `SHOW_SYNC=false` before production — it is currently TRUE for
-    testing; (1) Worker+R2+crypto+QR pairing, free early-access flag — 2-3 days; (2) billing —
-    2-3 days; (3) keep last 5 blob revisions in R2 → "restore from cloud backup" — 1 day.
-  - **⚠️ Data-safety**: shipping sync changes the Play Data Safety form ("app activity
-    collected, encrypted in transit, deletable, optional"). Update the form in the SAME
-    release that shows the sync UI — never before, never after.
+- **Cloud sync — DECIDED 2026-08-19 (Kishore's plan, supersedes both earlier designs).**
+  **Flow:** post-launch update → one What's-new popup + a Settings card → **"Sign in with
+  Google"** (native one-tap; accounts chosen deliberately — a lost sync-code means lost data,
+  a Google account gives free recovery) → **pay-what-you-want subscription: ₹9 / ₹49 / ₹99
+  per month, EXACT same feature at every tier** ("Supporter / Fan / Patron — pick what it's
+  worth to you"; three Play Billing subscription products). Honest same-feature tiering fits
+  the brand — teardown showed users punish greedy pricing (Forest/Regain) and reward generous
+  devs (Loop/How We Feel).
+  - **Lapse behaviour:** payment stops → sync PAUSES. Local data always untouched
+    (local-first). **Non-negotiable exception: lapsed users can always RESTORE (read/download)
+    their cloud copy — they just can't push new changes.** Guards the broken-phone +
+    lapsed-sub case, which is Journey's #1 angry-review generator ("stranded with 9 years of
+    entries"). Read free forever, write needs payment.
+  - **Backend:** blob-per-Google-account. Cloudflare Worker verifies the Google ID token
+    (JWKS), stores one opaque-ish blob per `sub` in R2, `If-Match: rev`; existing
+    `applyRemoteState` merge reused unchanged. (Firebase is the fallback if the token dance
+    fights us.) Free tier ≈ thousands of users at ₹0.
+  - **Native work:** Google Sign-In Capacitor plugin → new .aab (109+, post-launch only).
+  - **⚠️ Play compliance the accounts trigger:** in-app AND web **account-deletion** flow is
+    mandatory once sign-in exists — build it in phase 1, not later. Data Safety form changes
+    in the same release (account identifiers + app activity, encrypted in transit, deletable).
+    Listing wording becomes "no account required — optional sign-in for cloud sync".
+  - **Popups:** the What's-new mention + Settings card only. Never a recurring nag.
+  - Phase 0 unchanged: flip `SHOW_SYNC=false` before production (still TRUE from testing).
 - **Google Play Billing** — ₹9/mo sub w/ 30-day trial, OR simpler ₹99 one-time "Pro" unlock. Needs merchant profile (PAN + bank) in Play Console; then wire the Digital Goods API purchase + gate Pro features. Purchases auto-follow the user's Google account across devices.
 - **Foreground service for the running-timer** — current timer notification with Pause/Stop works while the app process is alive; if Android fully kills the app, actions only apply on relaunch. A true always-live control needs a native foreground service (Java, + Android 14 foregroundServiceType declaration).
 
