@@ -1,3 +1,13 @@
+## 2026-08-19 — sync architecture decided (plan only, nothing built)
+
+Replaced the old "Firebase accounts" roadmap item with a concrete design: **zero-knowledge
+encrypted-blob sync on a Cloudflare Worker + R2** — no accounts, the sync code is the login
+(hash = storage key, PBKDF2 = encryption key), one opaque blob per user, existing
+`applyRemoteState` merge reused unchanged, `If-Match: rev` optimistic concurrency. Billing via
+Play Billing + RevenueCat later. Full rationale and phases in `roadmap.md`. Two launch notes:
+`SHOW_SYNC` is still `true` in app.js and must go `false` before production; the Data Safety
+form changes in the same release that ships sync.
+
 ## 2026-08-19 (v129) — quantity habits, habit gallery, journal templates, mood-word highlight
 
 The last big functional gap from `competitors.md` (#3 "quantity habits with At least /
