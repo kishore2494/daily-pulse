@@ -42,16 +42,22 @@ Most trackers just draw charts. Daylog reads your own data, on your phone, and t
 • "Workout days lift your mood by +1.4"
 • "Your peak focus window is 9–11am"
 • "Heavy screen days cost you −1.2 mood"
+• "Workout today → mood +0.8 tomorrow" — next-day effects, with a confidence rating
 Every insight uses honest minimum sample sizes, and none of it ever leaves your phone.
 
-**Habit tracker with streaks**
+**Habit tracker with streaks — and a skip button**
 A daily checklist with streak counts, 90-day heatmaps, consistency stats and a streak leaderboard. Full-screen celebrations at 3, 5, 7, 10 and 14+ days. Create, rename, colour and reorder every habit — it's your routine tracker, not a template.
+
+Rest days shouldn't punish you. Tap a habit twice to mark it **skipped**: your streak stays alive and the day is left out of your completion rate. Every habit also gets a **strength score out of 100** — a weighted trend, so one missed day can't wipe out months of work and one good day can't fake it.
 
 **Screen time, tracked for you**
 Your daily phone usage is measured automatically and charted against your mood, so you can see what your screen time actually costs you. Works as a quiet app usage tracker in the background — and every auto-tracked signal has an on/off switch.
 
 **A one-tap daily time tracker**
 Tap an activity when you start — work, travel, gym, scrolling — and tap the next when you switch. Your day becomes a colour-coded 24-hour timeline, and tracked sleep and work fill in your log automatically. It's a time log that takes one tap, not a timesheet.
+
+**On this day**
+Your entry from a week, a month or a year ago appears at the top of your log — tap to reopen it. Your own history, resurfaced, at no charge.
 
 **Mood journal and private journal**
 Log mood and energy, answer short reflections, and write a full journal entry — by typing or by voice. Add notes, plans and longer articles. Search everything you've ever written, including #tags. Your journal stays offline and private.
@@ -73,7 +79,7 @@ Daily reminders with notifications or full-screen alarms, plus calendar events.
 • Export your data any time (JSON, CSV or a PDF report)
 
 **Make it yours**
-Light, dark and black themes. Pin whichever tabs you want to the bottom bar. Rename, hide or replace any field, section, habit, activity or workout.
+Light, dark and black themes, plus an Auto mode that follows your phone. Pin whichever tabs you want to the bottom bar. Rename, hide or replace any field, section, habit, activity or workout.
 
 New here? Take the 60-second guided tour inside the app (Settings ▸ Take the app tour).
 

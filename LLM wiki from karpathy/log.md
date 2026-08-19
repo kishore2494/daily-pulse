@@ -1,3 +1,35 @@
+## 2026-08-19 — v120: competitor-gap features + MIUI dimming resolved
+
+**Ingested:** teardown of 14 competitor trackers (Daylio, Loop, HabitNow, StayFree, Forest,
+Habitica, Finch, How We Feel, Journey, Daybook, Routinery, Habitify, HabitKit, TickTick,
+YourHour, Regain) → new page `competitors.md`.
+
+**Shipped (v120, web-only — reaches installed apps without a new .aab):**
+- Three-state habits: tap cycles done → skipped → clear. Skips are streak-neutral and
+  excluded from the 30-day rate and from mood correlation. Stored as `0` (falsy) so every
+  pre-existing truthy check still reads "not done" — no migration needed.
+- Habit strength 0-100: EMA, 13-day half-life (Loop's model). Verified against their
+  published curve — 96 at 60 perfect days vs their 95.9.
+- "On this day" throwback card on the Log (a week / month / 3 months / year ago, tap to open).
+- Next-day mood influence in Stats with High/Medium/Low confidence.
+- Fixed `ico: 'trend'` — not a real ICONS key, so one existing insight rendered a blank icon.
+- Removed a duplicate CSS block referencing the undefined `--muted` token.
+
+**Shipped (v119):** default theme is now **Auto** (follows `prefers-color-scheme`); explicit
+Light / Dark navy / Black still available.
+
+**Resolved:** the MIUI grey-wash bug. Root cause was two theme defects from build 106
+(no `forceDarkAllowed` opt-out on `AppTheme`; the launch theme inherited AppCompat's DARK
+variant). Fixed in **108/68**. The reason it looked unfixed for an hour was a stale WebView
+render — see `gotchas.md` for the cold-start + cache-clear procedure.
+
+**Verified:** 55/55 unit tests; all 17 screens render with zero runtime errors; on-device
+cold start under system dark mode renders clean `(243,245,250)` and survives a dark-mode
+off→on flip.
+
+**Note:** the bundle to upload is **108/68**, not 107/67 as an earlier note in
+`play-store.md` said.
+
 # Log (reverse-chronological)
 
 ## 2026-08-19 — RENAMED: "Daily Pulse" → **Daylog** (v118) + full ASO keyword plan
