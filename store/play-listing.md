@@ -153,7 +153,7 @@ All 412×820 (ratio 1.99, inside Play's ≤2:1 limit). **Dark-theme alternates**
 `store/assets/device-shots/dark/` — use them in a free **Play Store Listing Experiment** to A/B
 light vs dark (conversion rate is a direct ranking input).
 
-⚠️ **The feature graphic (1024×500) still carries the old name — regenerate before submitting.**
+✅ **Feature graphic regenerated** with the Daylog name + keyword tagline ("Habits, mood & screen time — all on your phone") and the pulse mark kept for icon continuity. Source: `tools/feature-graphic.html` (edit + re-screenshot at 1024×500 to change it).
 
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
