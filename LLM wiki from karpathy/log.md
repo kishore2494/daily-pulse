@@ -1,3 +1,34 @@
+## 2026-08-19 (v127) — the Log screen is now fully customizable
+
+Kishore: "the log screen customization was not fully customizable." Correct — **Customize ▸
+Log screen fields** only ever covered `coreCfg` *fields* (mood, energy, sleep, reflection
+questions). The Log's *cards* — Tasks, Daily checklist, Workout, Health, Reflection, Deep log,
+Sunday review — were hard-coded in `renderToday()` and could not be hidden or reordered at all.
+
+**New: `dp.logsec` + Customize ▸ Log screen sections.** `renderToday()` no longer contains a
+fixed template; it builds a `SEC` map of section-id -> HTML thunk and emits
+`logSecCfg().filter(!hidden).map(...)`. Eleven sections, drag to reorder (reuses `enableDrag`),
+eye button to hide. `core` carries `lock: true` — reorderable but not hideable, since that card
+holds the entry itself.
+
+`logSecCfg()` merges the saved order with `LOG_SECTIONS_DEF`, so **a section added in a future
+release automatically appears at the end of an existing user's saved order** instead of
+vanishing. That merge is the important part — a naive `saved || default` would silently drop
+new sections for everyone who had ever reordered.
+
+**Removed a second source of truth.** v126 shipped ring / On-this-day / mood-grid visibility as
+three separate `dp.*Off` localStorage flags. Those are now section flags in `dp.logsec`, with a
+one-time migration (`dp.logsecMigrated`) that folds any existing `*Off` flag in and deletes it.
+Settings ▸ Log screen widgets stays as a convenience shortcut but reads and writes the same
+config, so a card can never be hidden in one place and shown in another.
+
+**Rule: when a feature grows a second place to configure it, migrate to one store rather than
+keeping both in sync.**
+
+**Verified:** 11 sections in order, hide/unhide of a mid-list card, core lock respected,
+reorder (deep log to top actually renders first), reset-to-default, and the old-flag
+migration. 55/55 tests, all 17 screens error-free.
+
 ## 2026-08-19 (v125/v126) — CSS class collision, Year in Pixels moved, hide is now reversible
 
 **Bug: "On this day" rows were squashed into three cramped columns.** Cause was a **CSS class

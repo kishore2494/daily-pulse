@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v126';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v127';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -733,7 +733,7 @@ function openToday() { loadDraft(); renderToday(); }
    mechanic there is because it makes old entries pay rent. Purely local. */
 function throwbackHTML() {
   if (logDate !== todayStr()) return '';                       // only on today
-  if (localStorage.getItem('dp.throwbackOff') === '1') return '';
+  if (logSecHidden('onthisday')) return '';
   const e = DB.entries();
   const marks = [
     { d: addDays(logDate, -7),   label: 'A week ago' },
@@ -767,7 +767,7 @@ function throwbackHTML() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'otd-hide') { ev.preventDefault();
-    localStorage.setItem('dp.throwbackOff', '1'); toast('Hidden — Settings ▸ Log screen widgets to bring it back'); renderToday(); return; }
+    setLogSecHidden('onthisday', true); toast('Hidden — Customize ▸ Log screen sections to bring it back'); renderToday(); return; }
   const tb = ev.target.closest && ev.target.closest('[data-throwback]');
   if (tb) { logDate = tb.dataset.throwback; loadDraft(); renderToday(); toast('Opened ' + prettyDate(logDate)); }
 });
@@ -794,7 +794,7 @@ function mmQuad(mood, energy) {
   return high ? (pleasant ? 'yellow' : 'red') : (pleasant ? 'green' : 'blue');
 }
 function moodMeterHTML() {
-  if (localStorage.getItem('dp.moodMeterOff') === '1') return '';
+  if (logSecHidden('moodgrid')) return '';
   const active = coreCfg().filter(f => !f.hidden).map(f => f.key);
   if (!active.includes('mood') || !active.includes('energy')) return '';   // needs both axes
   const m = draft.mood, en = draft.energy;
@@ -826,7 +826,7 @@ function moodMeterHTML() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'mm-hide') { ev.preventDefault();
-    localStorage.setItem('dp.moodMeterOff', '1'); toast('Hidden — Settings ▸ Log screen widgets to bring it back'); renderToday(); return; }
+    setLogSecHidden('moodgrid', true); toast('Hidden — Customize ▸ Log screen sections to bring it back'); renderToday(); return; }
   const cell = ev.target.closest && ev.target.closest('[data-mm]');
   if (cell) {
     const [mv, evv] = cell.dataset.mm.split(',').map(Number);
@@ -851,6 +851,65 @@ document.addEventListener('click', (ev) => {
     return;
   }
 });
+
+/* ---------- Log screen sections: order + visibility ----------
+   Every card on the Log is a named section the user can hide or reorder. This is the
+   single source of truth — the `hide` links on the ring / On-this-day / mood grid write
+   here too, so a section can never be hidden in one place and shown in another. */
+const LOG_SECTIONS_DEF = [
+  { id: 'ring',      label: 'Today ring',       sub: "how much of today you've logged" },
+  { id: 'onthisday', label: 'On this day',      sub: 'your entry from a week / month / year ago' },
+  { id: 'core',      label: 'Date & main fields', sub: 'mood, energy, sleep, deep work…', lock: true },
+  { id: 'moodgrid',  label: 'Mood grid',        sub: 'set mood and energy with one tap' },
+  { id: 'tasks',     label: 'Tasks',            sub: "today's task count + quick add" },
+  { id: 'checklist', label: 'Daily checklist',  sub: 'your habits' },
+  { id: 'workout',   label: 'Workout',          sub: "link to today's gym log" },
+  { id: 'health',    label: 'Health',           sub: 'auto-tracked steps, sleep, screen time' },
+  { id: 'reflection',label: 'Reflection',       sub: 'wins, improvements, journal' },
+  { id: 'deep',      label: 'Deep log',         sub: 'the optional polymath metrics' },
+  { id: 'weekly',    label: 'Sunday weekly review', sub: 'only appears on Sundays' },
+];
+function logSecCfg() {
+  const saved = safeParse(localStorage.getItem('dp.logsec'), null);
+  const byId = {};
+  if (Array.isArray(saved)) saved.forEach(x => { if (x && x.id) byId[x.id] = x; });
+  // start from the saved order, then append any section added in a later release
+  const out = [];
+  if (Array.isArray(saved)) saved.forEach(x => {
+    const def = LOG_SECTIONS_DEF.find(d => d.id === (x || {}).id);
+    if (def) out.push(Object.assign({}, def, { hidden: !!x.hidden }));
+  });
+  LOG_SECTIONS_DEF.forEach(d => { if (!out.some(o => o.id === d.id)) out.push(Object.assign({}, d, { hidden: false })); });
+  return out;
+}
+function saveLogSec(list) {
+  localStorage.setItem('dp.logsec', JSON.stringify(list.map(x => ({ id: x.id, hidden: !!x.hidden }))));
+  pushState();
+}
+function logSecHidden(id) {
+  const s = logSecCfg().find(x => x.id === id);
+  return !!(s && s.hidden);
+}
+function setLogSecHidden(id, hidden) {
+  const list = logSecCfg();
+  const row = list.find(x => x.id === id); if (!row) return;
+  if (row.lock && hidden) return;                       // the core fields card can't be hidden
+  row.hidden = !!hidden; saveLogSec(list);
+}
+/* One-time migration: the first cut of these widgets used three separate dp.*Off flags. */
+(function migrateLogSecFlags() {
+  if (localStorage.getItem('dp.logsecMigrated') === '1') return;
+  const map = { 'dp.ringOff': 'ring', 'dp.throwbackOff': 'onthisday', 'dp.moodMeterOff': 'moodgrid' };
+  const list = logSecCfg(); let touched = false;
+  Object.keys(map).forEach(k => {
+    if (localStorage.getItem(k) === '1') {
+      const row = list.find(x => x.id === map[k]); if (row) { row.hidden = true; touched = true; }
+    }
+    localStorage.removeItem(k);
+  });
+  if (touched) saveLogSec(list);
+  localStorage.setItem('dp.logsecMigrated', '1');
+})();
 
 /* ============================================================
    REWARD WIDGETS
@@ -888,7 +947,7 @@ function todayCompletion(entry) {
   return { done, total: parts.length || 1, pct: Math.round(done / (parts.length || 1) * 100) };
 }
 function todayRingHTML() {
-  if (localStorage.getItem('dp.ringOff') === '1') return '';
+  if (logSecHidden('ring')) return '';
   const c = todayCompletion(draft);
   const R = 34, C = 2 * Math.PI * R;
   const off = C * (1 - c.pct / 100);
@@ -1016,20 +1075,19 @@ function renderToday() {
       <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${escapeHtml(draft.journal || '')}</textarea>
       <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
 
-  document.getElementById('s-today').innerHTML = `
-    ${whatsNewHTML()}
-    ${todayRingHTML()}
-    ${throwbackHTML()}
-    <div class="card">
+  // Each Log card is a named section; the user controls order and visibility
+  // (Customize ▸ Log screen sections). Build them as a map, then emit in their order.
+  const SEC = {
+    ring: () => todayRingHTML(),
+    onthisday: () => throwbackHTML(),
+    core: () => `<div class="card">
       <div class="field"><label>Date</label>
         <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
       ${coreScales}
       ${numRows}
-    </div>
-
-    ${moodMeterHTML()}
-
-    <div class="card">
+    </div>`,
+    moodgrid: () => moodMeterHTML(),
+    tasks: () => `<div class="card">
       <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
       ${tc.planned
         ? `<div class="task-summary"><div class="ts-cell"><div class="ts-n">${tc.done}</div><div class="ts-l">done</div></div><div class="ts-cell"><div class="ts-n">${tc.planned}</div><div class="ts-l">planned</div></div></div>`
@@ -1038,36 +1096,39 @@ function renderToday() {
         <input type="text" id="log-task-input" placeholder="Add a task…" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="log-task-add">Add</button>
       </div>
-    </div>
-
-    <div class="card">
+    </div>`,
+    checklist: () => `<div class="card">
       <h2>Daily checklist <span class="hint">tap what you did</span></h2>
       <div class="habits">${habitChips}</div>
       <div class="task-add" style="margin-top:10px">
         <input type="text" id="log-habit-input" placeholder="New checklist item… (e.g. 🌅 Wake at 6)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="log-habit-add">Add</button>
       </div>
-    </div>
-
-    <div class="card">
+    </div>`,
+    workout: () => `<div class="card">
       <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
       <button class="btn btn-primary btn-sm" id="log-open-gym">Log / edit today's workout →</button>
-    </div>
-
-    ${logDate === todayStr() ? healthCardHTML() : ''}
-
-    ${(reflect || journalHtml) ? `<div class="card">
+    </div>`,
+    health: () => (logDate === todayStr() ? healthCardHTML() : ''),
+    reflection: () => ((reflect || journalHtml) ? `<div class="card">
       <h2>Reflection</h2>
       ${reflect}
       ${journalHtml}
-    </div>` : ''}
-
-    <h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
-    ${renderDeepSections()}
-
-    ${isSunday(logDate) ? `<div class="card"><h2>📅 Sunday weekly review</h2>
+    </div>` : ''),
+    deep: () => `<h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
+      ${renderDeepSections()}`,
+    weekly: () => (isSunday(logDate) ? `<div class="card"><h2>📅 Sunday weekly review</h2>
       <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${escapeHtml(draft.weekWins||'')}</textarea></div>
-      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''}
+      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''),
+  };
+  const secHTML = logSecCfg()
+    .filter(sec => !sec.hidden && SEC[sec.id])
+    .map(sec => SEC[sec.id]())
+    .join('\n');
+
+  document.getElementById('s-today').innerHTML = `
+    ${whatsNewHTML()}
+    ${secHTML}
 
     <div class="log-footer">
       <div class="autosave-hint">✓ Saves automatically as you go <span id="autosave-dot" class="autosave-dot"></span></div>
@@ -1075,6 +1136,7 @@ function renderToday() {
     </div>
     <div style="height:14px"></div>
   `;
+
 }
 
 /* delegated handlers for Today screen */
@@ -3207,6 +3269,7 @@ const CUSTOM_PAGES = [
   // Daily checklist removed — it's created/edited right on the Log home screen.
   { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'pin your bottom tabs + default' },
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
+  { id: 'logsec', ico: '🧩', label: 'Log screen sections', sub: 'reorder or hide every card' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
@@ -3238,6 +3301,20 @@ function cfgSectionHTML(page) {
       <h2>🧭 Tabs <span class="hint">📌 pinned ${pinnedCount} · 🎯 default · drag · 👁 hide</span></h2>
       <div id="cfg-nav">${navRows}</div>
       <div class="hint" style="margin-top:8px">Pin as many tabs as you like (4–5 stay easiest to tap) — pinned tabs fill the bottom bar in this order, everything else lives in <b>☰ Menu</b>. 🎯 is the tab the app opens to.</div></div>`;
+  }
+  if (page === 'logsec') {
+    const rows = logSecCfg().map(sec => `<div class="cfg-row ${sec.hidden ? 'hid' : ''}" data-id="${sec.id}">
+        <span class="drag-handle" data-drag>⠿</span>
+        <div class="cfg-secTxt"><div class="cfg-secLbl">${escapeHtml(sec.label)}</div><div class="cfg-secSub">${escapeHtml(sec.sub || '')}</div></div>
+        ${sec.lock ? '<span class="cfg-lock" title="always shown">🔒</span>'
+                   : `<button class="cfg-hide" data-logsec-hide="${sec.id}">${sec.hidden ? '🙈' : '👁'}</button>`}
+      </div>`).join('');
+    return `<div class="card">
+      <h2>🧩 Log screen sections <span class="hint">drag to reorder · 👁 hide</span></h2>
+      <div id="cfg-logsec">${rows}</div>
+      <div class="hint" style="margin-top:8px">This is the order the cards appear in on your Log. Hide anything you don't use — nothing is deleted, and your saved data stays. Date &amp; main fields can be reordered but not hidden, since that's where the entry itself lives.</div>
+      <button class="btn btn-ghost btn-sm" id="logsec-reset" style="margin-top:10px">↺ Reset to default order</button>
+    </div>`;
   }
   if (page === 'log') {
     return `<div class="card">
@@ -3319,6 +3396,11 @@ function renderCustom() {
   el.innerHTML = `<button class="back-btn" id="custom-back">← All settings</button>${cfgSectionHTML(customPage)}`;
   if (customPage === 'habits') enableDrag(document.getElementById('cfg-habits'), ids => {
     const cfg = habitCfg(); saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
+  });
+  if (customPage === 'logsec') enableDrag(document.getElementById('cfg-logsec'), ids => {
+    const cur = logSecCfg();
+    saveLogSec(ids.map(id => cur.find(x => x.id === id)).filter(Boolean));
+    renderCustom();
   });
   if (customPage === 'tabs') enableDrag(document.getElementById('cfg-nav'), ids => {
     const cfg = navCfg(); saveNavCfg(ids.map(id => cfg.find(n => n.k === id)).filter(Boolean)); renderCustom();
@@ -4101,18 +4183,23 @@ function renderSettings() {
     ${(() => {
       // Every widget with a "hide" link must be re-enableable here, or hiding it is a
       // one-way door. Stored flags are inverted (dp.*Off), so the switch shows !flag.
-      const row = (flag, label, sub) => { const on = localStorage.getItem(flag) !== '1';
+      const secRow = (id, label, sub) => { const on = !logSecHidden(id);
+        return `<div class="at-row">
+          <div class="at-txt"><div class="at-lbl">${label}</div>${sub ? `<div class="at-sub">${sub}</div>` : ''}</div>
+          <button class="at-tog ${on ? 'on' : ''}" data-sec-toggle="${id}"><span class="at-knob"></span></button>
+        </div>`; };
+      const flagRow = (flag, label, sub) => { const on = localStorage.getItem(flag) !== '1';
         return `<div class="at-row">
           <div class="at-txt"><div class="at-lbl">${label}</div>${sub ? `<div class="at-sub">${sub}</div>` : ''}</div>
           <button class="at-tog ${on ? 'on' : ''}" data-widget-toggle="${flag}"><span class="at-knob"></span></button>
         </div>`; };
       return `<div class="card">
         <h2>🎛 Log screen widgets <span class="hint">show or hide</span></h2>
-        ${row('dp.ringOff', '🎯 Today ring', "how much of today you've logged")}
-        ${row('dp.throwbackOff', '🕰 On this day', 'your entry from a week / month / year ago')}
-        ${row('dp.moodMeterOff', '🎨 Mood grid', 'set mood and energy with one tap')}
-        ${row('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
-        <div class="hint" style="margin-top:8px">Tapping <b>hide</b> on any of these cards switches it off here — turn it back on any time.</div>
+        ${secRow('ring', '🎯 Today ring', "how much of today you've logged")}
+        ${secRow('onthisday', '🕰 On this day', 'your entry from a week / month / year ago')}
+        ${secRow('moodgrid', '🎨 Mood grid', 'set mood and energy with one tap')}
+        ${flagRow('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
+        <div class="hint" style="margin-top:8px">To reorder or hide <b>any</b> Log card — tasks, checklist, workout, reflection, deep log — use <b>Customize ▸ Log screen sections</b>.</div>
       </div>`; })()}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
@@ -4266,6 +4353,15 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (ev.target.closest('#open-report')) { downloadReport(); return; }
+  const sct = ev.target.closest('[data-sec-toggle]');
+  if (sct) { const id = sct.dataset.secToggle; const wasOn = !logSecHidden(id);
+    setLogSecHidden(id, wasOn); sct.classList.toggle('on', !wasOn);
+    toast(wasOn ? 'Hidden' : 'Switched back on'); return; }
+  const lsh = ev.target.closest('[data-logsec-hide]');
+  if (lsh) { const id = lsh.dataset.logsecHide;
+    setLogSecHidden(id, !logSecHidden(id)); renderCustom(); return; }
+  if (ev.target && ev.target.id === 'logsec-reset') {
+    localStorage.removeItem('dp.logsec'); renderCustom(); toast('Order reset'); return; }
   const wt = ev.target.closest('[data-widget-toggle]');
   if (wt) { const flag = wt.dataset.widgetToggle;
     const wasOn = localStorage.getItem(flag) !== '1';
