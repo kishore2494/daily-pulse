@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v127';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v128';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -3310,7 +3310,7 @@ function cfgSectionHTML(page) {
                    : `<button class="cfg-hide" data-logsec-hide="${sec.id}">${sec.hidden ? '🙈' : '👁'}</button>`}
       </div>`).join('');
     return `<div class="card">
-      <h2>🧩 Log screen sections <span class="hint">drag to reorder · 👁 hide</span></h2>
+      <h2>🧩 Log screen sections <span class="hint">drag · 👁 hide</span></h2>
       <div id="cfg-logsec">${rows}</div>
       <div class="hint" style="margin-top:8px">This is the order the cards appear in on your Log. Hide anything you don't use — nothing is deleted, and your saved data stays. Date &amp; main fields can be reordered but not hidden, since that's where the entry itself lives.</div>
       <button class="btn btn-ghost btn-sm" id="logsec-reset" style="margin-top:10px">↺ Reset to default order</button>
