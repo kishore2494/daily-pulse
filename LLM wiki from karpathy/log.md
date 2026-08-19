@@ -1,3 +1,38 @@
+## 2026-08-19 (v129) — quantity habits, habit gallery, journal templates, mood-word highlight
+
+The last big functional gap from `competitors.md` (#3 "quantity habits with At least /
+Exactly / Less than" — HabitNow's differentiator) plus two cheap wins, shipped as one batch:
+
+- **Counted habits.** A habit may carry `goal: {n, cmp:'atleast'|'atmost', unit}` in
+  `dp.habitcfg`. Its day value is then a **number** (the count); `hVal()` interprets it
+  against the goal, and a cached `goalFor()` map keeps the per-day loops fast (the cache
+  invalidates in `reloadCfg()`). The Log chip becomes a tap counter: tap +1, − to undo,
+  and "at most" chips get a **0** button to log a clean zero (absent ≠ zero: an unlogged
+  day is a miss, so streaks aren't free). Exceeding an at-most limit shows red.
+  `habitStrength()` now uses **fractional credit** (`hFrac` = min(1, n/target)), Loop's
+  partial-credit model — verified: 20 days at half target scores 33 vs ~65 for full.
+- **Important data-model note:** for goal habits, a stored `0` means *count zero*, NOT
+  skip — `hVal` checks the goal first, so the legacy `0 = skipped` boolean encoding is
+  untouched. Quantity habits have no skip state in v1.
+- Converted the last raw `e[d].habits[key]` truthy checks (day-detail hb(), discipline,
+  weekly counts, search index, PDF report) to `hVal()` — a count of 3 below target no
+  longer reads as "done" in secondary stats. Zero raw checks remain.
+- **Habit ideas gallery** (`HABIT_PRESETS`, ~20 curated across Health / Mind /
+  Productivity / Cut down) — "✨ Browse habit ideas" under the checklist. Kills the
+  empty-state stall; the Cut-down section makes at-most goals discoverable.
+- **Goal editor** — revived the orphaned `habits` Customize page (it existed but was
+  removed from `CUSTOM_PAGES`) and added a 🎯 button per row → at-least/at-most + n +
+  unit editor.
+- **Journal templates** (Daylio paywalls these): Gratitude / Brain dump / Highlights /
+  Idea chips above the journal box, appending with a blank line between.
+- **Bug (Kishore):** mood-grid words wrote the #tag but never highlighted. Words now
+  render filled with the quadrant colour when their tag is in the journal, and tap
+  **toggles** — second tap removes the tag.
+
+Verified: gallery add → 8-tap water counter → done at target; − undoes; coffee ≤2 flow
+(unlogged=miss, 0=done, 2=done, 3=miss+red); goal editor save/remove; boolean cycle
+unchanged; word highlight round-trip; 55/55 tests; 17 screens error-free.
+
 ## 2026-08-19 (v127) — the Log screen is now fully customizable
 
 Kishore: "the log screen customization was not fully customizable." Correct — **Customize ▸

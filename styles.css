@@ -1119,3 +1119,46 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .cfg-secLbl { font-size: 13.5px; font-weight: 650; color: var(--text); }
 .cfg-secSub { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
 .cfg-lock { width: 24px; text-align: center; opacity: .55; font-size: 13px; }
+
+/* ---- Quantity habit chips (tap counter) ---- */
+.habit.qty .qty-prog { margin-left: auto; font-size: 11.5px; font-weight: 700;
+  font-family: var(--font-display); color: var(--text-dim); white-space: nowrap; }
+.habit.qty.on .qty-prog { color: var(--good); }
+.habit.qty.over { border-color: var(--bad); }
+.habit.qty.over .check, .habit.qty.over .qty-prog { color: var(--bad); }
+.qty-btn { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--border);
+  background: var(--bg-input); color: var(--text); font-size: 14px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.qty-btn:active { opacity: .6; }
+
+/* ---- Habit ideas gallery ---- */
+.hg-box { max-height: 82vh; display: flex; flex-direction: column; }
+.hg-scroll { overflow-y: auto; margin: 6px -4px 0; padding: 0 4px; }
+.hg-cat { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--text-faint); margin: 12px 0 4px; }
+.hg-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.hg-row:last-child { border-bottom: 0; }
+.hg-emoji { font-size: 17px; flex: 0 0 auto; }
+.hg-lbl { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; }
+.hg-goal { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--bg-input);
+  border-radius: 99px; padding: 1px 7px; margin-left: 4px; white-space: nowrap; }
+
+/* ---- Goal editor ---- */
+.ge-row { display: flex; gap: 8px; margin-top: 10px; }
+.ge-row select, .ge-row input { padding: 9px 10px; border-radius: 10px; border: 1.5px solid var(--border);
+  background: var(--bg-input); color: var(--text); font: inherit; font-size: 14px; min-width: 0; }
+.ge-row select { flex: 0 0 auto; }
+.ge-row #ge-n { width: 64px; flex: 0 0 auto; text-align: center; }
+.ge-row #ge-unit { flex: 1; }
+.cfg-goal { flex: 0 0 auto; min-width: 30px; height: 26px; border-radius: 8px; border: 1.5px solid var(--border);
+  background: var(--bg-input); color: var(--text-dim); font-size: 11.5px; font-weight: 700; cursor: pointer; padding: 0 5px; }
+.cfg-goal.on { border-color: var(--accent); color: var(--accent); }
+
+/* ---- Journal template chips ---- */
+.jt-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.jt-chip { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 99px;
+  border: 1.5px solid var(--border); background: var(--bg-input); color: var(--text-dim); cursor: pointer; }
+.jt-chip:active { opacity: .6; }
+
+/* ---- Mood word selected state ---- */
+.mm-word.on { font-weight: 700; }
