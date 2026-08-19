@@ -1,3 +1,33 @@
+## 2026-08-19 (v125/v126) — CSS class collision, Year in Pixels moved, hide is now reversible
+
+**Bug: "On this day" rows were squashed into three cramped columns.** Cause was a **CSS class
+collision** — `.tb-row` was already defined at styles.css:592 for the **timebox** feature with
+`display:flex; align-items:center; gap:11px`. My throwback markup reused `tb-*` and silently
+inherited that flex row, so when / stats / quote laid out side-by-side instead of stacking.
+Renamed every throwback class to `otd-*` ("on this day") and made `.otd-row` an explicit
+`display:block`. Timebox's `.tb-row` is untouched.
+
+**Rule: this codebase has one flat global stylesheet with ~1100 lines and no scoping.
+Before naming a new CSS class, `grep -n "\.your-class" styles.css`.** A two-letter prefix
+is not unique enough — `tb` already meant timebox.
+
+**Year in Pixels moved to the END of Stats ▸ Overview** (Kishore's call). It was the first
+card; it's a look-back widget, so it belongs after the numbers and insights, not before them.
+
+**Hide was a one-way door.** The `hide` links on "On this day" and the mood grid set
+`dp.throwbackOff` / `dp.moodMeterOff` and toasted "re-enable in Settings" — but no such
+Settings control existed. Added a **🎛 Log screen widgets** card in Settings with four
+toggles (`dp.ringOff`, `dp.throwbackOff`, `dp.moodMeterOff`, `dp.hapticsOff`), reusing the
+existing `.at-row` / `.at-tog` markup and a new `data-widget-toggle` handler. Flags are
+inverted (`*Off`), so the switch renders `!flag`.
+
+**Rule: never ship a hide/dismiss affordance without the control that undoes it, and don't
+write a toast that names a setting that doesn't exist.**
+
+**Verified:** all four hide → Settings → restore round-trips, `display:block` on `.otd-row`
+with stats below when (not beside), 55/55 tests, all 17 screens error-free, screenshots
+regenerated.
+
 ## 2026-08-19 (late) — Pages deploys fixed properly: it was a stuck deployment LOCK
 
 Supersedes the "Pages builds are flaky, just re-queue" note below. Re-queueing was treating
