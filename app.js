@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v124';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v126';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -752,22 +752,22 @@ function throwbackHTML() {
     const doneN = en.habits ? Object.keys(en.habits).filter(k => en.habits[k] === true).length : 0;
     if (doneN) bits.push(`<b>${doneN}</b> habit${doneN > 1 ? 's' : ''}`);
     const jr = (en.journal || '').trim().replace(/\s+/g, ' ');
-    const quote = jr ? `<div class="tb-quote">“${escapeHtml(jr.slice(0, 140))}${jr.length > 140 ? '…' : ''}”</div>` : '';
-    return `<div class="tb-row" data-throwback="${m.d}">
-      <div class="tb-when">${m.label}<span class="hint"> · ${prettyDate(m.d)}</span></div>
-      ${bits.length ? `<div class="tb-stats">${bits.join(' · ')}</div>` : ''}
+    const quote = jr ? `<div class="otd-quote">“${escapeHtml(jr.slice(0, 140))}${jr.length > 140 ? '…' : ''}”</div>` : '';
+    return `<div class="otd-row" data-throwback="${m.d}">
+      <div class="otd-when">${m.label}<span class="hint"> · ${prettyDate(m.d)}</span></div>
+      ${bits.length ? `<div class="otd-stats">${bits.join(' · ')}</div>` : ''}
       ${quote}
     </div>`;
   }).join('');
-  return `<div class="card tb-card">
+  return `<div class="card otd-card">
     <h2 class="h2-icon">${hicon('history')}<span>On this day</span>
-      <span class="hint" style="margin-left:auto"><a href="#" id="tb-hide">hide</a></span></h2>
+      <span class="hint" style="margin-left:auto"><a href="#" id="otd-hide">hide</a></span></h2>
     ${rows}
   </div>`;
 }
 document.addEventListener('click', (ev) => {
-  if (ev.target && ev.target.id === 'tb-hide') { ev.preventDefault();
-    localStorage.setItem('dp.throwbackOff', '1'); toast('“On this day” hidden — re-enable in Settings'); renderToday(); return; }
+  if (ev.target && ev.target.id === 'otd-hide') { ev.preventDefault();
+    localStorage.setItem('dp.throwbackOff', '1'); toast('Hidden — Settings ▸ Log screen widgets to bring it back'); renderToday(); return; }
   const tb = ev.target.closest && ev.target.closest('[data-throwback]');
   if (tb) { logDate = tb.dataset.throwback; loadDraft(); renderToday(); toast('Opened ' + prettyDate(logDate)); }
 });
@@ -826,7 +826,7 @@ function moodMeterHTML() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'mm-hide') { ev.preventDefault();
-    localStorage.setItem('dp.moodMeterOff', '1'); toast('Mood grid hidden — re-enable in Settings'); renderToday(); return; }
+    localStorage.setItem('dp.moodMeterOff', '1'); toast('Hidden — Settings ▸ Log screen widgets to bring it back'); renderToday(); return; }
   const cell = ev.target.closest && ev.target.closest('[data-mm]');
   if (cell) {
     const [mv, evv] = cell.dataset.mm.split(',').map(Number);
@@ -2775,7 +2775,6 @@ function renderDash() {
         <div class="hint">Log about a week of days and your personal patterns appear here — your sleep sweet spot, which habits actually lift your mood, your peak focus hours. Computed on your phone, never uploaded.</div></div>`;
 
   const overviewHTML = `
-    ${yearPixelsHTML()}
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
       <div class="stat"><div class="v">${longestLoggedStreak()}</div><div class="l">best streak</div></div>
@@ -2813,7 +2812,9 @@ function renderDash() {
     ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
       ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
 
-    <div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>`;
+    <div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>
+
+    ${yearPixelsHTML()}`;
 
   const timeHTML = `
     <div class="card"><div class="stat-grid">
@@ -4097,6 +4098,22 @@ function renderSettings() {
       ${row('screentime', '📱 Screen time', 'daily phone usage')}
       <div class="hint" style="margin-top:8px">Everything stays on your phone. Sensor data needs the Play-update version of the app; these switches control what it's allowed to collect.</div>
     </div>`; })()}
+    ${(() => {
+      // Every widget with a "hide" link must be re-enableable here, or hiding it is a
+      // one-way door. Stored flags are inverted (dp.*Off), so the switch shows !flag.
+      const row = (flag, label, sub) => { const on = localStorage.getItem(flag) !== '1';
+        return `<div class="at-row">
+          <div class="at-txt"><div class="at-lbl">${label}</div>${sub ? `<div class="at-sub">${sub}</div>` : ''}</div>
+          <button class="at-tog ${on ? 'on' : ''}" data-widget-toggle="${flag}"><span class="at-knob"></span></button>
+        </div>`; };
+      return `<div class="card">
+        <h2>🎛 Log screen widgets <span class="hint">show or hide</span></h2>
+        ${row('dp.ringOff', '🎯 Today ring', "how much of today you've logged")}
+        ${row('dp.throwbackOff', '🕰 On this day', 'your entry from a week / month / year ago')}
+        ${row('dp.moodMeterOff', '🎨 Mood grid', 'set mood and energy with one tap')}
+        ${row('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
+        <div class="hint" style="margin-top:8px">Tapping <b>hide</b> on any of these cards switches it off here — turn it back on any time.</div>
+      </div>`; })()}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
       ${DB.reminders().length ? DB.reminders().map(r => `
@@ -4249,6 +4266,14 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (ev.target.closest('#open-report')) { downloadReport(); return; }
+  const wt = ev.target.closest('[data-widget-toggle]');
+  if (wt) { const flag = wt.dataset.widgetToggle;
+    const wasOn = localStorage.getItem(flag) !== '1';
+    if (wasOn) localStorage.setItem(flag, '1'); else localStorage.removeItem(flag);
+    wt.classList.toggle('on', !wasOn);
+    if (flag === 'dp.hapticsOff' && wasOn === false) buzz(18);
+    toast(wasOn ? 'Hidden' : 'Switched back on');
+    return; }
   const att = ev.target.closest('[data-at-toggle]');
   if (att) { const k = att.dataset.atToggle; const at = autoTrackCfg();
     saveAutoTrack({ [k]: !at[k] }); renderSettings();
