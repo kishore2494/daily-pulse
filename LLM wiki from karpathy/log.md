@@ -1,3 +1,39 @@
+## 2026-08-19 (later) — v121: the mood grid
+
+Shipped the top-ranked item from `competitors.md`: **How We Feel's Mood Meter**. A 4x4
+pleasantness x energy grid; one tap sets mood AND energy (they were already our two axes),
+the quadrant then offers 10 precise emotion words, and tapping a word appends it to the
+journal as a `#tag` so it's searchable by the existing tag search. Bidirectional — using
+the 1-10 rows re-renders the grid and vice versa. Hideable via `dp.moodMeterOff`.
+
+Also fixed: two `↔` characters in the What's-new copy rendered as tofu boxes in the
+Android WebView (the bundled twemoji subset doesn't cover U+2194). Rule: **keep What's-new
+and any in-app copy to ASCII punctuation plus emoji that exist in the subset.**
+
+### GitHub Pages builds are flaky — always verify, and re-queue on failure
+v120 was pushed and appeared to deploy, but the site kept serving v119 for ~15 minutes.
+`build_type` is **legacy**, and the API showed two `errored` builds plus one wedged at
+`building` with `updated_at == created_at`. GitHub reported Pages as fully operational, and
+an unrelated earlier commit had also errored, so this is builder flakiness, not our content
+(`.nojekyll` is present; no Liquid syntax anywhere).
+
+```
+T=$(gh auth token -u kishore2494)
+curl -s -H "Authorization: token $T" \
+  https://api.github.com/repos/kishore2494/daily-pulse/pages/builds?per_page=5
+curl -s -X POST -H "Authorization: token $T" \
+  https://api.github.com/repos/kishore2494/daily-pulse/pages/builds     # re-queue
+```
+One re-queue fixed it. **Never assume a push deployed — check `APP_VERSION` on the live
+cache-busted URL, and if it lags, check the build status rather than waiting on the cache.**
+
+**Verified on the POCO (Android 11, MIUI, system dark mode ON):** mood grid, emotion chips,
+skipped-habit chip, strength bars, "On this day" — all render clean, no OEM dimming, no
+logcat errors. 55/55 unit tests; all 17 screens error-free.
+
+**Bundle staged for upload: `store/assets/DailyPulse.aab` is now 108/68** (was 107/67 —
+107 did not contain the MIUI theme fix).
+
 ## 2026-08-19 — v120: competitor-gap features + MIUI dimming resolved
 
 **Ingested:** teardown of 14 competitor trackers (Daylio, Loop, HabitNow, StayFree, Forest,
