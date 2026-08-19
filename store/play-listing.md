@@ -137,6 +137,24 @@ the Year → 1M+. **The category is not closed.**
 Monetization note: India skews ad-tolerant (YourHour runs ads+IAP at 4.2★/77K reviews); Android
 ARPU ~$72 vs iOS ~$138, so a subscription-only model won't carry an India-skewed base.
 
+
+## 📸 SCREENSHOT UPLOAD ORDER (regenerated 2026-08-19 with the Daylog name)
+Play weights the **first two** most for conversion — they lead with the differentiators:
+| # | File | What it sells |
+|---|---|---|
+| 1 | `screenshot-1-insights.png` | **Your patterns** — 6 real mined insights (sleep sweet spot, workout lifts mood +2.0, heavy screen days cost −2.0, natural night, peak focus window, sleep consistency). No competitor shows this. |
+| 2 | `screenshot-2-screentime.png` | **Health tab** — screen time + steps charts and 6 averages. Our uncontested lane. |
+| 3 | `screenshot-3-log.png` | Daily log: mood/energy, bed→wake, auto task counts, tracked-time chips, 🔥24 streak |
+| 4 | `screenshot-4-timeline.png` | The 24-hour time tracker |
+| 5 | `screenshot-5-streak.png` | Streak celebration (emotional hook) |
+| 6 | `screenshot-6-menu.png` | Breadth — everything in the menu |
+
+All 412×820 (ratio 1.99, inside Play's ≤2:1 limit). **Dark-theme alternates** of all six are in
+`store/assets/device-shots/dark/` — use them in a free **Play Store Listing Experiment** to A/B
+light vs dark (conversion rate is a direct ranking input).
+
+⚠️ **The feature graphic (1024×500) still carries the old name — regenerate before submitting.**
+
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
 developer account, Google restricts health/finance/government-service apps, and that
