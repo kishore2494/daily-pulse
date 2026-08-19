@@ -1,3 +1,15 @@
+## 2026-08-19 (v130) — sync UI hidden for production; deploy-lock recurrence note
+
+`SHOW_SYNC=false` shipped (production checklist item #1 done — the Settings sync/login card
+is hidden so the "collects no data" Data Safety answer stays unambiguous; a saved `syncUrl`
+keeps working silently). 
+
+**Deploy-lock note:** the Pages deployment lock recurred — two pushes ~30 min apart, and the
+second Actions run failed with "in progress deployment, cancel <prev-sha> first". No cancel
+needed: by the time you react the lock has usually released, so just **re-dispatch**
+(`POST /actions/workflows/pages.yml/dispatches {"ref":"main"}`) and it deploys clean. If a
+run fails with that error, re-dispatch once before investigating anything else.
+
 ## 2026-08-19 (later) — sync plan REVISED to Kishore's design
 
 Kishore overruled the sync-code/zero-knowledge design, correctly: normal users lose secret
