@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v121';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v122';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -686,8 +686,10 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w8',
+  v: 'w9',
   items: [
+    '🎯 <b>Today ring</b> — one dial at the top of your Log that closes as you fill the day in. It buzzes when you complete it.',
+    '🗓️ <b>Your year in pixels</b> — every day of the year as one coloured square, in Stats. Tap any pixel to open that day.',
     '🎨 <b>New: the mood grid</b> — one square sets your mood <i>and</i> your energy at once (pleasant or unpleasant, high or low energy). Then pick the word that fits — tapping it tags your entry so you can search it later.',
     '⤳ <b>Skip a day without losing your streak</b> — tap a habit twice to mark it skipped. Rest days and sick days no longer count as failures.',
     '💪 <b>Habit strength score</b> — a 0-100 trend on each habit (Habits screen). One miss can\'t zero it; one good day can\'t max it.',
@@ -850,6 +852,116 @@ document.addEventListener('click', (ev) => {
   }
 });
 
+/* ============================================================
+   REWARD WIDGETS
+   Plain form fields get filled once; a widget that pays you back gets opened daily.
+   Everything here is read-from-existing-data — no new storage, no migration.
+   ============================================================ */
+
+/* A short buzz on a rewarding action. Silently absent on iOS/desktop, and we never
+   buzz for routine taps — only for a completion or a milestone. */
+function buzz(ms) {
+  if (localStorage.getItem('dp.hapticsOff') === '1') return;
+  try { navigator.vibrate && navigator.vibrate(ms || 18); } catch (e) {}
+}
+
+/* ---------- Mood -> colour, one scale used by every reward widget ---------- */
+const MOOD_SCALE = ['#ef5f5f', '#f0834a', '#f2b13c', '#c9c94a', '#8fce5b', '#4fc07d', '#33b78e'];
+function moodColor(m) {
+  if (m == null || m === '') return null;
+  const i = Math.max(0, Math.min(MOOD_SCALE.length - 1, Math.round((m - 1) / 9 * (MOOD_SCALE.length - 1))));
+  return MOOD_SCALE[i];
+}
+
+/* ---------- Today ring: how complete is today, as one dial ----------
+   The point is the *closing* of the ring. Every tap visibly moves it, and the
+   moment it completes you get a buzz and a colour flip. */
+function todayCompletion(entry) {
+  const en = entry || {};
+  const parts = [];
+  const core = coreCfg().filter(f => !f.hidden);
+  core.forEach(f => { if (f.type === 'scale' || f.type === 'num' || f.type === 'bedwake')
+    parts.push(en[f.key] != null && en[f.key] !== ''); });
+  HABITS.forEach(h => parts.push(hVal(en, h.key) !== H_MISS));      // done OR skipped counts
+  parts.push(!!(en.journal || en.win || en.improve));
+  const done = parts.filter(Boolean).length;
+  return { done, total: parts.length || 1, pct: Math.round(done / (parts.length || 1) * 100) };
+}
+function todayRingHTML() {
+  if (localStorage.getItem('dp.ringOff') === '1') return '';
+  const c = todayCompletion(draft);
+  const R = 34, C = 2 * Math.PI * R;
+  const off = C * (1 - c.pct / 100);
+  const full = c.pct >= 100;
+  const col = full ? 'var(--good)' : 'var(--accent)';
+  const st = loggedStreak();
+  return `<div class="card ring-card${full ? ' ring-full' : ''}">
+    <svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of today logged">
+      <circle cx="40" cy="40" r="${R}" class="ring-bg"/>
+      <circle cx="40" cy="40" r="${R}" class="ring-fg" stroke="${col}"
+        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+      <text x="40" y="44" class="ring-txt">${c.pct}%</text>
+    </svg>
+    <div class="ring-side">
+      <div class="ring-head">${full ? "Today's complete" : 'Today so far'}</div>
+      <div class="hint">${c.done} of ${c.total} logged${full ? ' — nice.' : ''}</div>
+      ${st > 1 ? `<div class="ring-streak">${icon('flame', 14)} ${st}-day logging streak</div>` : ''}
+    </div>
+  </div>`;
+}
+/* Re-draw the ring in place after any edit, so the dial visibly moves as you fill the form. */
+let _ringWasFull = false;
+function refreshTodayRing() {
+  const card = document.querySelector('.ring-card'); if (!card) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = todayRingHTML();
+  const next = tmp.firstElementChild; if (!next) return;
+  card.replaceWith(next);
+  const nowFull = next.classList.contains('ring-full');
+  if (nowFull && !_ringWasFull) { buzz(28); toast('🎉 Today fully logged'); }
+  _ringWasFull = nowFull;
+}
+
+/* ---------- Year in Pixels ----------
+   Daylio's most-shared screen, and the reason is simple: a year of your life as one
+   picture. 12 columns (months) x 31 rows (days), each pixel your mood that day. */
+function yearPixelsHTML(year) {
+  const e = DB.entries();
+  const y = year || new Date().getFullYear();
+  const MON = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  let logged = 0, sum = 0;
+  let grid = '';
+  for (let day = 1; day <= 31; day++) {
+    for (let mon = 0; mon < 12; mon++) {
+      const ds = `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const valid = new Date(y, mon, day).getMonth() === mon;
+      if (!valid) { grid += '<i class="yp-x"></i>'; continue; }
+      const en = e[ds];
+      const m = en && en.mood != null && en.mood !== '' ? +en.mood : null;
+      if (m != null) { logged++; sum += m; }
+      const col = moodColor(m);
+      grid += `<i class="yp${m != null ? ' yp-on' : ''}" data-yp="${ds}"
+        style="${col ? `background:${col}` : ''}" title="${ds}${m != null ? ' · mood ' + m : ''}"></i>`;
+    }
+  }
+  const avgM = logged ? (sum / logged).toFixed(1) : '–';
+  return `<div class="card yp-card">
+    <h2 class="h2-icon">${hicon('calendar')}<span>${y} in pixels</span>
+      <span class="hint" style="margin-left:auto">${logged} days · avg ${avgM}</span></h2>
+    <div class="yp-months">${MON.map(m => `<span>${m}</span>`).join('')}</div>
+    <div class="yp-grid">${grid}</div>
+    <div class="yp-legend"><span class="hint">low</span>
+      ${MOOD_SCALE.map(c => `<i style="background:${c}"></i>`).join('')}
+      <span class="hint">high</span></div>
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  const p = ev.target.closest && ev.target.closest('[data-yp]');
+  if (p) { const d = p.dataset.yp;
+    if (!DB.entry(d)) { toast('Nothing logged on ' + prettyDate(d)); return; }
+    // NOTE: navigateTo('today') force-resets logDate to today — use show() for deep links.
+    logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d)); }
+});
+
 function renderToday() {
   const isToday = logDate === todayStr();
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
@@ -897,6 +1009,7 @@ function renderToday() {
 
   document.getElementById('s-today').innerHTML = `
     ${whatsNewHTML()}
+    ${todayRingHTML()}
     ${throwbackHTML()}
     <div class="card">
       <div class="field"><label>Date</label>
@@ -980,9 +1093,9 @@ document.addEventListener('click', (ev) => {
     const k = hb.dataset.habit;
     // cycle: (nothing) -> done -> skipped -> (nothing).  Skipped keeps the streak alive.
     const was = hVal(draft, k);
-    if (was === H_DONE) { draft.habits[k] = 0; toast('Skipped — your streak is safe'); }
+    if (was === H_DONE) { draft.habits[k] = 0; buzz(12); toast('Skipped — your streak is safe'); }
     else if (was === H_SKIP) { delete draft.habits[k]; }
-    else { draft.habits[k] = true; }
+    else { draft.habits[k] = true; buzz(18); }
     const now = hVal(draft, k), on = now === H_DONE, sk = now === H_SKIP;
     hb.classList.toggle('on', on); hb.classList.toggle('skip', sk);
     const ckEl = hb.querySelector('.check'); if (ckEl) ckEl.textContent = sk ? '⤳' : '✓';
@@ -998,6 +1111,7 @@ document.addEventListener('input', (ev) => {
 /* Auto-save the Log draft as you go (debounced) — no need to hit Save. */
 let _autosaveTimer;
 function autosaveDraft() {
+  try { refreshTodayRing(); } catch (e) {}
   clearTimeout(_autosaveTimer);
   // Capture the target date + draft object NOW. loadDraft() reassigns the `draft`/`logDate`
   // globals when you switch day or tab, and the deep-clone means this reference stays intact —
@@ -2652,6 +2766,7 @@ function renderDash() {
         <div class="hint">Log about a week of days and your personal patterns appear here — your sleep sweet spot, which habits actually lift your mood, your peak focus hours. Computed on your phone, never uploaded.</div></div>`;
 
   const overviewHTML = `
+    ${yearPixelsHTML()}
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
       <div class="stat"><div class="v">${longestLoggedStreak()}</div><div class="l">best streak</div></div>

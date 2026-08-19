@@ -1080,3 +1080,33 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
   border: 1.5px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer; }
 .mm-word:active { opacity: .6; }
 .mm-hint { margin-top: 7px; font-size: 11.5px; }
+
+/* ---- Today ring: the dial closes as you fill your log ---- */
+.ring-card { display: flex; align-items: center; gap: 14px; }
+.ring { width: 78px; height: 78px; flex: 0 0 auto; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--bg-input); stroke-width: 7; }
+.ring-fg { fill: none; stroke-width: 7; stroke-linecap: round;
+  transition: stroke-dashoffset .5s cubic-bezier(.3,1.4,.5,1), stroke .3s ease; }
+.ring-txt { transform: rotate(90deg); transform-origin: 40px 40px; text-anchor: middle;
+  font: 700 15px/1 var(--font-display, inherit); fill: var(--text); }
+.ring-side { min-width: 0; }
+.ring-head { font-size: 15px; font-weight: 700; font-family: var(--font-display, inherit); }
+.ring-streak { display: flex; align-items: center; gap: 4px; margin-top: 5px;
+  font-size: 12px; font-weight: 700; color: var(--warn); }
+.ring-full .ring-txt { fill: var(--good); }
+.ring-full { animation: ringPop .45s cubic-bezier(.3,1.5,.5,1); }
+@keyframes ringPop { 0% { transform: scale(1); } 45% { transform: scale(1.022); } 100% { transform: scale(1); } }
+
+/* ---- Year in Pixels: a whole year of moods as one picture ---- */
+.yp-card { overflow: hidden; }
+.yp-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px;
+  font-size: 9px; color: var(--text-faint); text-align: center; margin-bottom: 3px; }
+.yp-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.yp, .yp-x { display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 2px;
+  background: var(--bg-input); }
+.yp-x { background: transparent; }
+.yp-on { cursor: pointer; }
+.yp-on:active { transform: scale(1.5); }
+.yp-legend { display: flex; align-items: center; gap: 3px; margin-top: 9px; }
+.yp-legend i { display: block; width: 13px; height: 8px; border-radius: 2px; }
+.yp-legend .hint { font-size: 10px; }
