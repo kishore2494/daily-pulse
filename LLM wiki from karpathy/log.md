@@ -1,5 +1,55 @@
 # Log (reverse-chronological)
 
+## 2026-08-19 — RENAMED: "Daily Pulse" → **Daylog** (v118) + full ASO keyword plan
+User rejected coined names ("Dayvault" felt unfamiliar) and set the real goal plainly:
+**people must be able to FIND the app in Play search**; trademark = a note, not a veto.
+
+**Research (4 passes, live Play SERPs in IN + US, + Google's own policy pages) converged:**
+the winning shape is **(b) short familiar real-word brand + keyword suffix** — not a coined
+name (invisible) and not a bare keyword title (Google explicitly advises titles "be unique…
+avoid common terms"). Play's 30-char title is the heaviest keyword field; Play has **no**
+hidden keyword field and **fully indexes** the 4000-char description; developer name and
+reviews are indexed too.
+
+**Chosen: `Daylog`** — two familiar words, spellable after one hearing; only 6 chars so
+"Habit Tracker" fits verbatim; existing Play "Daylog" apps are a **D-day countdown widget
+and a watch face** → no wellness rival (unlike Daybook 1M+ or Journey 5M+ which would bury us).
+Rejected with evidence: Dayvault/Innerlog (coined + iOS niche clones), Momentum/Ledger/Tally
+(live trademarks, wrong intent), Daybook/Journey/Compass (buried by 1M–10M incumbents).
+
+**SHIPPED:** title `Daylog: Habit Tracker & Mood` (28/30) · short `Private habit tracker,
+mood log, screen time & focus timer. 100% offline.` (73/80) · long description rewritten
+(3141/4000, "habit tracker" 4×, front-loads habit+mood+screen-time for Ask Play, policy-clean).
+
+**Keyword plan saved in store/play-listing.md.** Key measured findings:
+- **Winnable at ZERO installs** (each has an unrated/sub-1k app in its top 8): `streak tracker`,
+  `routine tracker`, `habit tracker offline`, `habit tracker no ads`, `private journal`
+  ("Private Offline Journal" ranks #2 with NO rating), `app usage tracker`, `daily time tracker`
+  (thinnest SERP measured — 14 apps), `time log`, `phone usage tracker`.
+- **Hopeless:** habit tracker head (Loop 7.6M), mood tracker (Daylio 10M+), screen time
+  (StayFree 20M), focus timer/pomodoro (Forest 48M), diary app, time tracker (Toggl B2B).
+- **TRAP:** bare privacy words are dead ends — `offline app`/`no internet app` return offline
+  **games**/maps. Privacy words only work appended to a category noun.
+- **Mechanism:** exact-match titling — every winnable term has a literal title-match app top-5.
+- **Underrated (sourced traffic/difficulty):** mental health diary 64/37, emotional tracker 64/38,
+  emotional journal 68/42 — only sourced terms with real traffic AND beatable difficulty.
+- **User phrasing** (r/androidapps verbatim): they stack negations — "completely offline, no cloud,
+  no ads", "no registration required", "100% private" — used verbatim in the description.
+- **India:** 22.1% of global Play installs, SERPs markedly softer (unrated single-dev apps rank
+  top-8; US payroll/parental incumbents drop out). Indian devs already winning this niche:
+  YourHour (Indore 1M+), Engross (Indore 500K+), **Regain (Bengaluru, unfunded, inc. May 2023 →
+  1M+ installs / 148K reviews in ~2 years)**. Category is NOT closed.
+  Monetization note: IN skews ad-tolerant; Android ARPU ~$72 vs iOS ~$138 → subscription-only
+  won't carry an India-skewed base.
+
+**Mechanics:** `tools/rename-app.sh "New Name"` renames 151 files in one command and
+**deliberately preserves** the hosting URL (`github.io/daily-pulse/` — the native shell loads it,
+so changing it would break every installed app), package id, bundle filenames and SW cache key;
+the wiki keeps the old name as historical record. Verified live: title/drawer show "Daylog",
+0 stale refs, canonical URL unchanged. Native rebuilt **107/67** with `application-label:'Daylog'`
+(verified in the APK) — **this is the bundle to upload**. Device install pending (POCO dropped
+off wireless ADB).
+
 ## 2026-08-18 (pt 8) — v117: Play REJECTION-RISK audit + compliance fixes (pre-launch)
 User asked: "do we need to do anything new, or are there chances Google rejects us?" → audited the shipping bundle against Play policy and found TWO high-severity rejection risks, both fixed:
 1. **PACKAGE_USAGE_STATS is a restricted permission** — Play requires a *prominent disclosure BEFORE* requesting it. We were requesting it with only a post-hoc toast. Added a pre-request sheet (what's read: "how long your phone was in use today"; stays on-device; why; how to turn off) with Not now / Continue; the native request now fires only after explicit consent (`dp.usageDisclosure`), and silent background syncs never prompt. All 4 paths verified.
