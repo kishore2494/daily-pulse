@@ -1,3 +1,13 @@
+## 2026-08-19 (later) — sync plan REVISED to Kishore's design
+
+Kishore overruled the sync-code/zero-knowledge design, correctly: normal users lose secret
+codes, and a lost code = lost data. **Decided:** Google Sign-In (native one-tap) →
+pay-what-you-want monthly sub (₹9/₹49/₹99, identical feature — "pick what it's worth") →
+sync pauses on lapse. One exception negotiated in: **lapsed users can always restore
+(read-only) their cloud copy** — guards the broken-phone case that generates Journey's worst
+reviews. Accounts trigger Play's mandatory account-deletion requirement (in-app + web) —
+scheduled for phase 1. Full spec in roadmap.md.
+
 ## 2026-08-19 — sync architecture decided (plan only, nothing built)
 
 Replaced the old "Firebase accounts" roadmap item with a concrete design: **zero-knowledge
