@@ -1,3 +1,45 @@
+## 2026-08-19 (late) — Pages deploys fixed properly: it was a stuck deployment LOCK
+
+Supersedes the "Pages builds are flaky, just re-queue" note below. Re-queueing was treating
+a symptom. The actual cause, from the first real error message we got all day:
+
+```
+Deployment request failed for 618565c... due to in progress deployment.
+Please cancel a823d7ef... first or wait for it to complete.
+```
+
+**One wedged legacy build (the v123 commit) held the Pages deployment lock, and every
+later deploy queued behind it failed or hung.** That is why three commits "errored" with a
+generic `Page build failed.`, why one sat at `building` with `updated_at == created_at` for
+20+ minutes, and why ~15 re-queues all did nothing — they were all blocked on the same lock.
+GitHub's status page reported Pages as fully operational throughout.
+
+**What actually fixed it:** switching Pages from the **legacy** builder to the
+**GitHub Actions** pipeline (`.github/workflows/pages.yml`, standard
+`configure-pages` -> `upload-pages-artifact` -> `deploy-pages`), then
+`PUT /repos/:o/:r/pages -d '{"build_type":"workflow"}'`. First dispatch after the lock
+released: **completed/success**, v124 live.
+
+**Why this is the better pipeline, permanently:**
+- Real, readable logs. The legacy builder only ever said `Page build failed.` — the Actions
+  run named the blocking deployment in one line.
+- Re-runnable and dispatchable: `POST /actions/workflows/pages.yml/dispatches -d '{"ref":"main"}'`.
+- `concurrency: {group: pages, cancel-in-progress: false}` serialises deploys instead of
+  letting them pile onto a lock.
+
+**Diagnostics worth keeping:**
+```
+T=$(gh auth token -u kishore2494)
+# which run, and why it failed
+curl -s -H "Authorization: token $T" .../actions/runs?per_page=1
+curl -sL -H "Authorization: token $T" .../actions/runs/<id>/logs -o /tmp/l.zip   # real errors
+# cancel a stuck deployment (400 if it is already releasing)
+curl -s -X POST -H "Authorization: token $T" .../pages/deployments/<sha>/cancel
+```
+
+If a deploy ever hangs again: read the Actions log first, and look for a blocking deployment
+sha before assuming flakiness.
+
 ## 2026-08-19 (late) — v124: Year in Pixels made compact + release versions now bump together
 
 **Kishore's feedback: the pixel grid was too big.** It was. Transposed it from 12 columns x
