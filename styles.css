@@ -1113,3 +1113,9 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .yp-legend { display: flex; align-items: center; gap: 3px; margin-top: 10px; }
 .yp-legend i { display: block; width: 13px; height: 8px; border-radius: 2px; }
 .yp-legend .hint { font-size: 10px; }
+
+/* ---- Customize > Log screen sections rows ---- */
+.cfg-secTxt { flex: 1; min-width: 0; }
+.cfg-secLbl { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.cfg-secSub { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+.cfg-lock { width: 24px; text-align: center; opacity: .55; font-size: 13px; }
