@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v120';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v121';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -686,8 +686,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w7',
+  v: 'w8',
   items: [
+    '🎨 <b>New: the mood grid</b> — one square sets your mood <i>and</i> your energy at once (pleasant or unpleasant, high or low energy). Then pick the word that fits — tapping it tags your entry so you can search it later.',
     '⤳ <b>Skip a day without losing your streak</b> — tap a habit twice to mark it skipped. Rest days and sick days no longer count as failures.',
     '💪 <b>Habit strength score</b> — a 0-100 trend on each habit (Habits screen). One miss can\'t zero it; one good day can\'t max it.',
     '🕰️ <b>“On this day”</b> — your entry from a week, a month or a year ago, right at the top of your Log. Tap to open it.',
@@ -769,6 +770,86 @@ document.addEventListener('click', (ev) => {
   if (tb) { logDate = tb.dataset.throwback; loadDraft(); renderToday(); toast('Opened ' + prettyDate(logDate)); }
 });
 
+/* ---------- Mood Meter (How We Feel / RULER's model) ----------
+   Their insight: people can't name what they feel, so don't ask them to invent a word —
+   GIVE them one. Pleasantness x energy is exactly the mood/energy pair we already store,
+   so one tap on the grid sets both, and the quadrant then offers precise vocabulary that
+   lands in the journal as a #tag (searchable by our existing tag search). */
+const MM_COLS = [2, 4, 7, 9];        // pleasantness -> mood 1-10
+const MM_ROWS = [9, 7, 4, 2];        // energy, high at the top
+const MM_QUAD = {
+  red:    { label: 'High energy, unpleasant', c: '#e2574c',
+    words: ['Angry','Anxious','Stressed','Frustrated','Restless','Overwhelmed','Irritated','Worried','Tense','Panicked'] },
+  yellow: { label: 'High energy, pleasant',   c: '#e9b53a',
+    words: ['Excited','Energised','Motivated','Happy','Proud','Confident','Cheerful','Inspired','Alive','Focused'] },
+  blue:   { label: 'Low energy, unpleasant',  c: '#4a7fd0',
+    words: ['Sad','Tired','Drained','Lonely','Bored','Discouraged','Flat','Numb','Disappointed','Hopeless'] },
+  green:  { label: 'Low energy, pleasant',    c: '#3fa87a',
+    words: ['Calm','Content','Relaxed','Grateful','Peaceful','Rested','Satisfied','Comfortable','Thoughtful','Safe'] },
+};
+function mmQuad(mood, energy) {
+  const pleasant = mood >= 6, high = energy >= 6;
+  return high ? (pleasant ? 'yellow' : 'red') : (pleasant ? 'green' : 'blue');
+}
+function moodMeterHTML() {
+  if (localStorage.getItem('dp.moodMeterOff') === '1') return '';
+  const active = coreCfg().filter(f => !f.hidden).map(f => f.key);
+  if (!active.includes('mood') || !active.includes('energy')) return '';   // needs both axes
+  const m = draft.mood, en = draft.energy;
+  const cells = MM_ROWS.map(ry => MM_COLS.map(cx => {
+    const q = MM_QUAD[mmQuad(cx, ry)];
+    const on = m === cx && en === ry;
+    return `<button type="button" class="mm-cell${on ? ' on' : ''}" data-mm="${cx},${ry}"
+      style="background:${q.c}${on ? '' : '4d'}" aria-label="mood ${cx}, energy ${ry}"></button>`;
+  }).join('')).join('');
+  let words = '', head = 'Tap the square that fits how you feel';
+  if (m != null && en != null) {
+    const key = mmQuad(m, en), q = MM_QUAD[key];
+    head = `<b style="color:${q.c}">${q.label}</b> · mood ${m}, energy ${en}`;
+    words = `<div class="mm-words">${q.words.map(w =>
+      `<button type="button" class="mm-word" data-mmword="${w}" style="border-color:${q.c}66">${w}</button>`).join('')}</div>
+      <div class="hint mm-hint">Tap a word to tag today's entry with it</div>`;
+  }
+  return `<div class="card mm-card">
+    <h2 class="h2-icon">${hicon('smile')}<span>How do you feel?</span>
+      <span class="hint" style="margin-left:auto"><a href="#" id="mm-hide">hide</a></span></h2>
+    <div class="mm-wrap">
+      <div class="mm-yaxis"><span>high<br>energy</span><span>low<br>energy</span></div>
+      <div class="mm-grid">${cells}</div>
+    </div>
+    <div class="mm-xaxis"><span>unpleasant</span><span>pleasant</span></div>
+    <div class="mm-head">${head}</div>
+    ${words}
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target && ev.target.id === 'mm-hide') { ev.preventDefault();
+    localStorage.setItem('dp.moodMeterOff', '1'); toast('Mood grid hidden — re-enable in Settings'); renderToday(); return; }
+  const cell = ev.target.closest && ev.target.closest('[data-mm]');
+  if (cell) {
+    const [mv, evv] = cell.dataset.mm.split(',').map(Number);
+    draft.mood = mv; draft.energy = evv; autosaveDraft();
+    // keep the 1-10 rows in sync without a full re-render losing scroll position
+    document.querySelectorAll('[data-scale="mood"]').forEach(b => b.classList.toggle('on', +b.dataset.val === mv));
+    document.querySelectorAll('[data-scale="energy"]').forEach(b => b.classList.toggle('on', +b.dataset.val === evv));
+    const card = cell.closest('.mm-card');
+    if (card) { const tmp = document.createElement('div'); tmp.innerHTML = moodMeterHTML();
+      if (tmp.firstElementChild) card.replaceWith(tmp.firstElementChild); }
+    return;
+  }
+  const wd = ev.target.closest && ev.target.closest('[data-mmword]');
+  if (wd) {
+    const tag = '#' + wd.dataset.mmword.toLowerCase();
+    const ta = document.querySelector('[data-txt=journal]');
+    const cur = (draft.journal || '');
+    if (cur.includes(tag)) { toast('Already tagged ' + tag); return; }
+    draft.journal = cur ? cur.replace(/\s*$/, '') + ' ' + tag : tag;
+    if (ta) ta.value = draft.journal;
+    autosaveDraft(); toast('Tagged ' + tag);
+    return;
+  }
+});
+
 function renderToday() {
   const isToday = logDate === todayStr();
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
@@ -823,6 +904,8 @@ function renderToday() {
       ${coreScales}
       ${numRows}
     </div>
+
+    ${moodMeterHTML()}
 
     <div class="card">
       <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
@@ -883,6 +966,11 @@ document.addEventListener('click', (ev) => {
   const sc = ev.target.closest('[data-scale]');
   if (sc) { const key = sc.dataset.scale; draft[key] = +sc.dataset.val;
     sc.parentNode.querySelectorAll(`[data-scale="${key}"]`).forEach(b => b.classList.toggle('on', b === sc));
+    if (key === 'mood' || key === 'energy') {           // mirror into the mood grid
+      const card = document.querySelector('.mm-card');
+      if (card) { const tmp = document.createElement('div'); tmp.innerHTML = moodMeterHTML();
+        if (tmp.firstElementChild) card.replaceWith(tmp.firstElementChild); }
+    }
     autosaveDraft(); return; }
   const ck = ev.target.closest('[data-check]');
   if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o];
