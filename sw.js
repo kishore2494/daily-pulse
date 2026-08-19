@@ -1,7 +1,7 @@
 /* Daylog service worker
    Strategy: NETWORK-FIRST for the app's own files (so you ALWAYS get the latest
    when online), with cache fallback so it still works fully offline. */
-const CACHE = 'daily-pulse-v123';
+const CACHE = 'daily-pulse-v124';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js',
   './workout-anims.js', './workout-plan.js',
@@ -33,6 +33,9 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then(res => { if (res && res.ok) { const c = res.clone(); caches.open(CACHE).then(ch => ch.put(e.request, c)); } return res; })
-      .catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
+            // ignoreSearch: the page now requests styles.css?v=NNN / app.js?v=NNN to defeat the
+      // WebView + Pages edge caches, but the precache stores them unversioned. Without this
+      // an offline launch would find no match and render unstyled.
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(hit => hit || caches.match('./index.html')))
   );
 });

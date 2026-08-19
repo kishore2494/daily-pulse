@@ -1097,16 +1097,18 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .ring-full { animation: ringPop .45s cubic-bezier(.3,1.5,.5,1); }
 @keyframes ringPop { 0% { transform: scale(1); } 45% { transform: scale(1.022); } 100% { transform: scale(1); } }
 
-/* ---- Year in Pixels: a whole year of moods as one picture ---- */
+/* ---- Year in Pixels: a whole year of moods as one compact picture ----
+   31 columns (days) x 12 rows (months). Cells are a fixed small size so the whole
+   year lands in ~200px instead of swamping the screen. */
 .yp-card { overflow: hidden; }
-.yp-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px;
-  font-size: 9px; color: var(--text-faint); text-align: center; margin-bottom: 3px; }
-.yp-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
-.yp, .yp-x { display: block; width: 100%; aspect-ratio: 1 / 0.62; border-radius: 2px;
-  background: var(--bg-input); }
+.yp-grid { display: flex; flex-direction: column; gap: 2px; }
+.yp-row { display: flex; align-items: center; gap: 5px; }
+.yp-mon { flex: 0 0 22px; font-size: 8.5px; color: var(--text-faint); text-align: right;
+  line-height: 1; letter-spacing: -.2px; }
+.yp-days { flex: 1; display: grid; grid-template-columns: repeat(31, 1fr); gap: 2px; }
+.yp, .yp-x { display: block; width: 100%; height: 9px; border-radius: 2px; background: var(--bg-input); }
 .yp-x { background: transparent; }
 .yp-on { cursor: pointer; }
-.yp-on:active { transform: scale(1.5); }
-.yp-legend { display: flex; align-items: center; gap: 3px; margin-top: 9px; }
+.yp-legend { display: flex; align-items: center; gap: 3px; margin-top: 10px; }
 .yp-legend i { display: block; width: 13px; height: 8px; border-radius: 2px; }
 .yp-legend .hint { font-size: 10px; }
