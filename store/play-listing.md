@@ -30,93 +30,112 @@ Existing Play "Daylog" apps are D-day countdown widgets → no category collisio
 on Play (~48% for reviews ≥100 chars) · mention "habit tracker" 3–5× across the long
 description, with the screen-time + mood combo in the FIRST TWO LINES.
 
-## Full description (4000 chars max)
+## Full description (4000 chars max)  ← SHIP THIS
 
-**Your whole life in one tracker — and it never leaves your phone.**
+**A habit tracker, mood log and screen time tracker in one — and it works completely offline, with no account and no cloud.**
 
-Daylog is a private, offline-first life tracker for people who want to actually understand their days, without handing their data to anyone. No account. No cloud. No ads.
+Daylog is a private habit tracker for people who want to understand their own days. Track habits and streaks, log your mood and energy, see your screen time, time your focus sessions — and get real insights back. Nothing is uploaded. No sign-up, no data collected, everything stays on your device.
 
-**🧠 Insights that actually know YOU**
-Most trackers just draw charts. Daylog mines your own data — on your phone — and tells you what works for you:
+**Insights that actually know you**
+Most trackers just draw charts. Daylog reads your own data, on your phone, and tells you what works for you:
 • "Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 after short nights"
 • "Workout days lift your mood by +1.4"
 • "Your peak focus window is 9–11am"
 • "Heavy screen days cost you −1.2 mood"
-Every insight uses honest minimum sample sizes, and none of it is ever uploaded.
+Every insight uses honest minimum sample sizes, and none of it ever leaves your phone.
 
-**📱 Automatic screen-time tracking**
-Your daily screen time is tracked for you, charted, and connected to your mood — so you can see what your phone is actually costing you. Every auto-tracked signal has an on/off switch.
+**Habit tracker with streaks**
+A daily checklist with streak counts, 90-day heatmaps, consistency stats and a streak leaderboard. Full-screen celebrations at 3, 5, 7, 10 and 14+ days. Create, rename, colour and reorder every habit — it's your routine tracker, not a template.
 
-**⏱ The one-tap time tracker**
-Tap an activity when you start — work, travel, gym, scrolling — and tap the next one when you switch. Your whole day becomes a colored 24-hour timeline, and tracked Sleep and Work fill your log automatically.
+**Screen time, tracked for you**
+Your daily phone usage is measured automatically and charted against your mood, so you can see what your screen time actually costs you. Works as a quiet app usage tracker in the background — and every auto-tracked signal has an on/off switch.
 
-**✅ Habits that stick**
-Daily checklist with streaks, 90-day heatmaps, consistency stats and a streak leaderboard. Full-screen celebrations when you hit 3, 5, 7, 10, 14+ days. Every habit is yours to create, rename, colour and reorder.
+**A one-tap daily time tracker**
+Tap an activity when you start — work, travel, gym, scrolling — and tap the next when you switch. Your day becomes a colour-coded 24-hour timeline, and tracked sleep and work fill in your log automatically. It's a time log that takes one tap, not a timesheet.
 
-**📊 Stats worth opening**
-Mood and energy trends, connected insights (how sleep drives your mood, this week vs last), best days, your journal topics, focus sessions, tasks completed, words written, and a Polymath Index scoring body, mind, work, learning and discipline.
+**Mood journal and private journal**
+Log mood and energy, answer short reflections, and write a full journal entry — by typing or by voice. Add notes, plans and longer articles. Search everything you've ever written, including #tags. Your journal stays offline and private.
 
-**🍅 Focus & 🏋️ gym**
-Pomodoro with an ongoing notification, timeboxing, binaural focus sounds. A real gym companion: editable split, animated exercise demos, per-set logging and muscle-group breakdowns.
+**Focus timer and gym log**
+Pomodoro with an ongoing notification, timeboxing and focus sounds. Plus a real workout log: editable split, animated exercise demos, per-set logging and muscle-group breakdowns.
 
-**📝 Journal, notes & search**
-Daily journal with voice typing (just talk), reflections, notes, plans, and a block-based writer. Search everything you ever wrote — including #tags.
+**Stats worth opening**
+Mood and energy trends, connected insights (how sleep drives your mood, this week vs last), best days, your journal topics, focus sessions, tasks completed, words written, and a Polymath Index across body, mind, work, learning and discipline.
 
-**⏰ Reminders that actually wake you**
+**Reminders that reach you**
 Daily reminders with notifications or full-screen alarms, plus calendar events.
 
-**🎨 Yours to shape**
-Light, dark navy and black themes. Pin whichever tabs you want to the bottom bar. Every field, section, habit, activity and workout can be renamed, hidden or replaced.
-
-**🔒 Truly private**
-• No account, no sign-up, no cloud
-• Nothing is uploaded — ever
-• No ads, no analytics, no trackers
+**Truly private, truly offline**
+• No account, no registration required
+• No cloud, no sync, no data collected
+• No ads, no trackers, no analytics
 • Works 100% offline
-• Export a full backup any time (JSON, CSV or PDF report)
+• Export your data any time (JSON, CSV or a PDF report)
+
+**Make it yours**
+Light, dark and black themes. Pin whichever tabs you want to the bottom bar. Rename, hide or replace any field, section, habit, activity or workout.
 
 New here? Take the 60-second guided tour inside the app (Settings ▸ Take the app tour).
 
-Free. Private. Yours.
+An offline habit tracker, mood journal, screen time tracker and daily time log — private by design.
 
+## 🔑 KEYWORD PLAN (4 research passes, live Play SERPs Aug 2026 — IN + US)
 
-## ⚠️ NAME RESEARCH (2026-08-18) — decide BEFORE publishing
-Renaming is cheap now, expensive after launch (URL/package stays either way; only the
-store title changes — package `io.github.kishore2494.dailypulse` never changes).
+**Caveat up front:** Google publishes **zero** Play search volumes. Every "volume" number
+anywhere is a vendor estimate. Everything below marked *(measured)* is a live SERP read.
 
-**Findings — 4 live Play apps already named "Daylog":**
-| App | Developer | Category | Installs | Collision |
-|---|---|---|---|---|
-| Daylog | Syed Tasavour | Health & Fitness | 50+ | EXACT name; also a "privacy-focused, local-only, no-account" mood tracker |
-| Daylog: Mood & Energy | LGHDeveloper | Productivity | 10+ | EXACT name + near-clone features (mood, energy, deep-work hrs, correlations, streaks) |
-| Daylog Tracker | AinulMardhiyah | Health | n/c | EXACT name, wellness/pulse logging |
-| Daylog: Local | Asynk Tech | — | 10+ | Name only (unrelated) |
+### Winnable at ZERO installs *(measured — each has an unrated or sub-1k-install app in the top 8)*
+| Term | Evidence |
+|---|---|
+| `streak tracker` | top slots are all tiny indies (StreakUp, Habit Streak, Habit Pixel) |
+| `routine tracker` | SERP returned only 7 apps, one an irrelevant CRM |
+| `habit tracker offline` | after Loop/Leap it's indies (TheFor, HabitGenius, TickOff) |
+| `habit tracker no ads` | sub-1k-install devs ranking top 8 (Habstick, HabitTick) |
+| `private journal` | **"Private Offline Journal" ranks #2 with NO rating at all** |
+| `app usage tracker` | two micro-dev apps *literally named that* rank top 5 |
+| `daily time tracker` | **thinnest SERP measured — only 14 apps on page 1** |
+| `time log` | incumbents only 100K–1M, several one-dev apps |
+| `phone usage tracker` | unrated app at #4; an Indian dev at #5 |
 
-**The bigger problem:** on Play, "Pulse" semantically means heart-rate/BP — pulse-ish
-queries return cardiac apps (Pulse Log, WellPulse, FITIV Pulse…). The name mis-files us
-away from habit/mood tracking, and "Daylog" itself has ~zero search demand, wasting
-the highest-weight ASO field (the 30-char title). Trademark: no "Daylog" software
-mark found, but PULSE is registered in software services (Reg. #5235848) — risk low-moderate,
-though an identical title in Health & Fitness adds duplicate-title review risk.
+### Hopeless for now — do not chase *(measured)*
+`habit tracker` head (Loop 7.6M, HabitNow 6.9M) · `mood tracker`/`mood journal` (Daylio 10M+ #1)
+· `screen time` (StayFree 20M #1) · `focus timer`/`pomodoro` (Forest 48M, Focus To-Do 10M+)
+· `diary app` · `time tracker` (Toggl/Clockify B2B) · `digital wellbeing` (partly reachable at #3-6)
 
-**RECOMMENDATION: rename the store title; KEEP the pulse-line icon.**
-Cleanest candidates (collision-checked, none in our category):
-`Innerlog` (cleanest) · `Dayvault` (best privacy signal) · `Vitalog` · `Rhythmlog` · `Tallyday`
-Keep-Pulse options (small/unrelated collisions only): `SteadyPulse` · `Pulseboard` · `Pulsecraft`
-REJECTED (crowded): LifePulse, HabitPulse (5 apps), Cadence, Baseline, Pulse Log.
+### ⚠️ Two traps
+1. **Bare privacy words are dead ends.** `offline app` / `no internet app` return offline
+   **games**, music players and maps — zero trackers. Privacy words only work **appended to a
+   category noun**: "habit tracker offline", "journal offline", "private journal".
+2. **Exact-match titling is the mechanism.** Every winnable term above has a literal
+   title-match app in its top 5. That's why our title carries "Habit Tracker" verbatim.
 
-**If renamed, titles (≤30):** `Innerlog: Habit & Mood Log` (26) · `Innerlog: Habit, Mood, Focus` (28)
-**Short descs (≤80):** `Habit tracker, mood log, screen time & focus timer. Offline, no account.` (72)
+### Underrated terms worth adding *(sourced traffic/difficulty, Play US)*
+`mental health diary` 64 traffic / 37 difficulty · `emotional tracker` 64/38 · `emotional journal` 68/42
+— the only sourced terms with real traffic AND beatable difficulty. Work them into the long description.
 
-**Keyword economics:** "habit tracker" = highest value (~2k searches/day, moderate difficulty);
-"mood tracker" = saturated (Daylio owns it); **"screen time" = our genuine edge** (high intent,
-almost no habit/mood app has it); "offline"/"no account" = low volume, low difficulty, high convert.
-→ Put habit+mood in the TITLE, spend the SHORT DESC on screen time + offline + no account.
+### How real users phrase it *(verbatim from r/androidapps + alternativeto)*
+They stack negations, they never say "offline app":
+> "completely offline, no cloud, no ads" · "no registration required" · "privacy-focused"
+> "100% private" · "minimal, ad-free" · "stays on your device" · "no data collected"
+→ Use these exact phrasings in the long description (they're also what Ask Play reads).
 
-**Ranking levers that actually matter in 2026:** (1) retention/conversion now outweigh keywords —
-our streak+reminder loop is the lever; (2) free Play **Store Listing Experiments** to A/B icon +
-first 2 screenshots (lead with the screen-time analytics shot — no competitor shows it);
-(3) localize title+short desc into 5-8 languages (pt-BR, id, es, tr, hi far less contested).
+### Long-description rules
+- Mention **"habit tracker" 3–5×** naturally (Play fully indexes the 4000 chars; no keyword field).
+- Put **screen time + mood + habit** in the **first two lines** (that's what Ask Play summarises).
+- Work in the winnable long-tails verbatim: *habit tracker offline*, *streak tracker*,
+  *routine tracker*, *private journal*, *app usage tracker*, *daily time tracker*.
+- **Never** in title or description: "#1", "Best", "Top", "Popular", "free", "ad-free", "new",
+  "download now", emojis in the title, ALL CAPS, competitor names.
+
+### India context *(measured)*
+India = **22.1% of global Play installs**, and **IN SERPs are markedly softer** — unrated
+single-dev apps rank top-8 on head-ish terms; US payroll/parental incumbents (Opal, QuickBooks,
+aadhk) drop out. Indian devs are already winning this exact niche: **YourHour** (Mindefy, Indore,
+1M+), **Engross** (Indore, 500K+), and **Regain** (EpowerX, Bengaluru, **unfunded, inc. May 2023 →
+1M+ installs & 148K reviews in ~2 years**). Also: **Focus Friend** launched Aug 2025 → Play App of
+the Year → 1M+. **The category is not closed.**
+Monetization note: India skews ad-tolerant (YourHour runs ads+IAP at 4.2★/77K reviews); Android
+ARPU ~$72 vs iOS ~$138, so a subscription-only model won't carry an India-skewed base.
 
 ## Category
 **Productivity** (or Lifestyle). Do NOT pick "Health & Fitness" — on a *Personal*
