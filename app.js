@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v129';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v130';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -4370,7 +4370,11 @@ function renderSettings() {
   document.getElementById('screen-title').textContent = 'Settings';
   document.getElementById('screen-sub').textContent = 'Customize, reminders, data';
   const s = DB.settings();
-  const SHOW_SYNC = true;   // ENABLED for testing (Google Sheet sync/login). ⚠️ TODO: set back to false before PRODUCTION release.
+  // Sync UI hidden for production: the Data Safety answer is "collects no data", and a
+  // visible sync/login section would contradict it. Sync returns as the paid feature
+  // (Google Sign-In + pay-what-you-want) — see the wiki roadmap. Existing sync users'
+  // saved syncUrl keeps working silently; only the UI is hidden.
+  const SHOW_SYNC = false;
   if (!s.ntfyTopic) { s.ntfyTopic = 'dp-' + randomToken(); DB.saveSettings(s); }   // one secret topic per user
   document.getElementById('s-settings').innerHTML = `
     <div class="card" style="padding:6px 10px">
