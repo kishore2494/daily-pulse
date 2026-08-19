@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v128';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v129';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -28,6 +28,7 @@ function saveHabitCfg(cfg) { localStorage.setItem('dp.habitcfg', JSON.stringify(
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
   HABITS = habitCfg().filter(h => !h.hidden);
+  _goalMap = null;                                  // goal cache follows the cfg
   if (typeof actCfg === 'function') TIME_ACTS_ALL = actCfg();
   if (typeof deepCfg === 'function') DEEP_SECTIONS = cookDeep(deepCfg());
 }
@@ -387,11 +388,37 @@ function loggedStreak() {
    not read as a failure). Stored value: true = done, 0 = skipped, false/absent = missed.
    `0` is deliberately FALSY so every older truthy check still means "not done". */
 const H_DONE = 'done', H_SKIP = 'skip', H_MISS = 'miss';
+/* Quantity habits: a habit may carry goal {n, cmp:'atleast'|'atmost', unit}. Its day
+   value is then a NUMBER (the count), and done/miss comes from the comparison.
+   The goal map is cached — hVal runs inside per-day loops. */
+let _goalMap = null;
+function goalFor(key) {
+  if (!_goalMap) { _goalMap = {}; habitCfg().forEach(h => { if (h.goal && h.goal.n != null) _goalMap[h.key] = h.goal; }); }
+  return _goalMap[key] || null;
+}
 function hVal(entry, key) {
   if (!entry || !entry.habits || !(key in entry.habits)) return H_MISS;
   const v = entry.habits[key];
+  const g = goalFor(key);
+  if (g) {                                   // count semantics: 0 here means "zero logged", NOT skip
+    const n = typeof v === 'number' ? v : (v === true ? g.n : 0);
+    if (g.cmp === 'atmost') return n <= g.n ? H_DONE : H_MISS;
+    return n >= g.n ? H_DONE : H_MISS;
+  }
   if (v === 0) return H_SKIP;
   return v ? H_DONE : H_MISS;
+}
+/* Partial credit for the strength score (Loop's model): 2 of 3 glasses feeds 0.67
+   into the EMA instead of a flat fail. Booleans stay 0/1. */
+function hFrac(entry, key) {
+  const g = goalFor(key);
+  if (g && entry && entry.habits && (key in entry.habits)) {
+    const v = entry.habits[key];
+    const n = typeof v === 'number' ? v : (v === true ? g.n : 0);
+    if (g.cmp === 'atmost') return n <= g.n ? 1 : 0;
+    return Math.min(1, n / Math.max(1, g.n));
+  }
+  return hVal(entry, key) === H_DONE ? 1 : 0;
 }
 function habitStreak(key) {
   const e = DB.entries(); let n = 0; let cur = todayStr();
@@ -415,7 +442,7 @@ function habitStrength(key) {
   let s = 0, cur = dates[0], end = todayStr(), guard = 0;
   while (cur <= end && guard++ < 4000) {
     const v = hVal(e[cur], key);
-    if (v !== H_SKIP) s = s * mult + (v === H_DONE ? 1 : 0) * (1 - mult);
+    if (v !== H_SKIP) s = s * mult + hFrac(e[cur], key) * (1 - mult);
     cur = addDays(cur, 1);
   }
   return Math.round(s * 100);
@@ -686,8 +713,12 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w9',
+  v: 'w10',
   items: [
+    '🔢 <b>Counted habits</b> — give any habit a daily goal like “8 glasses of water” or “at most 2 coffees”. The chip becomes a tap counter. Set goals in Customize ▸ Checklist habits (🎯).',
+    '✨ <b>Habit ideas</b> — a browse-able gallery of starter habits on the Log (below your checklist), including cut-down goals.',
+    '📝 <b>Journal templates</b> — Gratitude, Brain dump, Highlights and Idea buttons above the journal box.',
+    '🎨 <b>Mood words now highlight</b> when picked — tap again to remove the tag.',
     '🎯 <b>Today ring</b> — one dial at the top of your Log that closes as you fill the day in. It buzzes when you complete it.',
     '🗓️ <b>Your year in pixels</b> — every day of the year as one coloured square, in Stats. Tap any pixel to open that day.',
     '🎨 <b>New: the mood grid</b> — one square sets your mood <i>and</i> your energy at once (pleasant or unpleasant, high or low energy). Then pick the word that fits — tapping it tags your entry so you can search it later.',
@@ -808,9 +839,11 @@ function moodMeterHTML() {
   if (m != null && en != null) {
     const key = mmQuad(m, en), q = MM_QUAD[key];
     head = `<b style="color:${q.c}">${q.label}</b> · mood ${m}, energy ${en}`;
-    words = `<div class="mm-words">${q.words.map(w =>
-      `<button type="button" class="mm-word" data-mmword="${w}" style="border-color:${q.c}66">${w}</button>`).join('')}</div>
-      <div class="hint mm-hint">Tap a word to tag today's entry with it</div>`;
+    const jl = (draft.journal || '').toLowerCase();
+    words = `<div class="mm-words">${q.words.map(w => { const sel = jl.includes('#' + w.toLowerCase());
+      return `<button type="button" class="mm-word ${sel ? 'on' : ''}" data-mmword="${w}"
+        style="${sel ? `background:${q.c};border-color:${q.c};color:#fff` : `border-color:${q.c}66`}">${w}</button>`; }).join('')}</div>
+      <div class="hint mm-hint">Tap a word to tag today's entry — tap again to remove</div>`;
   }
   return `<div class="card mm-card">
     <h2 class="h2-icon">${hicon('smile')}<span>How do you feel?</span>
@@ -844,10 +877,21 @@ document.addEventListener('click', (ev) => {
     const tag = '#' + wd.dataset.mmword.toLowerCase();
     const ta = document.querySelector('[data-txt=journal]');
     const cur = (draft.journal || '');
-    if (cur.includes(tag)) { toast('Already tagged ' + tag); return; }
-    draft.journal = cur ? cur.replace(/\s*$/, '') + ' ' + tag : tag;
+    if (cur.toLowerCase().includes(tag)) {
+      // toggle OFF: remove the tag (and the space before it) wherever it sits
+      const re = new RegExp('\\s*' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+      draft.journal = cur.replace(re, '').replace(/^\s+/, '');
+      toast('Removed ' + tag);
+    } else {
+      draft.journal = cur ? cur.replace(/\s*$/, '') + ' ' + tag : tag;
+      buzz(12); toast('Tagged ' + tag);
+    }
     if (ta) ta.value = draft.journal;
-    autosaveDraft(); toast('Tagged ' + tag);
+    autosaveDraft();
+    // re-render the card so the word chip's highlight matches the journal
+    const card = wd.closest('.mm-card');
+    if (card) { const tmp = document.createElement('div'); tmp.innerHTML = moodMeterHTML();
+      if (tmp.firstElementChild) card.replaceWith(tmp.firstElementChild); }
     return;
   }
 });
@@ -1030,21 +1074,185 @@ document.addEventListener('click', (ev) => {
     logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d)); }
 });
 
+/* One habit chip. Boolean habits: tap cycles done → skip → clear. Goal habits: the chip
+   is a counter — tap +1, − to undo, and (for "at most") a "0" to log a clean zero. */
+/* ---------- Habit ideas gallery ----------
+   TickTick ships 60+ presets and Routinery ships category packs because the empty
+   checklist is where new users stall. Curated, one tap to add, includes quantity and
+   cut-down ("at most") presets so those features are discoverable. */
+const HABIT_PRESETS = [
+  { cat: 'Health', items: [
+    { emoji: '💧', label: 'Water', goal: { n: 8, cmp: 'atleast', unit: 'glasses' } },
+    { emoji: '🚶', label: 'Walk' },
+    { emoji: '💪', label: 'Stretch' },
+    { emoji: '🦷', label: 'Floss' },
+    { emoji: '💊', label: 'Vitamins' },
+    { emoji: '☀️', label: 'Morning sunlight' },
+    { emoji: '😴', label: 'In bed by 11' },
+  ]},
+  { cat: 'Mind', items: [
+    { emoji: '📖', label: 'Read', goal: { n: 20, cmp: 'atleast', unit: 'pages' } },
+    { emoji: '🧠', label: 'Learn something new' },
+    { emoji: '🎧', label: 'Podcast or audiobook' },
+    { emoji: '🙏', label: 'Gratitude note' },
+  ]},
+  { cat: 'Productivity', items: [
+    { emoji: '🛏️', label: 'Make the bed' },
+    { emoji: '📵', label: 'No phone first hour' },
+    { emoji: '🧹', label: 'Tidy 10 minutes' },
+    { emoji: '💼', label: 'Deep work session', goal: { n: 2, cmp: 'atleast', unit: 'blocks' } },
+  ]},
+  { cat: 'Cut down', items: [
+    { emoji: '☕', label: 'Coffee', goal: { n: 2, cmp: 'atmost', unit: 'cups' } },
+    { emoji: '🍬', label: 'Sweets', goal: { n: 1, cmp: 'atmost', unit: 'treats' } },
+    { emoji: '🍺', label: 'Alcohol', goal: { n: 0, cmp: 'atmost', unit: 'drinks' } },
+    { emoji: '🚬', label: 'Cigarettes', goal: { n: 0, cmp: 'atmost', unit: '' } },
+    { emoji: '🛒', label: 'Impulse buys', goal: { n: 0, cmp: 'atmost', unit: '' } },
+  ]},
+];
+/* Goal editor for a checklist habit: turn it into a counted habit (at least / at most
+   N per day) or back into a simple tick. */
+function showGoalEditor(key) {
+  const h = habitCfg().find(x => x.key === key); if (!h) return;
+  const g = h.goal || { n: 8, cmp: 'atleast', unit: '' };
+  let m = document.getElementById('goal-editor');
+  if (!m) { m = document.createElement('div'); m.id = 'goal-editor'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="copy-box">
+    <h2 class="h2-icon">${hicon('target')}<span>Daily goal — ${escapeHtml(h.label)}</span></h2>
+    <div class="ge-row">
+      <select id="ge-cmp">
+        <option value="atleast" ${g.cmp !== 'atmost' ? 'selected' : ''}>At least</option>
+        <option value="atmost" ${g.cmp === 'atmost' ? 'selected' : ''}>At most</option>
+      </select>
+      <input type="number" id="ge-n" inputmode="numeric" min="0" max="999" value="${g.n}">
+      <input type="text" id="ge-unit" placeholder="unit (glasses…)" maxlength="14" value="${escapeHtml(g.unit || '')}">
+    </div>
+    <div class="hint" style="margin:8px 0 12px">“At least” turns the habit into a tap counter (done at the target). “At most” is for cutting down — done while you stay at or under it.</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="ge-save" style="flex:1">Save goal</button>
+      ${h.goal ? '<button class="btn btn-ghost" id="ge-remove">Remove</button>' : ''}
+      <button class="btn btn-ghost" id="ge-cancel">Cancel</button>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+  m.dataset.key = key;
+}
+document.addEventListener('click', (ev) => {
+  const gb = ev.target.closest && ev.target.closest('[data-cfg-goal]');
+  if (gb) { showGoalEditor(gb.dataset.cfgGoal); return; }
+  const m = document.getElementById('goal-editor');
+  if (!m || m.style.display === 'none') return;
+  if (ev.target.id === 'ge-cancel' || ev.target === m) { m.style.display = 'none'; return; }
+  if (ev.target.id === 'ge-save') {
+    const cfg = habitCfg(); const h = cfg.find(x => x.key === m.dataset.key); if (!h) return;
+    const n = Math.max(0, Math.min(999, parseInt(document.getElementById('ge-n').value, 10) || 0));
+    h.goal = { n, cmp: document.getElementById('ge-cmp').value === 'atmost' ? 'atmost' : 'atleast',
+               unit: (document.getElementById('ge-unit').value || '').trim() };
+    saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); toast('Goal saved 🎯'); return;
+  }
+  if (ev.target.id === 'ge-remove') {
+    const cfg = habitCfg(); const h = cfg.find(x => x.key === m.dataset.key); if (!h) return;
+    delete h.goal; saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); toast('Back to a simple tick'); return;
+  }
+});
+
+function showHabitGallery() {
+  let m = document.getElementById('habit-gallery');
+  if (!m) { m = document.createElement('div'); m.id = 'habit-gallery'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  const have = new Set(habitCfg().map(h => (h.label || '').toLowerCase()));
+  const goalTxt = g => g ? ` <span class="hg-goal">${g.cmp === 'atmost' ? '≤' : ''}${g.n}${g.unit ? ' ' + escapeHtml(g.unit) : ''}${g.cmp === 'atmost' ? '' : '/day'}</span>` : '';
+  m.innerHTML = `<div class="copy-box hg-box">
+    <h2 class="h2-icon">${hicon('flame')}<span>Habit ideas</span></h2>
+    <div class="hg-scroll">
+    ${HABIT_PRESETS.map(sec => `<div class="hg-cat">${escapeHtml(sec.cat)}</div>
+      ${sec.items.map(it => { const got = have.has(it.label.toLowerCase());
+        return `<div class="hg-row">
+          <span class="hg-emoji">${it.emoji}</span>
+          <span class="hg-lbl">${escapeHtml(it.label)}${goalTxt(it.goal)}</span>
+          <button class="btn btn-sm ${got ? 'btn-ghost' : 'btn-primary'}" data-hg-add="${escapeHtml(it.label)}" ${got ? 'disabled' : ''}>${got ? '✓ added' : 'Add'}</button>
+        </div>`; }).join('')}`).join('')}
+    </div>
+    <div class="hint" style="margin:8px 0 4px">Counted habits show a tap counter on your Log — “at most” ones are for cutting down.</div>
+    <button class="btn btn-ghost" id="hg-close" style="width:100%">Close</button>
+  </div>`;
+  m.style.display = 'flex';
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target && (ev.target.id === 'hg-close' || (ev.target.id === 'habit-gallery' && ev.target.classList.contains('copy-modal')))) {
+    const m = document.getElementById('habit-gallery'); if (m) m.style.display = 'none';
+    renderToday(); return;
+  }
+  if (ev.target && ev.target.id === 'log-habit-ideas') { showHabitGallery(); return; }
+  const ha = ev.target.closest && ev.target.closest('[data-hg-add]');
+  if (ha && !ha.disabled) {
+    const label = ha.dataset.hgAdd;
+    const preset = HABIT_PRESETS.flatMap(x => x.items).find(i => i.label === label); if (!preset) return;
+    const cfg = habitCfg();
+    const item = { key: 'ch' + Date.now(), emoji: preset.emoji, label: preset.label, custom: true };
+    if (preset.goal) item.goal = Object.assign({}, preset.goal);
+    cfg.push(item); saveHabitCfg(cfg);
+    buzz(14); ha.textContent = '✓ added'; ha.disabled = true; ha.classList.remove('btn-primary'); ha.classList.add('btn-ghost');
+    return;
+  }
+});
+
+/* Writing templates — Daylio sells these as premium; a prompt beats a blank box. */
+const JOURNAL_TEMPLATES = {
+  gratitude:  "Grateful for:\n1. \n2. \n3. ",
+  braindump:  "On my mind right now:\n- ",
+  highlights: "Best moment today: \nHardest moment: \nTomorrow I'm looking forward to: ",
+  idea:       "Idea: \nWhy it matters: \nFirst step: ",
+};
+document.addEventListener('click', (ev) => {
+  const jt = ev.target.closest && ev.target.closest('[data-jt]');
+  if (!jt) return;
+  const tpl = JOURNAL_TEMPLATES[jt.dataset.jt]; if (!tpl) return;
+  const ta = document.querySelector('[data-txt=journal]'); if (!ta) return;
+  const cur = (draft.journal || '').replace(/\s+$/, '');
+  draft.journal = cur ? cur + '\n\n' + tpl : tpl;
+  ta.value = draft.journal;
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  autosaveDraft();
+});
+
+function habitChipHTML(h) {
+  const g = goalFor(h.key);
+  const state = hVal(draft, h.key);
+  const on = state === H_DONE, sk = state === H_SKIP;
+  const st = habitStreak(h.key);
+  const style = h.color ? `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}` : '';
+  const hi = HABIT_ICON[h.key];
+  if (g) {
+    const raw = draft.habits ? draft.habits[h.key] : undefined;
+    const logged = raw != null;
+    const n = typeof raw === 'number' ? raw : (raw === true ? g.n : 0);
+    const over = g.cmp === 'atmost' && logged && n > g.n;
+    const prog = `${logged ? n : '–'}/${g.cmp === 'atmost' ? '≤' : ''}${g.n}${g.unit ? ' ' + escapeHtml(g.unit) : ''}`;
+    return `<div class="habit qty ${on?'on':''}${over?' over':''}" data-habit="${h.key}" style="${style}" title="Tap to add 1">
+      <span class="check">${over ? '!' : '✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
+      <span>${escapeHtml(h.label)}</span>
+      <span class="qty-prog">${prog}</span>
+      ${logged && n > 0 ? `<button type="button" class="qty-btn" data-habit-dec="${h.key}" aria-label="minus 1">−</button>` : ''}
+      ${!logged && g.cmp === 'atmost' ? `<button type="button" class="qty-btn qty-zero" data-habit-zero="${h.key}" title="none today">0</button>` : ''}
+    </div>`;
+  }
+  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="Tap: done → skip → clear">
+    <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
+    <span>${escapeHtml(h.label)}</span>${sk?'<span class="hint" style="margin-left:auto;font-size:11px">skipped</span>':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
+}
+function refreshHabitChip(key) {
+  const el = document.querySelector(`[data-habit="${key}"]`); if (!el) return;
+  const h = HABITS.find(x => x.key === key); if (!h) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = habitChipHTML(h);
+  el.replaceWith(tmp.firstElementChild);
+}
+
 function renderToday() {
   const isToday = logDate === todayStr();
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
   document.getElementById('screen-sub').textContent = isToday ? prettyDate(logDate) + ' · Daylog' : 'Editing past entry';
 
-  const habitChips = HABITS.map(h => {
-    const state = hVal(draft, h.key);
-    const on = state === H_DONE, sk = state === H_SKIP;
-    const st = habitStreak(h.key);
-    const style = h.color ? `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}` : '';
-    const hi = HABIT_ICON[h.key];
-    return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="Tap: done → skip → clear">
-      <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-      <span>${escapeHtml(h.label)}</span>${sk?'<span class="hint" style="margin-left:auto;font-size:11px">skipped</span>':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
-  }).join('');
+  const habitChips = HABITS.map(h => habitChipHTML(h)).join('');
 
   // Core fields come from the user's config (Customize ▸ Log screen fields)
   const core = coreCfg().filter(f => !f.hidden);
@@ -1072,6 +1280,12 @@ function renderToday() {
       <textarea data-txt="${f.key}" placeholder="...">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
   const journalF = core.find(f => f.type === 'journal');
   const journalHtml = journalF ? `<div class="field"><label>${escapeHtml(journalF.label)} <span class="hint">type or speak · use #tags to link</span></label>
+      <div class="jt-row">
+        <button type="button" class="jt-chip" data-jt="gratitude">🙏 Gratitude</button>
+        <button type="button" class="jt-chip" data-jt="braindump">🌙 Brain dump</button>
+        <button type="button" class="jt-chip" data-jt="highlights">⭐ Highlights</button>
+        <button type="button" class="jt-chip" data-jt="idea">💡 Idea</button>
+      </div>
       <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${escapeHtml(draft.journal || '')}</textarea>
       <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
 
@@ -1104,6 +1318,7 @@ function renderToday() {
         <input type="text" id="log-habit-input" placeholder="New checklist item… (e.g. 🌅 Wake at 6)" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="log-habit-add">Add</button>
       </div>
+      <button class="btn btn-ghost btn-sm" id="log-habit-ideas" style="margin-top:8px">✨ Browse habit ideas</button>
     </div>`,
     workout: () => `<div class="card">
       <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
@@ -1159,9 +1374,30 @@ document.addEventListener('click', (ev) => {
   const ck = ev.target.closest('[data-check]');
   if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o];
     ck.classList.toggle('on', !!draft[k][o]); autosaveDraft(); return; }
+  const hdec = ev.target.closest('[data-habit-dec]');
+  if (hdec && document.getElementById('s-today').classList.contains('on')) {
+    const k = hdec.dataset.habitDec, g = goalFor(k);
+    const cur = typeof draft.habits[k] === 'number' ? draft.habits[k] : (draft.habits[k] === true && g ? g.n : 0);
+    const next = cur - 1;
+    if (next <= 0 && g && g.cmp !== 'atmost') delete draft.habits[k]; else draft.habits[k] = Math.max(0, next);
+    refreshHabitChip(k); autosaveDraft(); return; }
+  const hz = ev.target.closest('[data-habit-zero]');
+  if (hz && document.getElementById('s-today').classList.contains('on')) {
+    const k = hz.dataset.habitZero;
+    draft.habits[k] = 0;                          // a clean zero — counts as done for "at most"
+    buzz(18); refreshHabitChip(k); autosaveDraft(); return; }
   const hb = ev.target.closest('[data-habit]');
   if (hb && document.getElementById('s-today').classList.contains('on')) {
     const k = hb.dataset.habit;
+    const g = goalFor(k);
+    if (g) {                                       // counter: every tap is +1
+      const was = hVal(draft, k);
+      const cur = typeof draft.habits[k] === 'number' ? draft.habits[k] : (draft.habits[k] === true ? g.n : 0);
+      draft.habits[k] = (k in draft.habits ? cur : 0) + 1;
+      const now = hVal(draft, k);
+      if (was !== H_DONE && now === H_DONE) buzz(24);
+      refreshHabitChip(k); autosaveDraft(); return;
+    }
     // cycle: (nothing) -> done -> skipped -> (nothing).  Skipped keeps the streak alive.
     const was = hVal(draft, k);
     if (was === H_DONE) { draft.habits[k] = 0; buzz(12); toast('Skipped — your streak is safe'); }
@@ -2311,7 +2547,7 @@ function polymath(e) {
   const s10 = v => { v = num(v); return v == null ? null : cl(v / 10 * 100); };          // higher = better
   const s10i = v => { v = num(v); return v == null ? null : cl((10 - v) / 9 * 100); };    // lower = better
   const tgt = (v, t) => { v = num(v); return v == null ? null : cl(v / t * 100); };
-  const hb = k => (e.habits && k in e.habits) ? (e.habits[k] ? 100 : 0) : null;
+  const hb = k => { const v = hVal(e, k); return v === H_SKIP ? null : (e.habits && k in e.habits ? (v === H_DONE ? 100 : 0) : null); };
   const mean = arr => { const a = arr.filter(x => x != null); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; };
 
   const body = mean([tgt(e.sleepHours, 8), s10(e.sleepQuality), s10(e.energy), tgt(e.water, 8), hb('workout'), hb('faceWorkout'), hb('healthyFood')]);
@@ -2322,7 +2558,10 @@ function polymath(e) {
   const topicsN = e.topics ? cl(Object.values(e.topics).filter(Boolean).length / 3 * 100) : null;
   const learning = mean([hb('reading'), hb('english'), hb('consumed'), hb('projectAI'), hb('projectSpace'), s10(e.retention), topicsN, tgt(e.codeLines, 100)]);
   let discipline = null;
-  if (e.habits && HABITS.length) discipline = cl(HABITS.filter(h => e.habits[h.key]).length / HABITS.length * 100);
+  if (e.habits && HABITS.length) {
+    const counted = HABITS.filter(h => hVal(e, h.key) !== H_SKIP);   // a skipped habit is neither
+    if (counted.length) discipline = cl(counted.filter(h => hVal(e, h.key) === H_DONE).length / counted.length * 100);
+  }
 
   const total = mean([body, mind, work, learning, discipline]);
   return total == null ? null : { total: Math.round(total), body, mind, work, learning, discipline };
@@ -2349,7 +2588,7 @@ function coachReview() {
   const wo = thisW.filter(d => e[d] && e[d].workoutsDone > 0).length;
   lines.push({ t: `💪 Worked out <b>${wo}/7</b> days`, k: wo >= 3 ? 'ok' : 'warn' });
   let strong = null, weak = null;
-  HABITS.forEach(h => { const c = thisW.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
+  HABITS.forEach(h => { const c = thisW.filter(d => hVal(e[d], h.key) === H_DONE).length;
     if (!strong || c > strong.c) strong = { h, c }; if (!weak || c < weak.c) weak = { h, c }; });
   if (strong && strong.c > 0) lines.push({ t: `Most consistent: <b>${strong.h.emoji} ${escapeHtml(strong.h.label)}</b> (${strong.c}/7)`, k: 'ok' });
   if (weak && weak.c < logged) lines.push({ t: `Needs love: <b>${weak.h.emoji} ${escapeHtml(weak.h.label)}</b> (${weak.c}/7)`, k: 'warn' });
@@ -2431,7 +2670,7 @@ function buildGraph() {
     add('d:' + d, 'day', prettyDate(d).replace(/^[A-Za-z]+,\s*/, ''));
     const en = e[d];
     if (en.topics) Object.keys(en.topics).filter(k => en.topics[k]).forEach(t => { add('t:' + t, 'topic', t); links.push(['d:' + d, 't:' + t]); });
-    if (en.habits) HABITS.forEach(h => { if (en.habits[h.key]) { add('h:' + h.key, 'habit', h.label); links.push(['d:' + d, 'h:' + h.key]); } });
+    if (en.habits) HABITS.forEach(h => { if (hVal(en, h.key) === H_DONE) { add('h:' + h.key, 'habit', h.label); links.push(['d:' + d, 'h:' + h.key]); } });
     // #tags from the day's journal/reflection
     [...new Set([].concat(extractTags(en.journal), extractTags(en.wentWell), extractTags(en.improve), extractTags(en.keyInsight)))]
       .forEach(tg => { add('g:' + tg, 'tag', tg); links.push(['d:' + d, 'g:' + tg]); });
@@ -2636,7 +2875,7 @@ function renderDash() {
 
   const last30 = []; for (let i = 29; i >= 0; i--) last30.push(addDays(todayStr(), -i));
   const habitBars = HABITS.map(h => {
-    const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
+    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
     const pct = Math.round(hits / 30 * 100);
     return `<div class="bar-row"><span class="name">${h.emoji} ${escapeHtml(h.label)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
@@ -3259,6 +3498,7 @@ function cfgRow(kind, item, deletable) {
     <input class="cfg-emoji" maxlength="4" data-cfg-emoji="${kind}:${id}" value="${escapeHtml(item.emoji || '')}">
     <input class="cfg-name" data-cfg-name="${kind}:${id}" value="${escapeHtml(item.label || item.name || '')}">
     <button class="cfg-color" data-cfg-color="${kind}:${id}" title="tap to change color" style="${color ? `background:${color};border-color:${color}` : ''}"></button>
+    ${kind === 'h' ? `<button class="cfg-goal ${item.goal ? 'on' : ''}" data-cfg-goal="${id}" title="daily count goal">${item.goal ? `${item.goal.cmp === 'atmost' ? '≤' : ''}${item.goal.n}` : '🎯'}</button>` : ''}
     <button class="cfg-hide" data-cfg-hide="${kind}:${id}" title="show / hide">${item.hidden ? '🙈' : '👁'}</button>
     ${deletable ? `<button class="del" data-cfg-del="${kind}:${id}">×</button>` : '<span style="width:23px"></span>'}
   </div>`;
@@ -3270,6 +3510,7 @@ const CUSTOM_PAGES = [
   { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'pin your bottom tabs + default' },
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
   { id: 'logsec', ico: '🧩', label: 'Log screen sections', sub: 'reorder or hide every card' },
+  { id: 'habits', ico: '✅', label: 'Checklist habits',    sub: 'emoji, name, colour, counts & goals' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
@@ -4429,7 +4670,7 @@ async function generatePdfReport() {
   const gym = DB.gym(); const workouts = Object.keys(gym).filter(d => Object.values(gym[d].done || {}).some(Boolean)).length;
   row('Workouts logged', workouts + ' · streak ' + gymStreak()); y += 8;
   heading('Habit consistency (last 30 days)');
-  HABITS.forEach(h => { const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length; row(h.label, Math.round(hits / 30 * 100) + '%  (' + hits + '/30)'); }); y += 8;
+  HABITS.forEach(h => { const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length; row(h.label, Math.round(hits / 30 * 100) + '%  (' + hits + '/30)'); }); y += 8;
   const tt = {}; last30.forEach(d => segsForDay(d).forEach(({ seg, a, b }) => { tt[seg.act] = (tt[seg.act] || 0) + (b - a); }));
   const actIds = Object.keys(tt).sort((x, z) => tt[z] - tt[x]);
   if (actIds.length) { heading('Where your time goes (last 30 days)'); actIds.forEach(id => row(actById(id).name, fmtDur(tt[id]) + ' · ' + fmtDur(tt[id] / 30) + '/day')); y += 8; }
@@ -4454,7 +4695,7 @@ function downloadReport() {
 
   // Habit consistency (last 30d)
   const habitRows = HABITS.map(h => {
-    const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
+    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
     return `<tr><td>${h.emoji} ${escapeHtml(h.label)}</td><td>${hits}/30</td><td>${Math.round(hits / 30 * 100)}%</td><td>🔥 ${habitStreak(h.key)}</td></tr>`;
   }).join('');
 
