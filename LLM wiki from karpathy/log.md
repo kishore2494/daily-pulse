@@ -1,3 +1,48 @@
+## 2026-08-19 (evening) — v122/v123: reward widgets + a reusable screenshot pipeline
+
+Direction from Kishore: stop adding plain form widgets, add ones that "hit dopamine".
+The mood grid worked because it *rewards* the tap; these follow the same rule.
+
+**Shipped:**
+- **Today ring** — one dial at the top of the Log showing how complete the day is
+  (`todayCompletion()` counts visible core fields + habits + any written reflection;
+  a skipped habit counts as answered). Re-rendered on every `autosaveDraft()`, so the arc
+  visibly moves as you fill the form, and it buzzes + turns green the moment it closes.
+- **Year in Pixels** — 12x31 mosaic of the year coloured by mood (Daylio's most-shared
+  screen). Tap a pixel to open that day. Hidden behind a hint until 10 days are logged,
+  because a 372-cell empty grid is a terrible first impression.
+- **`buzz()`** haptics on habit tick/skip and ring completion, opt-out `dp.hapticsOff`.
+  Never fires on routine taps — only completions.
+- Shared **`MOOD_SCALE` / `moodColor()`** so every reward widget speaks one colour language.
+
+**Bug found and fixed:** `navigateTo('today')` force-resets `logDate` to today (app.js
+~line 5255). The Year-in-Pixels deep link used it and so silently opened *today* instead of
+the tapped day. The other deep links (calendar, history, search) all use `show('today')`.
+**Rule: deep-linking to a past day must use `show()`, never `navigateTo()`.**
+
+### New: a reusable store-screenshot pipeline
+`tools/shots.sh <outdir>` + `tools/seed-store-data.js` + `tools/crop.py`. Replaces the
+ad-hoc process that had to be redone by hand every release. Three traps it encodes:
+1. `browse screenshot` captures the **full page**, so `position:fixed` chrome (`.topbar`,
+   `#nav`) renders at its document offset rather than pinned. The script hides both, measures
+   the target element's offset, shoots, then crops to 412x820.
+2. **The seed must produce positive insights.** An earlier seed generated "Workout drags your
+   mood by 1.0" — arithmetically true, unusable as store copy. Mood now depends on workouts
+   *today and yesterday*, which is both realistic and makes the next-day insight read well.
+3. **Don't seed an unbroken 400-day streak** — it reads as fake. The seed leaves one gap
+   ~186 days back, which is one barely-visible grey pixel in the mosaic.
+
+Empty states also have to be seeded away: the first run showed "nothing synced yet" for
+screen time and "Nothing running" for the timeline, so the seed now fills `dp.health`,
+`dp.timelog` and `dp.pomohist` too.
+
+**Store assets:** 8 phone shots (412x820, ratio 1.990 — inside Play's 2:1 cap) reordered so
+the three most distinctive lead: today ring -> year in pixels -> insights. 3 tablet shots at
+1920x1200. Old set archived in `store/assets/.old-screenshots-v121/`.
+
+**Verified:** 55/55 unit tests, all 17 screens error-free, and on-device (POCO, MIUI, system
+dark mode ON) the ring, mood grid and year mosaic all render clean with no logcat errors.
+
 ## 2026-08-19 (later) — v121: the mood grid
 
 Shipped the top-ranked item from `competitors.md`: **How We Feel's Mood Meter**. A 4x4
