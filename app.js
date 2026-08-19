@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v119';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v120';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -383,11 +383,42 @@ function loggedStreak() {
   while (e[cur]) { n++; cur = addDays(cur, -1); }
   return n;
 }
+/* Habits are THREE-state, not two (borrowed from Loop/HabitNow — a rest day should
+   not read as a failure). Stored value: true = done, 0 = skipped, false/absent = missed.
+   `0` is deliberately FALSY so every older truthy check still means "not done". */
+const H_DONE = 'done', H_SKIP = 'skip', H_MISS = 'miss';
+function hVal(entry, key) {
+  if (!entry || !entry.habits || !(key in entry.habits)) return H_MISS;
+  const v = entry.habits[key];
+  if (v === 0) return H_SKIP;
+  return v ? H_DONE : H_MISS;
+}
 function habitStreak(key) {
   const e = DB.entries(); let n = 0; let cur = todayStr();
-  if (!(e[cur] && e[cur].habits && e[cur].habits[key])) cur = addDays(cur, -1);
-  while (e[cur] && e[cur].habits && e[cur].habits[key]) { n++; cur = addDays(cur, -1); }
+  // today may be unlogged without breaking the run
+  if (hVal(e[cur], key) !== H_DONE) cur = addDays(cur, -1);
+  for (;;) {
+    const v = hVal(e[cur], key);
+    if (v === H_DONE) { n++; cur = addDays(cur, -1); continue; }
+    if (v === H_SKIP) { cur = addDays(cur, -1); continue; }   // skips are streak-neutral
+    break;
+  }
   return n;
+}
+/* Habit strength 0-100: exponential moving average with a 13-day half-life for a daily
+   habit (Loop Habit Tracker's model). One perfect day can't max it and one miss can't
+   zero it — it measures the trend, not the last tick. Skipped days are passed over. */
+function habitStrength(key) {
+  const e = DB.entries(); const dates = Object.keys(e).sort();
+  if (!dates.length) return 0;
+  const mult = Math.pow(0.5, 1 / 13);
+  let s = 0, cur = dates[0], end = todayStr(), guard = 0;
+  while (cur <= end && guard++ < 4000) {
+    const v = hVal(e[cur], key);
+    if (v !== H_SKIP) s = s * mult + (v === H_DONE ? 1 : 0) * (1 - mult);
+    cur = addDays(cur, 1);
+  }
+  return Math.round(s * 100);
 }
 
 /* ---------- Sync to Google Sheet (optional) ---------- */
@@ -655,8 +686,13 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w6',
+  v: 'w7',
   items: [
+    '⤳ <b>Skip a day without losing your streak</b> — tap a habit twice to mark it skipped. Rest days and sick days no longer count as failures.',
+    '💪 <b>Habit strength score</b> — a 0-100 trend on each habit (Habits screen). One miss can\'t zero it; one good day can\'t max it.',
+    '🕰️ <b>“On this day”</b> — your entry from a week, a month or a year ago, right at the top of your Log. Tap to open it.',
+    '🔮 <b>Next-day mood effects</b> — Stats now shows how a habit today changes your mood <i>tomorrow</i>, with a confidence rating.',
+    '🌗 <b>Theme follows your phone</b> — new Auto mode (Settings ▸ Theme), and light mode no longer looks washed out on MIUI/Xiaomi.',
     '🎓 <b>Guided tour</b> — a 60-second walkthrough of everything (Settings ▸ Take the app tour)',
     '🧠 <b>Your patterns</b> — Stats now discovers YOUR sleep sweet spot, which habit actually lifts your mood, your peak focus hours & more',
     '🕸️ <b>Explore your Connections graph</b> — drag to pan, pinch to zoom',
@@ -689,19 +725,64 @@ document.addEventListener('click', (ev) => {
   if (ev.target.closest && ev.target.closest('#wn-tour')) { done(); show('today'); startTour(); return; }
 });
 function openToday() { loadDraft(); renderToday(); }
+/* ---------- Throwback ("On this day") ----------
+   Journey paywalls this and Daylio ships it inline; it's the cheapest retention
+   mechanic there is because it makes old entries pay rent. Purely local. */
+function throwbackHTML() {
+  if (logDate !== todayStr()) return '';                       // only on today
+  if (localStorage.getItem('dp.throwbackOff') === '1') return '';
+  const e = DB.entries();
+  const marks = [
+    { d: addDays(logDate, -7),   label: 'A week ago' },
+    { d: addDays(logDate, -30),  label: 'A month ago' },
+    { d: addDays(logDate, -90),  label: '3 months ago' },
+    { d: addDays(logDate, -365), label: 'A year ago' },
+  ];
+  const hits = marks.filter(m => e[m.d]).slice(0, 2);
+  if (!hits.length) return '';
+  const rows = hits.map(m => {
+    const en = e[m.d];
+    const bits = [];
+    if (en.mood != null) bits.push(`mood <b>${en.mood}</b>`);
+    if (en.energy != null) bits.push(`energy <b>${en.energy}</b>`);
+    if (en.sleepHours != null) bits.push(`<b>${en.sleepHours}h</b> sleep`);
+    const doneN = en.habits ? Object.keys(en.habits).filter(k => en.habits[k] === true).length : 0;
+    if (doneN) bits.push(`<b>${doneN}</b> habit${doneN > 1 ? 's' : ''}`);
+    const jr = (en.journal || '').trim().replace(/\s+/g, ' ');
+    const quote = jr ? `<div class="tb-quote">“${escapeHtml(jr.slice(0, 140))}${jr.length > 140 ? '…' : ''}”</div>` : '';
+    return `<div class="tb-row" data-throwback="${m.d}">
+      <div class="tb-when">${m.label}<span class="hint"> · ${prettyDate(m.d)}</span></div>
+      ${bits.length ? `<div class="tb-stats">${bits.join(' · ')}</div>` : ''}
+      ${quote}
+    </div>`;
+  }).join('');
+  return `<div class="card tb-card">
+    <h2 class="h2-icon">${hicon('history')}<span>On this day</span>
+      <span class="hint" style="margin-left:auto"><a href="#" id="tb-hide">hide</a></span></h2>
+    ${rows}
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target && ev.target.id === 'tb-hide') { ev.preventDefault();
+    localStorage.setItem('dp.throwbackOff', '1'); toast('“On this day” hidden — re-enable in Settings'); renderToday(); return; }
+  const tb = ev.target.closest && ev.target.closest('[data-throwback]');
+  if (tb) { logDate = tb.dataset.throwback; loadDraft(); renderToday(); toast('Opened ' + prettyDate(logDate)); }
+});
+
 function renderToday() {
   const isToday = logDate === todayStr();
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
   document.getElementById('screen-sub').textContent = isToday ? prettyDate(logDate) + ' · Daylog' : 'Editing past entry';
 
   const habitChips = HABITS.map(h => {
-    const on = !!draft.habits[h.key];
+    const state = hVal(draft, h.key);
+    const on = state === H_DONE, sk = state === H_SKIP;
     const st = habitStreak(h.key);
     const style = h.color ? `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}` : '';
     const hi = HABIT_ICON[h.key];
-    return `<div class="habit ${on?'on':''}" data-habit="${h.key}" style="${style}">
-      <span class="check">✓</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-      <span>${escapeHtml(h.label)}</span>${st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:''}</div>`;
+    return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="Tap: done → skip → clear">
+      <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
+      <span>${escapeHtml(h.label)}</span>${sk?'<span class="hint" style="margin-left:auto;font-size:11px">skipped</span>':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
   }).join('');
 
   // Core fields come from the user's config (Customize ▸ Log screen fields)
@@ -735,6 +816,7 @@ function renderToday() {
 
   document.getElementById('s-today').innerHTML = `
     ${whatsNewHTML()}
+    ${throwbackHTML()}
     <div class="card">
       <div class="field"><label>Date</label>
         <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
@@ -806,8 +888,16 @@ document.addEventListener('click', (ev) => {
   if (ck) { const k = ck.dataset.check, o = ck.dataset.opt; draft[k] = draft[k] || {}; draft[k][o] = !draft[k][o];
     ck.classList.toggle('on', !!draft[k][o]); autosaveDraft(); return; }
   const hb = ev.target.closest('[data-habit]');
-  if (hb && document.getElementById('s-today').classList.contains('on')) { const k = hb.dataset.habit; draft.habits[k] = !draft.habits[k];
-    const on = !!draft.habits[k]; hb.classList.toggle('on', on);
+  if (hb && document.getElementById('s-today').classList.contains('on')) {
+    const k = hb.dataset.habit;
+    // cycle: (nothing) -> done -> skipped -> (nothing).  Skipped keeps the streak alive.
+    const was = hVal(draft, k);
+    if (was === H_DONE) { draft.habits[k] = 0; toast('Skipped — your streak is safe'); }
+    else if (was === H_SKIP) { delete draft.habits[k]; }
+    else { draft.habits[k] = true; }
+    const now = hVal(draft, k), on = now === H_DONE, sk = now === H_SKIP;
+    hb.classList.toggle('on', on); hb.classList.toggle('skip', sk);
+    const ckEl = hb.querySelector('.check'); if (ckEl) ckEl.textContent = sk ? '⤳' : '✓';
     const h = HABITS.find(x => x.key === k);
     if (h && h.color) hb.setAttribute('style', `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}`);
     autosaveDraft(); return; }
@@ -1739,16 +1829,25 @@ function renderHabits() {
   const cards = HABITS.map(h => {
     const st = habitStreak(h.key);
     const last30 = days.slice(-30);
-    const hits = last30.filter(d => e[d] && e[d].habits && e[d].habits[h.key]).length;
-    const pct = Math.round(hits / 30 * 100);
+    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
+    const skipped = last30.filter(d => hVal(e[d], h.key) === H_SKIP).length;
+    const denom = Math.max(1, 30 - skipped);          // skipped days don't count against you
+    const pct = Math.round(hits / denom * 100);
+    const str = habitStrength(h.key);
     const heat = days.map(d => {
-      const on = e[d] && e[d].habits && e[d].habits[h.key];
-      return `<div class="cell" title="${d}" style="background:${on?'var(--good)':'var(--bg-input)'}"></div>`;
+      const v = hVal(e[d], h.key);
+      const bg = v === H_DONE ? 'var(--good)' : v === H_SKIP ? '#a9b0c9' : 'var(--bg-input)';
+      return `<div class="cell" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
     }).join('');
     return `<div class="card">
       <h2>${h.emoji} ${escapeHtml(h.label)}
-        <span class="hint" style="float:right">🔥 ${st} day${st===1?'':'s'} · ${pct}% / 30d</span></h2>
+        <span class="hint" style="float:right">🔥 ${st} day${st===1?'':'s'} · ${pct}% / 30d${skipped?` · ${skipped} skipped`:''}</span></h2>
       <div class="heat">${heat}</div>
+      <div class="strength-row" title="Weighted 13-day trend — one miss won't zero it, one day won't max it">
+        <span class="hint">Strength</span>
+        <div class="strength-bar"><i style="width:${str}%"></i></div>
+        <b>${str}</b>
+      </div>
     </div>`;
   }).join('');
   document.getElementById('s-habits').innerHTML = cards;
@@ -1827,9 +1926,36 @@ function computePatterns() {
   // 2 — which habit ACTUALLY moves your mood (biggest lift, both sides sampled)
   const lifts = [];
   HABITS.forEach(h => { const on = [], off = [];
-    dates.forEach(d => { const m = num(d, 'mood'); if (m == null || !e[d].habits) return; (e[d].habits[h.key] ? on : off).push(m); });
+    dates.forEach(d => { const m = num(d, 'mood'); if (m == null || !e[d].habits) return;
+      const v = hVal(e[d], h.key); if (v === H_SKIP) return;          // a rest day is neither
+      (v === H_DONE ? on : off).push(m); });
     if (on.length >= 3 && off.length >= 3) lifts.push({ h, lift: avg(on) - avg(off), n: on.length + off.length }); });
   lifts.sort((a, b) => Math.abs(b.lift) - Math.abs(a.lift));
+
+  // 2b — NEXT-DAY influence. Daylio's most-loved stat: "how it makes you feel tomorrow".
+  // Same-day mood can be reverse-caused (good mood → you work out); the day after can't be.
+  const nextDay = [];
+  HABITS.forEach(h => { const after = [], other = [];
+    dates.forEach(d => {
+      const v = hVal(e[d], h.key); if (v === H_SKIP) return;
+      const m = num(addDays(d, 1), 'mood'); if (m == null) return;   // tomorrow's mood
+      (v === H_DONE ? after : other).push(m);
+    });
+    if (after.length >= 4 && other.length >= 4) {
+      const n = after.length + other.length;
+      // confidence from sample size AND effect size relative to spread
+      const sd = dpStd(after.concat(other)) || 1;
+      const d0 = Math.abs(avg(after) - avg(other)) / sd;
+      const conf = (n >= 30 && d0 >= 0.5) ? 'High' : (n >= 14 && d0 >= 0.3) ? 'Medium' : 'Low';
+      nextDay.push({ h, lift: avg(after) - avg(other), n, conf });
+    } });
+  nextDay.sort((a, b) => Math.abs(b.lift) - Math.abs(a.lift));
+  if (nextDay.length && Math.abs(nextDay[0].lift) >= 0.4 && nextDay[0].conf !== 'Low') {
+    const N = nextDay[0];
+    out.push({ ico: 'trending', w: 5,
+      head: `${escapeHtml(N.h.label)} today → mood ${N.lift > 0 ? '+' : '−'}${Math.abs(N.lift).toFixed(1)} tomorrow`,
+      sub: `The day <i>after</i> ${escapeHtml(N.h.label)}, your mood averages <b>${N.lift > 0 ? '+' : '−'}${Math.abs(N.lift).toFixed(1)}</b> vs other days (${N.n} days · ${N.conf.toLowerCase()} confidence). Next-day effects can't be explained by mood causing the habit.` });
+  }
   if (lifts.length && Math.abs(lifts[0].lift) >= 0.5) { const L = lifts[0];
     out.push({ ico: 'flame', w: 5, head: `${escapeHtml(L.h.label)} ${L.lift > 0 ? 'lifts' : 'drags'} your mood by ${Math.abs(L.lift).toFixed(1)}`,
       sub: `Across ${L.n} days, your mood runs <b>${L.lift > 0 ? '+' : '−'}${Math.abs(L.lift).toFixed(1)}</b> on ${escapeHtml(L.h.label)} days. ${L.lift > 0 ? 'Protect this habit.' : 'Worth a rethink.'}` }); }
