@@ -1,0 +1,35 @@
+# Deploy the site with the GitHub Actions Pages pipeline instead of the legacy builder.
+# Why: on 2026-08-19 the legacy builder errored on three consecutive commits and then
+# wedged at "building" for 20+ minutes across many re-queues, with GitHub reporting Pages
+# as fully operational. This pipeline gives real logs and a re-runnable job.
+# The site is plain static files (there is a .nojekyll), so we just upload the repo.
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false      # never cancel a deploy half-way
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
