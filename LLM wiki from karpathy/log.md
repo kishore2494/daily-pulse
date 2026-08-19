@@ -1,3 +1,30 @@
+## 2026-08-19 (late) — v124: Year in Pixels made compact + release versions now bump together
+
+**Kishore's feedback: the pixel grid was too big.** It was. Transposed it from 12 columns x
+31 rows to **31 columns (days) x 12 rows (months)** with month labels down the left, and set
+a fixed 9px cell height instead of `aspect-ratio`. The card went **1050px -> 234px**, and the
+whole Stats overview (year mosaic + stat tiles + insights) now fits one screen. It also reads
+like a calendar, which the tall version never did.
+
+### The cache bug this uncovered — read this before shipping a CSS-only change
+The compact grid was live on Pages but the phone kept rendering the old square cells, even
+after force-stop + clearing `cache/WebView` + deleting the service-worker directory. Root
+cause: `index.html` linked `styles.css` and `app.js` **unversioned**, so the WebView HTTP
+cache and the Pages edge cache could both serve stale CSS indefinitely. Bumping
+`APP_VERSION` and the SW `CACHE` key does nothing for that — neither changes the asset URL.
+
+**Fix, now permanent:** `tools/bump.sh [n]` bumps all three in lockstep —
+`app.js APP_VERSION`, `sw.js CACHE`, and the `?v=` query on every local css/js tag in
+`index.html`. **Use it for every release; never hand-edit those three.**
+
+Second-order fix: the service worker precaches assets *unversioned*, so a request for
+`styles.css?v=124` would have missed the cache and an offline launch would have rendered
+unstyled. `sw.js` now matches with `{ ignoreSearch: true }`.
+
+**Verified:** card 234px, 12 rows x 31 cells, 230 pixels coloured, `styles.css?v=124`
+confirmed as the loaded stylesheet, deep-link still opens the tapped day, 55/55 tests,
+all 17 screens error-free. Store screenshots regenerated for the new layout.
+
 ## 2026-08-19 (evening) — v122/v123: reward widgets + a reusable screenshot pipeline
 
 Direction from Kishore: stop adding plain form widgets, add ones that "hit dopamine".

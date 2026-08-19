@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v123';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v124';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -927,24 +927,27 @@ function refreshTodayRing() {
 function yearPixelsHTML(year) {
   const e = DB.entries();
   const y = year || new Date().getFullYear();
-  const MON = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-  let logged = 0, sum = 0;
-  let grid = '';
-  for (let day = 1; day <= 31; day++) {
-    for (let mon = 0; mon < 12; mon++) {
-      const ds = `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let logged = 0, sum = 0, rows = '';
+  // 31 columns (days) x 12 rows (months) — reads like a calendar and stays compact.
+  // The other way round (12 x 31) is 700px tall on a phone, which swamps the screen.
+  for (let mon = 0; mon < 12; mon++) {
+    let cells = '';
+    for (let day = 1; day <= 31; day++) {
       const valid = new Date(y, mon, day).getMonth() === mon;
-      if (!valid) { grid += '<i class="yp-x"></i>'; continue; }
+      if (!valid) { cells += '<i class="yp-x"></i>'; continue; }
+      const ds = `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const en = e[ds];
       const m = en && en.mood != null && en.mood !== '' ? +en.mood : null;
       if (m != null) { logged++; sum += m; }
       const col = moodColor(m);
-      grid += `<i class="yp${m != null ? ' yp-on' : ''}" data-yp="${ds}"
+      cells += `<i class="yp${m != null ? ' yp-on' : ''}" data-yp="${ds}"
         style="${col ? `background:${col}` : ''}" title="${ds}${m != null ? ' · mood ' + m : ''}"></i>`;
     }
+    rows += `<div class="yp-row"><span class="yp-mon">${MON[mon]}</span><div class="yp-days">${cells}</div></div>`;
   }
   const avgM = logged ? (sum / logged).toFixed(1) : '–';
-  // a 372-cell empty grid is a bad first impression; wait until it has something to show
+  // a mostly-empty mosaic is a bad first impression; wait until it has something to show
   if (logged < 10) {
     return `<div class="card yp-card">
       <h2 class="h2-icon">${hicon('calendar')}<span>${y} in pixels</span></h2>
@@ -954,8 +957,7 @@ function yearPixelsHTML(year) {
   return `<div class="card yp-card">
     <h2 class="h2-icon">${hicon('calendar')}<span>${y} in pixels</span>
       <span class="hint" style="margin-left:auto">${logged} days · avg ${avgM}</span></h2>
-    <div class="yp-months">${MON.map(m => `<span>${m}</span>`).join('')}</div>
-    <div class="yp-grid">${grid}</div>
+    <div class="yp-grid">${rows}</div>
     <div class="yp-legend"><span class="hint">low</span>
       ${MOOD_SCALE.map(c => `<i style="background:${c}"></i>`).join('')}
       <span class="hint">high</span></div>
