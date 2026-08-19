@@ -36,3 +36,41 @@
 
 ## Not part of the app
 `daily-pulse-factory/` + the `focus-tracker-*.html` / comparison pages / `factory-data.json` inside `daily-pulse-app/` are a **programmatic-SEO landing-page generator** (separate marketing work, ~128 pages, n8n drip). Harmless to the app; don't confuse them with app code.
+
+
+## MIUI / Xiaomi dark mode washes out a light WebView (RESOLVED 2026-08-19)
+
+**Symptom:** with system dark mode ON, the whole app rendered under a uniform grey wash —
+background `(165,167,170)` instead of `(243,245,250)`, modals included. With system dark
+mode OFF it was perfectly clean. Ruled out first: JS errors (logcat clean), a stuck modal
+(Back showed the exit dialog, so nothing was open), low brightness (raised 37→255, no
+change), and a stray `values-night` directory (none exists).
+
+**Two real theme defects, both introduced in build 106 during splash work:**
+1. `AppTheme` had no `android:forceDarkAllowed` opt-out at all.
+2. `AppTheme.NoActionBarLaunch` inherited `Theme.AppCompat.NoActionBar` — the **DARK**
+   variant — and `AppTheme.NoActionBar` inherited `DayNight`.
+
+**Fix** (`android/app/src/main/res/values/styles.xml`): every parent → `Theme.AppCompat.Light.*`,
+and `<item name="android:forceDarkAllowed" tools:targetApi="q">false</item>` on all three
+styles. Plus `WebSettings.setForceDark(FORCE_DARK_OFF)` in `MainActivity.onCreate` for
+API 29-32. Shipped as **108/68**.
+
+**The trap that cost the most time:** after installing 108 the app STILL looked dimmed.
+It was a stale WebView render. The fix only shows after a genuine cold start with the
+WebView HTTP cache cleared:
+
+```
+adb shell am force-stop io.github.kishore2494.dailypulse
+adb shell "run-as io.github.kishore2494.dailypulse rm -rf /data/data/io.github.kishore2494.dailypulse/cache/WebView"
+adb shell monkey -p io.github.kishore2494.dailypulse -c android.intent.category.LAUNCHER 1
+```
+
+Verified afterwards: clean `(243,245,250)` with `cmd uimode night yes`, stable across a
+dark-mode off→on flip and a cold restart.
+
+**Belt and braces (v120):** the default theme is now **Auto** — it follows
+`prefers-color-scheme`, so if a user's phone is dark we render our own navy theme and the
+OEM has nothing to force-darken. Note that because the native theme is now `Light` with
+force-dark off, the WebView reports `prefers-color-scheme: light` even under MIUI dark
+mode, so Auto resolves to light there; users who want dark pick it explicitly.
