@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v122';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v123';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -944,6 +944,13 @@ function yearPixelsHTML(year) {
     }
   }
   const avgM = logged ? (sum / logged).toFixed(1) : '–';
+  // a 372-cell empty grid is a bad first impression; wait until it has something to show
+  if (logged < 10) {
+    return `<div class="card yp-card">
+      <h2 class="h2-icon">${hicon('calendar')}<span>${y} in pixels</span></h2>
+      <div class="hint">Log ${10 - logged} more day${10 - logged === 1 ? '' : 's'} and your whole year appears here as one picture — every day a colour, from your mood.</div>
+    </div>`;
+  }
   return `<div class="card yp-card">
     <h2 class="h2-icon">${hicon('calendar')}<span>${y} in pixels</span>
       <span class="hint" style="margin-left:auto">${logged} days · avg ${avgM}</span></h2>
