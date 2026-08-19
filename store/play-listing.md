@@ -144,23 +144,38 @@ Monetization note: India skews ad-tolerant (YourHour runs ads+IAP at 4.2★/77K 
 ARPU ~$72 vs iOS ~$138, so a subscription-only model won't carry an India-skewed base.
 
 
-## 📸 SCREENSHOT UPLOAD ORDER (regenerated 2026-08-19 with the Daylog name)
-Play weights the **first two** most for conversion — they lead with the differentiators:
-| # | File | What it sells |
+## 📸 SCREENSHOT UPLOAD ORDER (regenerated 2026-08-19 for v122)
+
+Upload in exactly this order — Play shows the first 3 in search results, so the three
+strongest and most *distinctive* shots go first. All are 412x820 (ratio 1.990, inside
+Play's 2:1 cap). Regenerate any time with `tools/shots.sh`.
+
+| # | File | Why it's in this slot |
 |---|---|---|
-| 1 | `screenshot-1-insights.png` | **Your patterns** — 6 real mined insights (sleep sweet spot, workout lifts mood +2.0, heavy screen days cost −2.0, natural night, peak focus window, sleep consistency). No competitor shows this. |
-| 2 | `screenshot-2-screentime.png` | **Health tab** — screen time + steps charts and 6 averages. Our uncontested lane. |
-| 3 | `screenshot-3-log.png` | Daily log: mood/energy, bed→wake, auto task counts, tracked-time chips, 🔥24 streak |
-| 4 | `screenshot-4-timeline.png` | The 24-hour time tracker |
-| 5 | `screenshot-5-streak.png` | Streak celebration (emotional hook) |
-| 6 | `screenshot-6-menu.png` | Breadth — everything in the menu |
+| 1 | `screenshot-1-today.png` | The reward loop in one frame: the completion ring at 100%, the logging streak, and "On this day". Shows what using the app feels like, not what it stores. |
+| 2 | `screenshot-2-year.png` | **Year in pixels.** The single most scroll-stopping image we have — a whole year of moods as one mosaic. Nothing else in the results page looks like it. |
+| 3 | `screenshot-3-insights.png` | Six real on-device insights (sleep sweet spot, next-day mood effect, screen-time cost, peak focus window). This is the actual differentiator vs every other tracker. |
+| 4 | `screenshot-4-mood-grid.png` | The mood grid + emotion vocabulary — one tap sets mood and energy. |
+| 5 | `screenshot-5-habits.png` | Habit strength scores, 90-day heatmaps, and skipped days shown as skipped. |
+| 6 | `screenshot-6-screentime.png` | Automatic screen time, steps and sleep charts — proves the "tracked for you" claim. |
+| 7 | `screenshot-7-timeline.png` | The one-tap time tracker as a 24-hour colour timeline. |
+| 8 | `screenshot-8-menu.png` | Breadth: gym, notes, plans, waves, calendar, search, history. |
 
-All 412×820 (ratio 1.99, inside Play's ≤2:1 limit). **Dark-theme alternates** of all six are in
-`store/assets/device-shots/dark/` — use them in a free **Play Store Listing Experiment** to A/B
-light vs dark (conversion rate is a direct ranking input).
+**Tablets:** upload the SAME three (`tablet-1..3.png`, 1920x1200) to BOTH the 7-inch and
+10-inch slots.
 
-✅ **Feature graphic regenerated** with the Daylog name + keyword tagline ("Habits, mood & screen time — all on your phone") and the pulse mark kept for icon continuity. Source: `tools/feature-graphic.html` (edit + re-screenshot at 1024×500 to change it).
+**Feature graphic:** `feature-graphic.png` (1024x500).
 
+Old shots are kept in `store/assets/.old-screenshots-v121/`.
+
+**How they're generated** — `tools/shots.sh <outdir>` drives headless Chromium via gstack
+`browse`, seeded by `tools/seed-store-data.js`. Two things that bite every time:
+1. `browse screenshot` captures the **full page**, so `position:fixed` chrome (`.topbar`,
+   `#nav`) renders at its document offset instead of pinned. The script hides both, measures
+   the target element's offset, then crops with `tools/crop.py`.
+2. The seed must produce **positive** insights. An earlier seed generated "Workout drags
+   your mood by 1.0" — true for that synthetic data, terrible as store copy. The seed now
+   makes mood depend on workouts *today and yesterday*, which is both realistic and reads well.
 
 ## ❓ "Daily Logs" — considered and rejected as a NAME (checked live 2026-08-19)
 Searching **"daily log" / "daily logs"** on Play returns the journal GIANTS:
