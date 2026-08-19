@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v118';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v119';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2876,7 +2876,7 @@ const CUSTOM_PAGES = [
 function cfgSectionHTML(page) {
   if (page === 'theme') {
     const curAccent = DB.settings().accent || 'indigo';
-    const curMode = DB.settings().mode || 'light';
+    const curMode = DB.settings().mode || 'auto';
     return `<div class="card"><h2>🌗 Appearance</h2>
       <div class="mode-row">${THEME_MODES.map(m => `<button class="mode-btn ${m.id === curMode ? 'on' : ''}" data-thememode="${m.id}">
         <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>
@@ -4855,12 +4855,22 @@ const THEMES = [
   { id: 'red',    a: '#f87171', b: '#fb7185' },
 ];
 const THEME_MODES = [
-  { id: 'light', label: 'Light (default)', chip: '#f4f6fb' },
+  { id: 'auto',  label: 'Auto (system)',  chip: 'linear-gradient(135deg,#f4f6fb 50%,#141c2e 50%)' },
+  { id: 'light', label: 'Light',           chip: '#f4f6fb' },
   { id: 'navy',  label: 'Dark navy',       chip: '#141c2e' },
   { id: 'black', label: 'Black',           chip: '#000000' },
 ];
+try {
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if ((DB.settings().mode || 'auto') === 'auto') { applyTheme(); const on = document.querySelector('.screen.on'); if (on) { const k = on.id.replace('s-',''); if (RENDER[k]) RENDER[k](); } }
+  });
+} catch (e) {}
 function applyTheme() {
-  const _mode = DB.settings().mode || 'light';
+  // 'auto' (the default) follows the OS. This also stops OEM skins (MIUI) from
+  // dimming/force-darkening a light page while the system is in dark mode.
+  const _pref = DB.settings().mode || 'auto';
+  const _sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const _mode = _pref === 'auto' ? (_sysDark ? 'navy' : 'light') : _pref;
   document.documentElement.setAttribute('data-mode', _mode);
   // keep the Android status bar in step with the theme
   const _tc = { light: '#f4f6fb', navy: '#070b14', black: '#000000' }[_mode] || '#f4f6fb';
