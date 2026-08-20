@@ -74,3 +74,25 @@ dark-mode off→on flip and a cold restart.
 OEM has nothing to force-darken. Note that because the native theme is now `Light` with
 force-dark off, the WebView reports `prefers-color-scheme: light` even under MIUI dark
 mode, so Auto resolves to light there; users who want dark pick it explicitly.
+
+
+## Layout: the flex-shrink trap, and where screen height actually goes
+
+**A flex row with a text label + fixed badges needs `min-width: 0` on the label.** Without it
+the label refuses to shrink below its content width and *pushes its siblings out of the box*.
+That is what made "skipped" overflow the habit chip. The label should be the only
+`flex: 1 1 auto; min-width: 0` child; every badge is `flex: 0 0 auto`.
+
+**`grid-auto-rows: 1fr` makes every row as tall as the tallest one.** One long wrapping label
+inflated an entire habit grid. Use `auto` unless you genuinely want uniform rows.
+
+**Measure height per card before optimising it.** The Log felt too long, and the instinct was
+to shrink the visible chips. The actual culprit was ten *collapsed* deep-log sections at 79px
+each (790px, 19% of the page) — each carrying full card padding, a card margin, and the h2's
+bottom margin to render one title row. Collapsing them to list rows saved more than every
+other tweak combined. `tools/evals/` prints this breakdown; use it.
+
+**Run `tools/evals/run.sh` before and after any UI change.** It catches overflow, clipped
+text, unreadable truncation, tiny tap targets and scroll bloat across 320/360/412px — the
+class of bug that otherwise reaches the user's phone. Its README lists the two false
+positives already fixed and the findings deliberately accepted.
