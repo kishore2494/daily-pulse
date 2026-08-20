@@ -1,3 +1,64 @@
+## 2026-08-19 (v131-v137) — layout eval suite; habit chip overflow + Log height fixed
+
+Kishore reported "skipped" overflowing the habit chip and the chips being too tall. Rather
+than eyeball it, built **`tools/evals/`** — a scored layout probe run across 3 phone widths
+x 16 screens (48 combos) with deliberately adversarial seed data. See its README.
+
+**Baseline 103 errors / penalty 1684 → 8 / 797.** Every real breakage class now zero:
+`escapes-parent` 50→0, `past-viewport` 10→0, `text-clipped` 10→0, `escapes-parent-left` 4→0,
+`tap-tiny` 33→8 (the 8 are documented accepted cases).
+
+### Root cause of the reported bug — a flex-shrink mistake
+`.habit` is a flex row; its label `<span>` had **no `min-width: 0`**, so it refused to shrink
+below its content width and pushed the "skipped" badge and the streak badge out of the chip.
+Fix: the label is the only flexible child (`.hlbl`, `flex:1 1 auto; min-width:0`) and every
+badge is `flex: 0 0 auto`.
+**Rule: in a flex row with a text label plus fixed badges, the label needs
+`min-width:0` or it will push its siblings out of the box.**
+
+Two more, found by the probe rather than reported:
+- `.habits` used **`grid-auto-rows: 1fr`**, so ONE wrapping label inflated *every* row in the
+  grid. That was the real height multiplier. Rows now size independently.
+- Quantity chips cannot fit check+emoji+label+counter+button in a 143px half-column at any
+  font size — they now take a full row (`grid-column: 1 / -1`).
+- Dropped the "skipped" word: the ⤳ glyph + dashed border + greyscale already say it.
+
+### The height win was not where it looked
+Measured the Log's height budget per card instead of guessing. The biggest block was **the
+deep log: ten COLLAPSED sections at 79px each = 790px, 19% of the page, to show ten title
+rows** — full card padding (17px) + card margin (14px) + the h2's own bottom margin, all
+while displaying nothing. Collapsed sections now read as list rows (52px). Plus chip padding
+12→9px and min-height 52→46px. **Net: Log -10% at 320/360px, -13% at 412px.**
+
+### A judgment call worth recording
+Kishore suggested smaller text to keep two habit columns. Measured it: at 360px a 2-up chip
+leaves ~43px of label, and no readable font size fits "No phone in the first hour" in 43px —
+even a 2-line clamp cut it. So the grid goes **single-column below 400px**. Costs ~0.13
+screens; a habit tracker whose habit names are unreadable is worse. Verified 0/7 truncated
+labels at 320/360/412/480.
+
+### Two probe false positives it took a round to learn
+1. `text-overflow: ellipsis` legitimately makes `scrollWidth > clientWidth` — v1 flagged every
+   correctly-truncating label. Now reports `label-squeezed` only when the width left is
+   genuinely unreadable.
+2. An `<input>` inside a `<label>` inherits the label's clickable area; measuring the 18px
+   checkbox alone was wrong.
+
+### CSS class collision found (third one in this codebase)
+`.habit` is shared by the Daily-checklist chips **and** the deep-log `checksField` chips (24
+`.habit` elements on the Log, only 7 with labels). Harmless here — both wanted the same
+padding/height — but it's the same trap as `.tb-row` (timebox vs throwback). **Still true:
+grep styles.css before naming a class.**
+
+Also fixed from eval findings: `.scale` clipped the "10" at 320px; `.act-chip` emoji squeezed;
+`.seg-btn` clipped (icons hidden ≤360px); history mood pills escaped their row; 25x16 text
+links and 13x13 checkboxes untappable; Waves range slider had a 16px grab area.
+
+**Verified:** 55/55 unit tests, all 17 screens error-free, boolean tap-cycle and the quantity
+counter still correct after the markup change. **NOT verified on device** — the POCO was off
+the network and the only adb device present was the cabled Realme (`0461B081222138A5`), which
+must not be touched.
+
 ## 2026-08-19 (v130) — sync UI hidden for production; deploy-lock recurrence note
 
 `SHOW_SYNC=false` shipped (production checklist item #1 done — the Settings sync/login card
