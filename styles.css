@@ -147,13 +147,17 @@ textarea { resize: vertical; min-height: 64px; }
 .scale-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 5px; }
 
 /* Habit chips */
-.habits { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; grid-auto-rows: 1fr; }
+.habits { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; grid-auto-rows: auto; align-items: stretch; }
 .habit {
-  display: flex; align-items: center; gap: 9px; padding: 12px 13px;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 13px;
-  cursor: pointer; font-size: 13.5px; font-weight: 500; user-select: none;
-  transition: all .16s;
+  display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+  cursor: pointer; font-size: 13px; font-weight: 500; user-select: none;
+  transition: all .16s; overflow: hidden;
 }
+/* The label is the ONLY flexible child — it ellipsises so badges can never be pushed
+   out of the chip. Every other child is fixed-size. This is what was broken. */
+.habit .hlbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.habit .check, .habit .emoji, .habit .streak, .habit .qty-prog, .habit .qty-btn { flex: 0 0 auto; }
 .habit:active { transform: scale(.97); }
 .habit .check {
   width: 20px; height: 20px; border-radius: 7px; border: 2px solid var(--text-faint);
@@ -167,7 +171,7 @@ textarea { resize: vertical; min-height: 64px; }
 }
 .habit.on .check { background: var(--good); border-color: var(--good); color: #06291d; }
 .habit .emoji { font-size: 16px; }
-.habit .streak { margin-left: auto; font-size: 11px; color: var(--warn); font-weight: 700; font-family: var(--font-display); }
+.habit .streak { margin-left: 2px; font-size: 11px; color: var(--warn); font-weight: 700; font-family: var(--font-display); }
 
 /* Buttons */
 .btn {
@@ -733,7 +737,7 @@ img, svg, table, pre, .chart { max-width: 100%; }
 .autosave-dot { color: var(--good); font-weight: 700; margin-left: 4px; opacity: 0; transition: opacity .2s; }
 .autosave-dot.show { opacity: 1; }
 /* even out checklist chip heights so 1-line and 2-line items align in the grid */
-.habit { min-height: 52px; }
+.habit { min-height: 46px; }
 /* reminders: let each row breathe on narrow screens */
 
 
@@ -1121,6 +1125,7 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .cfg-lock { width: 24px; text-align: center; opacity: .55; font-size: 13px; }
 
 /* ---- Quantity habit chips (tap counter) ---- */
+.habit.qty { grid-column: 1 / -1; }        /* counters need the full row to fit */
 .habit.qty .qty-prog { margin-left: auto; font-size: 11.5px; font-weight: 700;
   font-family: var(--font-display); color: var(--text-dim); white-space: nowrap; }
 .habit.qty.on .qty-prog { color: var(--good); }
@@ -1162,3 +1167,77 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 
 /* ---- Mood word selected state ---- */
 .mm-word.on { font-weight: 700; }
+
+/* ============================================================
+   LAYOUT EVAL FIXES (tools/evals/run.sh — 2026-08-19)
+   Each rule below closes a finding the eval suite reported at 320/360/412px.
+   Re-run the suite after touching any of this.
+   ============================================================ */
+
+/* [text-clipped, tap-tiny] .scale > button — ten buttons in a 294px row at 320px left
+   24px each and clipped the "10". Let them share the row evenly with no inner padding. */
+.scale { gap: 4px; }
+.scale button { flex: 1 1 0; min-width: 0; padding-left: 0; padding-right: 0; font-size: 13px; }
+@media (max-width: 360px) { .scale { gap: 3px; } .scale button { font-size: 12px; } }
+
+/* [text-clipped] .act-chip — the emoji was being squeezed; only the name may shrink. */
+.act-chip .emoji, .act-chip .live { flex: 0 0 auto; }
+
+/* [text-clipped] .seg-btn — clipped by 2-3px at 320px. */
+@media (max-width: 360px) { .seg-btn { font-size: 12px; padding-left: 4px; padding-right: 4px; } }
+
+/* [escapes-parent] history mood pills pushed past the row edge — let them wrap. */
+.hist-moods { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+
+/* [tap-tiny] text links were 25x16. Grow the hit area without moving the layout. */
+#mm-hide, #otd-hide, .hint > a { display: inline-block; padding: 8px 6px; margin: -8px -6px; }
+
+/* [tap-tiny] native checkboxes render 13x13 — too small to hit reliably. */
+input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; }
+
+/* [tap-tiny] range track was 16px tall; the grab area should be a finger, not a hairline. */
+input[type="range"] { height: 30px; }
+
+/* [tap-small] word/template chips were 29-30px tall. */
+.mm-word, .jt-chip { min-height: 34px; }
+
+/* [label-squeezed] Two habit columns leave only ~23px of label at 320px, and less once a
+   streak badge appears — the name became "R…". Below 380px the grid goes single-column,
+   which gives the label ~200px. Wider screens keep two columns. */
+/* Two columns from 340px up (Kishore's call: smaller text over a taller list); only
+   genuinely tiny screens go single-column, where 2-up left ~23px of label. */
+/* Two columns only from 400px up. Measured: at 360px a 2-up chip leaves too little for
+   a real habit name ("No phone in the first hour" cut even with a 2-line clamp), and a
+   habit tracker whose habit names are unreadable is broken. Costs ~0.13 screens of
+   scrolling at 360px — worth it, and the deep-log compaction more than pays for it. */
+@media (max-width: 399px) { .habits { grid-template-columns: 1fr; } }
+.habit .hlbl { font-size: 12.5px; }
+/* Labels WRAP to two lines rather than ellipsising into uselessness — at 360px two
+   columns leave ~43px, and no font size fits "No phone in the first hour" in 43px.
+   Rows size independently (grid-auto-rows:auto), so only the chips that need a second
+   line get one instead of inflating the entire grid. */
+.habit .hlbl { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; line-height: 1.25; text-overflow: clip; }
+.habit.qty .hlbl { -webkit-line-clamp: 1; white-space: nowrap; text-overflow: ellipsis; }
+
+/* [text-clipped, escapes-parent-left] four segmented tabs with icons do not fit 320px;
+   drop the icons there and keep the labels, which carry the meaning. */
+@media (max-width: 360px) { .seg-btn .ic { display: none; } }
+
+/* [height] A COLLAPSED deep-log section was 79px tall — full card padding (17px), a 14px
+   card margin, and the h2's own bottom margin, all to show one title row. Ten of them ate
+   790px (19% of the Log) while showing nothing. Collapsed sections now read as list rows;
+   expanded ones keep full card padding. */
+.section-collapsible.collapsed { padding: 10px 14px; margin-bottom: 7px; }
+.section-collapsible.collapsed > h2 { margin-bottom: 0; }
+
+/* [escapes-parent] the hit-area padding must never overhang the RIGHT edge (these sit at
+   the end of a flex header), so grow left + vertical only. */
+#mm-hide, #otd-hide, .hint > a { padding: 9px 0 9px 10px; margin: -9px 0 -9px -10px; }
+
+/* [escapes-parent] a full-width input with a border could exceed the card's content box. */
+.field input, .field select, .field textarea { max-width: 100%; box-sizing: border-box; }
+
+/* [escapes-parent] a native range input carries its own margin and overhung the card's
+   content box by 2px at 320px. */
+.field input[type="range"] { width: 100%; margin: 0; }

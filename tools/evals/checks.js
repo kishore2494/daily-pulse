@@ -1,0 +1,130 @@
+/* Layout eval probe — injected into the live app, returns structured findings.
+   Purpose: catch the class of bug a human only notices by squinting at a phone —
+   text escaping its container, chips overflowing, tap targets too small, content
+   wider than the viewport. Every finding names a selector so it's actionable. */
+(function () {
+  const VW = window.innerWidth, VH = window.innerHeight;
+  const out = [];
+  const seen = new Set();
+  const add = (type, el, detail, sev) => {
+    const sel = path(el);
+    const k = type + '|' + sel + '|' + detail;
+    if (seen.has(k)) return; seen.add(k);
+    out.push({ type, sel, detail, sev: sev || 'warn' });
+  };
+  function path(el) {
+    if (!el || el === document.body) return 'body';
+    let s = el.tagName.toLowerCase();
+    if (el.id) return s + '#' + el.id;
+    const cls = (el.className || '').toString().trim().split(/\s+/).filter(Boolean).slice(0, 3);
+    if (cls.length) s += '.' + cls.join('.');
+    const p = el.parentElement;
+    if (p && p !== document.body) {
+      const pc = (p.className || '').toString().trim().split(/\s+/).filter(Boolean).slice(0, 2);
+      s = (p.id ? '#' + p.id : p.tagName.toLowerCase() + (pc.length ? '.' + pc.join('.') : '')) + ' > ' + s;
+    }
+    return s;
+  }
+  const vis = el => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const screenEl = document.querySelector('.screen.on') || document.body;
+  const all = Array.from(screenEl.querySelectorAll('*')).filter(vis);
+
+  // 1 — page must never scroll horizontally
+  const de = document.documentElement;
+  if (de.scrollWidth > VW + 1) add('page-hscroll', de, `scrollWidth ${de.scrollWidth} > viewport ${VW}`, 'error');
+
+  // 2 — nothing may extend past the right edge of the viewport
+  all.forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0) return;
+    if (r.right > VW + 1.5) add('past-viewport', el, `right edge ${Math.round(r.right)} > ${VW}`, 'error');
+    if (r.left < -1.5) add('past-viewport-left', el, `left edge ${Math.round(r.left)}`, 'warn');
+  });
+
+  // 3 — text clipped inside its own box (the "skipped overflows the button" class of bug).
+  //     IMPORTANT: an element with `text-overflow: ellipsis` is SUPPOSED to have
+  //     scrollWidth > clientWidth — that is how ellipsis works, not a bug. Flagging it
+  //     was a false positive in the first version of this probe. For those we instead
+  //     report `label-squeezed` when so little width is left that the text is unreadable.
+  all.forEach(el => {
+    if (!el.childNodes.length) return;
+    const hasText = Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
+    if (!hasText) return;
+    const cs = getComputedStyle(el);
+    if (cs.overflow === 'auto' || cs.overflow === 'scroll' || cs.overflowX === 'auto' || cs.overflowX === 'scroll') return;
+    if (!(el.scrollWidth > el.clientWidth + 1) || el.clientWidth <= 0) return;
+    const ellipsising = cs.textOverflow === 'ellipsis' && (cs.overflowX === 'hidden' || cs.overflow === 'hidden');
+    if (ellipsising) {
+      const chars = (el.textContent || '').trim().length;
+      const shown = el.clientWidth / Math.max(1, el.scrollWidth / Math.max(1, chars));
+      if (el.clientWidth < 56 || shown < 6) {
+        add('label-squeezed', el, `only ${el.clientWidth}px for ${chars} chars (~${Math.floor(shown)} visible)`, 'error');
+      }
+    } else {
+      add('text-clipped', el, `scrollWidth ${el.scrollWidth} > clientWidth ${el.clientWidth}`, 'error');
+    }
+  });
+
+  // 4 — a child escaping its parent's padding box
+  all.forEach(el => {
+    const p = el.parentElement; if (!p || p === document.body) return;
+    const cs = getComputedStyle(p);
+    if (cs.overflow !== 'visible' || cs.position === 'absolute' || cs.position === 'fixed') return;
+    if (getComputedStyle(el).position === 'absolute' || getComputedStyle(el).position === 'fixed') return;
+    const r = el.getBoundingClientRect(), pr = p.getBoundingClientRect();
+    if (pr.width <= 0) return;
+    const padR = parseFloat(cs.paddingRight) || 0, padL = parseFloat(cs.paddingLeft) || 0;
+    if (r.right > pr.right - padR + 1.5) add('escapes-parent', el, `right ${Math.round(r.right)} beyond parent content edge ${Math.round(pr.right - padR)}`, 'error');
+    // negative margins are how you grow a tap target without moving layout — not an escape
+    const ecs = getComputedStyle(el);
+    const negL = (parseFloat(ecs.marginLeft) || 0) < 0;
+    if (!negL && r.left < pr.left + padL - 1.5) add('escapes-parent-left', el, `left ${Math.round(r.left)} before parent content edge ${Math.round(pr.left + padL)}`, 'warn');
+  });
+
+  // 5 — tap targets (Android guidance is 48dp; flag under 44)
+  const TAPPABLE = 'button,a,input,select,textarea,[data-habit],[data-mm],[data-mmword],[data-scale],[data-jt],[data-yp],[role=button],.habit,.mode-btn,.seg-btn';
+  Array.from(screenEl.querySelectorAll(TAPPABLE)).filter(vis).forEach(el => {
+    // An input wrapped in a <label> inherits the label's whole clickable area — measuring
+    // the 18px checkbox alone was a false positive.
+    let target = el;
+    if (/^(INPUT|SELECT)$/.test(el.tagName)) {
+      const lab = el.closest('label');
+      if (lab && vis(lab)) target = lab;
+    }
+    const r = target.getBoundingClientRect();
+    const small = Math.min(r.width, r.height);
+    if (small < 24) add('tap-tiny', el, `${Math.round(r.width)}x${Math.round(r.height)}`, 'error');
+    else if (small < 44) add('tap-small', el, `${Math.round(r.width)}x${Math.round(r.height)}`, 'warn');
+  });
+
+  // 6 — content hidden under the fixed bottom nav (it overlays the scroll area)
+  const nav = document.getElementById('nav');
+  if (nav && vis(nav)) {
+    const nr = nav.getBoundingClientRect();
+    const last = Array.from(screenEl.children).filter(vis).pop();
+    if (last) {
+      const lr = last.getBoundingClientRect();
+      const docH = de.scrollHeight, scrolled = window.scrollY + VH;
+      if (docH - scrolled < 2 && lr.bottom > nr.top + 2) {
+        add('under-nav', last, `last element bottom ${Math.round(lr.bottom)} under nav top ${Math.round(nr.top)} at page end`, 'warn');
+      }
+    }
+  }
+
+  // ACCEPTED, by design — reported but not treated as fixable:
+  //   .yp cells are 5x9 because a year is 31 columns wide (Daylio's grid has the same
+  //     constraint). The mosaic is a visualisation; tapping a day is a convenience, and
+  //     the same day is reachable from Calendar and History.
+  //   .scale buttons are ~23px wide at 320px because ten of them share one row. Their
+  //     40px HEIGHT is the dimension that matters for a horizontal digit strip.
+
+  // 7 — vertical density: how much scrolling this screen costs
+  const screens = de.scrollHeight / VH;
+
+  return JSON.stringify({ vw: VW, vh: VH, screensTall: +screens.toFixed(2), findings: out });
+})();
