@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v130';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v137';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1230,15 +1230,18 @@ function habitChipHTML(h) {
     const prog = `${logged ? n : '–'}/${g.cmp === 'atmost' ? '≤' : ''}${g.n}${g.unit ? ' ' + escapeHtml(g.unit) : ''}`;
     return `<div class="habit qty ${on?'on':''}${over?' over':''}" data-habit="${h.key}" style="${style}" title="Tap to add 1">
       <span class="check">${over ? '!' : '✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-      <span>${escapeHtml(h.label)}</span>
+      <span class="hlbl">${escapeHtml(h.label)}</span>
       <span class="qty-prog">${prog}</span>
       ${logged && n > 0 ? `<button type="button" class="qty-btn" data-habit-dec="${h.key}" aria-label="minus 1">−</button>` : ''}
       ${!logged && g.cmp === 'atmost' ? `<button type="button" class="qty-btn qty-zero" data-habit-zero="${h.key}" title="none today">0</button>` : ''}
     </div>`;
   }
-  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="Tap: done → skip → clear">
+  // NOTE: no "skipped" text label — at 2-up on a 320px screen it overflowed the chip.
+  // The ⤳ glyph, the dashed border and the greyscale already communicate it, and the
+  // tap toast spells it out. Title attribute carries it for anyone unsure.
+  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="${sk?'Skipped — your streak is safe':'Tap: done → skip → clear'}">
     <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-    <span>${escapeHtml(h.label)}</span>${sk?'<span class="hint" style="margin-left:auto;font-size:11px">skipped</span>':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
+    <span class="hlbl">${escapeHtml(h.label)}</span>${sk?'':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
 }
 function refreshHabitChip(key) {
   const el = document.querySelector(`[data-habit="${key}"]`); if (!el) return;
