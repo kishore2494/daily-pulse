@@ -1241,3 +1241,12 @@ input[type="range"] { height: 30px; }
 /* [escapes-parent] a native range input carries its own margin and overhung the card's
    content box by 2px at 320px. */
 .field input[type="range"] { width: 100%; margin: 0; }
+
+/* ---- Alarm health warning (Android can accept a reminder then never ring it) ---- */
+.alarm-warn { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+.aw-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+.aw-row:first-of-type { border-top: 0; }
+.aw-txt { flex: 1; min-width: 0; }
+.aw-t { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.aw-d { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+.aw-row .btn { flex: 0 0 auto; }

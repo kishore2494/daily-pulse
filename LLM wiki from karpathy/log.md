@@ -1,3 +1,67 @@
+## 2026-08-21 — ALARM BUG (tester report) — root-caused and fixed · web v139 + bundle 109/69
+
+A tester said his alarm never fired. It was real, and it was three stacked defects. All
+required a native rebuild — **bundle 109/69 must be uploaded**; the web part is v139.
+
+### 1. The actual cause: SCHEDULE_EXACT_ALARM is denied by default on Android 14+
+We target SDK 36 and declare `SCHEDULE_EXACT_ALARM`. On **Android 14+ (API 34) that
+permission is NOT granted at install** — the user has to toggle "Alarms & reminders" in App
+info. `AlarmManager.setAlarmClock()` without it throws `SecurityException` on API 31+.
+
+The old `FullScreenAlarmPlugin.schedule()` had ONE try/catch around the whole loop, so:
+- the first alarm threw → **every remaining alarm was skipped**, and
+- `cancelAllInternal()` had already run → **previously working alarms were wiped too**, and
+- JS did `if (nativeShell()) { scheduleNativeAlarms(); ... }` — **discarding the result** —
+  and `scheduleNativeAlarms()` itself ended in `catch (e) { return false; }`.
+
+Net effect: the user sets an alarm, sees a success toast, and nothing ever rings. Perfectly
+silent failure at three layers.
+
+**Fix:** check `canScheduleExactAlarms()`; when not allowed fall back to
+`setWindow(RTC_WAKEUP, at, 10min)` — inexact but it *fires*. Per-alarm try/catch so one
+failure can't take out the batch. `schedule()` now returns
+`{scheduled, exact, failed, exactAllowed, fullScreenAllowed}`.
+
+**Deliberately NOT using `USE_EXACT_ALARM`** (which is auto-granted): Play restricts it to
+apps whose core function is an alarm clock or calendar, and a habit tracker claiming that is
+a policy risk.
+
+### 2. Alarms did not survive a reboot
+No `RECEIVE_BOOT_COMPLETED`, no boot receiver. Restart the phone → every pending alarm gone
+until the app was next opened. The alarm list lives in the WebView's localStorage, which a
+receiver cannot read, so `schedule()` now mirrors it into SharedPreferences and the new
+`BootReceiver` replays it on `BOOT_COMPLETED` / `QUICKBOOT_POWERON` / `MY_PACKAGE_REPLACED`.
+
+### 3. The fallback alarm was silent
+On Android 14+ the full-screen intent is only auto-granted to real alarm/calling apps — ours
+is declared "Other", so we don't get it. Android 10+ *also* blocks the receiver's direct
+`startActivity()`. So the notification IS the alarm on those phones — and its channel had
+`setSound(null,null)` + `enableVibration(false)`, because `AlarmActivity` was assumed to own
+the sound. Result: a silent, non-vibrating "alarm". Added a second channel
+(`dp_alarm_audible`, `USAGE_ALARM` sound + vibration pattern) used when
+`canUseFullScreenIntent()` is false, and `setOngoing` is now conditional on FSI so no stuck
+notification is left behind.
+
+### 4. The user could never find out — now they can
+New `dp.alarmHealth` + `FullScreenAlarm.status()` + a warning card on Settings ▸ Reminders
+that appears **only when something is actually wrong**, each line with a one-tap **Fix**
+button deep-linking to `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` or the app's notification
+settings. Xiaomi/Redmi/POCO/realme/OPPO/vivo/OnePlus phones additionally get an Autostart +
+battery-restriction hint, since those OEMs kill alarms regardless of permissions.
+
+**Rule learned: a scheduling API that can be silently refused must report back, and the
+caller must not discard the result. Never `catch { return false }` on a user-visible
+promise.**
+
+**Verified:** APK 109/69 builds clean, `RECEIVE_BOOT_COMPLETED` + BootReceiver +
+BOOT_COMPLETED filter confirmed merged in the built manifest, signature matches the release
+keystore, all four banner states correct (exact denied / notifications off / all healthy /
+Fix button calls the right native method), 55/55 unit tests, layout eval unchanged at 8
+errors, all 17 screens clean.
+
+**Still needs a real-device check** of an actual alarm firing on an Android 14+ phone — the
+POCO was off-network and the only adb device was the cabled Realme, which must not be touched.
+
 ## 2026-08-19 (v131-v137) — layout eval suite; habit chip overflow + Log height fixed
 
 Kishore reported "skipped" overflowing the habit chip and the chips being too tall. Rather
