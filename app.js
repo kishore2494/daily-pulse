@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v137';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v139';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -713,8 +713,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w10',
+  v: 'w11',
   items: [
+    '⏰ <b>Alarm fix — please update in the Play Store</b> — on Android 14+ Android blocks exact alarms by default, so some reminders never fired and nothing told you. Settings now shows a warning with a one-tap fix, alarms survive a restart, and they ring loudly even when the full-screen alarm is blocked.',
     '🔢 <b>Counted habits</b> — give any habit a daily goal like “8 glasses of water” or “at most 2 coffees”. The chip becomes a tap counter. Set goals in Customize ▸ Checklist habits (🎯).',
     '✨ <b>Habit ideas</b> — a browse-able gallery of starter habits on the Log (below your checklist), including cut-down goals.',
     '📝 <b>Journal templates</b> — Gratitude, Brain dump, Highlights and Idea buttons above the journal box.',
@@ -4449,6 +4450,7 @@ function renderSettings() {
         ${flagRow('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
         <div class="hint" style="margin-top:8px">To reorder or hide <b>any</b> Log card — tasks, checklist, workout, reflection, deep log — use <b>Customize ▸ Log screen sections</b>.</div>
       </div>`; })()}
+    ${alarmHealthHTML()}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
       ${DB.reminders().length ? DB.reminders().map(r => `
@@ -5217,11 +5219,74 @@ async function scheduleNativeAlarms() {
       add(t, '📌 ' + x.label, x.time + ' · ' + x.label, !!x.alarm);
     });
     if (notifOk && notifs.length) await LN.schedule({ notifications: notifs });
-    if (FS) await FS.schedule({ alarms });   // always call so it clears old ones when list is empty
+    if (FS) {
+      // always call so it clears old ones when the list is empty
+      const res = await FS.schedule({ alarms });
+      // The old code threw this away. A tester's alarms silently never fired because
+      // SCHEDULE_EXACT_ALARM is denied by default on Android 14+ and nothing surfaced it.
+      alarmHealth({ exactAllowed: res && res.exactAllowed !== false,
+                    fullScreenAllowed: res && res.fullScreenAllowed !== false,
+                    notifOk, failed: (res && res.failed) || 0, checked: Date.now() });
+    }
     scheduleInactivityReminder();
     return true;
   } catch (e) { return false; }
 }
+
+/* ---------- Alarm health ----------
+   Android can accept a reminder and then never ring it: SCHEDULE_EXACT_ALARM is denied by
+   default on Android 14+, notifications can be off, and the full-screen intent is only
+   auto-granted to real alarm-clock apps. None of that used to be visible to the user, so
+   "I set an alarm and nothing happened" looked like a broken app. We now record the state
+   and show it wherever reminders are managed. */
+function alarmHealth(patch) {
+  const cur = safeParse(localStorage.getItem('dp.alarmHealth'), {}) || {};
+  if (patch) { localStorage.setItem('dp.alarmHealth', JSON.stringify(Object.assign(cur, patch))); return Object.assign(cur, patch); }
+  return cur;
+}
+async function refreshAlarmHealth() {
+  const FS = fullScreenPlugin(); if (!FS || !FS.status) return alarmHealth();
+  try {
+    const st = await FS.status();
+    return alarmHealth({ exactAllowed: !!st.exactAllowed, canRequestExact: !!st.canRequestExact,
+      fullScreenAllowed: !!st.fullScreenAllowed, notifOk: !!st.notificationsEnabled,
+      sdk: st.sdk, manufacturer: st.manufacturer, checked: Date.now() });
+  } catch (e) { return alarmHealth(); }
+}
+/* The banner shown on the Reminders card in Settings. Only appears when something is
+   actually wrong, and every line is one tap from being fixed. */
+function alarmHealthHTML() {
+  if (!nativeShell()) return '';
+  const h = alarmHealth();
+  if (!h.checked) return '';
+  const bad = [];
+  if (h.notifOk === false)
+    bad.push(['Notifications are turned off', 'Nothing can reach you until these are on.', 'notif']);
+  if (h.exactAllowed === false)
+    bad.push(['Exact alarms are not allowed', 'Android will only fire your reminder within ~10 minutes of the time you set. Allow "Alarms & reminders" for on-the-dot alarms.', 'exact']);
+  if (h.exactAllowed !== false && h.fullScreenAllowed === false)
+    bad.push(['Full-screen alarms are off', 'Alarms will ring as a loud notification instead of taking over the screen.', 'fsi']);
+  if (!bad.length) return '';
+  return `<div class="card alarm-warn">
+    <h2 class="h2-icon">${hicon('clock')}<span>Your alarms need one more tap</span></h2>
+    ${bad.map(([t, d, k]) => `<div class="aw-row">
+      <div class="aw-txt"><div class="aw-t">${t}</div><div class="aw-d">${d}</div></div>
+      <button class="btn btn-primary btn-sm" data-alarm-fix="${k}">Fix</button>
+    </div>`).join('')}
+    ${(h.manufacturer && /xiaomi|redmi|poco|realme|oppo|vivo|oneplus/i.test(h.manufacturer))
+      ? `<div class="hint" style="margin-top:8px">On ${escapeHtml(h.manufacturer)} phones also enable <b>Autostart</b> and set battery usage to <b>No restrictions</b> for Daylog, or the system stops alarms after a while.</div>` : ''}
+  </div>`;
+}
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest && ev.target.closest('[data-alarm-fix]');
+  if (!b) return;
+  const FS = fullScreenPlugin(); if (!FS) return;
+  try {
+    if (b.dataset.alarmFix === 'exact' && FS.openExactAlarmSettings) await FS.openExactAlarmSettings();
+    else if (FS.openNotificationSettings) await FS.openNotificationSettings();
+    toast('Turn it on, then come back');
+  } catch (e) { toast('Open Settings ▸ Apps ▸ Daylog', true); }
+});
 
 /* ---------- Running-timer notification (native shell) ----------
    Shows which activity is timing right now, with Pause / Stop / Resume actions.
@@ -5950,6 +6015,11 @@ else localStorage.setItem('dp.onboarded', '1');   // existing users never see it
 setupReminders();
 setTimeout(() => { if (localStorage.getItem('dp.onboarded') && !document.getElementById('onboard').classList.contains('on')) showWhatsNewPopup(); }, 1200);
 setTimeout(() => checkReminders(true), 1000);   // catch a reminder you missed while the app was closed
+// Ask Android what it will actually honour, so Settings can warn instead of failing silently.
+setTimeout(() => { refreshAlarmHealth().then(() => {
+  const s = document.getElementById('s-settings');
+  if (s && s.classList.contains('on')) renderSettings();
+}); }, 2500);
 // Gentle data-safety nudge: local-first means a lost phone = lost data. If there's real
 // data and no backup for 14+ days, remind once a week (toast only — never a blocker).
 setTimeout(() => {

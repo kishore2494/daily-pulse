@@ -1,7 +1,7 @@
 # Play Store launch — status & handoff
 
 > **APP IS NOW NAMED `Daylog`** (renamed 2026-08-19 for searchability — see log.md).
-> Play title: `Daylog: Habit Tracker & Mood` · bundle to upload: **108/68** (adds the MIUI force-dark theme fix).
+> Play title: `Daylog: Habit Tracker & Mood` · bundle to upload: **109/69** (fixes the alarm bug a tester reported — see log.md 2026-08-21).
 > The hosting URL and package id intentionally keep the old "dailypulse" string — changing
 > them would break every installed app. Only the display name changed.
 
