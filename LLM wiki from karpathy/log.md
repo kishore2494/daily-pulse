@@ -1,3 +1,63 @@
+## 2026-08-21 (later) — alarm fix VERIFIED on the real POCO (109/69)
+
+Tested on the POCO C31 (`VWQCY5HEYHUCYPZP`, Android 11, MIUI) over wireless adb. The cabled
+realme was excluded throughout.
+
+**Result: the native alarm fired over the locked screen.** Timeline from `dumpsys`/logcat:
+
+- `FullScreenAlarm.schedule()` registered `*walarm*:io.github.kishore2494.dailypulse.ALARM.399`
+- It was accepted as a real **exact alarm clock**: `window=0`,
+  `expectedWhenElapsed == maxWhenElapsed`, and it showed up as the OS's
+  **"Next alarm clock information"** *and* **"Next wake from idle"** — i.e. Doze-exempt
+- Phone: Asleep → Dozing → at `12:32:00.470` the receiver ran, screen went **Awake**,
+  `AlarmActivity` became the resumed activity, logcat shows
+  `Activity requesting to dismiss Keyguard`
+- Audio device left standby while ringing, and returned to standby after dismissal
+- The user's 8 real reminders were still scheduled afterwards — the test did not disturb them
+
+**Both notification channels were created exactly as designed**, and the *correct* one was
+chosen: on Android 11 `canUseFullScreenIntent()` is true, so the notification went out on the
+quiet `dp_fullscreen_alarm` channel and let AlarmActivity own the sound. The fallback channel
+`dp_alarm_audible` exists with `sound=content://settings/system/alarm_alert`,
+`usage=USAGE_ALARM`, `vibration=[0,500,300,500,300,500]`.
+
+### The most valuable thing this test revealed
+MIUI **blocked** the receiver's direct `startActivity()`:
+
+```
+W ActivityTaskManager: Background activity start [... isBgStartWhitelisted: false ...]
+D ActivityTaskManagerServiceInjector: MIUILOG- Permission Denied Activity KeyguardLocked
+```
+
+…and then a **second** START succeeded 400 ms later — that was the **full-screen-intent
+notification** path. So on MIUI the FSI notification is what actually delivers the alarm; the
+direct activity start is decorative.
+
+**This is the proof that the Android 14+ fallback matters.** On Android 14+ a tracker does not
+get `USE_FULL_SCREEN_INTENT` auto-granted, so *both* of those paths fail — which is precisely
+the tester's bug — and the only thing left is the notification itself. That is exactly why the
+audible `dp_alarm_audible` channel was added. Without it the "alarm" on his phone would be a
+silent, non-vibrating notification even after the exact-alarm permission is granted.
+
+### Test-harness notes (for next time)
+- `AlarmActivity` is `exported=false`, so `am start` from adb is refused — drive it through the
+  app's own **"⏰ Test full-screen alarm (1 min)"** button (`rem-fs-test`), which is the only
+  control that exercises the native plugin. **"Test in 15 sec" is JS-only** (`setTimeout` +
+  `fireAlarm`) and dies when the screen sleeps — it proves nothing about the native path.
+- `BOOT_COMPLETED` is a protected broadcast; shell cannot send it, and `MY_PACKAGE_REPLACED`
+  was not delivered to a manifest receiver either. **BootReceiver still needs a real reboot to
+  verify** — it is registered on-device (confirmed in `dumpsys package`) but unproven at runtime.
+- In `dumpsys alarm`, grep the **tag** (`*walarm*:<pkg>.ALARM.<id>`), not the intent action.
+- Drive the UI from `uiautomator dump` bounds, never fixed coordinates — blind taps here opened
+  a date picker, a Google search, and the user's work-app login before I switched.
+- zsh does not word-split unquoted `$VAR`; `set -- $R` kept "305 286" as one argument and the
+  tap silently failed. Use `awk` to split.
+
+### Still unverified
+An alarm ringing on **Android 14+** — the POCO is Android 11, where `canScheduleExactAlarms()`
+does not exist and exact alarms are always granted, so the original bug cannot reproduce there.
+That confirmation has to come from the tester's own phone on build 109.
+
 ## 2026-08-21 — ALARM BUG (tester report) — root-caused and fixed · web v139 + bundle 109/69
 
 A tester said his alarm never fired. It was real, and it was three stacked defects. All
