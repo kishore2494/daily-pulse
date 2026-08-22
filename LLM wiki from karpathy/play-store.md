@@ -69,7 +69,7 @@ Audited the shipping bundle (106/66) against Play policy. Findings and status:
 | 8 | targetSdk 36, minSdk 24, signed, no obfuscation → the deobfuscation warning is benign. | NONE | ✅ Fine |
 
 **Review-notes text to paste in Console (helps a human reviewer approve fast):**
-> Daily Pulse is a private, offline personal-tracking app. There is no login — all
+> Daylog is a private, offline personal-tracking app. There is no login — all
 > functionality is available immediately. Usage access (PACKAGE_USAGE_STATS) is used
 > only for the app's optional digital-wellbeing feature: it shows the user their own
 > daily screen time on-device and charts it against their mood. The user sees a
@@ -78,7 +78,7 @@ Audited the shipping bundle (106/66) against Play policy. Findings and status:
 > button to dictate a journal entry, via Android's own speech service. No data is
 > collected, transmitted, sold or shared. Not a medical app; no health claims.
 
-## PRODUCTION CHECKLIST (apply ~Aug 24 when the 14-day window completes)
+## PRODUCTION CHECKLIST (109/69 rolled out 2026-08-22; applying for production)
 1. **`SHOW_SYNC = false`** in app.js (Sheet sync is the future paid feature; also keeps the data-safety answer "collects nothing" unambiguous). Ship as a web push before applying.
 2. Store listing: **upload the v92 screenshots** (`store/assets/screenshot-1-log…5-streak.png` + `tablet-1..3.png` to BOTH tablet slots) — old ones show the pre-icon design.
 3. Verify latest closed-testing build is the one to promote (currently 103/63 with the speech plugin).
