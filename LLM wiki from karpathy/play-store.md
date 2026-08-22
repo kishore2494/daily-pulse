@@ -1,9 +1,20 @@
 # Play Store launch — status & handoff
 
-> **APP IS NOW NAMED `Daylog`** (renamed 2026-08-19 for searchability — see log.md).
-> Play title: `Daylog: Habit Tracker & Mood` · bundle to upload: **109/69** (fixes the alarm bug a tester reported — see log.md 2026-08-21).
-> The hosting URL and package id intentionally keep the old "dailypulse" string — changing
-> them would break every installed app. Only the display name changed.
+> **STATUS 2026-08-22 21:07 — APPLIED FOR PRODUCTION ACCESS.** Google is reviewing the
+> application form; they email the account owner, "usually 7 days or less".
+> Production track = Inactive. Closed testing "Alpha": **109 (69) in review**,
+> 108 (68) live to testers since Aug 19.
+>
+> **When production access is granted: promote 109 (69), NOT 108.** 108 still has the
+> alarm bug (exact-alarm permission denied by default on Android 14+ → reminders never
+> fired, silently). Fixed only in 109.
+>
+> Play title: `Daylog: Habit Tracker & Mood` · package `io.github.kishore2494.dailypulse`
+> (the "dailypulse" id and the hosting URL keep the old name on purpose — changing either
+> would break every install).
+>
+> **Answers submitted on the production form** are the 300-CHARACTER versions logged in
+> log.md 2026-08-22. Field limit is characters, not words.
 
 _Last updated: 2026-07-29 · app live at v60 · Play Console: closed-test release submitting for review._
 
