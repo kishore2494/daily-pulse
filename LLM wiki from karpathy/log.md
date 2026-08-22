@@ -1,3 +1,41 @@
+## 2026-08-22 — applied for production access (109/69 in review)
+
+Rolled out **109 (69)** to the closed "Alpha" track (in review at time of writing) and
+**submitted the production-access application at 21:07**. Google reviews the form and emails
+the owner, "usually 7 days or less". Production track is still Inactive.
+
+**Critical when access is granted: promote 109, not 108.** Only 108 is currently promotable
+(109 was still in review), and 108 contains the alarm bug. Version codes must increase, so
+promoting 108 first would ship the bug *and* force an immediate follow-up.
+
+**"Apply for production" does not release anything** — it is an eligibility/permission
+request only. The build is chosen later, at the promote step. Applying while 109 was in
+review was deliberate: the two reviews run in parallel instead of serially.
+
+### Production form answers (field limit is 300 CHARACTERS, not words)
+- **Recruit:** friends/family/colleagues, direct, no paid provider; opt-in link over WhatsApp
+  and in person, targeted at people who would genuinely use a daily tracker.
+- **Ease of recruiting:** "Difficult" (multiple choice) — installs were reachable but keeping
+  testers opted in and actually logging daily took repeated follow-up and per-person help
+  with the opt-in flow.
+- **Engagement:** ~5-6 daily users giving repeated detailed feedback; the rest intermittent.
+  Noted that defects like reminders-not-firing only surface after several consecutive days.
+- **Feedback + collection:** in-app form, chat, in person. Fixes listed: Android 14+ reminders,
+  navigation rebuild, cramped text, voice typing, PDF export, MIUI theme.
+- **Audience:** adults wanting a private offline tracker, no account, uneasy about cloud
+  wellbeing apps.
+- **Value:** one offline app replacing several trackers, with on-device insights (sleep sweet
+  spot, which habits lift mood, peak focus hours, screen-time cost); nothing uploaded or
+  paywalled.
+- **Expected first-year installs:** 0-10K (honest: niche, no ads, organic only).
+- **Changes from testing / readiness:** as above, plus 55 unit tests, layout evals at
+  320/360/412px, and on-device verification.
+
+### The one gap to close
+The alarm fix is verified on the POCO (Android 11) but **not on Android 14+**, which is where
+the original bug lives — Android 11 cannot reproduce it. The tester who reported it should
+confirm on 109. Worth closing before any reviewer follow-up.
+
 ## 2026-08-21 (later) — alarm fix VERIFIED on the real POCO (109/69)
 
 Tested on the POCO C31 (`VWQCY5HEYHUCYPZP`, Android 11, MIUI) over wireless adb. The cabled
