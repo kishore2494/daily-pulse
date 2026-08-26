@@ -35,7 +35,7 @@
      is looking at, so it becomes the probe root. Without this, opening the share sheet
      re-measured the Stats screen underneath and reported those findings under the
      overlay's name: duplicated noise, and the overlay's own elements never checked at all. */
-  const OVERLAYS = ['#sharesheet.on', '#milestone.on', '.tour.on', '.ob.on'];
+  const OVERLAYS = ['#sharesheet.on', '#savesheet.on', '#milestone.on', '.tour.on', '.ob.on'];
   const overlay = OVERLAYS.map(sel => document.querySelector(sel)).find(el => el && el.offsetHeight > 0);
   const screenEl = overlay || document.querySelector('.screen.on') || document.body;
   const all = Array.from(screenEl.querySelectorAll('*')).filter(vis);

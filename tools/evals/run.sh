@@ -60,6 +60,13 @@ for VP in "320 640" "360 740" "412 820"; do
 
   # The share sheet is a full-screen overlay with its own palette on a dark scrim, so it
   # cannot inherit the app's contrast guarantees — it needs measuring in its own right.
+  # The post-activity save sheet is a form on a dark scrim — its own contrast/tap surface.
+  $B js "try{ const n=Date.now(); DB.saveTimelog([{id:'evs',act:allActs()[0].id,start:n-5400000,end:n-600000,upd:n,t:'rewrote the parser',rpe:7,note:'flow state after the first 20 minutes'}]); show('time'); saveSheetOpen('evs'); }catch(e){} 'ok'" >/dev/null 2>&1
+  sleep 2
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"save-sheet","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ saveSheetClose(); }catch(e){} 'ok'" >/dev/null 2>&1
+
   $B js "try{ dashTab='overview'; show('dash'); shareSheetOpen('streak'); }catch(e){} 'ok'" >/dev/null 2>&1
   sleep 3
   R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)

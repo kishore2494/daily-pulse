@@ -179,6 +179,49 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Post-activity save ----
+  const sSnapT = localStorage.getItem('dp.timelog');
+  const sNow = Date.now(), sAct = allActs()[0].id;
+  DB.saveTimelog([{ id: 'utA', act: sAct, start: sNow - 5400000, end: sNow - 600000, upd: sNow }]);
+  ok('save sheet threshold is 2 minutes', SAVE_MIN_MS === 120000);
+  saveSheetOpen('utA');
+  ok('save sheet targets the block', saveState.id === 'utA');
+  saveState.title = '  rewrote   the parser  '; saveState.rpe = 7; saveState.note = ' flow state ';
+  saveSheetCommit();
+  let sSeg = DB.timelog().find(x => x.id === 'utA');
+  ok('save writes a normalised title', sSeg.t === 'rewrote the parser', sSeg.t);
+  ok('save writes the effort rating', sSeg.rpe === 7);
+  ok('save writes a trimmed note', sSeg.note === 'flow state', sSeg.note);
+  ok('save touches upd for the sync differ', sSeg.upd >= sNow);
+  // empty values must be DELETED, never stored as ''
+  saveSheetOpen('utA');
+  saveState.title = ''; saveState.rpe = null; saveState.note = '   ';
+  saveSheetCommit();
+  sSeg = DB.timelog().find(x => x.id === 'utA');
+  ok('cleared title is deleted not blanked', !('t' in sSeg));
+  ok('cleared effort is deleted not blanked', !('rpe' in sSeg));
+  ok('cleared note is deleted not blanked', !('note' in sSeg));
+  // the block must already be saved before the sheet is ever offered
+  DB.saveTimelog([{ id: 'utB', act: sAct, start: sNow - 3600000, end: null, upd: sNow }]);
+  startAct(sAct);
+  const sEnded = DB.timelog().find(x => x.id === 'utB');
+  ok('stopping ends the block regardless of the sheet', sEnded && sEnded.end != null);
+  ok('a long block offers the sheet', saveState.id === 'utB', saveState.id);
+  saveSheetClose();
+  // a short block stops silently
+  DB.saveTimelog([{ id: 'utC', act: sAct, start: Date.now() - 30000, end: null, upd: Date.now() }]);
+  saveState.id = null;
+  startAct(sAct);
+  ok('a short block does not offer the sheet', saveState.id === null, saveState.id);
+  // a title cap keeps a pasted paragraph out of the sync payload
+  DB.saveTimelog([{ id: 'utD', act: sAct, start: sNow - 900000, end: sNow, upd: sNow }]);
+  saveSheetOpen('utD'); saveState.title = 'x'.repeat(300); saveState.note = 'y'.repeat(900);
+  saveSheetCommit();
+  const sCap = DB.timelog().find(x => x.id === 'utD');
+  ok('title is capped at 80', sCap.t.length === 80, sCap.t.length);
+  ok('note is capped at 500', sCap.note.length === 500, sCap.note.length);
+  if (sSnapT != null) localStorage.setItem('dp.timelog', sSnapT); else localStorage.removeItem('dp.timelog');
+
   // ---- Weekly cadence ----
   const wSnapE = localStorage.getItem('dp.entries');
   ok('weekStart maps a Sunday back to Monday', weekStart('2026-08-30') === '2026-08-24', weekStart('2026-08-30'));

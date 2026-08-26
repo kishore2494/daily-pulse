@@ -1427,3 +1427,21 @@ input[type="range"] { height: 30px; }
    goes green — the point is that "this week already counts" is visibly a finished state. */
 .ring-week { margin-top: 5px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); line-height: 1.35; }
 .ring-week.ok { color: var(--good-ink); }
+
+/* Post-activity save sheet. Reuses .sharesheet for the scrim/layout so there is one overlay
+   idiom, not two. */
+.sv-sum { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.sv-scale button { min-height: 44px; }
+.sv-shown { margin: 4px 0 10px; padding: 9px 11px; border-radius: 10px;
+  background: var(--bg-input); border: 1px solid var(--border); }
+.sv-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.sv-note-txt { white-space: pre-wrap; margin-top: 3px; }
+#savesheet .field label { color: #cdd6f5; }
+#savesheet .ss-inner > .field { margin-top: 12px; }
+.sv-rpe-txt { margin-top: 6px; text-align: center; font-size: 12px; font-weight: 600; color: #b7c2e6; }
+.sv-rpe-txt b { color: #fff; }
+/* .scale-labels uses --text-faint, which is tuned for a card background and lands at
+   2.31:1 on this sheet's dark scrim. The sheet has its own ground, so it needs its own ink. */
+#savesheet .scale-labels span { color: #aab6d8; }
+/* .btn-sm is ~37px; every tap target on a sheet this size has to clear 44. */
+#savesheet #sv-skip { min-height: 44px; }

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v176';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v180';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -845,6 +845,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '⏱️ <b>Post-activity save</b> — stop a timer that ran more than two minutes and Daylog asks what it was, how hard it felt (1–10) and anything worth remembering. The block is already logged before you are asked, so you can skip it and lose nothing. Add or edit details on any past block from the 24-hour timeline.',
     '📅 <b>Weekly streaks</b> — a week counts once you log any 3 of its days, and the today-ring card tells you the moment this week is banked. A daily streak makes one bad day a failure; a weekly one absorbs real life. There are tiered awards for 2, 4, 8, 12, 26 and 52 weeks in a row.',
     '📍 <b>Plan a when &amp; where</b> — give any habit a cue like “after my morning coffee, at my desk”. It shows on that habit\'s chip until you tick it off. This is the best-evidenced habit trick there is: naming <i>when</i> and <i>where</i> beats naming the habit. Set one in Customize ▸ Checklist habits, or tap 📍 on the Habits screen.',
     '📈 <b>You vs you</b> — Stats ▸ Overview now compares your last week, last 4 weeks, or the same 4 weeks a year ago against your own past. No leaderboards and no other people: the only person on the other side is you. When there isn\'t enough history it tells you the date it unlocks instead of guessing.',
@@ -2326,7 +2327,12 @@ function startAct(actId) {
   if (run) {
     run.end = now; run.upd = now;
     if (run.act === actId) {   // tapping the running activity = just stop it
-      DB.saveTimelog(log); renderTime(); refreshTimerNotif(); toast(`⏹ ${actById(actId).name} stopped · ${fmtDur(run.end - run.start)}`); return;
+      DB.saveTimelog(log); renderTime(); refreshTimerNotif();
+      toast(`⏹ ${actById(actId).name} stopped · ${fmtDur(run.end - run.start)}`);
+      // The block is saved above FIRST, so the save sheet is pure enrichment and dismissing
+      // it loses nothing. Short blocks stop silently, as they always did.
+      if (run.end - run.start >= SAVE_MIN_MS) saveSheetOpen(run.id);
+      return;
     }
   }
   log.push({ id: 'ts' + now, act: actId, start: now, end: null, upd: now });
@@ -2389,7 +2395,14 @@ function segEditHTML() {
       <div class="field"><label>Started</label><input type="time" data-segt="start" value="${fmtClock(seg.start)}"></div>
       <div class="field"><label>Ended</label><input type="time" data-segt="end" value="${run ? '' : fmtClock(seg.end)}" ${run ? 'disabled placeholder="running…"' : ''}></div>
     </div>
+    ${(seg.t || seg.rpe != null || seg.note) ? `<div class="sv-shown">
+      ${seg.t ? `<div class="sv-title">${escapeHtml(seg.t)}</div>` : ''}
+      ${seg.rpe != null ? `<div class="hint">felt <b>${seg.rpe}</b>/10</div>` : ''}
+      ${seg.note ? `<div class="hint sv-note-txt">${escapeHtml(seg.note)}</div>` : ''}
+    </div>` : ''}
     <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" data-sv-edit="${seg.id}">${
+        (seg.t || seg.rpe != null || seg.note) ? '✏️ Edit details' : '＋ Add details'}</button>
       <button class="btn btn-ghost btn-sm" id="seg-close">Close</button>
       <button class="btn btn-ghost btn-sm" id="seg-del" style="color:var(--bad,#f87171)">🗑 Delete</button>
     </div>
@@ -2460,6 +2473,136 @@ function renderTime() {
     </div>
     <div style="height:14px"></div>`;
 }
+
+/* ============================================================
+   POST-ACTIVITY SAVE — the research rated this "the single highest-value thing to copy"
+   from Strava's tracking side, and the reason is exactly what was wrong here: the timer
+   stopped, a toast said how long it ran, and the moment was gone. A stopped block was a
+   duration and nothing else.
+
+   Two rules make this safe to add to a screen people use dozens of times a day:
+     1. The block is ALREADY SAVED before this appears. The sheet only enriches it, so
+        dismissing it — by tapping away, by Android back, by killing the app — loses
+        nothing. It is never a required step in stopping a timer.
+     2. It only offers itself for blocks worth annotating (>= SAVE_MIN_MS). Mis-taps and
+        30-second switches stop silently, the way they always did.
+
+   The effort scale is research item 8: a subjective 1-10 rating that REPLACES a sensor.
+   Perfect for a phone-only app — mood and energy already use this exact input pattern, so
+   there is nothing new to learn, and no hardware can contradict it.
+   ============================================================ */
+const SAVE_MIN_MS = 120000;                    // 2 minutes
+let saveState = { id: null, title: '', rpe: null, note: '' };
+
+function segById(id) { return DB.timelog().find(s => s.id === id) || null; }
+
+function saveSheetOpen(segId) {
+  const seg = segById(segId);
+  if (!seg) return;
+  saveState = { id: segId, title: seg.t || '', rpe: seg.rpe == null ? null : +seg.rpe, note: seg.note || '' };
+  let el = document.getElementById('savesheet');
+  if (!el) { el = document.createElement('div'); el.id = 'savesheet'; el.className = 'sharesheet'; document.body.appendChild(el); }
+  el.classList.add('on');
+  saveSheetRender();
+}
+function saveSheetClose() {
+  const el = document.getElementById('savesheet');
+  if (el) el.classList.remove('on');
+  saveState.id = null;
+}
+
+/* Writes onto the segment itself. Empty values are DELETED rather than stored as '' — the
+   time log is synced by comparing serialised state, so blank keys on every block would
+   churn a pointless round-trip, the same reason habit cues delete instead of blanking. */
+function saveSheetCommit() {
+  const log = DB.timelog();
+  const seg = log.find(s => s.id === saveState.id);
+  if (!seg) { saveSheetClose(); return; }
+  const t = (saveState.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const nt = (saveState.note || '').trim().slice(0, 500);
+  if (t) seg.t = t; else delete seg.t;
+  if (nt) seg.note = nt; else delete seg.note;
+  if (saveState.rpe != null) seg.rpe = saveState.rpe; else delete seg.rpe;
+  seg.upd = Date.now();
+  DB.saveTimelog(log);
+  syncTimelog();
+  saveSheetClose();
+  renderTime();
+  buzz(12);
+  toast('Saved to that block');
+}
+
+function saveSheetRender() {
+  const el = document.getElementById('savesheet');
+  if (!el) return;
+  const seg = segById(saveState.id);
+  if (!seg) { saveSheetClose(); return; }
+  const act = actById(seg.act);
+  const dur = (seg.end == null ? Date.now() : seg.end) - seg.start;
+  const RPE = ['', 'barely there', 'very easy', 'easy', 'fairly easy', 'moderate',
+               'somewhat hard', 'hard', 'very hard', 'nearly maxed', 'everything I had'];
+  el.innerHTML = `<div class="ss-inner">
+    <div class="ss-head"><span>How did that go?</span>
+      <button type="button" class="ss-x" id="sv-close" aria-label="Close">✕</button></div>
+
+    <div class="card sv-sum" style="border-color:${act.color}">
+      <div class="tt-now-emoji">${act.emoji}</div>
+      <div class="tt-now-info">
+        <div class="tt-now-name">${escapeHtml(act.name)}</div>
+        <div class="hint">${fmtClock(seg.start)}–${seg.end == null ? 'now' : fmtClock(seg.end)} · ${fmtDur(dur)}</div>
+      </div>
+    </div>
+
+    <div class="field"><label for="sv-title">What was it?</label>
+      <input type="text" id="sv-title" maxlength="80" autocomplete="off"
+        placeholder="e.g. rewrote the parser" value="${escapeHtml(saveState.title)}"></div>
+
+    <div class="field"><label>How hard did it feel?</label>
+      <div class="scale sv-scale">${Array.from({ length: 10 }, (_, i) => i + 1).map(n =>
+        `<button type="button" class="${saveState.rpe === n ? 'on' : ''}" data-sv-rpe="${n}">${n}</button>`).join('')}</div>
+      ${/* the descriptor gets its own centred line: squeezed into the middle of a
+             space-between row it collided with both end labels at 412px */''}
+      <div class="scale-labels"><span>easy</span><span>maxed</span></div>
+      <div class="sv-rpe-txt">${saveState.rpe
+        ? `<b>${saveState.rpe}/10</b> — ${RPE[saveState.rpe]}`
+        : 'optional — tap a number if you want to remember how it felt'}</div>
+    </div>
+
+    <div class="field"><label for="sv-note">Anything worth remembering?</label>
+      <textarea id="sv-note" rows="3" maxlength="500"
+        placeholder="What worked, what got in the way…">${escapeHtml(saveState.note)}</textarea></div>
+
+    <div class="ss-acts">
+      <button type="button" class="btn btn-primary" id="sv-save">Save</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="sv-skip" style="margin-top:8px;width:100%">Skip</button>
+    </div>
+    <div class="hint ss-note">The block is already logged — this only adds detail to it.</div>
+  </div>`;
+}
+
+document.addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  if (t.id === 'sv-close' || t.id === 'sv-skip' || t.id === 'savesheet') { saveSheetClose(); return; }
+  const r = t.closest('[data-sv-rpe]');
+  if (r) {
+    const n = +r.dataset.svRpe;
+    saveState.rpe = (saveState.rpe === n) ? null : n;     // tap again to clear
+    // keep whatever is typed but not yet committed
+    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note');
+    if (ti) saveState.title = ti.value;
+    if (no) saveState.note = no.value;
+    saveSheetRender(); buzz(6); return;
+  }
+  if (t.id === 'sv-save') {
+    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note');
+    if (ti) saveState.title = ti.value;
+    if (no) saveState.note = no.value;
+    saveSheetCommit(); return;
+  }
+  const ed = t.closest('[data-sv-edit]');
+  if (ed) { saveSheetOpen(ed.dataset.svEdit); buzz(8); return; }
+});
 
 /* ---------- Sync the time log to the Sheet ----------
    Two things go over: ① a readable "Time Log" tab (one row per block, cross-midnight
@@ -7210,6 +7353,8 @@ function handleBack() {
   //    scrim — the user pressed back and nothing appeared to happen at all.
   const ssh = document.getElementById('sharesheet');
   if (ssh && ssh.classList.contains('on')) { shareSheetClose(); return; }
+  const svh = document.getElementById('savesheet');
+  if (svh && svh.classList.contains('on')) { saveSheetClose(); return; }
   const tr = document.getElementById('tour'); if (tr) { endTour(); return; }
   const wn = document.getElementById('wn-pop'); if (wn) { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); wn.remove(); return; }
   const drawer = document.getElementById('drawer');
