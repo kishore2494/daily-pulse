@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v184';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v187';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -618,7 +618,7 @@ function pushState(now) {
       timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
       docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg(),
       corecfg: coreCfg(), daycfg: gymDays(), gymgroups: gymGroups(), navcfg: navCfg(),
-      pomo: DB.pomo(), timebox: DB.timebox() };
+      pomo: DB.pomo(), timebox: DB.timebox(), goals: DBgoals() };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -705,7 +705,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -845,6 +845,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '🎯 <b>Goals — all of them, free</b> — Stats ▸ Overview. Any of nine measures over a week, a month or a year, as many as you like. Every goal shows exactly what is left and how much per remaining day would get there, and “Suggest” fills in what <i>you</i> actually averaged over your last three periods rather than inventing a number. Other trackers charge for this.',
     '🗓️ <b>Month in review</b> — Stats ▸ Overview. A five-card wrap-up of any month you have logged: the shape of the month, your habits ranked, how it felt, where the time went. In the first ten days of a new month it points at the month just finished. Nothing expires — every month stays browsable.',
     '⏱️ <b>Post-activity save</b> — stop a timer that ran more than two minutes and Daylog asks what it was, how hard it felt (1–10) and anything worth remembering. The block is already logged before you are asked, so you can skip it and lose nothing. Add or edit details on any past block from the 24-hour timeline.',
     '📅 <b>Weekly streaks</b> — a week counts once you log any 3 of its days, and the today-ring card tells you the moment this week is banked. A daily streak makes one bad day a failure; a weekly one absorbs real life. There are tiered awards for 2, 4, 8, 12, 26 and 52 weeks in a row.',
@@ -3071,7 +3072,9 @@ function coachReview() {
   const lines = [];
   const pmT = pmAvg(thisW), pmL = pmAvg(lastW);
   let head = `Polymath averaged <b>${pmT ?? '–'}/100</b> this week`;
-  if (pmT != null && pmL != null) { const d = pmT - pmL; head += ` <span style="color:${d>=0?'var(--good)':'var(--bad)'}">${d>=0?'▲ +':'▼ '}${d}</span> vs last week`; }
+  // --good/--bad are FILL colours; as small text on a card they fail WCAG (measured 2.77:1
+  // for the negative case in light mode). The *-ink tokens exist for exactly this.
+  if (pmT != null && pmL != null) { const d = pmT - pmL; head += ` <span style="color:${d>=0?'var(--good-ink)':'var(--bad-ink)'}">${d>=0?'▲ +':'▼ '}${d}</span> vs last week`; }
   lines.push({ t: head, k: 'head' });
   lines.push({ t: `Logged <b>${logged}/7</b> days · 🔥 ${loggedStreak()}-day streak`, k: 'ok' });
   let best = null; thisW.forEach(d => { const p = e[d] ? polymath(e[d]) : null; if (p && (!best || p.total > best.s)) best = { d, s: p.total }; });
@@ -3567,6 +3570,8 @@ function renderDash() {
       ${barChart(pmSeries, '#8b9dff', { max: 100 })}
       <div style="margin-top:10px">${pmBars}</div>
     </div>
+
+    ${goalsCardHTML()}
 
     ${monthCardHTML()}
 
@@ -5356,7 +5361,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals'];
 function exportData() {
   const out = backupBlob();
   saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
@@ -5998,6 +6003,245 @@ document.addEventListener('click', (ev) => {
   const d = b.dataset.beOpen;
   if (!DB.entry(d)) { toast('Nothing logged on ' + prettyDate(d)); return; }
   logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d));
+});
+
+/* ============================================================
+   CUSTOM GOALS — free, because Strava charges for them.
+
+   The research was blunt about this: Strava paywalls custom goals along with recaps and most
+   of its analysis layer, and it called three progressive paywalls of the REWARD layer
+   demotivating. "Your 'nothing paywalled' position is a genuine weapon; don't trade it." So
+   this is the whole feature, given away: any of nine measures, over a week, a month or a
+   year, as many as you like.
+
+   Two evidence-backed details, both from items that survived adversarial verification:
+     - The goal-gradient effect: effort accelerates as a target comes into view. That only
+       works if the remaining gap is VISIBLE, so every goal states exactly what is left and
+       how much per remaining day would get there.
+     - Targets calibrated to nobody is a named demotivation mode, so nothing here suggests a
+       number. The user sets it, and "Suggest" fills in what they actually averaged over the
+       last three periods — their own history, not a magazine's.
+   ============================================================ */
+const GOAL_PERIODS = {
+  w: { label: 'this week',  days: 7,  name: 'Weekly' },
+  m: { label: 'this month', days: 30, name: 'Monthly' },
+  y: { label: 'this year',  days: 365, name: 'Yearly' },
+};
+
+/* Each measure knows how to total ITSELF over a list of dates, so adding one later is a
+   single entry rather than a new branch in three places. */
+const GOAL_METRICS = [
+  { k: 'logged',  label: 'Days logged',   emoji: '📘', unit: 'days',
+    sum: (c, ds) => ds.filter(d => c.e[d]).length },
+  { k: 'habits',  label: 'Habits ticked', emoji: '✅', unit: '',
+    sum: (c, ds) => ds.reduce((n, d) => n + (c.e[d]
+      ? c.hkeys.filter(k => hVal(c.e[d], k) === H_DONE).length : 0), 0) },
+  { k: 'perfect', label: 'Perfect days',  emoji: '⭐', unit: 'days',
+    sum: (c, ds) => ds.filter(d => c.e[d] && c.hkeys.length &&
+      c.hkeys.every(k => hVal(c.e[d], k) === H_DONE)).length },
+  { k: 'deep',    label: 'Deep work',     emoji: '🎯', unit: 'h', dec: 1,
+    sum: (c, ds) => ds.reduce((n, d) => n + (c.num(d, 'deepWorkHours') || 0), 0) },
+  { k: 'workout', label: 'Workout days',  emoji: '💪', unit: 'days',
+    sum: (c, ds) => ds.filter(d => c.e[d] && +c.e[d].workoutsDone > 0).length },
+  { k: 'journal', label: 'Days written',  emoji: '✍️', unit: 'days',
+    sum: (c, ds) => ds.filter(d => c.e[d] && (c.e[d].journal || '').trim()).length },
+  { k: 'steps',   label: 'Steps',         emoji: '👟', unit: '',
+    sum: (c, ds) => ds.reduce((n, d) => { const v = (c.hs[d] || {}).steps;
+      return n + (v != null && !isNaN(+v) ? +v : 0); }, 0) },
+  { k: 'tracked', label: 'Time tracked',  emoji: '⏱', unit: 'h', dec: 1,
+    sum: (c, ds) => { if (!ds.length) return 0;
+      const t0 = new Date(ds[0] + 'T00:00:00').getTime();
+      const t1 = new Date(addDays(ds[ds.length - 1], 1) + 'T00:00:00').getTime();
+      return c.log.reduce((s, x) => { if (!x || x.start == null) return s;
+        const a = Math.max(x.start, t0), b = Math.min(x.end == null ? Date.now() : x.end, t1);
+        return s + Math.max(0, b - a); }, 0) / 3600000; } },
+  { k: 'weeks',   label: 'Weeks in a row', emoji: '📅', unit: 'weeks',
+    sum: () => weekStreak().live },
+];
+function goalMetric(k) { return GOAL_METRICS.find(m => m.k === k) || null; }
+
+function DBgoals() { const g = safeParse(localStorage.getItem('dp.goals'), null); return Array.isArray(g) ? g : []; }
+function saveGoals(g) { localStorage.setItem('dp.goals', JSON.stringify(g)); pushState(); }
+
+/* Shared context so nine measures do not each re-read the store. */
+function goalCtx() {
+  const e = DB.entries(), hs = healthStore(), log = DB.timelog();
+  return { e, hs, log: Array.isArray(log) ? log : [],
+    hkeys: habitCfg().filter(h => !h.hidden).map(h => h.key),
+    num: (d, k) => { const v = e[d] && e[d][k];
+      return (v != null && v !== '' && !isNaN(+v)) ? +v : null; } };
+}
+
+/* The dates of the CURRENT period, and how much of it is left. Weeks use the same
+   Monday-start as the weekly streak; months and years are calendar-true, not rolling, so
+   "this month" means what a person means by it. */
+function goalWindow(p) {
+  const t = todayStr();
+  let start, end;
+  if (p === 'w') { start = weekStart(t); end = addDays(start, 6); }
+  else if (p === 'm') { start = t.slice(0, 8) + '01'; end = t.slice(0, 7) + '-' + String(ymDays(t.slice(0, 7))).padStart(2, '0'); }
+  else { start = t.slice(0, 4) + '-01-01'; end = t.slice(0, 4) + '-12-31'; }
+  const days = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) days.push(d);
+  const elapsed = days.filter(d => d <= t).length;
+  return { start, end, days, elapsed, left: days.length - elapsed };
+}
+
+function goalProgress(g) {
+  const m = goalMetric(g.k);
+  if (!m) return null;
+  const w = goalWindow(g.p);
+  const c = goalCtx();
+  const done = m.sum(c, w.days.filter(d => d <= todayStr()));
+  const target = +g.n;
+  const pct = target > 0 ? Math.min(100, Math.round(done / target * 100)) : 0;
+  const left = Math.max(0, target - done);
+  // Per remaining day INCLUDING today — that is the number that makes the gap actionable.
+  const perDay = w.left + 1 > 0 ? left / (w.left + 1) : left;
+  return { g, m, w, done, target, pct, left, perDay, hit: done >= target };
+}
+
+/* Suggest = what they actually averaged over the last three comparable periods. Never a
+   round number pulled from nowhere: "targets calibrated to nobody" is a named demotivation
+   mode, and a suggestion from someone else's data is exactly that. */
+function goalSuggest(k, p) {
+  const m = goalMetric(k); if (!m) return null;
+  const c = goalCtx(), per = GOAL_PERIODS[p].days;
+  const vals = [];
+  for (let i = 1; i <= 3; i++) {
+    const ds = [];
+    for (let j = 0; j < per; j++) ds.push(addDays(todayStr(), -(i * per) + j));
+    vals.push(m.sum(c, ds));
+  }
+  const real = vals.filter(v => v > 0);
+  if (!real.length) return null;
+  const avg = real.reduce((a, b) => a + b, 0) / real.length;
+  return m.dec ? Math.round(avg * 10) / 10 : Math.max(1, Math.round(avg));
+}
+
+function goalFmt(m, v) {
+  if (m.k === 'steps') return Math.round(v).toLocaleString();
+  return (m.dec ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v))) + (m.unit === 'h' ? 'h' : '');
+}
+
+/* ---- Goals card ---- */
+let goalAdd = false, goalDraft = { k: 'habits', p: 'w', n: '' };
+
+function goalsCardHTML() {
+  const gs = DBgoals();
+  const rows = gs.map(goalProgress).filter(Boolean);
+  const done = rows.filter(r => r.hit).length;
+
+  const form = !goalAdd ? '' : `<div class="gl-form">
+    <div class="field"><label for="gl-k">Measure</label>
+      <select id="gl-k">${GOAL_METRICS.map(m =>
+        `<option value="${m.k}"${goalDraft.k === m.k ? ' selected' : ''}>${m.emoji} ${m.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Over</label>
+      <div class="range-row">${Object.keys(GOAL_PERIODS).map(p =>
+        `<button type="button" class="range-btn ${goalDraft.p === p ? 'on' : ''}" data-gl-p="${p}">${GOAL_PERIODS[p].name}</button>`).join('')}</div></div>
+    <div class="field"><label for="gl-n">Target</label>
+      <div class="gl-target">
+        <input type="number" id="gl-n" inputmode="decimal" min="0" step="any"
+          placeholder="how many?" value="${escapeHtml(String(goalDraft.n))}">
+        <button type="button" class="btn btn-ghost btn-sm" id="gl-suggest">Suggest</button>
+      </div>
+      <div class="hint" id="gl-hint">Suggest fills in what you actually averaged over your
+        last three ${GOAL_PERIODS[goalDraft.p].name.toLowerCase().replace('ly', '')}s — your own
+        history, not somebody else's number.</div></div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-primary btn-sm" id="gl-save">Add goal</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="gl-cancel">Cancel</button>
+    </div>
+  </div>`;
+
+  return `<div class="card">
+    <h2 class="h2-icon">${hicon('target')}<span>Your goals</span>
+      <span class="hint" style="margin-left:auto">${rows.length
+        ? `${done} of ${rows.length} hit` : 'free, all of them'}</span></h2>
+
+    ${rows.length ? rows.map(r => `<div class="gl-row${r.hit ? ' hit' : ''}">
+      <div class="gl-head">
+        <span class="gl-name">${r.m.emoji} ${r.m.label}
+          <span class="hint">${GOAL_PERIODS[r.g.p].label}</span></span>
+        <button type="button" class="gl-del" data-gl-del="${r.g.id}" aria-label="Remove goal">✕</button>
+      </div>
+      <div class="gl-bar"><i style="width:${Math.max(2, r.pct)}%"></i></div>
+      <div class="gl-foot">
+        <span><b>${goalFmt(r.m, r.done)}</b> of ${goalFmt(r.m, r.target)}</span>
+        <span class="gl-gap">${r.hit
+          ? '✓ done'
+          : `${goalFmt(r.m, r.left)} to go${r.w.left > 0 && r.m.k !== 'weeks'
+              ? ` · ${goalFmt(r.m, r.perDay)}/day` : ''}`}</span>
+      </div>
+    </div>`).join('')
+    : `<div class="hint">Set any target you like — nine measures over a week, a month or a
+       year, as many as you want. Other trackers charge for this.</div>`}
+
+    ${form}
+    ${goalAdd ? '' : `<button class="btn btn-ghost btn-sm" id="gl-add" style="margin-top:10px">＋ Add a goal</button>`}
+  </div>`;
+}
+
+/* Swap just this card — renderDash rebuilds the year mosaic and the award list. */
+function refreshGoals() {
+  const cards = [...document.querySelectorAll('#s-dash .card')];
+  const card = cards.find(c => c.querySelector('[data-gl-del], #gl-add, #gl-save'));
+  if (!card) { renderDash(); return; }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = goalsCardHTML();
+  const next = tmp.firstElementChild;
+  if (next) card.replaceWith(next);
+}
+
+function goalDraftRead() {
+  const k = document.getElementById('gl-k'), n = document.getElementById('gl-n');
+  if (k) goalDraft.k = k.value;
+  if (n) goalDraft.n = n.value;
+}
+
+document.addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+
+  if (t.id === 'gl-add') { goalAdd = true; goalDraft = { k: 'habits', p: 'w', n: '' }; refreshGoals(); return; }
+  if (t.id === 'gl-cancel') { goalAdd = false; refreshGoals(); return; }
+
+  const pb = t.closest('[data-gl-p]');
+  if (pb) { goalDraftRead(); goalDraft.p = pb.dataset.glP; refreshGoals(); buzz(6); return; }
+
+  if (t.id === 'gl-suggest') {
+    goalDraftRead();
+    const v = goalSuggest(goalDraft.k, goalDraft.p);
+    if (v == null) { toast('Not enough history yet to suggest one', true); return; }
+    goalDraft.n = String(v); refreshGoals(); buzz(8);
+    toast('Your own average over the last 3 ' + GOAL_PERIODS[goalDraft.p].name.toLowerCase().replace('ly', '') + 's');
+    return;
+  }
+
+  if (t.id === 'gl-save') {
+    goalDraftRead();
+    const n = parseFloat(goalDraft.n);
+    if (!isFinite(n) || n <= 0) { toast('Give it a target above zero', true); return; }
+    const gs = DBgoals();
+    // one goal per measure+period, so the card cannot fill with near-duplicates
+    const i = gs.findIndex(g => g.k === goalDraft.k && g.p === goalDraft.p);
+    const rec = { id: 'g' + Date.now(), k: goalDraft.k, p: goalDraft.p, n, at: new Date().toISOString() };
+    if (i >= 0) gs[i] = Object.assign({}, gs[i], { n, at: rec.at }); else gs.push(rec);
+    saveGoals(gs);
+    goalAdd = false; refreshGoals(); buzz(14);
+    toast(i >= 0 ? 'Goal updated' : 'Goal set');
+    return;
+  }
+
+  const db = t.closest('[data-gl-del]');
+  if (db) {
+    saveGoals(DBgoals().filter(g => g.id !== db.dataset.glDel));
+    refreshGoals(); buzz(8); toast('Goal removed');
+    return;
+  }
+});
+document.addEventListener('change', (ev) => {
+  if (ev.target && ev.target.id === 'gl-k') { goalDraftRead(); refreshGoals(); }
 });
 
 /* ============================================================

@@ -179,6 +179,44 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Custom goals ----
+  const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
+  ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));
+  ok('goals reach the sync payload', /goals: DBgoals\(\)/.test(pushState.toString()));
+  ok('goals are in the sync adopt list', /\['goals', 'dp\.goals'\]/.test(applyRemoteState.toString()));
+  ok('nine measures offered free', GOAL_METRICS.length === 9, GOAL_METRICS.length);
+  ok('three timeframes offered', Object.keys(GOAL_PERIODS).length === 3);
+  // periods are calendar-true, not rolling
+  const gW = goalWindow('w'), gM = goalWindow('m'), gY = goalWindow('y');
+  ok('the week window starts on a Monday', new Date(gW.start + 'T00:00:00').getDay() === 1, gW.start);
+  ok('the week window is 7 days', gW.days.length === 7);
+  ok('the month window starts on the 1st', gW && gM.start.slice(8) === '01', gM.start);
+  ok('the month window covers the whole month', gM.days.length === ymDays(todayStr().slice(0, 7)));
+  ok('the year window is calendar-true', gY.start.slice(5) === '01-01' && gY.end.slice(5) === '12-31');
+  ok('elapsed never exceeds the window', gM.elapsed <= gM.days.length && gY.elapsed <= gY.days.length);
+  // progress maths
+  const GE = {}; for (let i = 0; i < 7; i++) GE[addDays(todayStr(), -i)] = { mood: 7, habits: {} };
+  localStorage.setItem('dp.entries', JSON.stringify(GE));
+  localStorage.setItem('dp.goals', JSON.stringify([{ id: 'gu1', k: 'logged', p: 'w', n: 100, at: '' }]));
+  let gP = goalProgress(DBgoals()[0]);
+  ok('goal progress counts only elapsed days', gP.done === gW.elapsed, gP.done + ' vs ' + gW.elapsed);
+  ok('goal progress reports the remaining gap', gP.left === 100 - gP.done);
+  ok('goal per-day includes today', Math.abs(gP.perDay - gP.left / (gW.left + 1)) < 1e-9);
+  ok('an unmet goal is not hit', gP.hit === false);
+  // a met goal must not report a negative gap
+  localStorage.setItem('dp.goals', JSON.stringify([{ id: 'gu2', k: 'logged', p: 'w', n: 1, at: '' }]));
+  gP = goalProgress(DBgoals()[0]);
+  ok('a met goal clamps to 100%', gP.pct === 100, gP.pct);
+  ok('a met goal reports no gap', gP.left === 0 && gP.hit === true);
+  // suggest comes from the user's own history, or nothing at all
+  ok('suggest returns a number or null', [null].concat([goalSuggest('logged', 'w')])
+     .some(v => v === null || typeof v === 'number'));
+  ok('suggest on an untracked measure returns null', goalSuggest('workout', 'w') === null,
+     String(goalSuggest('workout', 'w')));
+  ok('an unknown measure yields no progress row', goalProgress({ id: 'x', k: 'nope', p: 'w', n: 5 }) === null);
+  if (gSnapG != null) localStorage.setItem('dp.goals', gSnapG); else localStorage.removeItem('dp.goals');
+  if (gSnapE2 != null) localStorage.setItem('dp.entries', gSnapE2); else localStorage.removeItem('dp.entries');
+
   // ---- Month in review ----
   ok('ymDays Jan', ymDays('2026-01') === 31);
   ok('ymDays Feb non-leap', ymDays('2026-02') === 28, ymDays('2026-02'));

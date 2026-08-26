@@ -1486,3 +1486,33 @@ input[type="range"] { height: 30px; }
 .mr-steps { display: flex; gap: 8px; margin-top: 12px; }
 .mr-steps .btn { flex: 1; min-height: 44px; }
 #mrdeck .ss-acts .btn { width: 100%; }
+
+/* ---------- Custom goals ----------
+   The remaining gap is the load-bearing element: the goal-gradient effect only works if you
+   can SEE how close you are, so .gl-gap is never allowed to be the thing that gets clipped. */
+.gl-row { padding: 10px 0; border-top: 1px solid var(--border); }
+.gl-row:first-of-type { border-top: 0; }
+.gl-head { display: flex; align-items: baseline; gap: 8px; }
+.gl-name { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.gl-name .hint { font-weight: 500; margin-left: 4px; }
+/* A 44px hit area pulled UP into the row but never sideways past the card's content box —
+   the negative right margin this replaces pushed the button 10px outside its parent. */
+.gl-del { flex: 0 0 auto; width: 44px; height: 44px; margin: -12px 0; padding: 0;
+  border: 0; background: none; color: var(--text-faint); font-size: 15px; cursor: pointer; }
+.gl-del:active { color: var(--bad-ink); }
+.gl-bar { height: 10px; border-radius: 99px; background: var(--bg-input); overflow: hidden; margin: 7px 0 6px; }
+.gl-bar > i { display: block; height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), #4ad6c0); transition: width .3s; }
+.gl-row.hit .gl-bar > i { background: linear-gradient(90deg, #34d399, #4ad6c0); }
+.gl-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 12px;
+  font-weight: 600; color: var(--text-dim); }
+.gl-foot b { color: var(--text); }
+.gl-gap { flex: 0 0 auto; text-align: right; }
+.gl-row.hit .gl-gap { color: var(--good-ink); }
+.gl-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.gl-target { display: flex; gap: 8px; align-items: stretch; }
+.gl-target input { flex: 1 1 auto; min-width: 0; }
+.gl-target .btn { flex: 0 0 auto; min-height: 44px; }
+.gl-form .range-btn { min-height: 44px; }
+/* .btn-sm is ~37px; the goal form's actions are primary controls and must clear 44. */
+.gl-form .btn-row .btn { min-height: 44px; }

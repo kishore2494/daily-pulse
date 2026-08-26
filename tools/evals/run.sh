@@ -60,6 +60,14 @@ for VP in "320 640" "360 740" "412 820"; do
 
   # The share sheet is a full-screen overlay with its own palette on a dark scrim, so it
   # cannot inherit the app's contrast guarantees — it needs measuring in its own right.
+  # The goals card with its form OPEN — inputs, a 3-button picker and a suggest button that
+  # only exist in that state.
+  $B js "try{ dashTab='overview'; show('dash'); renderDash(); saveGoals([{id:'ev1',k:'habits',p:'w',n:60,at:''},{id:'ev2',k:'deep',p:'m',n:90,at:''},{id:'ev3',k:'steps',p:'y',n:3000000,at:''}]); goalAdd=true; refreshGoals(); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
+  sleep 1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"dash-goals","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ goalAdd=false; localStorage.removeItem('dp.goals'); refreshGoals(); }catch(e){} 'ok'" >/dev/null 2>&1
+
   # The month-in-review deck: its own scrim, its own internals.
   $B js "try{ show('dash'); mrOpen(mrMonths()[1]||mrMonths()[0]); }catch(e){} 'ok'" >/dev/null 2>&1
   sleep 2
