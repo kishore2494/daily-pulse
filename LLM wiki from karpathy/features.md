@@ -33,3 +33,31 @@ Everything is editable and hideable: theme mode (navy/black/light) + accent (6 c
 - **2-day inactivity nudge** (id 760) — pre-scheduled, fires even if app never opened (`scheduleInactivityReminder`).
 - **Pomodoro** (id 750) and **Timebox** (ids 800-830) end/start alarms.
 - PWA fallbacks (no native shell): in-app foreground alarm, `.ics` calendar export, ntfy push.
+
+## Added 2026-08-26/27 (v164 → v190)
+
+Motivation and review layer, from `DAYLOG-STRAVA-RESEARCH.md`. Full mapping and the rules
+each is bound by: `strava-build.md`.
+
+- **Trophy case** (Stats ▸ Awards) — 60 awards across 9 tiered families, derived on read,
+  never revocable, earned dates replayed from history.
+- **Your best ever** (Stats ▸ Overview) — top-3 lifetime ladder per benchmark plus
+  best-this-year; rows open that day.
+- **Share cards** — 5 canvas designs at 4:5 and 9:16, drawn on device. Delivery falls through
+  a 4-rung ladder because Android WebView has no Web Share API; the native rung needs the
+  next store build.
+- **You vs you** — temporal self-comparison over week / month / year, 10 measures, per-metric
+  direction, today excluded, honest degradation.
+- **Habit cues** — an optional when/where plan per habit, shown on the chip while un-ticked.
+- **Weekly streaks** — a week counts at 3 of 7 days; the running week can never break it.
+- **Month in review** — a 5-card deck for any month ever logged, no expiry.
+- **Custom goals** — 9 measures × 3 timeframes, free, with the remaining gap always visible
+  and "Suggest" drawn from the user's own last three periods.
+- **Post-activity save** — title, 1–10 perceived effort and a note on any time block over two
+  minutes; the block is saved before you are asked.
+- **Fresh start** — one landmark note on a Monday, the 1st, or New Year's Day.
+- **Health Connect insights** — 4 sensor insights and 13 correlations, every split on the
+  user's own median.
+
+Supporting: `tools/deploy.sh` (proves the live URL serves the version), 159 unit tests, and
+an eval suite that now measures every Stats sub-tab and all four overlays.

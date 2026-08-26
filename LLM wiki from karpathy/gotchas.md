@@ -190,3 +190,52 @@ And one blind spot: **overlays were never measured at all** — the probe read t
 behind them. A visible overlay is now the probe root, which is how the share sheet's own
 40px chips surfaced. The runner also only ever measured Stats' *default* tab; it now drives
 all four sub-tabs plus the share sheet.
+
+## Awards derived on read are not automatically permanent (2026-08-27)
+
+`earned: cur >= t` is correct for a cumulative metric and for `mode: 'peak'` over full
+history — but `strength` is an **instantaneous** EMA. Ten quiet days took it 100 → 59 and the
+75/90/100 badges silently disappeared, while `dp.awards` still listed them. The ledger was
+written and never read back for the display decision; `awardsHTML`'s `seen` was dead code.
+
+The fix is to union the ledger into `earned` AND carry a high-water `hi` for every progress
+surface — otherwise a sticky badge renders as regressed ("100% strength", ladder says "tier 2
+of 5").
+
+## Anything derived from `habitCfg()` re-scores all of history
+
+`awardSeries('perfect')` keyed off today's config, so **adding one habit un-perfected every
+past day** and dropped four badges at once. Old entries have no key for a habit created
+later, and `hVal` returns `H_MISS` for a missing key. Judge a day only against habits that
+existed on it — inferred from the first date a key appears in the log, and stamped exactly
+via `added: todayStr()` on new habits.
+
+## `habitStrength`'s guard truncated the WRONG end
+
+It bailed after 4000 **forward** steps from `dates[0]`, returning a value from ~11 years
+before today as if it were current. One entry mis-dated to 2010 (the date input has `max` but
+no `min`, and the Android year wheel is easy to mis-scroll) reported strength 0 and erased
+every strength award. Clamp the **start** of the walk, never the end — with a 13-day
+half-life anything older than ~3.3 years weighs ~1e-28. Self-healing, no migration.
+
+## A todayStr stub must forward its argument
+
+`addDays(str, n)` ends with `return todayStr(d)`. A test stub like `todayStr = () => fake`
+therefore makes **addDays return the fake date for every input**, which silently broke a
+back-dated assertion and made a working guard look broken. Always
+`todayStr = x => (x ? real(x) : fake)`.
+
+## Fill colours are not text colours
+
+`--good` / `--bad` / quadrant colours / `--text-faint` are tuned for fills and card
+backgrounds. As small text they fail WCAG: `.wow-delta.down` at 2.77:1, `coachReview`'s delta
+at 2.77:1, mood-meter labels at 4.01:1, `--text-faint` at 4.27–4.43:1 on tinted grounds, and
+`.scale-labels` at 2.31:1 on the share/save sheets' dark scrim. The `--*-ink` tokens exist
+for text; an overlay with its own ground needs its own ink.
+
+## A 44px hit area must not escape its parent
+
+`.gl-del` used `margin: -12px -10px -12px 0` to grow a 44px target, which pushed the button
+10px outside the card's content box (`escapes-parent`). Grow vertically with negative
+margins; never sideways. For a page indicator that must *look* small, keep the button 44px
+and draw the dot with an inset `::after`.

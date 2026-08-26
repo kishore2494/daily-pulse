@@ -1089,3 +1089,30 @@ Added appearance MODES (settings.mode: navy default / black AMOLED / light) on t
 
 **New pages:** `backups.md`. **Updated:** `gotchas.md` (7 entries), `index.md`, `log.md`.
 
+## 2026-08-27 — the whole Strava build list, and 27 defects found by reviewing my own work
+
+**Ingested:** an overnight autonomous run, v164 → v190.
+
+- **A 40-agent review fleet** over the awards/share-card code: 32 claimed defects, 27
+  confirmed, 5 refuted. All 27 fixed. The worst were mine and live: awards were silently
+  revocable (the ledger existed but was never unioned into `earned`, so a decayed EMA dropped
+  badges), `perfect` re-scored all of history against TODAY's habit config, and one entry
+  mis-dated to 2010 zeroed every strength award. See `gotchas.md`.
+- **All 12 research items shipped** — see `strava-build.md`. Highlights: "You vs you"
+  temporal comparison (which replaced a week-over-week strip that painted *more screen time*
+  green and included a half-logged today), habit cues, weekly streaks, the month deck,
+  free custom goals, post-activity save with perceived effort, fresh-start landmarks.
+- **Tests 55 → 159.** Eval extended from "the dash default tab" to four Stats sub-tabs, the
+  share sheet, the save sheet, the month deck and the goals form. Two more probe
+  false-positive classes fixed and one blind spot closed (overlays were never measured).
+- **The deploy trap.** v149–v164 were pushed to `origin` while the live app loads from
+  `prod`; the site served v146 the whole time and every command reported success. `on: push`
+  also failed to register a run. `tools/deploy.sh` now proves deployment by polling the live
+  URL and exits non-zero otherwise.
+- **Backups.** `daylog-native` private repo created (the native half had none), 109
+  retroactive `web-vN` tags on both web remotes. **The upload keystore is still unbacked** —
+  `backups.md` and `KEYSTORE.md` state the risk and the fix; it needs a human decision.
+
+**New pages:** `strava-build.md`, `backups.md`. **Updated:** `gotchas.md`, `features.md`,
+`index.md`, `log.md`.
+
