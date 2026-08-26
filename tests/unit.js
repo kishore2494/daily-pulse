@@ -179,6 +179,45 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Month in review ----
+  ok('ymDays Jan', ymDays('2026-01') === 31);
+  ok('ymDays Feb non-leap', ymDays('2026-02') === 28, ymDays('2026-02'));
+  ok('ymDays Feb leap', ymDays('2024-02') === 29, ymDays('2024-02'));
+  ok('ymPrev crosses the year', ymPrev('2026-01') === '2025-12', ymPrev('2026-01'));
+  ok('ymNext crosses the year', ymNext('2026-12') === '2027-01', ymNext('2026-12'));
+  ok('ymLabel is human', ymLabel('2026-07') === 'July 2026', ymLabel('2026-07'));
+  const mSnapE = localStorage.getItem('dp.entries'), mSnapT = localStorage.getItem('dp.timelog');
+  const ME = {}, mYM = ymPrev(ymOf(todayStr())), mTot = ymDays(mYM);
+  const hK = habitCfg().filter(h => !h.hidden).map(h => h.key);
+  for (let i = 1; i <= mTot; i++) {
+    const hs = {}; hK.forEach(k => { hs[k] = true; });
+    ME[mYM + '-' + String(i).padStart(2, '0')] = { mood: 8, energy: 7, sleepHours: 7.5, habits: hs };
+  }
+  localStorage.setItem('dp.entries', JSON.stringify(ME));
+  localStorage.removeItem('dp.timelog');
+  const MR = monthReview(mYM);
+  ok('month covers every day', MR.logged === mTot && MR.coverage === 100, MR.logged + '/' + mTot);
+  ok('a completed month is not partial', MR.partial === false);
+  ok('month counts every habit tick', MR.ticks === mTot * hK.length, MR.ticks);
+  ok('month counts perfect days', MR.perfect === mTot, MR.perfect);
+  ok('month averages mood', Math.abs(MR.mood - 8) < 0.001, MR.mood);
+  ok('month finds the best day', MR.best && MR.best.mood === 8);
+  // the current month must declare itself partial
+  const MRnow = monthReview(ymOf(todayStr()));
+  ok('the running month is partial', MRnow.partial === true);
+  ok('a partial month only counts elapsed days', MRnow.elapsed <= MRnow.total);
+  // cards drop rather than render empty
+  const mNames = mrCards(MR).map(c => c.t);
+  ok('no time tracked drops the time card', !mNames.includes('Where the time went'), mNames.join(','));
+  ok('month deck always has the shape card', mNames[0] === 'The month');
+  ok('month deck lists habits', mNames.includes('Habits'));
+  // a month with nothing logged must not divide by zero
+  const MRempty = monthReview('2019-03');
+  ok('an empty month does not blow up', MRempty.logged === 0 && MRempty.ticks === 0);
+  ok('an empty month reports no best day', MRempty.best === null);
+  if (mSnapE != null) localStorage.setItem('dp.entries', mSnapE); else localStorage.removeItem('dp.entries');
+  if (mSnapT != null) localStorage.setItem('dp.timelog', mSnapT); else localStorage.removeItem('dp.timelog');
+
   // ---- Post-activity save ----
   const sSnapT = localStorage.getItem('dp.timelog');
   const sNow = Date.now(), sAct = allActs()[0].id;

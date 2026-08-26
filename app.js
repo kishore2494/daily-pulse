@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v180';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v184';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -845,6 +845,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '🗓️ <b>Month in review</b> — Stats ▸ Overview. A five-card wrap-up of any month you have logged: the shape of the month, your habits ranked, how it felt, where the time went. In the first ten days of a new month it points at the month just finished. Nothing expires — every month stays browsable.',
     '⏱️ <b>Post-activity save</b> — stop a timer that ran more than two minutes and Daylog asks what it was, how hard it felt (1–10) and anything worth remembering. The block is already logged before you are asked, so you can skip it and lose nothing. Add or edit details on any past block from the 24-hour timeline.',
     '📅 <b>Weekly streaks</b> — a week counts once you log any 3 of its days, and the today-ring card tells you the moment this week is banked. A daily streak makes one bad day a failure; a weekly one absorbs real life. There are tiered awards for 2, 4, 8, 12, 26 and 52 weeks in a row.',
     '📍 <b>Plan a when &amp; where</b> — give any habit a cue like “after my morning coffee, at my desk”. It shows on that habit\'s chip until you tick it off. This is the best-evidenced habit trick there is: naming <i>when</i> and <i>where</i> beats naming the habit. Set one in Customize ▸ Checklist habits, or tap 📍 on the Habits screen.',
@@ -3567,6 +3568,8 @@ function renderDash() {
       <div style="margin-top:10px">${pmBars}</div>
     </div>
 
+    ${monthCardHTML()}
+
     ${vsPastHTML()}
 
     ${(() => { const r = coachReview(); return r ? `<div class="card"><h2>🧑‍🏫 Weekly review <span class="hint">last 7 days</span></h2>${r.map(l => `<div class="rev rev-${l.k}">${l.t}</div>`).join('')}</div>` : ''; })()}
@@ -5998,6 +6001,263 @@ document.addEventListener('click', (ev) => {
 });
 
 /* ============================================================
+   MONTH IN REVIEW — the recap deck.
+
+   Strava's "Month in Sport" was rated a build in the research, with one explicit caveat:
+   copy the CADENCE, not the artificial scarcity. Strava's recap expires on the 26th to
+   manufacture urgency; a private tracker has no reason to delete your own summary, so every
+   month you have ever logged stays browsable forever.
+
+   The cadence part is real though: for the first ten days of a new month the card
+   highlights the month just finished, because that is when a recap is worth reading. After
+   that it settles back to a browsable archive.
+
+   No new dp.* key. Everything is derived from the log on read, like every other summary in
+   this app.
+   ============================================================ */
+const MR_MON = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+let mrYM = null;        // 'YYYY-MM' being viewed; null = not open
+
+function ymOf(d) { return d.slice(0, 7); }
+function ymPrev(ym) {
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  return m === 1 ? (y - 1) + '-12' : y + '-' + String(m - 1).padStart(2, '0');
+}
+function ymNext(ym) {
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  return m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0');
+}
+function ymLabel(ym) { return MR_MON[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4); }
+function ymDays(ym) {
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  return new Date(y, m, 0).getDate();
+}
+
+/* Every month that has at least one logged day, newest first. */
+function mrMonths() {
+  const e = DB.entries(), hs = healthStore(), set = {};
+  Object.keys(e).forEach(d => { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) set[ymOf(d)] = 1; });
+  Object.keys(hs).forEach(d => { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) set[ymOf(d)] = 1; });
+  return Object.keys(set).sort().reverse();
+}
+
+/* All the numbers for one month, in one pass per store. `partial` is true when the month is
+   still running — the deck says so rather than presenting a half month as a whole one. */
+function monthReview(ym) {
+  const e = DB.entries(), hs = healthStore(), log = DB.timelog();
+  const total = ymDays(ym);
+  const days = [];
+  for (let i = 1; i <= total; i++) days.push(ym + '-' + String(i).padStart(2, '0'));
+  const partial = ym === ymOf(todayStr());
+  const upto = partial ? days.filter(d => d <= todayStr()) : days;
+
+  const num = (d, k) => { const v = e[d] && e[d][k];
+    return (v != null && v !== '' && !isNaN(+v)) ? +v : null; };
+  const vals = k => upto.map(d => num(d, k)).filter(x => x != null);
+  const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const hv = k => upto.map(d => (hs[d] || {})[k]).filter(x => x != null && !isNaN(+x)).map(Number);
+
+  const logged = upto.filter(d => e[d]).length;
+  const hkeys = habitCfg().filter(h => !h.hidden).map(h => h.key);
+  let ticks = 0, perfect = 0;
+  upto.forEach(d => {
+    if (!e[d]) return;
+    const done = hkeys.filter(k => hVal(e[d], k) === H_DONE).length;
+    ticks += done;
+    if (hkeys.length && done === hkeys.length) perfect++;
+  });
+
+  // per-habit completion over the days that were logged
+  const habitRows = hkeys.map(k => {
+    const cfg = habitCfg().find(h => h.key === k) || {};
+    const done = upto.filter(d => e[d] && hVal(e[d], k) === H_DONE).length;
+    const skip = upto.filter(d => e[d] && hVal(e[d], k) === H_SKIP).length;
+    const base = Math.max(1, logged - skip);
+    return { key: k, emoji: cfg.emoji || '•', label: cfg.label || k, done, skip,
+             pct: Math.round(done / base * 100) };
+  }).sort((a, b) => b.pct - a.pct);
+
+  // time tracked per activity, one pass, clipped to the month
+  const t0 = new Date(days[0] + 'T00:00:00').getTime();
+  const t1 = new Date(addDays(days[days.length - 1], 1) + 'T00:00:00').getTime();
+  const byAct = {};
+  (Array.isArray(log) ? log : []).forEach(x => {
+    if (!x || x.start == null) return;
+    const a = Math.max(x.start, t0), b = Math.min(x.end == null ? Date.now() : x.end, t1);
+    if (b <= a) return;
+    byAct[x.act] = (byAct[x.act] || 0) + (b - a);
+  });
+  const actRows = Object.keys(byAct).map(id => {
+    const a = actById(id) || { name: id, emoji: '•', color: '#888' };
+    return { id, name: a.name, emoji: a.emoji, color: a.color, ms: byAct[id] };
+  }).sort((x, y) => y.ms - x.ms);
+  const trackedMs = actRows.reduce((s, r) => s + r.ms, 0);
+
+  const journalled = upto.filter(d => e[d] && (e[d].journal || '').trim()).length;
+  const words = upto.reduce((s, d) => s + ((e[d] && e[d].journal || '').trim()
+    ? (e[d].journal.trim().split(/\s+/).length) : 0), 0);
+
+  const stepsArr = hv('steps');
+  return {
+    ym, label: ymLabel(ym), partial, total, elapsed: upto.length,
+    logged, coverage: Math.round(logged / upto.length * 100),
+    ticks, perfect, habitRows, actRows, trackedMs, journalled, words,
+    mood: mean(vals('mood')), energy: mean(vals('energy')),
+    sleep: mean(vals('sleepHours')), deep: vals('deepWorkHours').reduce((a, b) => a + b, 0),
+    steps: stepsArr.reduce((a, b) => a + b, 0), stepsAvg: mean(stepsArr),
+    screen: mean(hv('screenMin')), workouts: upto.filter(d => e[d] && +e[d].workoutsDone > 0).length,
+    best: (() => { const withMood = upto.filter(d => num(d, 'mood') != null);
+      if (!withMood.length) return null;
+      const b = withMood.reduce((p, d) => num(d, 'mood') > num(p, 'mood') ? d : p, withMood[0]);
+      return { date: b, mood: num(b, 'mood') }; })(),
+  };
+}
+
+/* The entry card on Stats > Overview. Highlighted for the first ten days of a new month,
+   pointing at the month just finished — the cadence is the useful half of Strava's recap.
+   No expiry: every month you have logged stays here. */
+function monthCardHTML() {
+  const months = mrMonths();
+  if (!months.length) return '';
+  const today = todayStr();
+  const dom = +today.slice(8, 10);
+  const prev = ymPrev(ymOf(today));
+  const fresh = dom <= 10 && months.indexOf(prev) !== -1;
+  const target = fresh ? prev : months[0];
+  const r = monthReview(target);
+  return `<div class="card mr-entry${fresh ? ' fresh' : ''}">
+    <h2 class="h2-icon">${hicon('calendar')}<span>${fresh ? r.label + ' is done' : 'Month in review'}</span>
+      <span class="hint" style="margin-left:auto">${months.length} month${months.length === 1 ? '' : 's'}</span></h2>
+    <div class="hint">${fresh
+      ? `Your ${r.label} wrap-up is ready — ${r.logged} days logged, ${r.ticks} habits ticked.`
+      : `A five-card wrap-up of any month you have logged.`}</div>
+    <button class="btn btn-primary" style="margin-top:10px" data-mr-open="${target}">
+      ${fresh ? `See ${MR_MON[+target.slice(5, 7) - 1]}` : `See ${r.label}`}</button>
+  </div>`;
+}
+
+/* ---- the deck ---- */
+let mrPage = 0;
+function mrOpen(ym) {
+  mrYM = ym; mrPage = 0;
+  let el = document.getElementById('mrdeck');
+  if (!el) { el = document.createElement('div'); el.id = 'mrdeck'; el.className = 'sharesheet'; document.body.appendChild(el); }
+  el.classList.add('on');
+  mrRender();
+}
+function mrClose() {
+  const el = document.getElementById('mrdeck');
+  if (el) el.classList.remove('on');
+  mrYM = null;
+}
+
+function mrCards(r) {
+  const n = v => v == null ? '–' : (Math.round(v * 10) / 10).toFixed(1);
+  const big = (v, l) => `<div class="mr-big"><div class="mr-v">${v}</div><div class="mr-l">${l}</div></div>`;
+  const cards = [];
+
+  // 1 — the shape of the month
+  cards.push({ t: 'The month', body: `
+    <div class="mr-grid">
+      ${big(r.logged, 'days logged')}
+      ${big(r.coverage + '%', 'of the month')}
+      ${big(r.ticks.toLocaleString(), 'habits ticked')}
+      ${big(r.perfect, r.perfect === 1 ? 'perfect day' : 'perfect days')}
+    </div>
+    ${r.partial ? `<div class="hint mr-note">${r.label} is still running — this covers the ${r.elapsed} day${r.elapsed === 1 ? '' : 's'} so far.</div>` : ''}` });
+
+  // 2 — habits, ranked
+  if (r.habitRows.length) cards.push({ t: 'Habits', body: `
+    ${r.habitRows.map(h => `<div class="mr-row">
+      <span class="mr-row-n">${h.emoji} ${escapeHtml(h.label)}</span>
+      <span class="mr-bar"><i style="width:${Math.max(2, h.pct)}%"></i></span>
+      <span class="mr-row-v">${h.pct}%</span></div>`).join('')}
+    <div class="hint mr-note">Out of the days you logged. Skipped days are left out, not counted against you.</div>` });
+
+  // 3 — how it felt
+  cards.push({ t: 'How it felt', body: `
+    <div class="mr-grid">
+      ${big(n(r.mood), 'avg mood')}
+      ${big(n(r.energy), 'avg energy')}
+      ${big(n(r.sleep) + 'h', 'avg sleep')}
+      ${big(r.workouts, r.workouts === 1 ? 'workout day' : 'workout days')}
+    </div>
+    ${r.best ? `<div class="mr-note">Best day: <b>${shortDate(r.best.date)}</b> — mood ${r.best.mood}/10.</div>` : ''}` });
+
+  // 4 — where the time went
+  if (r.trackedMs > 0) cards.push({ t: 'Where the time went', body: `
+    ${r.actRows.slice(0, 8).map(a => `<div class="mr-row">
+      <span class="mr-row-n">${a.emoji} ${escapeHtml(a.name)}</span>
+      <span class="mr-bar"><i style="width:${Math.max(2, Math.round(a.ms / r.trackedMs * 100))}%;background:${a.color}"></i></span>
+      <span class="mr-row-v">${fmtDur(a.ms, true)}</span></div>`).join('')}
+    <div class="hint mr-note">${fmtDur(r.trackedMs)} tracked in total.</div>` });
+
+  // 5 — the rest, only what there is data for
+  const bits = [];
+  if (r.deep) bits.push(big(n(r.deep) + 'h', 'deep work'));
+  if (r.steps) bits.push(big(Math.round(r.steps).toLocaleString(), 'steps'));
+  if (r.screen != null) bits.push(big(fmtMin(Math.round(r.screen)), 'screen a day'));
+  if (r.journalled) bits.push(big(r.journalled, r.journalled === 1 ? 'day written' : 'days written'));
+  if (bits.length) cards.push({ t: 'And also', body: `<div class="mr-grid">${bits.join('')}</div>
+    ${r.words ? `<div class="hint mr-note">${r.words.toLocaleString()} words written this month.</div>` : ''}` });
+
+  return cards;
+}
+
+function mrRender() {
+  const el = document.getElementById('mrdeck');
+  if (!el || !mrYM) return;
+  const r = monthReview(mrYM);
+  const cards = mrCards(r);
+  if (mrPage >= cards.length) mrPage = cards.length - 1;
+  if (mrPage < 0) mrPage = 0;
+  const c = cards[mrPage];
+  const months = mrMonths();
+  const i = months.indexOf(mrYM);
+  const older = i >= 0 && i < months.length - 1 ? months[i + 1] : null;
+  const newer = i > 0 ? months[i - 1] : null;
+
+  el.innerHTML = `<div class="ss-inner">
+    <div class="ss-head">
+      <button type="button" class="mr-nav" data-mr-go="${older || ''}" ${older ? '' : 'disabled'} aria-label="Earlier month">‹</button>
+      <span class="mr-title">${r.label}</span>
+      <button type="button" class="mr-nav" data-mr-go="${newer || ''}" ${newer ? '' : 'disabled'} aria-label="Later month">›</button>
+      <button type="button" class="ss-x" id="mr-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="card mr-card">
+      <h2 class="mr-card-t">${c.t}</h2>
+      ${c.body}
+    </div>
+
+    <div class="mr-dots">${cards.map((x, n) =>
+      `<button type="button" class="mr-dot ${n === mrPage ? 'on' : ''}" data-mr-page="${n}" aria-label="${escapeHtml(x.t)}"></button>`).join('')}</div>
+
+    <div class="mr-steps">
+      <button type="button" class="btn btn-ghost btn-sm" data-mr-step="-1" ${mrPage === 0 ? 'disabled' : ''}>← Back</button>
+      <button type="button" class="btn btn-primary btn-sm" data-mr-step="1" ${mrPage === cards.length - 1 ? 'disabled' : ''}>Next →</button>
+    </div>
+    <div class="ss-acts"><button type="button" class="btn btn-ghost" data-share-card="pixels">🖼️ Make a share card</button></div>
+    <div class="hint ss-note">Worked out from your log every time you open it. Nothing is stored, and nothing expires.</div>
+  </div>`;
+}
+
+document.addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  const op = t.closest('[data-mr-open]');
+  if (op) { mrOpen(op.dataset.mrOpen); buzz(10); return; }
+  if (t.id === 'mr-close' || t.id === 'mrdeck') { mrClose(); return; }
+  const go = t.closest('[data-mr-go]');
+  if (go && go.dataset.mrGo) { mrYM = go.dataset.mrGo; mrPage = 0; mrRender(); buzz(6); return; }
+  const pg = t.closest('[data-mr-page]');
+  if (pg) { mrPage = +pg.dataset.mrPage; mrRender(); return; }
+  const st = t.closest('[data-mr-step]');
+  if (st) { mrPage += +st.dataset.mrStep; mrRender(); buzz(5); return; }
+});
+
+/* ============================================================
    YOU vs YOU — temporal (self-past) comparison.
 
    The research's evidence-backed replacement for a leaderboard: the only person on the
@@ -7355,6 +7615,8 @@ function handleBack() {
   if (ssh && ssh.classList.contains('on')) { shareSheetClose(); return; }
   const svh = document.getElementById('savesheet');
   if (svh && svh.classList.contains('on')) { saveSheetClose(); return; }
+  const mrd = document.getElementById('mrdeck');
+  if (mrd && mrd.classList.contains('on')) { mrClose(); return; }
   const tr = document.getElementById('tour'); if (tr) { endTour(); return; }
   const wn = document.getElementById('wn-pop'); if (wn) { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); wn.remove(); return; }
   const drawer = document.getElementById('drawer');
