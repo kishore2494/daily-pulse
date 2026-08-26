@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v187';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v190';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -845,6 +845,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '🌅 <b>Fresh start</b> — on a Monday, the 1st of a month or New Year\'s Day, the Log opens with what you actually did last week, month or year, and a clean slate ahead. One note per landmark, dismissible, and it never talks about losing anything. Hide it in Customize ▸ Log layout if you would rather not have it.',
     '🎯 <b>Goals — all of them, free</b> — Stats ▸ Overview. Any of nine measures over a week, a month or a year, as many as you like. Every goal shows exactly what is left and how much per remaining day would get there, and “Suggest” fills in what <i>you</i> actually averaged over your last three periods rather than inventing a number. Other trackers charge for this.',
     '🗓️ <b>Month in review</b> — Stats ▸ Overview. A five-card wrap-up of any month you have logged: the shape of the month, your habits ranked, how it felt, where the time went. In the first ten days of a new month it points at the month just finished. Nothing expires — every month stays browsable.',
     '⏱️ <b>Post-activity save</b> — stop a timer that ran more than two minutes and Daylog asks what it was, how hard it felt (1–10) and anything worth remembering. The block is already logged before you are asked, so you can skip it and lose nothing. Add or edit details on any past block from the 24-hour timeline.',
@@ -1047,6 +1048,7 @@ document.addEventListener('click', (ev) => {
    single source of truth — the `hide` links on the ring / On-this-day / mood grid write
    here too, so a section can never be hidden in one place and shown in another. */
 const LOG_SECTIONS_DEF = [
+  { id: 'fresh',     label: 'Fresh start',      sub: 'a note on Mondays, 1sts and new years' },
   { id: 'ring',      label: 'Today ring',       sub: "how much of today you've logged" },
   { id: 'onthisday', label: 'On this day',      sub: 'your entry from a week / month / year ago' },
   { id: 'core',      label: 'Date & main fields', sub: 'mood, energy, sleep, deep work…', lock: true },
@@ -1476,6 +1478,7 @@ function renderToday() {
   // Each Log card is a named section; the user controls order and visibility
   // (Customize ▸ Log screen sections). Build them as a map, then emit in their order.
   const SEC = {
+    fresh: () => freshHTML(),
     ring: () => todayRingHTML(),
     onthisday: () => throwbackHTML(),
     core: () => `<div class="card">
@@ -6003,6 +6006,96 @@ document.addEventListener('click', (ev) => {
   const d = b.dataset.beOpen;
   if (!DB.entry(d)) { toast('Nothing logged on ' + prettyDate(d)); return; }
   logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d));
+});
+
+/* ============================================================
+   FRESH START — temporal landmarks.
+
+   The fresh-start effect held up under adversarial checking in the research: people are
+   measurably more willing to begin again at a temporal landmark — a Monday, the 1st of a
+   month, a new year — than on an arbitrary Wednesday. The calendar data was already here;
+   this just says the obvious thing out loud on the day it lands.
+
+   Deliberate constraints, because a motivational banner is one bad decision away from being
+   spam:
+     - ONE landmark per day, highest-order first (year > month > week). Never a stack.
+     - Only on TODAY's log. A landmark on a back-dated entry is meaningless.
+     - Dismissed once, gone for that landmark forever (dp.freshSeen keeps the keys).
+     - Every message carries a real number from the user's OWN previous period, so it is
+       information rather than cheerleading.
+     - NO LOSS FRAMING. The research rated loss aversion weak and off-brand, and named
+       streak-insurance nudges as a thing to refuse — so nothing here says "don't lose" or
+       "you're falling behind". It states what happened and what is now open.
+   ============================================================ */
+function freshSeen() { try { return safeParse(localStorage.getItem('dp.freshSeen'), {}) || {}; } catch (e) { return {}; } }
+
+/* The landmark that applies to today, or null. */
+function freshLandmark() {
+  const t = todayStr();
+  const dow = new Date(t + 'T00:00:00').getDay();
+  const dom = +t.slice(8, 10), mon = +t.slice(5, 7);
+  if (mon === 1 && dom === 1) return { k: 'y:' + t.slice(0, 4), kind: 'year',  label: t.slice(0, 4) };
+  if (dom === 1)              return { k: 'm:' + t.slice(0, 7), kind: 'month', label: MR_MON[mon - 1] };
+  if (dow === 1)              return { k: 'w:' + t,             kind: 'week',  label: 'this week' };
+  return null;
+}
+
+function freshHTML() {
+  if (logDate !== todayStr()) return '';
+  const lm = freshLandmark();
+  if (!lm || freshSeen()[lm.k]) return '';
+
+  const c = goalCtx();
+  const sum = (k, ds) => { const m = goalMetric(k); return m ? m.sum(c, ds) : 0; };
+  let line = '', title = '';
+
+  if (lm.kind === 'week') {
+    const prev = [];
+    const ws = addDays(weekStart(todayStr()), -7);
+    for (let i = 0; i < 7; i++) prev.push(addDays(ws, i));
+    const logged = sum('logged', prev), ticks = sum('habits', prev);
+    title = 'New week';
+    line = logged
+      ? `Last week you logged <b>${logged} of 7</b> days and ticked <b>${ticks}</b> habits. Seven fresh days from here.`
+      : `A clean seven days ahead. One logged day is enough to start a run.`;
+  } else if (lm.kind === 'month') {
+    const pm = ymPrev(ymOf(todayStr()));
+    const r = monthReview(pm);
+    title = MR_MON[+todayStr().slice(5, 7) - 1] + ' starts today';
+    line = r.logged
+      ? `${r.label}: <b>${r.logged} days</b> logged, <b>${r.ticks}</b> habits ticked${r.perfect ? `, <b>${r.perfect}</b> perfect` : ''}. A new month is open.`
+      : `A whole month ahead of you, nothing written in it yet.`;
+  } else {
+    const y = +todayStr().slice(0, 4) - 1;
+    const e = DB.entries();
+    const lastYear = Object.keys(e).filter(d => d.startsWith(String(y))).length;
+    title = todayStr().slice(0, 4) + ' starts today';
+    line = lastYear
+      ? `You logged <b>${lastYear} days</b> in ${y}. A blank year in pixels from here.`
+      : `A blank year in pixels. One day at a time.`;
+  }
+
+  return `<div class="card fresh-card">
+    <div class="fresh-body">
+      <div class="fresh-ico">🌅</div>
+      <div class="fresh-txt"><div class="fresh-t">${title}</div><div class="fresh-l">${line}</div></div>
+      <button type="button" class="fresh-x" data-fresh-x="${lm.k}" aria-label="Dismiss">✕</button>
+    </div>
+  </div>`;
+}
+
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest && ev.target.closest('[data-fresh-x]');
+  if (!b) return;
+  const seen = freshSeen();
+  seen[b.dataset.freshX] = todayStr();
+  // Keep only the last 24 keys — this is a dismissal log, not history.
+  const keys = Object.keys(seen).sort();
+  while (keys.length > 24) delete seen[keys.shift()];
+  try { localStorage.setItem('dp.freshSeen', JSON.stringify(seen)); } catch (e) {}
+  const card = b.closest('.fresh-card');
+  if (card) card.remove();
+  buzz(6);
 });
 
 /* ============================================================

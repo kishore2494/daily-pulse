@@ -179,6 +179,44 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Fresh start (temporal landmarks) ----
+  /* NOTE for future tests: overriding todayStr MUST forward its argument. addDays() calls
+     todayStr(date) internally, so a stub that ignores the argument makes addDays return the
+     fake "today" for every input — which silently broke this test the first time. */
+  const fSnapSeen = localStorage.getItem('dp.freshSeen'), fSnapDate = logDate;
+  const fReal = todayStr;
+  const fFake = d => { window.todayStr = x => (x ? fReal(x) : d); };
+  const fRestore = () => { window.todayStr = fReal; };
+  fFake('2026-01-01');
+  ok('Jan 1 is a YEAR landmark, not a month one', (freshLandmark() || {}).kind === 'year',
+     JSON.stringify(freshLandmark()));
+  fFake('2026-06-01');   // a Monday AND the 1st — month must win
+  ok('the 1st outranks a Monday', (freshLandmark() || {}).kind === 'month',
+     JSON.stringify(freshLandmark()));
+  fFake('2026-08-24');
+  ok('a Monday is a week landmark', (freshLandmark() || {}).kind === 'week');
+  fFake('2026-08-25');
+  ok('an ordinary Tuesday is no landmark', freshLandmark() === null);
+  fFake('2026-08-30');
+  ok('a Sunday is no landmark', freshLandmark() === null);
+  // renders only on today, and only until dismissed
+  fFake('2026-08-24'); localStorage.removeItem('dp.freshSeen');
+  logDate = '2026-08-24';
+  const fOn = freshHTML();
+  ok('the landmark renders on the day', fOn !== '' && /fresh-card/.test(fOn));
+  ok('the landmark carries a real number', /<b>/.test(fOn), fOn.slice(0, 120));
+  ok('the landmark uses no loss framing',
+     !/lose|losing|falling behind|at risk/i.test(fOn), fOn.slice(0, 200));
+  logDate = addDays('2026-08-24', -7);
+  ok('no landmark on a back-dated entry', freshHTML() === '');
+  logDate = '2026-08-24';
+  const fLm = freshLandmark();
+  localStorage.setItem('dp.freshSeen', JSON.stringify({ [fLm.k]: '2026-08-24' }));
+  ok('a dismissed landmark stays dismissed', freshHTML() === '');
+  fRestore();
+  logDate = fSnapDate;
+  if (fSnapSeen != null) localStorage.setItem('dp.freshSeen', fSnapSeen); else localStorage.removeItem('dp.freshSeen');
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

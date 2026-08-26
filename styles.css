@@ -1516,3 +1516,17 @@ input[type="range"] { height: 30px; }
 .gl-form .range-btn { min-height: 44px; }
 /* .btn-sm is ~37px; the goal form's actions are primary controls and must clear 44. */
 .gl-form .btn-row .btn { min-height: 44px; }
+
+/* ---------- Fresh start banner ----------
+   Slim by design: it appears at most a few days a month and must not push the Log down. */
+.fresh-card { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent),
+  color-mix(in srgb, #fbbf24 8%, transparent));
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.fresh-body { display: flex; align-items: flex-start; gap: 11px; }
+.fresh-ico { flex: 0 0 auto; font-size: 24px; line-height: 1.1; }
+.fresh-txt { flex: 1 1 auto; min-width: 0; }
+.fresh-t { font-size: 14px; font-weight: 750; color: var(--text); }
+.fresh-l { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+.fresh-l b { color: var(--text); }
+.fresh-x { flex: 0 0 auto; width: 44px; height: 44px; margin: -10px 0; padding: 0; border: 0;
+  background: none; color: var(--text-faint); font-size: 15px; cursor: pointer; }
