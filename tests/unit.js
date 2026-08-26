@@ -179,6 +179,43 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Weekly cadence ----
+  const wSnapE = localStorage.getItem('dp.entries');
+  ok('weekStart maps a Sunday back to Monday', weekStart('2026-08-30') === '2026-08-24', weekStart('2026-08-30'));
+  ok('weekStart is idempotent on a Monday', weekStart('2026-08-24') === '2026-08-24');
+  const wTW = weekStart(todayStr()), WE = {};
+  // five qualifying weeks, then only one day in the week still in progress
+  for (let k = 1; k <= 5; k++) { const ws = addDays(wTW, -7 * k);
+    for (let i = 0; i < 4; i++) WE[addDays(ws, i)] = { mood: 7, habits: {} }; }
+  WE[wTW] = { mood: 7, habits: {} };
+  localStorage.setItem('dp.entries', JSON.stringify(WE));
+  let wS = weekStreak();
+  ok('an unfinished week never breaks the weekly streak', wS.streak === 5, wS.streak);
+  ok('an unfinished week is not banked', wS.current.ok === false);
+  ok('weekly threshold is fixed at 3', wS.min === 3 && WEEK_MIN === 3);
+  ok('unbanked line says how many more are needed', /more<\/b> to count it/.test(weekLineHTML()));
+  // bank it
+  for (let i = 0; i < 3; i++) WE[addDays(wTW, i)] = { mood: 7, habits: {} };
+  localStorage.setItem('dp.entries', JSON.stringify(WE));
+  wS = weekStreak();
+  ok('a banked week counts toward what you see', wS.current.ok && wS.live === 6, wS.live);
+  ok('banked line says the week counted', /This week counted/.test(weekLineHTML()));
+  // a genuinely missed week does break it
+  const WE2 = {};
+  for (let k = 1; k <= 5; k++) { if (k === 3) continue; const ws = addDays(wTW, -7 * k);
+    for (let i = 0; i < 4; i++) WE2[addDays(ws, i)] = { mood: 7, habits: {} }; }
+  localStorage.setItem('dp.entries', JSON.stringify(WE2));
+  ok('a missed week does break the weekly streak', weekStreak().streak === 2, weekStreak().streak);
+  // a two-day week does not qualify
+  const WE3 = {}; const ws3 = addDays(wTW, -7);
+  for (let i = 0; i < 2; i++) WE3[addDays(ws3, i)] = { mood: 7, habits: {} };
+  localStorage.setItem('dp.entries', JSON.stringify(WE3));
+  ok('a two-day week does not qualify', weekStreak().streak === 0);
+  // a malformed key must not bucket as NaN
+  localStorage.setItem('dp.entries', JSON.stringify(Object.assign({ '': { mood: 5 } }, WE)));
+  ok('weekBuckets ignores malformed keys', weekBuckets().every(b => /^\d{4}-\d{2}-\d{2}$/.test(b.start)));
+  if (wSnapE != null) localStorage.setItem('dp.entries', wSnapE); else localStorage.removeItem('dp.entries');
+
   // ---- Habit cues (implementation intentions) ----
   const cSnapC = localStorage.getItem('dp.habitcfg'), cSnapDate = logDate;
   localStorage.setItem('dp.habitcfg', JSON.stringify([

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v174';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v176';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -394,6 +394,55 @@ function loggedStreak() {
   while (e[cur]) { n++; cur = addDays(cur, -1); }
   return n;
 }
+/* ---------- Weekly cadence ----------
+   The research called this "the single most transferable decision" from Strava: Strava's
+   streak is WEEKLY, not daily. A daily streak turns one bad day into a failure and one
+   missed day into a reset, which is the all-or-nothing mode the whole app is built to avoid
+   — Daylog already has the humane pieces (the skip state, the EMA strength score), and a
+   weekly cadence completes them.
+
+   A week counts if you logged at least WEEK_MIN of its days. The threshold is FIXED rather
+   than configurable on purpose: the research names "rewards you can fake" as a demotivation
+   mode, and a user-set minimum of 1 would turn the weekly award into a formality. 3 of 7 is
+   reachable during a genuinely hard week without being a gimme.
+
+   Weeks run Monday–Sunday, matching the ISO convention used everywhere else in the app. */
+const WEEK_MIN = 3;
+
+/* Monday of the week containing `d`. getDay() is 0 for Sunday, so Sunday maps back 6 days. */
+function weekStart(d) {
+  const wd = new Date(d + 'T00:00:00').getDay();
+  return addDays(d, -((wd + 6) % 7));
+}
+
+/* One pass over the log, bucketed by week. Returns every week that has any logged day,
+   oldest first, as { start, days, ok }. */
+function weekBuckets(ents) {
+  const e = ents || DB.entries();
+  const by = {};
+  Object.keys(e).forEach(d => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;      // an empty key would bucket as NaN
+    const w = weekStart(d);
+    by[w] = (by[w] || 0) + 1;
+  });
+  return Object.keys(by).sort().map(w => ({ start: w, days: by[w], ok: by[w] >= WEEK_MIN }));
+}
+
+/* Consecutive qualifying weeks ending at the most recent COMPLETED week — plus this week
+   separately, because a week still in progress must never break the streak. That is the
+   entire point of a weekly cadence: you cannot fail a week you are still living. */
+function weekStreak(ents) {
+  const e = ents || DB.entries();
+  const map = {};
+  weekBuckets(e).forEach(b => { map[b.start] = b; });
+  const thisW = weekStart(todayStr());
+  const cur = map[thisW] || { start: thisW, days: 0, ok: false };
+  let n = 0, w = addDays(thisW, -7);
+  while (map[w] && map[w].ok) { n++; w = addDays(w, -7); }
+  // A banked current week extends the run you can SEE, without being required for it.
+  return { streak: n, current: cur, live: n + (cur.ok ? 1 : 0), min: WEEK_MIN, weekStart: thisW };
+}
+
 /* Habits are THREE-state, not two (borrowed from Loop/HabitNow — a rest day should
    not read as a failure). Stored value: true = done, 0 = skipped, false/absent = missed.
    `0` is deliberately FALSY so every older truthy check still means "not done". */
@@ -796,6 +845,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '📅 <b>Weekly streaks</b> — a week counts once you log any 3 of its days, and the today-ring card tells you the moment this week is banked. A daily streak makes one bad day a failure; a weekly one absorbs real life. There are tiered awards for 2, 4, 8, 12, 26 and 52 weeks in a row.',
     '📍 <b>Plan a when &amp; where</b> — give any habit a cue like “after my morning coffee, at my desk”. It shows on that habit\'s chip until you tick it off. This is the best-evidenced habit trick there is: naming <i>when</i> and <i>where</i> beats naming the habit. Set one in Customize ▸ Checklist habits, or tap 📍 on the Habits screen.',
     '📈 <b>You vs you</b> — Stats ▸ Overview now compares your last week, last 4 weeks, or the same 4 weeks a year ago against your own past. No leaderboards and no other people: the only person on the other side is you. When there isn\'t enough history it tells you the date it unlocks instead of guessing.',
     '🏆 <b>Trophy case</b> — Stats ▸ Awards. 54 awards across 8 families, tiered so a big goal pays out along the way. Worked out from your own log, so nothing can be faked and nothing is ever taken away. “Next up” shows how close you are.',
@@ -1102,9 +1152,23 @@ function todayRingHTML() {
       <div class="ring-head">${full ? "Today's complete" : 'Today so far'}</div>
       <div class="hint">${c.done} of ${c.total} logged${full ? ' — nice.' : ''}</div>
       ${st > 1 ? `<div class="ring-streak">${icon('flame', 14)} ${st}-day logging streak</div>` : ''}
+      ${weekLineHTML()}
     </div>
   </div>`;
 }
+/* The weekly line. Its job is to remove daily-failure pressure: once the week is banked it
+   says so plainly, so a missed day tomorrow costs nothing. */
+function weekLineHTML() {
+  const w = weekStreak();
+  const banked = w.current.ok;
+  const need = Math.max(0, w.min - w.current.days);
+  const run = w.live;
+  const runTxt = run > 1 ? ` · <b>${run}-week streak</b>` : '';
+  return `<div class="ring-week${banked ? ' ok' : ''}">${banked
+    ? `✓ This week counted — ${w.current.days} of 7 days logged${runTxt}`
+    : `This week: ${w.current.days} of 7 · <b>${need} more</b> to count it${runTxt}`}</div>`;
+}
+
 /* Re-draw the ring in place after any edit, so the dial visibly moves as you fill the form. */
 let _ringWasFull = false;
 function refreshTodayRing() {
@@ -6024,6 +6088,8 @@ document.addEventListener('click', (ev) => {
 const AWARD_FAMILIES = [
   { grp: 'streak',   ico: '🔥', title: 'Consistency',  unit: 'days in a row',  mode: 'peak',
     tiers: [3, 7, 14, 21, 30, 50, 75, 100, 150, 200, 365] },
+  { grp: 'weeks',    ico: '📅', title: 'Weeks in a row', unit: 'weeks in a row', mode: 'peak',
+    tiers: [2, 4, 8, 12, 26, 52] },
   { grp: 'days',     ico: '📘', title: 'Days logged',  unit: 'days logged',    mode: 'cum',
     tiers: [10, 25, 50, 100, 250, 500, 1000] },
   { grp: 'habits',   ico: '✅', title: 'Habits done',  unit: 'habits ticked',  mode: 'cum',
@@ -6076,6 +6142,21 @@ function awardSeries(grp, ents, health) {
   if (grp === 'steps')   { const hs = health || healthStore();
       Object.keys(hs).sort().forEach(d => { const v = hs[d] && hs[d].steps;
         if (v != null && !isNaN(+v)) acc += +v; out.push([d, acc]); }); return out; }
+  /* Weekly run, dated to the last day of each qualifying week so the trophy case shows a
+     real date. A week still in progress is excluded — it cannot yet have been earned. */
+  if (grp === 'weeks') {
+    const bs = weekBuckets(e), map = {};
+    bs.forEach(b => { map[b.start] = b; });
+    const thisW = weekStart(todayStr());
+    let run = 0;
+    bs.forEach(b => {
+      if (b.start === thisW) return;
+      const prevW = addDays(b.start, -7);
+      run = (map[prevW] && map[prevW].ok && b.ok) ? run + 1 : (b.ok ? 1 : 0);
+      out.push([addDays(b.start, 6), run]);
+    });
+    return out;
+  }
   if (grp === 'streak')  { let run = 0, prev = null;
       dates.forEach(d => { run = (prev && addDays(prev, 1) === d) ? run + 1 : 1; prev = d; out.push([d, run]); });
       return out; }

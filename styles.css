@@ -1422,3 +1422,8 @@ input[type="range"] { height: 30px; }
 #cfg-habits .cfg-row { border-bottom: none; }
 #cfg-habits .cfg-cue { border-bottom: 1px solid var(--border); }
 #cfg-habits .cfg-cue:last-child { border-bottom: none; }
+
+/* Weekly cadence line inside the today-ring card. Muted until the week is banked, then it
+   goes green — the point is that "this week already counts" is visibly a finished state. */
+.ring-week { margin-top: 5px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); line-height: 1.35; }
+.ring-week.ok { color: var(--good-ink); }
