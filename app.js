@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v190';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v194';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -245,9 +245,11 @@ function safeSet(key, value) {
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
-  saveEntries(e) { safeSet('dp.entries', JSON.stringify(e)); pushState(); },
+  // Returns false when the write failed (quota). Callers that tell the user "Saved" have to
+  // know — a full phone used to show "Saved 🎉" over a write that never landed.
+  saveEntries(e) { const ok = safeSet('dp.entries', JSON.stringify(e)); pushState(); return ok; },
   entry(date) { return this.entries()[date] || null; },
-  putEntry(date, data) { const e = this.entries(); e[date] = data; this.saveEntries(e); },
+  putEntry(date, data) { const e = this.entries(); e[date] = data; return this.saveEntries(e); },
 
   tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
   saveTasks(t) { safeSet('dp.tasks', JSON.stringify(t)); pushState(); },
@@ -536,7 +538,9 @@ async function syncEntry(date, data) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ type: 'entry', date, ...data }),
     });
-    return true; // no-cors = opaque; assume success
+    /* no-cors gives an OPAQUE response: we cannot read the status, so this means "sent",
+       never "confirmed". Callers must not turn it into "synced ✓". */
+    return true;
   } catch (err) { return false; }
 }
 async function resyncAll() {
@@ -1115,6 +1119,13 @@ function buzz(ms) {
   if (localStorage.getItem('dp.hapticsOff') === '1') return;
   try { navigator.vibrate && navigator.vibrate(ms || 18); } catch (e) {}
 }
+/* Celebrations used to call navigator.vibrate directly, so a user who had turned haptics
+   OFF still got buzzed by every milestone and award. Alarms deliberately do not use this —
+   an alarm you asked for must still be able to wake you. */
+function buzzPattern(pat) {
+  if (localStorage.getItem('dp.hapticsOff') === '1') return;
+  try { navigator.vibrate && navigator.vibrate(pat); } catch (e) {}
+}
 
 /* ---------- Mood -> colour, one scale used by every reward widget ---------- */
 const MOOD_SCALE = ['#ef5f5f', '#f0834a', '#f2b13c', '#c9c94a', '#8fce5b', '#4fc07d', '#33b78e'];
@@ -1674,7 +1685,7 @@ function showAward(a, more) {
       <button class="btn btn-ghost btn-sm" id="ms-close" style="margin-top:8px">Close</button>
     </div>`;
   m.classList.add('on');
-  if (navigator.vibrate) navigator.vibrate([70, 50, 70, 50, 140]);
+  buzzPattern([70, 50, 70, 50, 140]);
 }
 function showMilestone(n) {
   let m = document.getElementById('milestone');
@@ -1693,7 +1704,7 @@ function showMilestone(n) {
       <button class="btn btn-primary" id="ms-close">Keep going →</button>
     </div>`;
   m.classList.add('on');
-  if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]);
+  buzzPattern([80, 60, 80, 60, 160]);
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.id === 'ms-close' || (ev.target.id === 'milestone')) { const m = document.getElementById('milestone'); if (m) m.classList.remove('on'); }
@@ -1705,14 +1716,18 @@ function saveDraftNow(date, d) {
   // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot.
   const existing = DB.entry(date) || {};
   ['workoutsDone', 'workoutDetail', 'timeSummary'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
-  DB.putEntry(date, d);
+  const wrote = DB.putEntry(date, d);
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
   checkNewAwardsSoon(date);                          // tiered awards can land on any date edited
   pushWidgetData();                                  // keep the (future native) home-screen widget fresh
   scheduleInactivityReminder();
   syncEntry(date, d);
-  const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
+  // The autosave dot is the quietest possible "it worked" — so it must not appear when it
+  // did not. safeSet has already shown the storage-full warning.
+  const dot = document.getElementById('autosave-dot');
+  if (dot && wrote !== false) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); }
+  return wrote;
 }
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'log-date') {
@@ -1749,10 +1764,15 @@ document.addEventListener('change', (ev) => {
 document.addEventListener('click', async (ev) => {
   if (ev.target.id !== 'save-entry') return;
   clearTimeout(_autosaveTimer); _autosaveTimer = null;   // no stale debounced save left behind
-  saveDraftNow(logDate, draft);   // same merge-safe path as autosave (preserves gym/time fields)
+  const ok = saveDraftNow(logDate, draft);   // merge-safe path (preserves gym/time fields)
+  // Only say it saved if it saved. On a full phone this used to say "Saved 🎉" over a write
+  // that never landed, and even overwrote the quota warning in the same tick.
+  if (ok === false) return;
   toast('Saved 🎉');
-  const synced = await syncEntry(logDate, draft);
-  if (synced) toast('Saved & synced to Sheet 🎉');
+  const sent = await syncEntry(logDate, draft);
+  // The Sheet POST is no-cors, so the response is opaque and we cannot read its status.
+  // "Sent to your Sheet" is what we actually know; "synced ✓" was a claim we could not make.
+  if (sent) toast('Sent to your Sheet 📤');
 });
 // Quick-add straight from the Log screen (#log-4, #menu-1)
 document.addEventListener('click', (ev) => {
@@ -2254,8 +2274,8 @@ document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'gym-save') {
     const entry = persistGym(false);
     toast('Workout saved 💪');
-    const synced = await syncEntry(gymDate, entry);
-    if (synced) toast('Saved & synced 💪');
+    const sent = await syncEntry(gymDate, entry);
+    if (sent) toast('Sent to your Sheet 📤');
     return;
   }
 });
@@ -3099,6 +3119,11 @@ function coachReview() {
 /* Universal file export. Works in a normal browser (real download) AND inside the
    Capacitor WebView, which has no download manager: there we open Android's share
    sheet (Save to Files/Drive/email…) and, if that's unavailable, a copy-out modal. */
+/* Returns WHAT HAPPENED, because callers were guessing and guessing wrong:
+     'shared' | 'download' | 'copy' | 'viewer' | 'cancel' | 'blocked'
+   Every one of those is a different truth, and "Report PDF ready" was being toasted on top
+   of 'blocked'. Anything that is not 'blocked' or 'cancel' put the content somewhere the
+   user can reach; only those two mean nothing was saved. */
 async function saveFile(filename, content, mime) {
   const inApp = !!window.Capacitor;
   if (navigator.canShare) {
@@ -3106,22 +3131,25 @@ async function saveFile(filename, content, mime) {
       const file = new File([content], filename, { type: mime });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: filename });
-        toast('Choose where to save 📤'); return;
+        toast('Choose where to save 📤'); return 'shared';
       }
-    } catch (e) { if (e && e.name === 'AbortError') return; /* else fall through */ }
+    } catch (e) { if (e && e.name === 'AbortError') return 'cancel'; /* else fall through */ }
   }
   if (!inApp) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
     a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    toast('Saved to your downloads'); return;
+    toast('Saved to your downloads'); return 'download';
   }
   // in-app, no share support: text → copy modal; binary (PDF) → try a viewer, but be honest if blocked
-  if (typeof content === 'string') { showCopyModal(filename, content); return; }
+  if (typeof content === 'string') { showCopyModal(filename, content); return 'copy'; }
   const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: mime }));
   const win = window.open(url, '_blank');
-  if (win) toast('Opened — use the ⋮ menu to save or share');
-  else toast('Your app version can\'t save files yet — update Daylog in the Play Store', true);
+  if (win) { toast('Opened — use the ⋮ menu to save or share'); return 'viewer'; }
+  toast('Your app version can\'t save files yet — update Daylog in the Play Store', true);
+  return 'blocked';
 }
+/* Did the content actually reach the user? */
+function saveOk(r) { return r !== 'blocked' && r !== 'cancel'; }
 function showCopyModal(filename, content) {
   let m = document.getElementById('copy-modal');
   if (!m) { m = document.createElement('div'); m.id = 'copy-modal'; m.className = 'copy-modal'; document.body.appendChild(m); }
@@ -5007,6 +5035,7 @@ function renderSettings() {
         ${secRow('onthisday', '🕰 On this day', 'your entry from a week / month / year ago')}
         ${secRow('moodgrid', '🎨 Mood grid', 'set mood and energy with one tap')}
         ${flagRow('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
+        ${flagRow('dp.nudgeOff', '👋 Nudge after 2 quiet days', 'one notification if you have not logged in two days — nothing else ever')}
         <div class="hint" style="margin-top:8px">To reorder or hide <b>any</b> Log card — tasks, checklist, workout, reflection, deep log — use <b>Customize ▸ Log screen sections</b>.</div>
       </div>`; })()}
     ${alarmHealthHTML()}
@@ -5205,6 +5234,14 @@ document.addEventListener('click', async (ev) => {
     if (wasOn) localStorage.setItem(flag, '1'); else localStorage.removeItem(flag);
     wt.classList.toggle('on', !wasOn);
     if (flag === 'dp.hapticsOff' && wasOn === false) buzz(18);
+    if (flag === 'dp.nudgeOff') {
+      /* An off switch has to take effect NOW. scheduleInactivityReminder only runs on save,
+         so without this a nudge already sitting in Android's queue would still fire — the
+         user would turn it off and still be nudged, which is worse than not offering it. */
+      scheduleInactivityReminder();
+      toast(wasOn ? 'Nudge off — no more notifications from Daylog' : 'Nudge back on');
+      return;
+    }
     toast(wasOn ? 'Hidden' : 'Switched back on');
     return; }
   const att = ev.target.closest('[data-at-toggle]');
@@ -5273,8 +5310,11 @@ async function generatePdfReport() {
   const wb = []; deepCfg().filter(s => !s.hidden).forEach(sec => (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(f.key); if (a != null) wb.push([f.label, fmt(a) + ' / 10']); }));
   if (wb.length) { heading('Wellbeing & focus (avg)'); wb.forEach(([l, r]) => row(l, r)); }
   doc.setFontSize(9); doc.setTextColor(150, 150, 168); doc.text('Generated by Daylog · private & offline · ' + APP_VERSION, M, H - 24);
-  await saveFile('daily-pulse-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
-  toast('Report PDF ready 📄');
+  const rr = await saveFile('daily-pulse-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
+  // saveFile already told the user exactly what happened, including when it could not save
+  // at all. A blanket "Report PDF ready 📄" on top of that was a flat contradiction, and the
+  // notification promised a file that did not exist.
+  if (!saveOk(rr)) return;
   if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, title: 'Daylog', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
 }
 function downloadReport() {
@@ -5364,11 +5404,15 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals'];
-function exportData() {
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+async function exportData() {
   const out = backupBlob();
-  saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
-  localStorage.setItem('dp.lastBackup', String(Date.now()));
+  // Await it, and only stamp the date if the file actually reached the user. Stamping
+  // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
+  // sheet — the single most dangerous lie this app could tell.
+  const r = await saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
+  if (saveOk(r)) localStorage.setItem('dp.lastBackup', String(Date.now()));
+  return r;
 }
 function backupBlob() {
   const out = { settings: DB.settings() };
@@ -6670,9 +6714,13 @@ function vsCtx() {
    change. zero on BOTH sides means the user does not track it at all, and the row stays out
    rather than reporting a meaningless 0 vs 0. */
 const VS_METRICS = [
-  { k: 'mood',     label: '😊 Mood',        dir:  1, eps: 0.2,
+  /* dir 0 for mood and energy on purpose. They are STATES, not performance: the arrow still
+     shows which way they moved, but they are never painted red and never named as a "slip".
+     Telling someone in a bad fortnight that their mood is their biggest failure is exactly
+     the harm a mood tracker has to avoid — and it is not something you can try harder at. */
+  { k: 'mood',     label: '😊 Mood',        dir:  0, eps: 0.2,
     fmt: v => v.toFixed(1),                   get: (c, w) => c.avgField(w, 'mood') },
-  { k: 'energy',   label: '⚡ Energy',       dir:  1, eps: 0.2,
+  { k: 'energy',   label: '⚡ Energy',       dir:  0, eps: 0.2,
     fmt: v => v.toFixed(1),                   get: (c, w) => c.avgField(w, 'energy') },
   { k: 'sleep',    label: '😴 Sleep',       dir:  1, eps: 0.2,
     fmt: v => v.toFixed(1) + 'h',             get: (c, w) => c.avgField(w, 'sleepHours') },
@@ -7013,6 +7061,12 @@ function awardName(a) {
 /* ---------- Trophy Case ---------- */
 function awardsHTML() {
   const list = awardList();
+  /* Sample data is real entries in the real store, so every award family counts it. The
+     ledger refuses to record anything while it is loaded (see syncAwards), but the case
+     would still SHOW those awards as if they were the user's. Label it rather than hide it —
+     the preview exists to be explored, it just must not be mistaken for your own history. */
+  const sampleOn = !!localStorage.getItem('dp.sampleMeta');
+  const sampleBar = sampleOn ? `<div class="card sample-bar"><span>👀 Includes <b>sample data</b> — these are not your real awards, and none of them are being recorded.</span><button class="btn btn-ghost btn-sm" id="hc-sample-clear">Clear sample</button></div>` : '';
   const earned = list.filter(a => a.earned);
   if (!earned.length && !Object.keys(DB.entries()).length) {
     return `<div class="card"><h2 class="h2-icon">${hicon('star')}<span>Trophy case</span></h2>
@@ -7029,7 +7083,7 @@ function awardsHTML() {
   const byGrp = {};
   earned.forEach(a => { (byGrp[a.grp] = byGrp[a.grp] || []).push(a); });
 
-  return `<div class="card">
+  return `${sampleBar}<div class="card">
     <h2 class="h2-icon">${hicon('star')}<span>Trophy case</span>
       <span class="hint" style="margin-left:auto">${earned.length} of ${list.length}</span></h2>
     ${AWARD_FAMILIES.filter(f => byGrp[f.grp]).map(f => `
@@ -7705,17 +7759,26 @@ function lastActiveDay() {
   DB.gym && Object.keys(DB.gym()).forEach(d => days.push(d));
   return days.sort().slice(-1)[0] || todayStr();
 }
+/* The one re-engagement notification in the app. Two rules it now follows, because it
+   previously broke both:
+     - NO LOSS FRAMING. "a 60-second log keeps your streak alive 🔥" is exactly the
+       streak-insurance nudge this project's own rules refuse, and the test that enforces
+       that rule only ever checked the fresh-start copy. It now states a fact and offers,
+       rather than warning you about something you are about to lose.
+     - IT CAN BE TURNED OFF, from Settings, without digging through Android's notification
+       channels. A nudge with no off switch is not a nudge. */
 async function scheduleInactivityReminder() {
   if (!nativeShell()) return;
   const LN = window.Capacitor.Plugins.LocalNotifications;
   try {
     await LN.cancel({ notifications: [{ id: INACTIVITY_ID }] });
+    if (localStorage.getItem('dp.nudgeOff') === '1') return;
     const fireDay = addDays(lastActiveDay(), 2);            // 2 clear days later
     const at = new Date(fireDay + 'T20:00:00');
     if (at.getTime() <= Date.now() + 60000) return;         // already past → nothing to schedule
     await LN.schedule({ notifications: [{
-      id: INACTIVITY_ID, title: 'We miss you 👋',
-      body: "It's been 2 days — a 60-second log keeps your streak alive 🔥",
+      id: INACTIVITY_ID, title: 'Daylog',
+      body: "Two days since your last entry. A minute is enough, whenever you feel like it.",
       schedule: { at, allowWhileIdle: true } }] });
   } catch (e) {}
 }
@@ -8246,7 +8309,11 @@ function renderOnboard() {
   if (obStep === 4) body = `
     <div class="ob-emoji">⏰</div>
     <h1>Never miss a day</h1>
-    <p class="ob-lead">People who set a daily reminder keep their streak 3× longer.</p>
+    ${/* This used to read "People who set a daily reminder keep their streak 3x longer."
+         That number was invented — the app has no accounts, no server and no analytics, so
+         there is no population it could ever have been measured on. Never state a statistic
+         this app cannot compute. */''}
+    <p class="ob-lead">A nudge at a fixed time makes it much easier to keep going.</p>
     <div class="card" style="text-align:left">
       <label class="ev-alarm-row" style="margin:0 0 10px"><input type="checkbox" id="ob-rem-on" checked> Remind me to log my day</label>
       <div class="field"><label>At</label><input type="time" id="ob-rem-time" value="21:00"></div>

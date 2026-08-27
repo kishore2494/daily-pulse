@@ -168,7 +168,8 @@
   // direction: screen time is one of the metrics that is better DOWN
   ok('vs screen time is a down-is-better metric',
      (VS_METRICS.find(m => m.k === 'screen') || {}).dir === -1);
-  ok('vs mood is an up-is-better metric', (VS_METRICS.find(m => m.k === 'mood') || {}).dir === 1);
+  // Mood is deliberately dir 0 — see the comment on VS_METRICS. A metric that IS scored:
+  ok('vs sleep is an up-is-better metric', (VS_METRICS.find(m => m.k === 'sleep') || {}).dir === 1);
   ok('vs time tracked takes no side', (VS_METRICS.find(m => m.k === 'tracked') || {}).dir === 0);
   // a thin log must say so rather than render an empty frame
   localStorage.setItem('dp.entries', JSON.stringify({ [todayStr()]: { mood: 7 } }));
@@ -178,6 +179,48 @@
   if (vSnapE != null) localStorage.setItem('dp.entries', vSnapE); else localStorage.removeItem('dp.entries');
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
+
+  // ---- Honesty: the app must never report success on failure ----
+  ok('saveFile reports its outcome', /return 'blocked'/.test(saveFile.toString()));
+  ok('saveOk treats blocked and cancel as failures',
+     saveOk('shared') && saveOk('download') && saveOk('viewer') && !saveOk('blocked') && !saveOk('cancel'));
+  ok('exportData only stamps a backup date on success',
+     /saveOk\(r\)/.test(exportData.toString()) && /await saveFile/.test(exportData.toString()));
+  // a failed write must be reportable to the caller
+  const hSnapE = localStorage.getItem('dp.entries');
+  const realSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function (k, v) { if (k === 'dp.entries') throw new Error('QuotaExceeded'); return realSet(k, v); };
+  const wrote = DB.saveEntries({ x: 1 });
+  localStorage.setItem = realSet;
+  ok('saveEntries reports a failed write', wrote === false, String(wrote));
+  ok('the autosave dot is gated on the write', /wrote !== false/.test(saveDraftNow.toString()));
+  if (hSnapE != null) localStorage.setItem('dp.entries', hSnapE); else localStorage.removeItem('dp.entries');
+  // no invented statistics anywhere: the app has no telemetry that could produce one
+  ok('no fabricated population statistic', !/3× longer|3x longer/.test(document.documentElement.innerHTML));
+  // the one re-engagement nudge: no loss framing, and a real off switch
+  const nudgeSrc = scheduleInactivityReminder.toString();
+  ok('the nudge has an off switch', /dp\.nudgeOff/.test(nudgeSrc));
+  ok('the nudge uses no loss framing',
+     !/keeps your streak alive|miss you|don't lose|falling behind/i.test(nudgeSrc), nudgeSrc.slice(0, 300));
+  // an opaque no-cors response must not be reported as a confirmed sync
+  ok('no claim of a confirmed Sheet sync', !/Saved & synced/.test(document.documentElement.innerHTML));
+  // celebrations must respect the haptics switch
+  ok('celebrations route through the haptics gate', typeof buzzPattern === 'function');
+  ok('buzzPattern honours dp.hapticsOff', /dp\.hapticsOff/.test(buzzPattern.toString()));
+  ok('showAward does not bypass the gate', !/navigator\.vibrate/.test(showAward.toString()));
+  ok('showMilestone does not bypass the gate', !/navigator\.vibrate/.test(showMilestone.toString()));
+  // a backup that drops the user's own choices is not a backup
+  ['logsec', 'awards', 'goals', 'freshSeen'].forEach(k =>
+    ok('BACKUP_KEYS carries ' + k, BACKUP_KEYS.includes(k)));
+  // mood and energy are states, never framed as performance
+  ok('mood is not scored as performance', (VS_METRICS.find(m => m.k === 'mood') || {}).dir === 0);
+  ok('energy is not scored as performance', (VS_METRICS.find(m => m.k === 'energy') || {}).dir === 0);
+  // sample data must be labelled wherever it can be mistaken for real history
+  const smSnap = localStorage.getItem('dp.sampleMeta');
+  localStorage.setItem('dp.sampleMeta', JSON.stringify({ dates: ['x'] }));
+  ok('the trophy case labels sample data', /sample-bar/.test(awardsHTML()));
+  ok('sample data still writes no ledger entry', syncAwards().length === 0);
+  if (smSnap != null) localStorage.setItem('dp.sampleMeta', smSnap); else localStorage.removeItem('dp.sampleMeta');
 
   // ---- Fresh start (temporal landmarks) ----
   /* NOTE for future tests: overriding todayStr MUST forward its argument. addDays() calls
@@ -201,10 +244,16 @@
   ok('a Sunday is no landmark', freshLandmark() === null);
   // renders only on today, and only until dismissed
   fFake('2026-08-24'); localStorage.removeItem('dp.freshSeen');
+  // Seed the PREVIOUS week so the number path is what gets tested. With no prior week the
+  // copy legitimately carries no number ("a clean seven days ahead"), which is a different
+  // branch — assert the one that matters.
+  const fSnapE = localStorage.getItem('dp.entries');
+  const FE = {}; for (let i = 1; i <= 7; i++) FE[addDays('2026-08-24', -i)] = { mood: 7, habits: {} };
+  localStorage.setItem('dp.entries', JSON.stringify(FE));
   logDate = '2026-08-24';
   const fOn = freshHTML();
   ok('the landmark renders on the day', fOn !== '' && /fresh-card/.test(fOn));
-  ok('the landmark carries a real number', /<b>/.test(fOn), fOn.slice(0, 120));
+  ok('the landmark carries a real number', /<b>\d/.test(fOn), fOn.slice(0, 200));
   ok('the landmark uses no loss framing',
      !/lose|losing|falling behind|at risk/i.test(fOn), fOn.slice(0, 200));
   logDate = addDays('2026-08-24', -7);
@@ -215,6 +264,7 @@
   ok('a dismissed landmark stays dismissed', freshHTML() === '');
   fRestore();
   logDate = fSnapDate;
+  if (fSnapE != null) localStorage.setItem('dp.entries', fSnapE); else localStorage.removeItem('dp.entries');
   if (fSnapSeen != null) localStorage.setItem('dp.freshSeen', fSnapSeen); else localStorage.removeItem('dp.freshSeen');
 
   // ---- Custom goals ----
