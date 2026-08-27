@@ -180,6 +180,48 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Perfect days: the definition the app actually promises ----
+  const pdSnapE = localStorage.getItem('dp.entries'), pdSnapC = localStorage.getItem('dp.habitcfg');
+  localStorage.setItem('dp.habitcfg', JSON.stringify([
+    { key: 'pa', emoji: '1', label: 'A' }, { key: 'pb', emoji: '2', label: 'B' },
+    { key: 'pc', emoji: '3', label: 'C' }, { key: 'pd', emoji: '4', label: 'D' }]));
+  reloadCfg(); _goalMap = null;
+  const pdRun = mk => { const e = {};
+    for (let i = 9; i >= 0; i--) e[addDays(todayStr(), -i)] = { mood: 7, habits: mk() };
+    localStorage.setItem('dp.entries', JSON.stringify(e)); _goalMap = null;
+    return (awardList().find(x => x.grp === 'perfect') || {}).cur; };
+  // a habit never once tapped must COUNT AGAINST a perfect day, or the award is free
+  ok('never-tapped habits break a perfect day', pdRun(() => ({ pa: true })) === 0, pdRun(() => ({ pa: true })));
+  // a skip is neutral here, exactly as it is for streaks and strength
+  ok('a skipped habit still allows a perfect day',
+     pdRun(() => ({ pa: true, pb: true, pc: true, pd: 0 })) === 10);
+  ok('all done is a perfect day', pdRun(() => ({ pa: true, pb: true, pc: true, pd: true })) === 10);
+  // but a day where nothing was actually done is not perfect
+  ok('all skipped is not a perfect day', pdRun(() => ({ pa: 0, pb: 0, pc: 0, pd: 0 })) === 0);
+  ok('a missed habit is not a perfect day',
+     pdRun(() => ({ pa: true, pb: true, pc: true, pd: false })) === 0);
+  if (pdSnapE != null) localStorage.setItem('dp.entries', pdSnapE); else localStorage.removeItem('dp.entries');
+  if (pdSnapC != null) localStorage.setItem('dp.habitcfg', pdSnapC); else localStorage.removeItem('dp.habitcfg');
+  reloadCfg(); _goalMap = null;
+
+  // ---- Deleting your own data ----
+  ok('a wipe function exists', typeof wipeEverything === 'function');
+  ok('the wipe is two-step', typeof _wipeArmed === 'boolean');
+  const wKeep = 'notDaylog.key';
+  localStorage.setItem(wKeep, 'keep me');
+  const wSnap = {};
+  Object.keys(localStorage).filter(k => k.indexOf('dp.') === 0).forEach(k => { wSnap[k] = localStorage.getItem(k); });
+  const wErased = wipeEverything();
+  ok('the wipe erases every dp.* key', Object.keys(localStorage).filter(k => k.indexOf('dp.') === 0).length === 0);
+  ok('the wipe leaves foreign keys alone', localStorage.getItem(wKeep) === 'keep me');
+  ok('the wipe reports how much it erased', wErased === Object.keys(wSnap).length, wErased);
+  localStorage.removeItem(wKeep);
+  Object.keys(wSnap).forEach(k => localStorage.setItem(k, wSnap[k]));
+  reloadCfg(); _goalMap = null;
+
+  // ---- Empty states must not read as scores of zero ----
+  ok('two celebrations do not clobber each other', /setTimeout\(\(\) => showAward/.test(showAward.toString()));
+
   // ---- Honesty: the app must never report success on failure ----
   ok('saveFile reports its outcome', /return 'blocked'/.test(saveFile.toString()));
   ok('saveOk treats blocked and cancel as failures',

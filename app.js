@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v194';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v197';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1671,6 +1671,15 @@ function checkNewAwards(savedDate) {
   showAward(fresh[0], fresh.length - 1);
 }
 function showAward(a, more) {
+  /* showMilestone and showAward share the #milestone node, so when a streak milestone and a
+     new award land on the same save the second silently replaced the first. Defer instead —
+     the award is already permanent in the trophy case, so nothing is lost by waiting for the
+     user to dismiss the streak. */
+  const open = document.getElementById('milestone');
+  if (open && open.classList.contains('on')) {
+    setTimeout(() => showAward(a, more), 1200);
+    return;
+  }
   let m = document.getElementById('milestone');
   if (!m) { m = document.createElement('div'); m.id = 'milestone'; m.className = 'milestone'; document.body.appendChild(m); }
   const confetti = Array.from({ length: 34 }, (_, i) =>
@@ -3507,7 +3516,10 @@ function renderDash() {
   // ---- Polymath Index ----
   const pmSeries = days.map(d => { const p = e[d] ? polymath(e[d]) : null; return { x: d, y: p ? p.total : null }; });
   const pm30 = last30.map(d => e[d] ? polymath(e[d]) : null).filter(Boolean);
-  const pmAvg = pm30.length ? Math.round(pm30.reduce((a, p) => a + p.total, 0) / pm30.length) : 0;
+  // null, not 0. A brand-new user opening Stats was shown a hard "0/100" hero, which reads
+  // as "you scored zero" rather than "nothing logged yet" — the worst possible first
+  // impression, and untrue.
+  const pmAvg = pm30.length ? Math.round(pm30.reduce((a, p) => a + p.total, 0) / pm30.length) : null;
   const pillarAvg = key => { const v = pm30.map(p => p[key]).filter(x => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0; };
   const latestDate = allDates.slice().sort().slice(-1)[0];
   const latestPm = latestDate && polymath(e[latestDate]) ? polymath(e[latestDate]).total : '–';
@@ -3587,7 +3599,7 @@ function renderDash() {
       <div class="stat"><div class="v">${allDates.length}</div><div class="l">days logged</div></div>
       <div class="stat"><div class="v">${avg('mood')}</div><div class="l">avg mood</div></div>
       <div class="stat"><div class="v">${avg('energy')}</div><div class="l">avg energy</div></div>
-      <div class="stat"><div class="v">${pmAvg}</div><div class="l">🧭 polymath</div></div>
+      <div class="stat"><div class="v">${pmAvg == null ? '–' : pmAvg}</div><div class="l">🧭 polymath</div></div>
     </div></div>
 
     ${patternsCard}
@@ -3595,8 +3607,10 @@ function renderDash() {
     <div class="card pm-card">
       <h2>🧭 Polymath Index <span class="hint">last 30 days</span></h2>
       <div class="pm-hero">
-        <div class="pm-score">${pmAvg}<span class="pm-out">/100</span></div>
-        <div class="pm-meta"><div>30-day average</div><div class="hint">latest day: ${latestPm}${typeof latestPm==='number'?'/100':''}</div></div>
+        <div class="pm-score">${pmAvg == null ? '–' : pmAvg}<span class="pm-out">/100</span></div>
+        <div class="pm-meta"><div>30-day average</div><div class="hint">${pmAvg == null
+          ? 'log a few days and this fills in'
+          : `latest day: ${latestPm}${typeof latestPm === 'number' ? '/100' : ''}`}</div></div>
       </div>
       ${barChart(pmSeries, '#8b9dff', { max: 100 })}
       <div style="margin-top:10px">${pmBars}</div>
@@ -5091,6 +5105,20 @@ function renderSettings() {
       </div>
       <input type="file" id="import-file" accept="application/json" style="display:none">
     </div>
+    ${/* An app that holds a private journal has to let you destroy it without uninstalling.
+         Two-step on purpose: the first tap only arms it, and it disarms itself after 6
+         seconds so a stray tap can never wipe a year of entries. */''}
+    <div class="card">
+      <h2>🧨 Delete everything <span class="hint">on this device</span></h2>
+      <div class="hint" style="margin-bottom:8px">Erases every entry, habit, note, task, plan,
+        article, workout, time block, award and setting from this phone. It cannot be undone,
+        and it does not touch any backup file you have already saved. <b>Export a backup
+        first</b> if there is any chance you will want this back.</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="wipe-all"
+          style="color:var(--bad-ink)">${_wipeArmed ? '⚠️ Tap again to erase everything' : 'Delete all my data'}</button>
+      </div>
+    </div>
     ${SHOW_PIS ? `<div class="card">
       <h2>🧠 PIS sync <span class="hint" id="pis-status">not connected</span></h2>
       <div class="hint" style="margin-bottom:8px">Push your Daylog days straight into your <b>Personal Intelligence System</b> (the PIS app on this computer — server running at <b>localhost:5001</b>) so its Mirror, Trends, and chat can analyze your life. On your phone, use the Google Sheet link instead.</div>
@@ -5249,6 +5277,21 @@ document.addEventListener('click', async (ev) => {
     saveAutoTrack({ [k]: !at[k] }); renderSettings();
     if (k === 'on') toast(!at.on ? 'Auto-tracking ON' : 'Auto-tracking OFF — nothing will be collected');
     return; }
+  if (ev.target.id === 'wipe-all') {
+    if (!_wipeArmed) {
+      _wipeArmed = true;
+      renderSettings();
+      toast('Tap again within 6 seconds to erase everything', true);
+      clearTimeout(_wipeTimer);
+      _wipeTimer = setTimeout(() => { _wipeArmed = false; try { renderSettings(); } catch (e) {} }, 6000);
+      return;
+    }
+    clearTimeout(_wipeTimer); _wipeArmed = false;
+    const n = wipeEverything();
+    toast(n + ' items erased. Daylog is empty.');
+    setTimeout(() => location.reload(), 900);
+    return;
+  }
   if (ev.target.id === 'export') exportData();
   if (ev.target.id === 'export-csv') exportCSV();
   if (ev.target.id === 'import') document.getElementById('import-file').click();
@@ -5405,6 +5448,20 @@ function sendFeedback(text, contact) {
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
 const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+/* Armed state for the two-step delete. In-memory only — an armed wipe must not survive a
+   reload, a crash, or a second device. */
+let _wipeArmed = false, _wipeTimer = null;
+function wipeEverything() {
+  // Only dp.* keys: anything else in localStorage belongs to the page, not to Daylog.
+  const doomed = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf('dp.') === 0) doomed.push(k);
+  }
+  doomed.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  return doomed.length;
+}
+
 async function exportData() {
   const out = backupBlob();
   // Await it, and only stamp the date if the file actually reached the user. Stamping
@@ -6918,10 +6975,22 @@ function awardSeries(grp, ents, health) {
       const first = {};
       dates.forEach(d => { const h = e[d].habits || {};
         cfg.forEach(c => { if ((c.key in h) && first[c.key] == null) first[c.key] = d; }); });
-      const since = c => c.added || first[c.key] || null;
+      /* Fall back to the FIRST LOGGED DAY, not null. Returning null excluded any habit that
+         had never once been tapped — permanently — so a user who only ever ticked 1 of their
+         4 habits earned a "perfect day" every single day. A habit with no `added` stamp and
+         no appearance in the log is a pre-existing one that has simply never been done; it
+         has to count against a perfect day, or the award means nothing. New habits carry
+         `added`, so this cannot resurrect the retroactive-demotion bug. */
+      const since = c => c.added || first[c.key] || dates[0];
       dates.forEach(d => {
-        const req = cfg.filter(c => since(c) && since(c) <= d).map(c => c.key);
-        if (req.length && req.every(k => hVal(e[d], k) === H_DONE)) acc++;
+        const req = cfg.filter(c => since(c) <= d).map(c => c.key);
+        /* Perfect = nothing MISSED, and at least one thing actually DONE. A skip is neutral
+           here exactly as it is for streaks and for habit strength — requiring H_DONE for
+           every habit meant taking the rest day the app itself offers cost you the award,
+           two lines after the UI says "your streak is safe". Requiring one H_DONE stops a
+           day where everything was skipped from counting as perfect. */
+        const vals = req.map(k => hVal(e[d], k));
+        if (vals.length && !vals.includes(H_MISS) && vals.includes(H_DONE)) acc++;
         out.push([d, acc]);
       });
       return out; }
