@@ -15,3 +15,4 @@ One-line catalog of every page. Start here.
 **Live:** production https://kishore2494.github.io/daily-pulse/ · dev https://kishore2494.github.io/jurnal-app/
 - [backups.md](backups.md) — where every version lives, how snapshots are made, and the one unbacked file that matters
 - [strava-build.md](strava-build.md) — the 12 ranked research items, what each shipped as, and the rules they are bound by
+- [behaviour-audit.md](behaviour-audit.md) — the six-dimension audit, its scores, what got fixed, and what is still open

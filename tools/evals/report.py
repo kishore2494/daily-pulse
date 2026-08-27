@@ -2,6 +2,22 @@
 """Score an eval run and print the actionable findings, worst first."""
 import json, sys, collections
 rows = json.load(open(sys.argv[1]))
+
+# A run that measured NOTHING is a failure, not a perfect score. When the browse server is
+# wedged (port 9400 in use) every boot() fails, the JSON comes back empty, and this used to
+# print "errors: 0  warns: 0  PENALTY SCORE: 0  (0 = clean)" — reporting success on total
+# failure, which is the exact bug class this suite exists to catch in the app. Refuse instead.
+MIN_ROWS = 12
+if len(rows) < MIN_ROWS:
+    print('=' * 72)
+    print('EVAL DID NOT RUN — only %d screen/viewport combos measured (expected >= %d).'
+          % (len(rows), MIN_ROWS))
+    print('This is NOT a clean result. The probe never reached the app.')
+    print('Most likely the browse server is wedged. Fix and re-run:')
+    print('  kill -9 $(lsof -ti :9400); rm -f /tmp/browse-server.json')
+    print('=' * 72)
+    sys.exit(2)
+
 W = {'error': 10, 'warn': 3}
 by_type = collections.Counter()
 by_sev = collections.Counter()

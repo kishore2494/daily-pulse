@@ -239,3 +239,21 @@ for text; an overlay with its own ground needs its own ink.
 10px outside the card's content box (`escapes-parent`). Grow vertically with negative
 margins; never sideways. For a page indicator that must *look* small, keep the button 44px
 and draw the dot with an inset `::after`.
+
+## A rule is only enforced where the test looks (2026-08-27)
+
+`strava-build.md` documents "no loss framing" as a hard rule, and `tests/unit.js` asserts it —
+on `freshHTML()` only. Meanwhile `scheduleInactivityReminder()` shipped *"a 60-second log keeps
+your streak alive 🔥"*, on by default with no off switch, for weeks. Three other documented
+rules were violated the same way.
+
+When a rule is global, **grep for the pattern across the file**, not the one function you were
+thinking about when you wrote the rule.
+
+## An empty test run is a failure, not a pass
+
+`tools/evals/run.sh` printed `errors: 0  warns: 0  PENALTY SCORE: 0  (0 = clean)` after the
+browse server wedged on port 9400 and **every** boot failed — zero rows measured, reported as
+perfect. This is the same success-on-failure bug the suite exists to catch in the app.
+`report.py` now exits 2 below a minimum row count. Any harness that can report success without
+having run needs that floor.
