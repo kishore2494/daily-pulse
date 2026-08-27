@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v197';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v199';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -856,7 +856,7 @@ const WHATS_NEW = {
     '📅 <b>Weekly streaks</b> — a week counts once you log any 3 of its days, and the today-ring card tells you the moment this week is banked. A daily streak makes one bad day a failure; a weekly one absorbs real life. There are tiered awards for 2, 4, 8, 12, 26 and 52 weeks in a row.',
     '📍 <b>Plan a when &amp; where</b> — give any habit a cue like “after my morning coffee, at my desk”. It shows on that habit\'s chip until you tick it off. This is the best-evidenced habit trick there is: naming <i>when</i> and <i>where</i> beats naming the habit. Set one in Customize ▸ Checklist habits, or tap 📍 on the Habits screen.',
     '📈 <b>You vs you</b> — Stats ▸ Overview now compares your last week, last 4 weeks, or the same 4 weeks a year ago against your own past. No leaderboards and no other people: the only person on the other side is you. When there isn\'t enough history it tells you the date it unlocks instead of guessing.',
-    '🏆 <b>Trophy case</b> — Stats ▸ Awards. 54 awards across 8 families, tiered so a big goal pays out along the way. Worked out from your own log, so nothing can be faked and nothing is ever taken away. “Next up” shows how close you are.',
+    '🏆 <b>Trophy case</b> — Stats ▸ Awards. 60 awards across 9 families, tiered so a big goal pays out along the way. Worked out from your own log, so nothing can be faked and nothing is ever taken away. “Next up” shows how close you are.',
     '🖼️ <b>Share cards</b> — turn a streak, your year in pixels, your habits, an insight or an award into a picture. Drawn on your phone from your own data; only the image is ever shared.',
     '❤️ <b>Real auto-tracking</b> — steps, distance, calories, sleep, workouts and heart rate now come from <b>Health Connect</b>, alongside the automatic screen time. Settings ▸ Auto-tracking ▸ Connect Health Connect. Every metric is a separate switch, and anything you don\'t allow simply stays blank.',
     '🔔 <b>Pick your own alarm sound</b> — Customize ▸ Alarm sound. Choose any alarm tone on your phone (or your own audio file), preview it, and turn vibration on or off. Needs the Play Store update.',
@@ -7138,7 +7138,9 @@ function awardsHTML() {
   const sampleBar = sampleOn ? `<div class="card sample-bar"><span>👀 Includes <b>sample data</b> — these are not your real awards, and none of them are being recorded.</span><button class="btn btn-ghost btn-sm" id="hc-sample-clear">Clear sample</button></div>` : '';
   const earned = list.filter(a => a.earned);
   if (!earned.length && !Object.keys(DB.entries()).length) {
-    return `<div class="card"><h2 class="h2-icon">${hicon('star')}<span>Trophy case</span></h2>
+    // sampleBar first: the early return used to skip it entirely, so a sample-loaded store
+    // with no entries would have shown an unlabelled case.
+    return `${sampleBar}<div class="card"><h2 class="h2-icon">${hicon('star')}<span>Trophy case</span></h2>
       <div class="empty">Log a day and your first award lands here.</div></div>`;
   }
   // Next up, one per family: the goal-gradient effect only works if you can SEE the gap.

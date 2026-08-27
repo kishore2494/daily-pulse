@@ -180,6 +180,17 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Copy that quotes a number must match the code ----
+  // Caught on a real device: What's-new said "54 awards across 8 families" after a ninth
+  // family was added. Copy that states a count has to be derived or asserted, never typed.
+  const awCount = awardList().length, awFams = AWARD_FAMILIES.length;
+  const wnText = (WHATS_NEW.items || []).join(' ');
+  const wnClaim = wnText.match(/(\d+) awards across (\d+) families/);
+  ok('what\'s-new quotes the real award count', !wnClaim || +wnClaim[1] === awCount,
+     wnClaim ? wnClaim[1] + ' claimed vs ' + awCount + ' actual' : 'no claim');
+  ok('what\'s-new quotes the real family count', !wnClaim || +wnClaim[2] === awFams,
+     wnClaim ? wnClaim[2] + ' claimed vs ' + awFams + ' actual' : 'no claim');
+
   // ---- Perfect days: the definition the app actually promises ----
   const pdSnapE = localStorage.getItem('dp.entries'), pdSnapC = localStorage.getItem('dp.habitcfg');
   localStorage.setItem('dp.habitcfg', JSON.stringify([
@@ -258,11 +269,17 @@
   ok('mood is not scored as performance', (VS_METRICS.find(m => m.k === 'mood') || {}).dir === 0);
   ok('energy is not scored as performance', (VS_METRICS.find(m => m.k === 'energy') || {}).dir === 0);
   // sample data must be labelled wherever it can be mistaken for real history
-  const smSnap = localStorage.getItem('dp.sampleMeta');
+  const smSnap = localStorage.getItem('dp.sampleMeta'), smSnapE = localStorage.getItem('dp.entries');
   localStorage.setItem('dp.sampleMeta', JSON.stringify({ dates: ['x'] }));
+  // Sample data means real entries in the real store — seed one so this exercises the
+  // normal path, not just the empty-store early return.
+  localStorage.setItem('dp.entries', JSON.stringify({ [todayStr()]: { mood: 7, habits: {} } }));
   ok('the trophy case labels sample data', /sample-bar/.test(awardsHTML()));
+  localStorage.setItem('dp.entries', JSON.stringify({}));
+  ok('an empty store still labels sample data', /sample-bar/.test(awardsHTML()));
   ok('sample data still writes no ledger entry', syncAwards().length === 0);
   if (smSnap != null) localStorage.setItem('dp.sampleMeta', smSnap); else localStorage.removeItem('dp.sampleMeta');
+  if (smSnapE != null) localStorage.setItem('dp.entries', smSnapE); else localStorage.removeItem('dp.entries');
 
   // ---- Fresh start (temporal landmarks) ----
   /* NOTE for future tests: overriding todayStr MUST forward its argument. addDays() calls
