@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v208';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v214';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -849,6 +849,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '📊 <b>Stats looks like something now</b> — the overview opened with six identical grey boxes and no sense of direction. It now leads with your streak, then Mood, Energy and Polymath each with a 14-day sparkline and an arrow comparing this week to the one before. The three colours were checked for colour-blind readability and contrast in both light and dark, not just picked because they looked nice.',
     '🔔 <b>Notification fixes</b> — please update in the Play Store. Daylog\'s notifications showed a generic "i" instead of an icon, because there was no notification icon at all; there is now. And the activity-timer notification counts <b>live</b> — Android ticks it itself, so it keeps counting with the app closed, instead of just saying when you started. Pause and Stop are proper buttons.',
     '🏆 <b>Awards moved</b> — the trophy case is now its own screen in the ☰ menu, so Stats keeps all four of its tabs (Health was getting pushed off the edge on smaller phones).',
     '😊 <b>One mood input</b> — the grid now sets mood <i>and</i> energy in one tap and spans 1–10 across five levels, so the two separate sliders are hidden by default. Want the exact 1–10 sliders back? Customize ▸ Log screen fields.',
@@ -2826,6 +2827,63 @@ function renderHabits() {
 /* ============================================================
    SCREEN: DASHBOARD
    ============================================================ */
+/* ---------- Stat-tile primitives ----------
+   The Stats overview used to open with six identical grey boxes: a 201-day streak and a
+   65/100 index rendered at exactly the same weight, none of them showing which way anything
+   was moving. Six equal numbers is the same as no hierarchy at all.
+
+   Now: ONE hero figure (the streak), then three stat tiles that each carry a value, a signed
+   delta against a named period, and a sparkline. A number with no direction is the least
+   useful thing a stats screen can show.
+
+   Series colours are per-mode and were validated, not eyeballed — same hues as the app's own
+   accents, stepped for each surface so they clear the lightness band, the chroma floor,
+   colour-blind separation and 3:1 contrast on both #ffffff and #141c2e. Only three series,
+   which is inside the band where hue alone is safe; every tile is direct-labelled anyway. */
+
+/* 12-point sparkline. No axes, no dots, no gridlines — it answers "which way" and nothing
+   else. Nulls are bridged rather than dropped so gaps do not fake a trend. */
+function sparkline(values, cls, w, h) {
+  w = w || 92; h = h || 26;
+  const pts = (values || []).filter(v => v != null && !isNaN(v)).map(Number);
+  if (pts.length < 2) return `<svg class="spark" width="${w}" height="${h}" aria-hidden="true"></svg>`;
+  const lo = Math.min(...pts), hi = Math.max(...pts);
+  const span = (hi - lo) || 1;
+  const pad = 3;
+  const x = i => pad + (i * (w - pad * 2)) / (pts.length - 1);
+  const y = v => (h - pad) - ((v - lo) / span) * (h - pad * 2);
+  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const area = `${d} L${x(pts.length - 1).toFixed(1)},${h} L${x(0).toFixed(1)},${h} Z`;
+  return `<svg class="spark ${cls}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <path class="spark-fill" d="${area}"/>
+    <path class="spark-line" d="${d}"/>
+    <circle class="spark-dot" cx="${x(pts.length - 1).toFixed(1)}" cy="${y(pts[pts.length - 1]).toFixed(1)}" r="2.6"/>
+  </svg>`;
+}
+
+/* value + signed delta + sparkline. `upGood` decides the delta's colour, never its arrow —
+   the arrow always follows the number. */
+function statTile(o) {
+  const has = o.value != null && o.value !== '–';
+  let delta = '';
+  if (has && o.delta != null && isFinite(o.delta) && Math.abs(o.delta) >= (o.eps || 0.05)) {
+    const up = o.delta > 0;
+    const good = o.upGood === false ? !up : up;
+    delta = `<span class="st-delta ${good ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(o.delta).toFixed(o.dec == null ? 1 : o.dec)}</span>`;
+  } else if (has) {
+    delta = `<span class="st-delta flat">level</span>`;
+  }
+  /* The delta sits beside the VALUE, not beside the label. Sharing a row with the label left
+     "Polymath" 38px in a 3-column grid at 320px — about six readable characters. The value is
+     short, so it can afford a neighbour; the label cannot. */
+  return `<div class="st st-${o.cls}">
+    <div class="st-label">${o.label}</div>
+    <div class="st-top"><span class="st-val">${has ? o.value : '–'}</span>${delta}</div>
+    ${sparkline(o.spark, 'sp-' + o.cls)}
+    ${o.foot ? `<div class="st-foot">${o.foot}</div>` : ''}
+  </div>`;
+}
+
 function lineChart(values, color) {
   // values: array of {x:label, y:number|null}
   const w = 320, h = 130, pad = 8;
@@ -3624,14 +3682,41 @@ function renderDash() {
         <div class="hint">Log about a week of days and your personal patterns appear here — your sleep sweet spot, which habits actually lift your mood, your peak focus hours. Computed on your phone, never uploaded.</div></div>`;
 
   const overviewHTML = `
-    <div class="card"><div class="stat-grid">
-      <div class="stat"><div class="v">${loggedStreak()}</div><div class="l">🔥 day streak</div></div>
-      <div class="stat"><div class="v">${longestLoggedStreak()}</div><div class="l">best streak</div></div>
-      <div class="stat"><div class="v">${allDates.length}</div><div class="l">days logged</div></div>
-      <div class="stat"><div class="v">${avg('mood')}</div><div class="l">avg mood</div></div>
-      <div class="stat"><div class="v">${avg('energy')}</div><div class="l">avg energy</div></div>
-      <div class="stat"><div class="v">${pmAvg == null ? '–' : pmAvg}</div><div class="l">🧭 polymath</div></div>
-    </div></div>
+    ${(() => {
+      /* One hero (the streak), three sparkline tiles, and the two context numbers demoted
+         from full-size boxes to a single line — they are reference values, not headlines. */
+      const sparkOf = (key, n) => { const out = [];
+        for (let i = n - 1; i >= 0; i--) { const d = addDays(todayStr(), -i);
+          const v = e[d] && e[d][key]; out.push(v != null && v !== '' && !isNaN(+v) ? +v : null); }
+        return out; };
+      const pmSparkOf = n => { const out = [];
+        for (let i = n - 1; i >= 0; i--) { const d = addDays(todayStr(), -i);
+          const pm = e[d] ? polymath(e[d]) : null; out.push(pm ? pm.total : null); }
+        return out; };
+      /* Delta = this 7 days vs the 7 before, so the number has a period attached. */
+      const meanOf = a => { const v = (a || []).filter(x => x != null); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+      const deltaOf = arr => { const half = Math.floor(arr.length / 2);
+        const a = meanOf(arr.slice(half)), b = meanOf(arr.slice(0, half));
+        return (a == null || b == null) ? null : a - b; };
+      const mS = sparkOf('mood', 14), eS = sparkOf('energy', 14), pS = pmSparkOf(14);
+      const st = loggedStreak();
+      return `<div class="card ov-hero-card">
+        <div class="ov-hero">
+          <div class="ov-flame">${icon('flame', 30)}</div>
+          <div>
+            <div class="ov-num">${st}</div>
+            <div class="ov-lab">${st === 1 ? 'day logged' : 'day streak'}</div>
+          </div>
+        </div>
+        <div class="ov-ctx">Best <b>${longestLoggedStreak()}</b> · <b>${allDates.length}</b> days logged all time</div>
+        <div class="st-row">
+          ${statTile({ cls: 'mood',  label: 'Mood',     value: avg('mood'),   spark: mS, delta: deltaOf(mS), upGood: true, eps: 0.15 })}
+          ${statTile({ cls: 'nrg',   label: 'Energy',   value: avg('energy'), spark: eS, delta: deltaOf(eS), upGood: true, eps: 0.15 })}
+          ${statTile({ cls: 'poly',  label: 'Polymath', value: pmAvg == null ? '–' : pmAvg, spark: pS, delta: deltaOf(pS), upGood: true, eps: 1, dec: 0 })}
+        </div>
+        <div class="hint st-note">Last 14 days · the arrow compares this week with the one before.</div>
+      </div>`;
+    })()}
 
     ${patternsCard}
 

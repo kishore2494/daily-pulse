@@ -1563,3 +1563,77 @@ input[type="range"] { height: 30px; }
 @media (prefers-reduced-motion: reduce) {
   .ss-spin, .ss-chip.loading::after { animation: none; }
 }
+
+/* ---------- Stats overview: hero + sparkline tiles ----------
+   Replaces six identical grey boxes. Series colours are VALIDATED, not chosen by eye — the
+   same hues as the app's accents, stepped per surface so each mode clears the lightness
+   band, the chroma floor, colour-blind separation and 3:1 contrast:
+     light on #ffffff  : blue #3b5bdb · teal #0f9b86 · violet #6d4bc7
+     dark  on #141c2e  : blue #5570dd · teal #26a892 · violet #7f63dd
+   Three series only, which is inside the range where hue alone is safe; every tile is
+   direct-labelled regardless, so identity is never colour-only. */
+:root {
+  --s-mood: #5570dd;
+  --s-nrg:  #26a892;
+  --s-poly: #7f63dd;
+}
+:root[data-mode="light"] {
+  --s-mood: #3b5bdb;
+  --s-nrg:  #0f9b86;
+  --s-poly: #6d4bc7;
+}
+
+/* the single hero figure on the screen */
+.ov-hero { display: flex; align-items: center; gap: 14px; }
+.ov-flame { flex: 0 0 auto; color: var(--warn-ink, #fbbf24); display: grid; place-items: center; }
+.ov-num { font-family: var(--font-display); font-size: 54px; font-weight: 800;
+  line-height: 1; letter-spacing: -2px; color: var(--text); }
+.ov-lab { margin-top: 3px; font-size: 13.5px; font-weight: 600; color: var(--text-dim); }
+/* best streak + days logged: reference values, so one quiet line rather than two big boxes */
+.ov-ctx { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 500; color: var(--text-dim); }
+.ov-ctx b { color: var(--text); font-weight: 700; }
+
+.st-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.st { padding: 10px 9px 8px; border-radius: 13px; background: var(--bg-input);
+  border: 1px solid var(--border); min-width: 0; }
+/* label gets the full tile width; value and delta share the row below it */
+.st-label { font-size: 11.5px; font-weight: 650; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-top { display: flex; align-items: baseline; gap: 4px; margin-top: 1px; }
+.st-delta { flex: 0 0 auto; font-size: 10px; font-weight: 700; }
+.st-delta.up { color: var(--good-ink); }
+.st-delta.down { color: var(--bad-ink); }
+.st-delta.flat { color: var(--text-faint); }
+/* proportional figures on purpose: tabular-nums makes a standalone value look loose */
+.st-val { flex: 0 1 auto; min-width: 0; font-family: var(--font-display); font-size: 25px;
+  font-weight: 750; line-height: 1.05; letter-spacing: -.7px; color: var(--text); }
+/* `.card .hint` is (0,2,0) and beat a bare `.st-note` (0,1,0), so --text-faint kept winning
+   and this 12px caption measured 3.16:1 on the dark card. It explains what the arrows mean,
+   so it has to be readable — scoped to match. */
+.card .st-note { margin-top: 9px; color: var(--text-dim); }
+
+/* 2px line, soft fill, one end dot. No axes and no per-point labels — a sparkline answers
+   "which way", and anything more competes with the value above it. */
+.spark { display: block; margin-top: 5px; width: 100%; height: 26px; overflow: visible; }
+.spark-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.spark-fill { stroke: none; opacity: .14; }
+.spark-dot { stroke: var(--bg-input); stroke-width: 1.5; }
+.sp-mood .spark-line, .sp-mood .spark-dot { stroke: var(--s-mood); }
+.sp-mood .spark-fill, .sp-mood .spark-dot { fill: var(--s-mood); }
+.sp-nrg  .spark-line, .sp-nrg  .spark-dot { stroke: var(--s-nrg); }
+.sp-nrg  .spark-fill, .sp-nrg  .spark-dot { fill: var(--s-nrg); }
+.sp-poly .spark-line, .sp-poly .spark-dot { stroke: var(--s-poly); }
+.sp-poly .spark-fill, .sp-poly .spark-dot { fill: var(--s-poly); }
+.spark-dot { stroke: var(--bg-input); }
+
+/* a hairline in the series colour ties each tile to its sparkline */
+.st-mood { box-shadow: inset 3px 0 0 var(--s-mood); }
+.st-nrg  { box-shadow: inset 3px 0 0 var(--s-nrg); }
+.st-poly { box-shadow: inset 3px 0 0 var(--s-poly); }
+
+@media (max-width: 360px) {
+  .ov-num { font-size: 46px; }
+  .st-val { font-size: 21px; }
+  .st-label { font-size: 10.5px; }
+}

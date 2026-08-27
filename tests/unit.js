@@ -180,6 +180,29 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Stats overview: hero + sparkline tiles ----
+  ok('sparkline exists', typeof sparkline === 'function');
+  ok('statTile exists', typeof statTile === 'function');
+  // too few points is not a fake line
+  ok('sparkline needs 2+ points', !/path/.test(sparkline([5])) && !/path/.test(sparkline([])));
+  ok('sparkline draws a line and a fill', /spark-line/.test(sparkline([1,5,3,7])) && /spark-fill/.test(sparkline([1,5,3,7])));
+  // nulls are bridged, not treated as zero — a gap must not fake a crash
+  const spN = sparkline([6,null,6,null,6]);
+  ok('sparkline bridges nulls', /spark-line/.test(spN));
+  ok('a flat series does not divide by zero', /spark-line/.test(sparkline([5,5,5,5])));
+  // the arrow follows the NUMBER; only the colour follows whether up is good
+  const upGood = statTile({cls:'mood',label:'Mood',value:'7.0',spark:[6,7],delta:0.8,upGood:true});
+  const upBad  = statTile({cls:'mood',label:'Screen',value:'7.0',spark:[6,7],delta:0.8,upGood:false});
+  ok('a rise always shows an up arrow', /▲/.test(upGood) && /▲/.test(upBad));
+  ok('a good rise is coloured up', /st-delta up/.test(upGood));
+  ok('a bad rise is coloured down', /st-delta down/.test(upBad));
+  ok('a change inside eps reads level',
+     /st-delta flat/.test(statTile({cls:'mood',label:'M',value:'7.0',spark:[7,7],delta:0.01,eps:0.15})));
+  ok('a missing value renders a dash, not a zero',
+     statTile({ cls: 'mood', label: 'M', value: '–', spark: [] }).indexOf('>–<') !== -1);
+  ok('a missing value shows no delta at all',
+     !/st-delta/.test(statTile({ cls: 'mood', label: 'M', value: '–', spark: [], delta: 2 })));
+
   // ---- Notifications: one icon, and a live timer ----
   ok('there is a single notification icon constant', NOTIF_ICON === 'ic_stat_daylog');
   ok('the timer prefers the native live counter', /timerPlugin\(\)/.test(refreshTimerNotif.toString()));
