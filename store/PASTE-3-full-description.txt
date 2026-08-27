@@ -1,52 +1,52 @@
-A habit tracker, mood log and screen time tracker in one — and it works completely offline, with no account and no cloud.
+A habit tracker, goal tracker, mood log and screen time tracker in one — completely offline, with no account and no cloud.
 
-Daylog is a private habit tracker and daily log for people who want to understand their own days. Track habits and streaks, log your mood and energy, see your screen time, time your focus sessions — and get real insights back. Nothing is uploaded. No sign-up, no data collected, everything stays on your device.
+Daylog is a private habit tracker and daily log for people who want to understand their days. Track habits and streaks, set any goal, log your mood and energy, see your screen time, time your focus — and get real insights back. No sign-up, no data collected, nothing uploaded.
 
 Insights that actually know you
-Most trackers just draw charts. Daylog reads your own data, on your phone, and tells you what works for you:
+Most trackers draw charts. Daylog reads your data on your phone and tells you what works for you:
 • "Your sleep sweet spot is 7–8h — mood 7.8 vs 5.9 after short nights"
-• "Workout days lift your mood by +1.4"
-• "Your peak focus window is 9–11am"
-• "Heavy screen days cost you −1.2 mood"
-• "Workout today → mood +0.8 tomorrow" — next-day effects, with a confidence rating
-Every insight uses honest minimum sample sizes, and none of it ever leaves your phone.
+• "Active days buy you 26 more minutes of sleep"
+• "Walking today → mood +0.7 tomorrow" — next-day effects, with a confidence rating
+Every insight uses honest minimum sample sizes, measures you against your own averages rather than someone else's, and never leaves your phone.
 
 Habit tracker with streaks — and a skip button
-A daily checklist with streak counts, 90-day heatmaps, consistency stats and a streak leaderboard. Full-screen celebrations at 3, 5, 7, 10 and 14+ days. Create, rename, colour and reorder every habit — it's your routine tracker, not a template.
+A daily checklist with streak counts, 90-day heatmaps and consistency stats. Create, rename, colour and reorder every habit — your routine, not a template.
 
-Rest days shouldn't punish you. Tap a habit twice to mark it skipped: your streak stays alive and the day is left out of your completion rate. Every habit also gets a strength score out of 100 — a weighted trend, so one missed day can't wipe out months of work and one good day can't fake it.
+Rest days shouldn't punish you. Tap a habit twice to skip it: your streak stays alive and the day leaves your completion rate. There's a weekly streak too — log any 3 days and the week counts — so one bad Tuesday costs nothing. Every habit gets a strength score out of 100 — a weighted trend, so one missed day can't wipe out months and one good day can't fake it. And you can give a habit a when-and-where cue — "after my morning coffee, at my desk" — which shows until you tick it off. Naming the moment is the best-evidenced habit trick there is.
+
+Goals — all of them, free
+Any target across nine measures, over a week, a month or a year. Each goal shows what's left and how much per day gets there, and can suggest one from what you actually averaged before. Other trackers charge for this.
+
+Your trophy case
+Sixty achievements across nine families, tiered so a big goal pays out along the way. Worked out from your own log — nothing fakeable, nothing ever taken away.
+
+You vs you
+Compare your last week, last four weeks, or the same four weeks a year ago against your own past. No leaderboards, no percentiles, nobody else's numbers — the only person on the other side is you.
 
 Screen time, tracked for you
-Your daily phone usage is measured automatically and charted against your mood, so you can see what your screen time actually costs you. Works as a quiet app usage tracker in the background — and every auto-tracked signal has an on/off switch.
+Your phone usage is measured automatically and charted against your mood, so you see what it costs you. Every auto-tracked signal has an on/off switch.
 
 A one-tap daily time tracker
-Tap an activity when you start — work, travel, gym, scrolling — and tap the next when you switch. Your day becomes a colour-coded 24-hour timeline, and tracked sleep and work fill in your log automatically. It's a time log that takes one tap, not a timesheet.
+Tap an activity when you start — work, travel, gym, scrolling — and tap the next when you switch. Your day becomes a colour-coded 24-hour timeline, and tracked sleep and work fill in your log. Stop a timer and note what it was and how it felt.
 
-On this day
-Your entry from a week, a month or a year ago appears at the top of your log — tap to reopen it. Your own history, resurfaced, at no charge.
+Month in review
+A five-card wrap-up of any month you've logged: habits ranked, how it felt, where the time went. Nothing expires. And your entry from a week, a month or a year ago resurfaces at the top of today's log.
 
 Mood journal and private journal
-Log mood and energy, answer short reflections, and write a full journal entry — by typing or by voice. Add notes, plans and longer articles. Search everything you've ever written, including #tags. Your journal stays offline and private.
+Log mood and energy, answer short reflections, write a full entry — typing or voice. Add notes, plans and articles. Search everything you've written, #tags included.
 
 Focus timer and gym log
-Pomodoro with an ongoing notification, timeboxing and focus sounds. Plus a real workout log: editable split, animated exercise demos, per-set logging and muscle-group breakdowns.
-
-Stats worth opening
-Mood and energy trends, connected insights (how sleep drives your mood, this week vs last), best days, your journal topics, focus sessions, tasks completed, words written, and a Polymath Index across body, mind, work, learning and discipline.
-
-Reminders that reach you
-Daily reminders with notifications or full-screen alarms, plus calendar events.
+Pomodoro with an ongoing notification, timeboxing and focus sounds. Plus a workout log: editable split, animated demos, per-set logging and muscle-group breakdowns. Daily reminders arrive as notifications or full-screen alarms, plus calendar events.
 
 Truly private, truly offline
-• No account, no registration required
-• No cloud, no sync, no data collected
+• No account, no cloud, no sync, no data collected
 • No ads, no trackers, no analytics
 • Works 100% offline
-• Export your data any time (JSON, CSV or a PDF report)
+• Export any time (JSON, CSV or a PDF report)
 
 Make it yours
-Light, dark and black themes, plus an Auto mode that follows your phone. Pin whichever tabs you want to the bottom bar. Rename, hide or replace any field, section, habit, activity or workout.
+Light, dark and black themes plus Auto. Pin whichever tabs you want. Rename, hide or reorder any field, section, habit or activity — including every motivational part, if you'd rather not.
 
-New here? Take the 60-second guided tour inside the app (Settings ▸ Take the app tour).
+New here? Take the 60-second tour inside the app (Settings ▸ Take the app tour).
 
-An offline habit tracker, mood journal, daily log, screen time tracker and daily time log — private by design.
+An offline habit tracker, goal tracker, mood journal, screen time tracker and time log — private by design.
