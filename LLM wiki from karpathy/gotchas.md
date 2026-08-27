@@ -257,3 +257,25 @@ browse server wedged on port 9400 and **every** boot failed — zero rows measur
 perfect. This is the same success-on-failure bug the suite exists to catch in the app.
 `report.py` now exits 2 below a minimum row count. Any harness that can report success without
 having run needs that floor.
+
+## Copy that quotes a number will drift (2026-08-27)
+
+What's-new said *"54 awards across 8 families"* for a whole day after a ninth family took it to
+60. Nothing broke, nothing failed a test — the app simply told users something false about
+itself. Any copy stating a count must be **derived** from the source of truth, or asserted
+against it. There is now a test that reads `awardList().length` / `AWARD_FAMILIES.length` and
+fails on a mismatch.
+
+## A test can pass for the wrong reason
+
+The "trophy case labels sample data" assertion passed while the feature was broken, because
+the store happened to be empty and it hit `awardsHTML`'s early return — a path that skipped
+the banner entirely. Green does not mean the code under test ran. When adding a test for a
+guard, make sure the fixture actually reaches the guard.
+
+## Always compare signing certs BEFORE `install -r`
+
+Pull the installed APK off the device and compare its SHA-256 to the new build:
+`apksigner verify --print-certs`. Matching means `install -r` upgrades in place and preserves
+app data; a mismatch forces an uninstall and **destroys every entry**. On a phone with real
+user data this check is not optional.

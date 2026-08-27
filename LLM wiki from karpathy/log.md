@@ -1116,3 +1116,24 @@ Added appearance MODES (settings.mode: navy default / black AMOLED / light) on t
 **New pages:** `strava-build.md`, `backups.md`. **Updated:** `gotchas.md`, `features.md`,
 `index.md`, `log.md`.
 
+## 2026-08-27 (later) — audit fixes shipped, and verified on real hardware
+
+- **The behaviour audit's findings were all real.** Honesty scored 4.5/10 and earned it: a
+  fabricated statistic in onboarding ("streak 3x longer" — no telemetry exists that could
+  measure it), "last backup: today ✅" after a CANCELLED share, "Saved 🎉" over a write that
+  failed on a full phone, "Report PDF ready" on every failure path, and a loss-framed
+  re-engagement push with no off switch that violated a rule this wiki documents. All fixed
+  in v194–v199. See `behaviour-audit.md`.
+- **Device test on the POCO C31, USB and wireless** (report:
+  `DAYLOG-DEVICE-TEST-2026-08-27.md`). Native share **works** — the chooser launched with
+  `flg=0x10000001` (`GRANT_READ_URI_PERMISSION | ACTIVITY_NEW_TASK`), exactly what
+  `SharePlugin.java` sets. Certs were compared before installing so `install -r` preserved his
+  17 days of real data.
+- **The sample-data banner added hours earlier fired on his phone** — he had sample data
+  loaded, and without it he would have read those awards as his own history.
+- **Two bugs only a device found:** What's-new hardcoded "54 awards across 8 families" after a
+  ninth family shipped, and `awardsHTML`'s empty-store early return skipped the sample banner
+  — with its own test passing only because it hit that same early return.
+- Tests 159 → 194. `report.py` now refuses to score a run that measured nothing (it printed
+  "PENALTY 0 (0 = clean)" after every boot failed).
+
