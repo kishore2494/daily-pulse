@@ -1,11 +1,11 @@
 # Daylog — what to test on the phone
 
-**Web is v197 and already live.** Your installed app loads
+**Web is v208 and already live.** Your installed app loads
 `https://kishore2494.github.io/daily-pulse/`, so **everything below except §7 works on the app
 you already have** — just open it. Force-close and reopen once to be sure the WebView picks
 up the new bundle.
 
-**Only §7 needs the new build:** `~/Documents/p/Daylog-113-share.apk` (4 MB).
+**Only §7 and §10 need the new build:** `~/Documents/p/Daylog-114.apk` (already installed on your POCO).
 Signature `144d1f76…d728` — same key as your current install, so `adb install -r` upgrades
 in place and **keeps your data**. Verified, not assumed.
 
@@ -72,6 +72,32 @@ correct fallback, not a bug. Android WebView has no share API at all.
       *skipped* one habit now DOES count as perfect.
 - [ ] **Stats on a fresh install** shows "–/100", not "0/100", for Polymath.
 - [ ] Turn haptics off in Settings, then earn an award — it should **not** buzz.
+
+## 10. Build 114 — the notification fixes (NEEDS 114, already on your POCO)
+- [ ] **Notification icon** — start a timer, pull down the shade. The small icon should be
+      your pulse line, not a generic "i". Same for reminders and the pomodoro.
+- [ ] **The timer counts LIVE.** It should tick upward on its own — `00:01`, `00:02`… — and
+      keep counting with the app closed and the phone locked. Before, it only said "Running
+      since 12:23" and never moved.
+- [ ] **Pause / Stop are real buttons** on the notification. Tapping Pause should stop the
+      counter immediately (even with the app closed) and switch the button to Resume.
+- [ ] Tap Pause with the app fully closed, then open Daylog — the pause should have been
+      applied to the actual time block, not lost.
+
+## 11. What changed in the app (v199 → v208)
+- [ ] **Awards is now in ☰ Menu**, its own screen. Stats should show all four tabs again
+      (Overview, Time, Checklist, **Health**) with none pushed off the edge.
+- [ ] **Log screen** — the two 1–10 sliders ("Evening mood", "Energy level") are gone; the
+      grid sets both in one tap and now has **25 squares** instead of 16. Want the sliders
+      back? Customize ▸ Log screen fields → 🙈 next to mood/energy.
+- [ ] **Reminders** — only one test button now ("Test my alarm (1 min)").
+- [ ] **Settings ▸ Delete everything** — now takes **four stages** plus typing DELETE plus an
+      unskippable 5-second wait. Try arming it and cancelling; don't complete it.
+- [ ] **Settings ▸ Feedback** — should say it's built by one person.
+- [ ] **Share cards** — switching design should now dim the old card and show a spinner, with
+      the chip you tapped showing a loading bar, instead of going blank.
+- [ ] **guide.html** — the "← Back to Daylog" button text should be readable white. It was
+      invisible (blue on blue).
 
 ## 9. Still worth re-checking (unverified since the alarm work)
 - [ ] **Reboot the phone with a reminder set**, then check the reminder still fires.
