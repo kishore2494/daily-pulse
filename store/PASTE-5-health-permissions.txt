@@ -1,0 +1,65 @@
+════════════════════════════════════════════════════════════════════
+PLAY CONSOLE ▸ App content ▸ Health apps ▸ STEP 2: Health data permissions
+Daylog requests SIX Health Connect permissions, all READ-ONLY.
+Paste the matching block into each permission's justification box.
+════════════════════════════════════════════════════════════════════
+
+── ACTIVITY (3 permissions) ────────────────────────────────────────
+
+▸ READ_STEPS
+Daylog is a private daily-log app. It reads your step count so the user does not
+have to type it in, shows it on their daily log, and correlates it with the mood
+and energy they record themselves — for example "the day after your more active
+days your mood averages +0.7". It also powers a personal "most steps" record.
+All processing happens on the device. The data is never transmitted, uploaded or
+shared, there is no account and no server, and step reading has its own on/off
+switch in Settings.
+
+▸ READ_DISTANCE
+Shown alongside steps on the user's daily log so their day is recorded without
+manual entry. Read-only, processed entirely on the device, never transmitted, and
+individually switchable off in Settings.
+
+▸ READ_EXERCISE
+Read to fill in active minutes on the user's daily log automatically and to
+correlate exercise with the energy levels they log themselves. It also powers a
+personal "most active minutes" record. Read-only, on-device only, never
+transmitted, and individually switchable off in Settings.
+
+── NUTRITION (1 permission) ────────────────────────────────────────
+
+▸ READ_TOTAL_CALORIES_BURNED
+Read to show calories burned on the user's daily log without manual entry, and to
+correlate it with the energy they record. Daylog does not track food, diet or
+weight. Read-only, on-device only, never transmitted, and individually switchable
+off in Settings.
+
+── SLEEP (1 permission) ────────────────────────────────────────────
+
+▸ READ_SLEEP
+Sleep is central to the app. Daylog reads sleep duration so the user's sleep is
+logged without manual entry, and uses it to find their personal patterns — their
+"sleep sweet spot" (which sleep duration precedes their best mood), how much extra
+sleep follows an active day, and what a heavy screen-time day costs the following
+night. It also powers a personal "longest sleep" record. All computed on the
+device. Read-only, never transmitted, and switchable off in Settings.
+
+── VITALS (1 permission) ───────────────────────────────────────────
+
+▸ READ_HEART_RATE
+Read to show the user's average heart rate on their daily log and to surface one
+recovery insight — how much higher their heart rate runs after a short night's
+sleep. Daylog makes no medical or diagnostic claims and does not detect any
+condition. Read-only, on-device only, never transmitted, and individually
+switchable off in Settings.
+
+════════════════════════════════════════════════════════════════════
+IF A SHORT VERSION IS NEEDED (character limits)
+"Read-only. Auto-fills the user's daily log and powers on-device insights
+correlating this metric with the mood and energy they record themselves. No
+account, no server; data never leaves the device. Individually switchable off."
+════════════════════════════════════════════════════════════════════
+STEP 3 ▸ Regional requirements: answer NO to all. Daylog is a personal wellness
+and journalling app. It is not a medical device, makes no diagnostic or treatment
+claims, and is not used for clinical decisions.
+════════════════════════════════════════════════════════════════════
