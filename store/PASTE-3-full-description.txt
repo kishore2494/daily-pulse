@@ -24,7 +24,7 @@ You vs you
 Compare your last week, last four weeks, or the same four weeks a year ago against your own past. No leaderboards, no percentiles, nobody else's numbers — the only person on the other side is you.
 
 Screen time, tracked for you
-Your phone usage is measured automatically and charted against your mood, so you see what it costs you. Every auto-tracked signal has an on/off switch.
+Your phone usage is measured automatically and charted against your mood. Every auto-tracked signal has an on/off switch.
 
 A one-tap daily time tracker
 Tap an activity when you start — work, travel, gym, scrolling — and tap the next when you switch. Your day becomes a colour-coded 24-hour timeline, and tracked sleep and work fill in your log. Stop a timer and note what it was and how it felt.

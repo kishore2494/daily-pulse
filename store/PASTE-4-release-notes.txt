@@ -1,0 +1,5 @@
+Notifications finally look right — Daylog's own icon instead of a generic "i" — and the activity timer now counts live in your notification shade, even with the app closed, with real Pause and Stop buttons.
+
+New: free goals across nine measures, a trophy case of 60 awards, "You vs you" week/month/year comparisons, a month-in-review deck, when-and-where habit cues, weekly streaks that survive a bad day, and share cards drawn on your phone.
+
+Plus: delete all your data from Settings.
