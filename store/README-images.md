@@ -16,10 +16,10 @@ listing sees both.
 | 1 | It tells you what actually works | Stats ▸ patterns | light |
 | 2 | 60 awards, none fakeable | Awards ▸ trophy case | dark |
 | 3 | Any target, no paywall | Stats ▸ goals | light |
-| 4 | One tap, your whole day | Time tracker | dark |
+| 4 | One tap, your whole day | Time tracker, timer RUNNING | dark |
 | 5 | One square for every day | Year in pixels | dark |
 | 6 | How do you actually feel? | Mood grid (5×5) | light |
-| 7 | No account, no cloud | Stats ▸ insights | dark |
+| 7 | No account, no cloud | Settings ▸ every tracking toggle | dark |
 
 ## Regenerating them
 
@@ -42,3 +42,21 @@ The previous raw screenshots are kept in `.superseded-2026-08-27/`.
 was near-black and clashed badly with the new colourful screenshots — and the feature graphic
 is the first thing anyone sees on the listing. Same gradient family as store-1 so the whole
 listing reads as one set. Old one in `.superseded-2026-08-27/`.
+
+## Regenerated 2026-08-27 (second pass)
+
+Three frames did not actually show what their headline claimed, which is worse than a dull
+screenshot:
+- **4** said "Tap once" over a screen reading **"Nothing running"**. Now seeded with a live
+  timer (Work · 1h 15m · Stop).
+- **7** said "No account. No cloud." over the **Stats** screen — no connection to the claim,
+  and the same screen as frame 1. Now Settings, showing that every tracked signal has its own
+  off switch.
+- **5** had dead space under the mosaic; the crop now starts 16px above the card.
+All Stats frames were also recaptured after the v214 overview redesign — they were still
+showing the six grey boxes.
+
+**Trap worth knowing:** a browse render can serve a stale page even with a cache-busting
+query. Verify by hashing the base64 in the HTML against the source PNGs (they matched, which
+proved the HTML was fine and the RENDER was stale) — then `goto about:blank` first to force a
+genuine reload.
