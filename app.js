@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v206';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v208';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -849,6 +849,9 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w14',
   items: [
+    '🔔 <b>Notification fixes</b> — please update in the Play Store. Daylog\'s notifications showed a generic "i" instead of an icon, because there was no notification icon at all; there is now. And the activity-timer notification counts <b>live</b> — Android ticks it itself, so it keeps counting with the app closed, instead of just saying when you started. Pause and Stop are proper buttons.',
+    '🏆 <b>Awards moved</b> — the trophy case is now its own screen in the ☰ menu, so Stats keeps all four of its tabs (Health was getting pushed off the edge on smaller phones).',
+    '😊 <b>One mood input</b> — the grid now sets mood <i>and</i> energy in one tap and spans 1–10 across five levels, so the two separate sliders are hidden by default. Want the exact 1–10 sliders back? Customize ▸ Log screen fields.',
     '🌅 <b>Fresh start</b> — on a Monday, the 1st of a month or New Year\'s Day, the Log opens with what you actually did last week, month or year, and a clean slate ahead. One note per landmark, dismissible, and it never talks about losing anything. Hide it in Customize ▸ Log layout if you would rather not have it.',
     '🎯 <b>Goals — all of them, free</b> — Stats ▸ Overview. Any of nine measures over a week, a month or a year, as many as you like. Every goal shows exactly what is left and how much per remaining day would get there, and “Suggest” fills in what <i>you</i> actually averaged over your last three periods rather than inventing a number. Other trackers charge for this.',
     '🗓️ <b>Month in review</b> — Stats ▸ Overview. A five-card wrap-up of any month you have logged: the shape of the month, your habits ranked, how it felt, where the time went. In the first ten days of a new month it points at the month just finished. Nothing expires — every month stays browsable.',
@@ -4542,7 +4545,7 @@ async function schedulePomoAlarm(endsAt, label) {
   try {
     await LN.cancel({ notifications: [{ id: POMO_NOTIF_ID }] });
     if (!endsAt || endsAt <= Date.now() + 500) return;
-    await LN.schedule({ notifications: [{ id: POMO_NOTIF_ID, title: '🍅 ' + label,
+    await LN.schedule({ notifications: [{ id: POMO_NOTIF_ID, smallIcon: NOTIF_ICON, title: '🍅 ' + label,
       body: label === 'Focus' ? 'Focus done — time for a break ☕' : 'Break over — back to focus 💪',
       schedule: { at: new Date(endsAt), allowWhileIdle: true }, sound: 'default' }] });
   } catch (e) {}
@@ -4733,7 +4736,7 @@ async function scheduleTimeboxAlarms() {
       if (id > 830) return;
       const at = new Date(b.date + 'T' + b.start + ':00');
       if (isNaN(at.getTime()) || at.getTime() <= now) return;
-      LN.schedule({ notifications: [{ id: id++, title: '📦 ' + b.label, body: 'Time-box starting (' + b.start + ')',
+      LN.schedule({ notifications: [{ id: id++, smallIcon: NOTIF_ICON, title: '📦 ' + b.label, body: 'Time-box starting (' + b.start + ')',
         schedule: { at, allowWhileIdle: true }, sound: 'default' }] });
     });
   } catch (e) {}
@@ -5228,7 +5231,7 @@ document.addEventListener('click', async (ev) => {
     (async () => {
       const perm = await LN.requestPermissions();
       if (perm.display !== 'granted') { toast('Allow notifications first', true); return; }
-      await LN.schedule({ notifications: [{ id: 424242, title: '⏰ Daylog native alarm',
+      await LN.schedule({ notifications: [{ id: 424242, smallIcon: NOTIF_ICON, title: '⏰ Daylog native alarm',
         body: 'It works — this rang even with the app closed! 🎉',
         schedule: { at: new Date(Date.now() + 60000), allowWhileIdle: true }, sound: 'default' }] });
       toast('Scheduled for 1 min — now swipe the app away and wait 📴');
@@ -5402,7 +5405,7 @@ async function generatePdfReport() {
   // at all. A blanket "Report PDF ready 📄" on top of that was a flat contradiction, and the
   // notification promised a file that did not exist.
   if (!saveOk(rr)) return;
-  if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, title: 'Daylog', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
+  if (nativeShell()) { try { window.Capacitor.Plugins.LocalNotifications.schedule({ notifications: [{ id: 780, smallIcon: NOTIF_ICON, title: 'Daylog', body: 'Your report PDF is ready to save/share', schedule: { at: new Date(Date.now() + 400) } }] }); } catch (e) {} }
 }
 function downloadReport() {
   const e = DB.entries();
@@ -6030,7 +6033,7 @@ async function scheduleNativeAlarms() {
     const wantsAlarm = m => (m || 'alarm') === 'alarm';
     const add = (t, title, body, alarm) => {
       if (alarm && FS) alarms.push({ id: seq++, at: t.getTime(), title, body });
-      else notifs.push({ id: seq++, title, body, schedule: { at: t, allowWhileIdle: true },
+      else notifs.push({ id: seq++, smallIcon: NOTIF_ICON, title, body, schedule: { at: t, allowWhileIdle: true },
         sound: alarm ? 'default' : undefined });
     };
     DB.reminders().filter(r => r.enabled && r.time).forEach(r => {
@@ -7935,18 +7938,53 @@ async function setupTimerNotif() {
     _timerNotifReady = true;
   } catch (e) {}
 }
+/* Every notification this app posts uses the same monochrome pulse icon. Android masks the
+   small icon to its alpha channel, so the launcher icon came out as a tinted blob and the
+   default fallback was Android's generic "i" — which is what users were actually seeing. */
+const NOTIF_ICON = 'ic_stat_daylog';
+
+/* Present only in builds that ship TimerNotifPlugin.java. */
+function timerPlugin() {
+  const p = window.Capacitor && Capacitor.Plugins;
+  const t = p && p.DaylogTimer;
+  return (t && typeof t.show === 'function') ? t : null;
+}
+
 async function refreshTimerNotif() {
   if (!nativeShell()) return;
+  const run = runningSeg();
+  const pausedId = localStorage.getItem('dp.pausedAct');
+
+  /* The native plugin renders a LIVE counter: setUsesChronometer + setWhen means Android
+     itself ticks it, so it keeps counting with the app backgrounded or killed. The old
+     Capacitor path baked "Running since 12:23" into the body as a string, which never moved
+     — and could not, because JS is suspended exactly when the notification is being read. */
+  const T = timerPlugin();
+  if (T) {
+    try {
+      if (run) {
+        const act = actById(run.act);
+        await T.show({ title: `${act.emoji} ${act.name}`, startMillis: run.start, paused: false });
+      } else if (pausedId) {
+        const act = actById(pausedId);
+        await T.show({ title: `${act.emoji} ${act.name}`, startMillis: Date.now(), paused: true });
+      } else {
+        await T.hide();
+      }
+      return;
+    } catch (e) { /* fall through to the Capacitor path below */ }
+  }
+
+  // Older installs without the plugin keep the previous behaviour rather than nothing.
   const LN = window.Capacitor.Plugins.LocalNotifications;
   await setupTimerNotif();
   try {
-    const run = runningSeg();
-    const pausedId = localStorage.getItem('dp.pausedAct');
     if (run) {
       const act = actById(run.act);
       await LN.schedule({ notifications: [{
         id: TIMER_NOTIF_ID, title: `${act.emoji} ${act.name} — timing`,
         body: `Running since ${fmtClock(run.start)} · tap Pause or Stop`,
+        smallIcon: NOTIF_ICON,
         actionTypeId: 'dp_running', ongoing: true, autoCancel: false,
         schedule: { at: new Date(Date.now() + 300) } }] });
     } else if (pausedId) {
@@ -7954,6 +7992,7 @@ async function refreshTimerNotif() {
       await LN.schedule({ notifications: [{
         id: TIMER_NOTIF_ID, title: `⏸ ${act.emoji} ${act.name} — paused`,
         body: 'Tap Resume to continue timing',
+        smallIcon: NOTIF_ICON,
         actionTypeId: 'dp_paused', ongoing: true, autoCancel: false,
         schedule: { at: new Date(Date.now() + 300) } }] });
     } else {
@@ -7961,6 +8000,24 @@ async function refreshTimerNotif() {
     }
   } catch (e) {}
 }
+
+/* Buttons tapped while the web layer was not running are recorded natively; apply them the
+   moment we are alive again, so a Pause from the lock screen is not silently lost. */
+async function drainTimerAction() {
+  const T = timerPlugin();
+  if (!T || typeof T.consumeAction !== 'function') return;
+  let a = '';
+  try { a = (await T.consumeAction()).action || ''; } catch (e) { return; }
+  if (!a) return;
+  const r = runningSeg();
+  if (a === 'stop') { if (r) startAct(r.act); localStorage.removeItem('dp.pausedAct'); }
+  else if (a === 'pause') { if (r) { localStorage.setItem('dp.pausedAct', r.act); startAct(r.act); } }
+  else if (a === 'resume') { const pa = localStorage.getItem('dp.pausedAct');
+    localStorage.removeItem('dp.pausedAct'); if (pa) startAct(pa); }
+  refreshTimerNotif();
+  try { if (document.getElementById('s-time').classList.contains('on')) renderTime(); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) drainTimerAction(); });
 
 /* ---------- 2-day inactivity nudge (native shell, fully offline) ----------
    Pre-schedules one "we miss you" notification for (last active day + 2 days)

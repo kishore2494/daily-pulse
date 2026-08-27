@@ -180,6 +180,13 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Notifications: one icon, and a live timer ----
+  ok('there is a single notification icon constant', NOTIF_ICON === 'ic_stat_daylog');
+  ok('the timer prefers the native live counter', /timerPlugin\(\)/.test(refreshTimerNotif.toString()));
+  ok('the timer falls back with the icon set', /smallIcon: NOTIF_ICON/.test(refreshTimerNotif.toString()));
+  ok('notification-button actions are drained on resume', typeof drainTimerAction === 'function');
+  ok('the timer plugin is absent on the open web', timerPlugin() === null);
+
   // ---- Awards is its own screen, not a fifth Stats tab ----
   ok('awards is a nav destination', !!navCfg().find(n => n.k === 'awards'));
   ok('awards has a renderer', typeof RENDER.awards === 'function');
