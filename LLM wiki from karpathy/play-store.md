@@ -110,3 +110,23 @@ Audited the shipping bundle (106/66) against Play policy. Findings and status:
 
 ## When the app goes live
 - Swap the landing page's "Coming soon to Google Play" pill for a real **Get it on Google Play** badge + set `product.play_url`.
+
+## Build 113 / versionName 73 — ready, not uploaded (2026-08-27)
+
+Adds `SharePlugin.java` (`DaylogShare`), which is what lights up one-tap share for the
+generated cards. Built and verified:
+
+- `app-release.aab` 4.2MB, `app-release.apk` 4.3MB — staged at `~/Documents/p/Daylog-113-share.*`
+- Signing cert SHA-256 `144d1f76…d728` — the SAME key as the installed build, so a sideload
+  upgrades in place and preserves data
+- `SharePlugin`, `shareImage` and `DaylogShare` confirmed present in the built dex, not just
+  in the source tree
+
+**Blocked on one thing before upload: the Play Console Health apps declaration.** The app
+reads Health Connect, so the declaration is mandatory. This blocked 112 too.
+
+**112 was never uploaded** and is superseded — go straight to 113.
+
+The listing copy deliberately does not mention sharing. Generation ships over the web and is
+already live at v190; delivery needs THIS build. Do not promise a share sheet the installed
+app cannot open. Add that paragraph once 113 is live and tested.
