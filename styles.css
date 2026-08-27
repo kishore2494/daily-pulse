@@ -1090,7 +1090,8 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .mm-wrap { display: flex; gap: 8px; align-items: stretch; }
 .mm-yaxis { display: flex; flex-direction: column; justify-content: space-between;
   font-size: 9.5px; line-height: 1.15; color: var(--text-faint); text-align: right; padding: 2px 0; flex: 0 0 auto; }
-.mm-grid { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+/* 5 columns since the grid replaced the two 1-10 sliders — see MM_COLS. */
+.mm-grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .mm-cell { aspect-ratio: 1 / 0.74; border: 0; border-radius: 9px; cursor: pointer; padding: 0;
   transition: transform .12s ease, box-shadow .12s ease; -webkit-tap-highlight-color: transparent; }
 .mm-cell:active { transform: scale(.93); }
@@ -1530,3 +1531,35 @@ input[type="range"] { height: 30px; }
 .fresh-l b { color: var(--text); }
 .fresh-x { flex: 0 0 auto; width: 44px; height: 44px; margin: -10px 0; padding: 0; border: 0;
   background: none; color: var(--text-faint); font-size: 15px; cursor: pointer; }
+
+/* Delete-everything gauntlet. Visually heavier than any other settings block on purpose —
+   this is the one action in the app with no undo. */
+.wipe-box { margin-top: 4px; padding: 12px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--bad-ink) 45%, transparent);
+  background: color-mix(in srgb, var(--bad-ink) 7%, transparent); }
+.wipe-box.wipe-final { border-width: 2px; background: color-mix(in srgb, var(--bad-ink) 13%, transparent); }
+.wipe-warn { font-size: 13.5px; font-weight: 700; color: var(--bad-ink); line-height: 1.4; }
+.wipe-box .btn { min-height: 44px; }
+.wipe-box .btn:disabled { opacity: .45; }
+#wipe-word { text-transform: uppercase; letter-spacing: .12em; font-weight: 700; }
+
+/* Share-card rendering state. The old behaviour cleared the panel to a bare "Rendering…"
+   for several seconds, which reads as broken — so the outgoing card stays visible, dimmed,
+   under a spinner. */
+.ss-canvas { position: relative; }
+.ss-canvas.busy img { opacity: .35; filter: saturate(.5); transition: opacity .15s; }
+.ss-veil { position: absolute; inset: 0; display: grid; place-items: center; }
+.ss-load { display: grid; place-items: center; gap: 10px; aspect-ratio: 4 / 5;
+  color: #b7c2e6; font-size: 13px; font-weight: 600; }
+.ss-spin { display: block; width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,.22); border-top-color: #fff;
+  animation: ss-spin .8s linear infinite; }
+@keyframes ss-spin { to { transform: rotate(360deg); } }
+.ss-chip.loading { position: relative; opacity: .75; }
+.ss-chip.loading::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: 4px;
+  height: 2px; border-radius: 2px; background: rgba(255,255,255,.85);
+  animation: ss-bar 1s ease-in-out infinite; }
+@keyframes ss-bar { 0%,100% { transform: scaleX(.2); opacity: .5 } 50% { transform: scaleX(1); opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+  .ss-spin, .ss-chip.loading::after { animation: none; }
+}

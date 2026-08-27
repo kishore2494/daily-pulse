@@ -67,9 +67,16 @@
       border-radius:12px;padding:10px 14px;}
     .try b{color:var(--text);}
     .foot{text-align:center;margin-top:34px;color:var(--faint);font-size:13px;}
-    .foot a{color:var(--accent);}
+    /* NOT `.foot a` — (0,1,1) beats .cta (0,1,0) regardless of source order, so the
+       "Back to Daylog" button's text was painted in --accent on a gradient that STARTS with
+       --accent. Identical colour, 1.00:1, completely invisible. Scoped to plain links. */
+    .foot a:not(.cta){color:var(--accent);}
+    .cta, .cta:link, .cta:visited, .cta:hover, .cta:active{color:#fff;}
     .cta{display:inline-block;margin-top:16px;font-family:'Sora';font-weight:700;font-size:15px;color:#fff;text-decoration:none;
-      background:linear-gradient(135deg,var(--accent),var(--accent2));padding:13px 26px;border-radius:14px;box-shadow:0 6px 22px rgba(109,140,255,.35);}
+      /* Its OWN gradient, not var(--accent)/var(--accent2): those are tuned for text and
+         thin strokes elsewhere, and white on the lighter stop measured 3.07:1 — under the
+         4.5 that 15px bold still needs. These two clear 8:1. */
+      background:linear-gradient(135deg,#3a4a94,#4a3f96);padding:13px 26px;border-radius:14px;box-shadow:0 6px 22px rgba(58,74,148,.38);}
     @media(max-width:560px){section,section.flip{grid-template-columns:1fr;gap:16px;}
       section.flip .shot{order:0;} .shot{max-width:260px;margin:0 auto;} h1{font-size:28px;}}
       .backbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:6px;padding:13px 16px;

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v199';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v206';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -956,8 +956,13 @@ document.addEventListener('click', (ev) => {
    GIVE them one. Pleasantness x energy is exactly the mood/energy pair we already store,
    so one tap on the grid sets both, and the quadrant then offers precise vocabulary that
    lands in the journal as a #tag (searchable by our existing tag search). */
-const MM_COLS = [2, 4, 7, 9];        // pleasantness -> mood 1-10
-const MM_ROWS = [9, 7, 4, 2];        // energy, high at the top
+/* 5 levels per axis, spanning 1-10 evenly. This replaced the two separate 1-10 sliders:
+   one tap now sets mood AND energy, which is what the two scales were doing in two steps.
+   5x5 rather than the old 4x4 because dropping the sliders costs resolution, and 1/3/5/7/9
+   covers the range far better than 2/4/7/9 did. 25 cells is still ~62px each at 360px.
+   Anyone who wants exact 1-10 values can re-show the sliders in Customize > Main fields. */
+const MM_COLS = [1, 3, 5, 7, 9];     // pleasantness -> mood 1-10
+const MM_ROWS = [9, 7, 5, 3, 1];     // energy, high at the top
 const MM_QUAD = {
   red:    { label: 'High energy, unpleasant', c: '#e2574c',
     words: ['Angry','Anxious','Stressed','Frustrated','Restless','Overwhelmed','Irritated','Worried','Tense','Panicked'] },
@@ -974,8 +979,11 @@ function mmQuad(mood, energy) {
 }
 function moodMeterHTML() {
   if (logSecHidden('moodgrid')) return '';
-  const active = coreCfg().filter(f => !f.hidden).map(f => f.key);
-  if (!active.includes('mood') || !active.includes('energy')) return '';   // needs both axes
+  /* Gate on the fields EXISTING, not on them being visible. The old check used the visible
+     set, so hiding the two sliders — which this grid is meant to replace — also deleted the
+     grid, leaving no way to log mood at all. */
+  const keys = coreCfg().map(f => f.key);
+  if (!keys.includes('mood') || !keys.includes('energy')) return '';       // needs both axes
   const m = draft.mood, en = draft.energy;
   const cells = MM_ROWS.map(ry => MM_COLS.map(cx => {
     const q = MM_QUAD[mmQuad(cx, ry)];
@@ -1105,6 +1113,26 @@ function setLogSecHidden(id, hidden) {
   });
   if (touched) saveLogSec(list);
   localStorage.setItem('dp.logsecMigrated', '1');
+})();
+
+/* The mood grid replaced the two separate 1-10 sliders: one tap sets mood AND energy, where
+   the sliders needed two, and having both on the Log was the same question asked twice.
+   Hide the sliders once, and only when the grid is actually there to replace them — never
+   leave someone with no way to log mood. Fully reversible in Customize > Main fields, and
+   the historical 1-10 values are untouched. */
+(function migrateMoodInput() {
+  if (localStorage.getItem('dp.moodInputMigrated') === '1') return;
+  try {
+    if (!logSecHidden('moodgrid')) {
+      const cfg = coreCfg(); let touched = false;
+      ['mood', 'energy'].forEach(k => {
+        const row = cfg.find(f => f.key === k);
+        if (row && !row.hidden) { row.hidden = true; touched = true; }
+      });
+      if (touched) saveCoreCfg(cfg);
+    }
+  } catch (e) {}
+  localStorage.setItem('dp.moodInputMigrated', '1');
 })();
 
 /* ============================================================
@@ -3753,18 +3781,14 @@ function renderDash() {
     ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}
     ${(!sampleOn && hDays < 5) ? '<button class="btn btn-ghost btn-sm" id="hc-sample">👀 Preview with sample data</button>' : ''}`);
 
-  const TABS = [['overview', icon('chart', 15) + ' Overview'], ['awards', icon('star', 15) + ' Awards'], ['time', icon('clock', 15) + ' Time'], ['check', icon('check', 15) + ' Checklist'], ['health', icon('heart', 15) + ' Health']];
+  const TABS = [['overview', icon('chart', 15) + ' Overview'], ['time', icon('clock', 15) + ' Time'], ['check', icon('check', 15) + ' Checklist'], ['health', icon('heart', 15) + ' Health']];
   // The other tabs are pre-built STRINGS; the trophy case is a function, so it is called
   // here rather than put in the map — a function reference would stringify its own source
   // into the page. It is also the only tab that replays full history, so it stays lazy.
-  // Flush any pending award scan before drawing the case, or a just-earned badge is missing
-  // from the very screen the user opened to look for it.
-  if (dashTab === 'awards') { try { awardsFlush(); } catch (e) {} }
-  const body = dashTab === 'awards' ? awardsHTML()
-    : ({ overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML);
+  const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
   document.getElementById('s-dash').innerHTML = `
     <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
-    ${(dashTab === 'check' || dashTab === 'awards') ? '' : rangeRow}
+    ${dashTab === 'check' ? '' : rangeRow}
     ${body}`;
 }
 
@@ -4426,6 +4450,14 @@ document.addEventListener('toggle', (ev) => {
   if (d) { if (d.open) openCfgSecs.add(d.dataset.cfgsec); else openCfgSecs.delete(d.dataset.cfgsec); }
 }, true);
 document.addEventListener('input', (ev) => {
+  if (ev.target && ev.target.id === 'wipe-word') {
+    _wipeTyped = ev.target.value;
+    // Enable/disable the Continue button in place — a full renderSettings() here would
+    // destroy the focused input mid-keystroke.
+    const b = document.getElementById('wipe-next3');
+    if (b) b.disabled = _wipeTyped.trim().toUpperCase() !== WIPE_WORD;
+    return;
+  }
   const ce = ev.target.closest('[data-cfg-emoji]');
   if (ce) { const [k, id] = ce.dataset.cfgEmoji.split(':'); const f = cfgFind(k, id); if (f.item) { f.item.emoji = ce.value; f.save(); } return; }
   const cn = ev.target.closest('[data-cfg-name]');
@@ -4992,9 +5024,14 @@ function renderSettings() {
     </div>
     <div class="card">
       <h2>💬 Feedback <span class="hint">private · no sign-in</span></h2>
-      <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What do you love?" style="min-height:70px"></textarea></div>
+      <div class="hint" style="margin-bottom:9px">Daylog is built by <b>one person</b>, in their
+        own time, with no company and no funding behind it. There is no support team reading
+        this — it comes straight to me, and it is genuinely how the app gets better. If
+        something is confusing, broken, or missing, please tell me. Even one line helps.</div>
+      <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What would make this actually useful for you?" style="min-height:80px"></textarea></div>
       <div class="btn-row"><button class="btn btn-primary btn-sm" id="fb-send">Send feedback</button></div>
-      <div class="hint" style="margin-top:8px">Goes straight to the developer — no email or account needed.</div>
+      <div class="hint" style="margin-top:8px">No email, no account, no sign-in. If you would
+        like a reply, leave a way to reach you in the message.</div>
     </div>
     ${SHOW_SYNC ? `<div class="card">
       <h2>☁️ Sync &amp; login <span class="hint">${s.syncUrl ? 'connected ●' : 'not connected'}</span></h2>
@@ -5070,12 +5107,16 @@ function renderSettings() {
         <input type="text" id="rem-new-label" placeholder="Reminder name…">
         <button class="btn btn-primary btn-sm" id="rem-add">Add</button>
       </div>
+      ${/* There were FOUR overlapping test buttons here — a development scaffold that
+             shipped. Only one of them tested anything a user cares about: a real alarm
+             firing while the app is closed. The rest tested the in-app overlay, which
+             proves nothing about the native path. */''}
       <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-primary btn-sm" id="rem-test">🔔 Test alarm</button>
-        <button class="btn btn-ghost btn-sm" id="rem-test15">⏱ Test in 15 sec</button>
+        ${fullScreenPlugin()
+          ? '<button class="btn btn-primary btn-sm" id="rem-fs-test">⏰ Test my alarm (1 min)</button>'
+          : (nativeShell() ? '<button class="btn btn-primary btn-sm" id="rem-native-test">🔔 Test my alarm (1 min)</button>'
+                           : '<button class="btn btn-primary btn-sm" id="rem-test">🔔 Test alarm</button>')}
         <button class="btn btn-ghost btn-sm" id="rem-calendar">📅 Add to phone calendar</button>
-        ${nativeShell() ? '<button class="btn btn-ghost btn-sm" id="rem-native-test">🔔 Test notification (1 min)</button>' : ''}
-        ${fullScreenPlugin() ? '<button class="btn btn-primary btn-sm" id="rem-fs-test">⏰ Test full-screen alarm (1 min)</button>' : ''}
       </div>
       <div class="hint" style="margin-top:8px">The full-screen alarm fires while the app is open, and catches missed ones when you reopen. For alarms even when the app is fully closed, tap <b>Add to phone calendar</b> (adds daily repeating alerts your phone rings natively).</div>
     </div>
@@ -5105,19 +5146,17 @@ function renderSettings() {
       </div>
       <input type="file" id="import-file" accept="application/json" style="display:none">
     </div>
-    ${/* An app that holds a private journal has to let you destroy it without uninstalling.
-         Two-step on purpose: the first tap only arms it, and it disarms itself after 6
-         seconds so a stray tap can never wipe a year of entries. */''}
+    ${/* An app that holds a private journal has to let you destroy it without uninstalling —
+         but two taps was far too little friction for something with no undo. This is a
+         deliberate gauntlet: four separate confirmations, a countdown you cannot skip, and a
+         typed word. Every stage resets on the slightest hesitation. */''}
     <div class="card">
       <h2>🧨 Delete everything <span class="hint">on this device</span></h2>
       <div class="hint" style="margin-bottom:8px">Erases every entry, habit, note, task, plan,
-        article, workout, time block, award and setting from this phone. It cannot be undone,
-        and it does not touch any backup file you have already saved. <b>Export a backup
-        first</b> if there is any chance you will want this back.</div>
-      <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="wipe-all"
-          style="color:var(--bad-ink)">${_wipeArmed ? '⚠️ Tap again to erase everything' : 'Delete all my data'}</button>
-      </div>
+        article, workout, time block, award and setting from this phone. <b>There is no undo.</b>
+        It does not touch any backup file you have already saved. <b>Export a backup first</b>
+        if there is any chance you will want this back.</div>
+      ${wipeStageHTML()}
     </div>
     ${SHOW_PIS ? `<div class="card">
       <h2>🧠 PIS sync <span class="hint" id="pis-status">not connected</span></h2>
@@ -5181,13 +5220,6 @@ document.addEventListener('click', async (ev) => {
     unlockAudio();
     if ('Notification' in window && Notification.permission !== 'granted') Notification.requestPermission();
     fireAlarm('Test alarm ✅', '', false);
-    return;
-  }
-  if (ev.target.id === 'rem-test15') {
-    unlockAudio();
-    if ('Notification' in window && Notification.permission !== 'granted') await Notification.requestPermission();
-    toast('Alarm in 15s — keep this screen open 👀');
-    setTimeout(() => fireAlarm('Scheduled test 🔔 (15s)', '', false), 15000);
     return;
   }
   if (ev.target.id === 'rem-calendar') { exportReminderCalendar(); return; }
@@ -5277,16 +5309,28 @@ document.addEventListener('click', async (ev) => {
     saveAutoTrack({ [k]: !at[k] }); renderSettings();
     if (k === 'on') toast(!at.on ? 'Auto-tracking ON' : 'Auto-tracking OFF — nothing will be collected');
     return; }
-  if (ev.target.id === 'wipe-all') {
-    if (!_wipeArmed) {
-      _wipeArmed = true;
-      renderSettings();
-      toast('Tap again within 6 seconds to erase everything', true);
-      clearTimeout(_wipeTimer);
-      _wipeTimer = setTimeout(() => { _wipeArmed = false; try { renderSettings(); } catch (e) {} }, 6000);
-      return;
-    }
-    clearTimeout(_wipeTimer); _wipeArmed = false;
+  if (ev.target.id === 'wipe-cancel') { wipeReset(); renderSettings(); toast('Cancelled — nothing was deleted'); return; }
+  if (ev.target.id === 'wipe-go')    { wipeReset(); _wipeStage = 1; renderSettings(); return; }
+  if (ev.target.id === 'wipe-export') { exportData(); return; }
+  if (ev.target.id === 'wipe-next1') {
+    _wipeStage = 2; _wipeCountdown = 5; renderSettings();
+    clearInterval(_wipeTick);
+    _wipeTick = setInterval(() => {
+      _wipeCountdown--;
+      if (_wipeCountdown <= 0) { clearInterval(_wipeTick); _wipeTick = null; }
+      // Only repaint while the stage is still on screen, or this fights other renders.
+      if (document.getElementById('wipe-stage')) renderSettings(); else wipeReset();
+    }, 1000);
+    return;
+  }
+  if (ev.target.id === 'wipe-next2') { if (_wipeCountdown > 0) return; _wipeStage = 3; _wipeTyped = ''; renderSettings(); return; }
+  if (ev.target.id === 'wipe-next3') {
+    if (_wipeTyped.trim().toUpperCase() !== WIPE_WORD) return;
+    _wipeStage = 4; renderSettings(); return;
+  }
+  if (ev.target.id === 'wipe-confirm') {
+    if (_wipeStage !== 4) return;
+    wipeReset();
     const n = wipeEverything();
     toast(n + ' items erased. Daylog is empty.');
     setTimeout(() => location.reload(), 900);
@@ -5448,9 +5492,83 @@ function sendFeedback(text, contact) {
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
 const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
-/* Armed state for the two-step delete. In-memory only — an armed wipe must not survive a
-   reload, a crash, or a second device. */
-let _wipeArmed = false, _wipeTimer = null;
+/* Deleting everything is irreversible, so it is deliberately hard to do by accident.
+   Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
+     0  the plain button
+     1  explains what goes, and offers to export first
+     2  a 5-second countdown that cannot be skipped (defeats rapid tapping entirely)
+     3  type DELETE, exactly
+     4  the final red confirm
+   Two taps used to be enough. */
+let _wipeStage = 0, _wipeTimer = null, _wipeCountdown = 0, _wipeTick = null, _wipeTyped = '';
+const WIPE_WORD = 'DELETE';
+function wipeReset() {
+  _wipeStage = 0; _wipeTyped = ''; _wipeCountdown = 0;
+  clearTimeout(_wipeTimer); clearInterval(_wipeTick); _wipeTimer = _wipeTick = null;
+}
+/* Anything that leaves Settings abandons a half-finished wipe. */
+function wipeAbandonIfAway() { if (_wipeStage && !document.getElementById('wipe-stage')) wipeReset(); }
+
+function wipeStageHTML() {
+  const back = `<button class="btn btn-ghost btn-sm" id="wipe-cancel">Cancel</button>`;
+  if (_wipeStage === 0) {
+    return `<div id="wipe-stage" class="btn-row">
+      <button class="btn btn-ghost btn-sm" id="wipe-go" style="color:var(--bad-ink)">Delete all my data…</button></div>`;
+  }
+  if (_wipeStage === 1) {
+    const e = Object.keys(DB.entries()).length;
+    const lb = +localStorage.getItem('dp.lastBackup') || 0;
+    const days = lb ? Math.floor((Date.now() - lb) / 86400000) : null;
+    return `<div id="wipe-stage" class="wipe-box">
+      <div class="wipe-warn">You are about to permanently delete <b>${e} logged day${e === 1 ? '' : 's'}</b>
+        and everything else Daylog holds on this phone.</div>
+      <div class="hint" style="margin:8px 0">${lb
+        ? `Your last backup was <b>${days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago'}</b>.`
+        : `<b>You have never exported a backup.</b>`} Anything logged since then is gone for good.</div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="wipe-export">⬇ Export a backup first</button>
+        ${back}
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-ghost btn-sm" id="wipe-next1" style="color:var(--bad-ink)">I have a backup — continue</button>
+      </div></div>`;
+  }
+  if (_wipeStage === 2) {
+    return `<div id="wipe-stage" class="wipe-box">
+      <div class="wipe-warn">Step 2 of 4 — take five seconds.</div>
+      <div class="hint" style="margin:8px 0">This pause is here on purpose. If you are deleting
+        because something looks wrong, an export and a reinstall will fix it without losing
+        anything.</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="wipe-next2" ${_wipeCountdown > 0 ? 'disabled' : ''}
+          style="color:var(--bad-ink)">${_wipeCountdown > 0 ? `Wait ${_wipeCountdown}…` : 'Continue'}</button>
+        ${back}
+      </div></div>`;
+  }
+  if (_wipeStage === 3) {
+    const okd = _wipeTyped.trim().toUpperCase() === WIPE_WORD;
+    return `<div id="wipe-stage" class="wipe-box">
+      <div class="wipe-warn">Step 3 of 4 — type <b>${WIPE_WORD}</b> to confirm.</div>
+      <div class="field" style="margin-top:8px">
+        <input type="text" id="wipe-word" autocomplete="off" autocapitalize="characters"
+          placeholder="${WIPE_WORD}" value="${escapeHtml(_wipeTyped)}"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="wipe-next3" ${okd ? '' : 'disabled'}
+          style="color:var(--bad-ink)">Continue</button>
+        ${back}
+      </div></div>`;
+  }
+  return `<div id="wipe-stage" class="wipe-box wipe-final">
+    <div class="wipe-warn">Step 4 of 4 — last chance.</div>
+    <div class="hint" style="margin:8px 0">Tapping the red button erases everything immediately.
+      There is no undo and no confirmation after this.</div>
+    <div class="btn-row">
+      <button class="btn btn-sm" id="wipe-confirm"
+        style="background:var(--bad-ink);color:#fff;border-color:transparent">🧨 Erase everything now</button>
+      ${back}
+    </div></div>`;
+}
+
 function wipeEverything() {
   // Only dp.* keys: anything else in localStorage belongs to the page, not to Daylog.
   const doomed = [];
@@ -7128,6 +7246,15 @@ function awardName(a) {
 }
 
 /* ---------- Trophy Case ---------- */
+function renderAwards() {
+  document.getElementById('screen-title').textContent = 'Awards';
+  document.getElementById('screen-sub').textContent = 'your trophy case';
+  // Flush any pending award scan first, or a just-earned badge is missing from the very
+  // screen the user opened to look for it.
+  try { awardsFlush(); } catch (e) {}
+  document.getElementById('s-awards').innerHTML = awardsHTML() + '<div style="height:14px"></div>';
+}
+
 function awardsHTML() {
   const list = awardList();
   /* Sample data is real entries in the real store, so every award family counts it. The
@@ -7642,17 +7769,23 @@ function shareSheetRender() {
       <span>Share card</span>
       <button type="button" class="ss-x" id="ss-close" aria-label="Close">✕</button>
     </div>
-    <div class="ss-stage"><div class="ss-canvas" id="ss-stage">
+    ${/* Keep the PREVIOUS image on screen, dimmed, with a spinner over it. Clearing to a
+           bare "Rendering…" for several seconds on a mid-range phone reads as broken — the
+           user taps another chip, which supersedes the render, and it never seems to
+           finish. Showing the outgoing card plus visible motion makes the wait legible. */''}
+    <div class="ss-stage"><div class="ss-canvas${cardState.busy ? ' busy' : ''}" id="ss-stage">
       ${cardState.url ? `<img src="${cardState.url}" alt="Your share card">`
-                      : '<div class="ss-load">Rendering…</div>'}
+        : `<div class="ss-load"><span class="ss-spin"></span><span>Drawing your card…</span></div>`}
+      ${cardState.busy && cardState.url ? '<div class="ss-veil"><span class="ss-spin"></span></div>' : ''}
     </div></div>
     <div class="ss-pick">${CARD_KINDS.map(c => `<button type="button"
-      class="ss-chip ${cardState.kind === c.k ? 'on' : ''}" data-card-kind="${c.k}">${c.label}</button>`).join('')}</div>
+      class="ss-chip ${cardState.kind === c.k ? 'on' : ''}${cardState.kind === c.k && cardState.busy ? ' loading' : ''}"
+      data-card-kind="${c.k}">${c.label}</button>`).join('')}</div>
     <div class="ss-pick">${Object.keys(CARD_RATIOS).map(r => `<button type="button"
       class="ss-chip ${cardState.ratio === r ? 'on' : ''}" data-card-ratio="${r}">${r === '4:5' ? 'Post 4:5' : 'Story 9:16'}</button>`).join('')}</div>
     <div class="ss-acts">
       <button type="button" class="btn btn-primary" id="ss-send" ${cardState.busy ? 'disabled' : ''}>
-        ${nativeSharePlugin() || (navigator.canShare) ? 'Share' : 'Save image'}</button>
+        ${cardState.busy ? 'Drawing…' : (nativeSharePlugin() || navigator.canShare ? 'Share' : 'Save image')}</button>
     </div>
     ${cardState.hint ? `<div class="ss-hint">${escapeHtml(cardState.hint)}</div>` : ''}
     <div class="hint ss-note">Only the picture is shared. Your entries never leave the phone.</div>
@@ -7667,11 +7800,19 @@ let cardSeq = 0;
 async function cardPreview() {
   const my = ++cardSeq;
   cardState.busy = true;
-  // Clear the stale preview immediately so the sheet cannot show, or send, the previous card
-  // while a new one renders.
-  if (cardState.url) { try { URL.revokeObjectURL(cardState.url); } catch (e) {} }
-  cardState.blob = null; cardState.url = null;
+  /* The BLOB is cleared straight away so Share can never send the previous card (that was a
+     real defect). The preview IMAGE deliberately stays until the new one is ready, dimmed
+     under a spinner — clearing it left a blank panel for several seconds, which is what made
+     switching designs look like nothing was happening. */
+  cardState.blob = null;
+  const stale = cardState.url;
   shareSheetRender();
+
+  /* Yield twice so the spinner actually paints before buildCardBlob monopolises the main
+     thread. Without this the "busy" state is queued behind the very work it is meant to
+     announce, and the user sees nothing change for seconds. */
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  if (my !== cardSeq) return;
 
   let blob = null;
   try { blob = await buildCardBlob(cardState.kind, cardState.ratio, cardState.arg); } catch (e) {}
@@ -7679,13 +7820,15 @@ async function cardPreview() {
 
   const el = document.getElementById('sharesheet');
   if (!el || !el.classList.contains('on')) {
-    // Closed while rendering. Do not create an object URL nothing will revoke, and do not
-    // repaint hidden markup.
+    // Closed while rendering. Do not create an object URL nothing will revoke, do not
+    // repaint hidden markup, and release the outgoing preview we were holding on to.
+    if (stale) { try { URL.revokeObjectURL(stale); } catch (e) {} }
     cardState.blob = null; cardState.url = null; cardState.busy = false;
     return;
   }
   cardState.blob = blob;
   cardState.url = blob ? URL.createObjectURL(blob) : null;
+  if (stale) { try { URL.revokeObjectURL(stale); } catch (e) {} }   // only now is it safe
   cardState.busy = false;
   shareSheetRender();
 }
@@ -7968,6 +8111,9 @@ const NAV_DEF = [
   { k: 'habits',   ico: 'flame',    label: 'Habits' },
   { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
   { k: 'cal',      ico: 'calendar', label: 'Cal' },
+  // Awards moved OUT of Stats: a fifth tab pushed Health off the edge of a 360px row, and a
+  // lifetime trophy case has nothing to do with the Range picker the other tabs share.
+  { k: 'awards',   ico: 'star',     label: 'Awards' },
   { k: 'write',    ico: 'pencil',   label: 'Write' },
   { k: 'search',   ico: 'search',   label: 'Search' },
   { k: 'history',  ico: 'history',  label: 'History' },
@@ -8171,8 +8317,11 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
+  // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
+  // must never survive navigating away and come back still armed.
+  if (name !== 'settings') { try { wipeReset(); } catch (e) {} }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const sec = document.getElementById('s-' + name);
   if (sec) sec.classList.add('on');

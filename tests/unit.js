@@ -180,6 +180,32 @@
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
   if (vSnapH != null) localStorage.setItem('dp.health', vSnapH); else localStorage.removeItem('dp.health');
 
+  // ---- Awards is its own screen, not a fifth Stats tab ----
+  ok('awards is a nav destination', !!navCfg().find(n => n.k === 'awards'));
+  ok('awards has a renderer', typeof RENDER.awards === 'function');
+  ok('awards has a screen container', !!document.getElementById('s-awards'));
+  ok('stats is back to four tabs', !/data-dashtab="awards"/.test((() => {
+    const prev = dashTab; dashTab = 'overview'; renderDash();
+    const h = document.getElementById('s-dash').innerHTML; dashTab = prev; return h; })()));
+
+  // ---- One mood input, not two ----
+  ok('the mood grid spans 1-10', MM_COLS[0] === 1 && MM_COLS[MM_COLS.length - 1] === 9);
+  ok('the mood grid has 5 levels per axis', MM_COLS.length === 5 && MM_ROWS.length === 5);
+  ok('every grid cell maps to a real quadrant',
+     MM_COLS.every(m => MM_ROWS.every(e => !!MM_QUAD[mmQuad(m, e)])));
+  // the grid must survive the sliders it replaced being hidden
+  const gmSnapC = localStorage.getItem('dp.corecfg'), gmSnapDate = logDate;
+  const gmCfg = coreCfg();
+  ['mood', 'energy'].forEach(k => { const r = gmCfg.find(f => f.key === k); if (r) r.hidden = true; });
+  localStorage.setItem('dp.corecfg', JSON.stringify(gmCfg));
+  logDate = todayStr();
+  ok('the grid survives its sliders being hidden', /mm-grid/.test(moodMeterHTML()));
+  logDate = gmSnapDate;
+  if (gmSnapC != null) localStorage.setItem('dp.corecfg', gmSnapC); else localStorage.removeItem('dp.corecfg');
+
+  // ---- Only one alarm test button ----
+  ok('the reminder test scaffold is gone', !/rem-test15/.test(renderSettings.toString()));
+
   // ---- Copy that quotes a number must match the code ----
   // Caught on a real device: What's-new said "54 awards across 8 families" after a ninth
   // family was added. Copy that states a count has to be derived or asserted, never typed.
@@ -217,7 +243,25 @@
 
   // ---- Deleting your own data ----
   ok('a wipe function exists', typeof wipeEverything === 'function');
-  ok('the wipe is two-step', typeof _wipeArmed === 'boolean');
+  // Deliberately NOT two-step any more: two taps was far too little friction for something
+  // with no undo. Four stages, a typed word, and an unskippable countdown.
+  ok('the wipe is staged', typeof _wipeStage === 'number' && typeof wipeStageHTML === 'function');
+  ok('the wipe requires a typed word', WIPE_WORD === 'DELETE');
+  wipeReset();
+  ok('the wipe starts disarmed', _wipeStage === 0);
+  ok('stage 0 only offers to begin', /wipe-go/.test(wipeStageHTML()) && !/wipe-confirm/.test(wipeStageHTML()));
+  _wipeStage = 2; _wipeCountdown = 5;
+  ok('the countdown blocks stage 2', /disabled/.test(wipeStageHTML()));
+  _wipeCountdown = 0;
+  ok('stage 2 opens once the countdown ends', !/disabled/.test(wipeStageHTML()));
+  _wipeStage = 3; _wipeTyped = 'delet';
+  ok('a wrong word blocks stage 3', /disabled/.test(wipeStageHTML()));
+  _wipeTyped = 'delete';
+  ok('the right word opens stage 3', !/disabled/.test(wipeStageHTML()));
+  _wipeStage = 4;
+  ok('only stage 4 shows the final confirm', /wipe-confirm/.test(wipeStageHTML()));
+  wipeReset();
+  ok('reset clears the typed word too', _wipeStage === 0 && _wipeTyped === '');
   const wKeep = 'notDaylog.key';
   localStorage.setItem(wKeep, 'keep me');
   const wSnap = {};
