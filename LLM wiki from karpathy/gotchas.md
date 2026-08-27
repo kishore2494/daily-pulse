@@ -279,3 +279,28 @@ Pull the installed APK off the device and compare its SHA-256 to the new build:
 `apksigner verify --print-certs`. Matching means `install -r` upgrades in place and preserves
 app data; a mismatch forces an uninstall and **destroys every entry**. On a phone with real
 user data this check is not optional.
+
+## The installed app can be a whole release behind (2026-08-27)
+
+The POCO was running native 114 but **web v206** while the live site served v208 — so
+`timerPlugin()` was undefined and the app silently took the Capacitor fallback path. Every
+symptom pointed at "the native plugin is broken"; the plugin was fine, the WebView was
+serving a cached bundle.
+
+The service worker is network-first and auto-reloads on `controllerchange`, but that needs a
+fetch cycle. **Two force-stop + relaunch rounds** moved it v206 → v208.
+
+Before concluding a native feature does not work, CHECK THE WEB VERSION THE APP IS ACTUALLY
+RUNNING (Settings, bottom). A native/web version mismatch is the default state for a few
+minutes after every deploy, and it looks exactly like a broken plugin.
+
+## Proving a native notification ran, without seeing it
+
+A notification channel is created lazily inside the code that posts the notification, and it
+persists in `dumpsys notification`. So:
+
+    adb shell "dumpsys notification | grep -o \"mId='dp_timer_ongoing'\""
+
+finding the channel — with the exact name/importance/sound config from the source — proves
+that code path executed, even when the notification itself is no longer live. That is often
+the only evidence available on a shared device.

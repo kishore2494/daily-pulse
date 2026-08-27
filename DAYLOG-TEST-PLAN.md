@@ -74,6 +74,11 @@ correct fallback, not a bug. Android WebView has no share API at all.
 - [ ] Turn haptics off in Settings, then earn an award — it should **not** buzz.
 
 ## 10. Build 114 — the notification fixes (NEEDS 114, already on your POCO)
+
+> **Do this first:** force-stop Daylog and reopen it **twice**. The WebView caches the web
+> bundle, and I found your phone running web v206 while the site served v208 — which made the
+> new native code look broken when it was just an old bundle. Check Settings (bottom) says
+> **v208** before testing anything below.
 - [ ] **Notification icon** — start a timer, pull down the shade. The small icon should be
       your pulse line, not a generic "i". Same for reminders and the pomodoro.
 - [ ] **The timer counts LIVE.** It should tick upward on its own — `00:01`, `00:02`… — and
