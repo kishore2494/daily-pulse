@@ -758,6 +758,120 @@
     if (tSnap != null) localStorage.setItem('dp.timelog', tSnap); else localStorage.removeItem('dp.timelog');
   })();
 
+  /* ---- GAP FILLER ---- */
+  (function () {
+    const tSnap = localStorage.getItem('dp.timelog'), sSnap = localStorage.getItem('dp.gapskip');
+    const H = 3600000;
+    // Weekdays: work 09-12 and 13-17. Weekends: reading 09-12. Every night: sleep 22-06:30.
+    const build = () => {
+      const log = [];
+      for (let i = 2; i <= 42; i++) {
+        const ds = addDays(todayStr(), -i), b0 = new Date(ds + 'T00:00:00').getTime();
+        const wknd = [0, 6].includes(new Date(ds + 'T00:00:00').getDay());
+        log.push({ id: 'a' + i, act: 'sleep', start: b0 - 2 * H, end: b0 + 6.5 * H, upd: 1 });
+        log.push({ id: 'b' + i, act: wknd ? 'read' : 'work', start: b0 + 9 * H, end: b0 + 12 * H, upd: 1 });
+        if (!wknd) log.push({ id: 'c' + i, act: 'work', start: b0 + 13 * H, end: b0 + 17 * H, upd: 1 });
+      }
+      return log;
+    };
+    const pastDay = wantWeekend => {
+      for (let i = 1; i < 40; i++) {
+        const ds = addDays(todayStr(), -i);
+        if (gapIsWeekend(ds) === wantWeekend) return ds;
+      }
+    };
+    localStorage.removeItem('dp.gapskip');
+
+    // --- a weekday with two tracked blocks leaves gaps, split where the guess changes ---
+    const wd = pastDay(false), wb = new Date(wd + 'T00:00:00').getTime();
+    let log = build();
+    log.push({ id: 'y1', act: 'sleep', start: wb - 2 * H, end: wb + 6.5 * H, upd: 1 });
+    log.push({ id: 'y2', act: 'gym', start: wb + 12 * H, end: wb + 13 * H, upd: 1 });
+    localStorage.setItem('dp.timelog', JSON.stringify(log));
+
+    const raw = gapsRaw(wd);
+    ok('a day with two tracked blocks has two raw gaps', raw.length === 2, raw.length);
+    const rows = gapSegments(wd);
+    /* The clamp loop used to iterate every row accumulated so far, re-clamping the FIRST
+       gap's rows to the SECOND gap's bounds and inverting them, so with two gaps in a day
+       only the last one was ever offered. */
+    ok('rows come from every gap, not just the last one',
+      rows.some(r => r.a < wb + 12 * H) && rows.some(r => r.a >= wb + 13 * H));
+    ok('every row is at least the minimum length', rows.every(r => r.b - r.a >= GAP_MIN_MS));
+    ok('no row overlaps a tracked block',
+      rows.every(r => !segsForDay(wd).some(x => Math.min(x.b, r.b) - Math.max(x.a, r.a) > 0)));
+    ok('rows never overlap each other',
+      rows.every((r, i) => rows.slice(i + 1).every(o => Math.min(o.b, r.b) - Math.max(o.a, r.a) <= 0)));
+
+    const at = h => rows.find(r => r.a === wb + h * H);
+    ok('09:00 on a weekday is guessed as work', at(9) && at(9).pred.act === 'work',
+      at(9) && at(9).pred.act);
+    ok('13:00 on a weekday is guessed as work', at(13) && at(13).pred.act === 'work');
+    ok('a window with no history gets no guess', at(6.5) ? at(6.5).pred.act === null : true);
+    ok('a named guess always carries its support',
+      rows.filter(r => r.pred.act).every(r => r.pred.days >= GAP_MIN_DAYS && r.pred.sampleDays >= r.pred.days));
+    ok('a named guess always meets the share floor',
+      rows.filter(r => r.pred.act).every(r => r.pred.share >= GAP_MIN_SHARE));
+
+    // --- the weekday/weekend split is the whole point ---
+    const we = pastDay(true), eb = new Date(we + 'T00:00:00').getTime();
+    log = build().filter(s => !(s.start < eb + 86400000 && s.end > eb + 7 * H));
+    log.push({ id: 'w1', act: 'sleep', start: eb - 2 * H, end: eb + 6.5 * H, upd: 1 });
+    localStorage.setItem('dp.timelog', JSON.stringify(log));
+    const wrows = gapSegments(we);
+    const w9 = wrows.find(r => r.a === eb + 9 * H);
+    ok('09:00 on a weekend is guessed as reading, not work', w9 && w9.pred.act === 'read',
+      w9 && w9.pred.act);
+    ok('the weekend guess says it used weekend days', w9 && w9.pred.basis === 'weekend days');
+
+    // --- never nag about the future ---
+    ok('today\'s gaps never run past now', gapSegments(todayStr()).every(r => r.b <= Date.now() + 2000));
+
+    // --- accepting writes exactly the offered range, and the row then disappears ---
+    localStorage.setItem('dp.timelog', JSON.stringify(log));
+    const target = gapSegments(we).find(r => r.pred.act);
+    const before = DB.timelog().length;
+    const savedTtDate = ttDate;
+    gapFill(we, target.a, target.b, target.pred.act);
+    const added = DB.timelog().find(s => s.start === target.a && s.end === target.b);
+    ok('accepting a guess writes one block over exactly that range',
+      !!added && added.act === target.pred.act && DB.timelog().length === before + 1);
+    ok('the filled range is no longer offered', !gapSegments(we).some(r => r.a === target.a));
+
+    // --- leaving blank is remembered ---
+    const next = gapSegments(we)[0];
+    gapSkip(we, next.a);
+    ok('leave-blank is remembered', !gapSegments(we).some(r => r.a === next.a));
+    ok('leave-blank does not silence a different day',
+      !gapSkipped(addDays(we, -1), next.a));
+    ok('gap skips are backed up', BACKUP_KEYS.includes('gapskip'));
+
+    // --- an empty log must not manufacture questions ---
+    localStorage.setItem('dp.timelog', '[]');
+    ok('no history means no rows at all', gapSegments(addDays(todayStr(), -1)).length === 0);
+    /* One tracked day is not a pattern. Without this floor the card appeared on every past
+       day of a fresh install asking "00:00-24:00, what were you doing?" */
+    const oneDay = addDays(todayStr(), -3), ob = new Date(oneDay + 'T00:00:00').getTime();
+    localStorage.setItem('dp.timelog', JSON.stringify(
+      [{ id: 'o1', act: 'work', start: ob + 9 * H, end: ob + 10 * H, upd: 1 }]));
+    ok('a single tracked day is not enough to start guessing',
+      gapSegments(addDays(todayStr(), -1)).length === 0);
+
+    /* A wholly untracked day is one 24h gap; only windows history can actually name are
+       offered, so it never becomes a single useless "what were you doing all day?" row. */
+    const blank = pastDay(false), bb = new Date(blank + 'T00:00:00').getTime();
+    localStorage.setItem('dp.timelog', JSON.stringify(build().filter(x =>
+      !(x.end > bb && x.start < bb + 86400000))));
+    localStorage.removeItem('dp.gapskip');
+    const brows = gapSegments(blank);
+    ok('an untracked day offers only windows with a real guess',
+      brows.length > 0 && brows.every(r => !!r.pred.act), brows.length);
+
+    ttDate = savedTtDate;
+    if (tSnap != null) localStorage.setItem('dp.timelog', tSnap); else localStorage.removeItem('dp.timelog');
+    if (sSnap != null) localStorage.setItem('dp.gapskip', sSnap); else localStorage.removeItem('dp.gapskip');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

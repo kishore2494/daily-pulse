@@ -58,6 +58,26 @@ for VP in "320 640" "360 740" "412 820"; do
     case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"dash-%s","w":%s,"h":%s,"r":%s}' "$T" "$W" "$H" "$R" >> "$OUT";; esac
   done
 
+  # The untracked-time card only exists on a PAST day that has gaps and enough history to
+  # guess from — a fresh eval store has none, so it was never measured. Seeded with both row
+  # shapes: one carrying a named guess (Yes / Something else / Leave blank) and one open-ended.
+  $B js "try{ var H=3600000, log=[];
+    for (var i=2;i<=42;i++){ var ds=addDays(todayStr(),-i), b0=new Date(ds+'T00:00:00').getTime();
+      log.push({id:'ev'+i+'a',act:'sleep',start:b0-2*H,end:b0+6.5*H,upd:1});
+      log.push({id:'ev'+i+'b',act:'work',start:b0+9*H,end:b0+12*H,upd:1}); }
+    var y=addDays(todayStr(),-1), yb=new Date(y+'T00:00:00').getTime();
+    log.push({id:'evy',act:'gym',start:yb+12*H,end:yb+13*H,upd:1});
+    localStorage.setItem('dp.timelog', JSON.stringify(log));
+    localStorage.removeItem('dp.gapskip');
+    ttDate=y; gapOpen=null; show('time'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"time-gaps","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  # and with the activity picker expanded, which is a whole row of chips that only exists then
+  $B js "try{ var r=gapSegments(ttDate)[0]; if(r){ gapOpen=String(r.a); show('time'); } }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"time-gaps-picker","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ gapOpen=null; ttDate=todayStr(); localStorage.removeItem('dp.timelog'); localStorage.removeItem('dp.gapskip'); }catch(e){} 'ok'" >/dev/null 2>&1
+
   # The project DETAIL view is not reachable through show() — it needs pjOpen set first, and
   # it holds most of the new markup: status badges on tinted grounds, the inline title inputs,
   # colour swatches and the delete button. Seeded with one of every health state so each

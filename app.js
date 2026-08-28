@@ -852,6 +852,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w15',
   items: [
+    '\ud83e\udde9 <b>Untracked time, filled in by asking</b> \u2014 the Time screen now finds the stretches of a past day you never tracked and, where your own history actually supports a guess, asks: \u201c09:00\u201311:15 \u2014 were you \ud83d\udcbc Work?\u201d Tap yes and it is logged. It only names an activity when you logged it in that same window on at least 3 other days, it counts weekdays and weekends separately (sleep and work are exactly what differ), and it always shows the support \u2014 \u201c6 of your last 9 tracked weekdays\u201d \u2014 so you can judge the guess rather than trust it. Nothing is ever filled in on its own, and \u201cleave blank\u201d is remembered.',
     '\ud83d\uddc2\ufe0f <b>Projects</b> \u2014 a new screen in the \u2630 menu. Anything with an outcome and more than one step: a launch, a renovation, a course, a side business. Each project holds milestones, steps, a decision log and links, and shows one honest badge \u2014 <i>On track</i>, <i>Due in 3d</i>, <i>4d overdue</i> or <i>Untouched 12d</i>. The bit no other project tracker can do: hours come from <b>time you actually logged</b>, not hours you typed in. Tap \u25b6 Start timing on a project, or pick the project when you stop a timer. A block belongs to one project or none, so two projects that both use \u201cWork\u201d never claim the same hours \u2014 and a project with nothing tagged says so instead of showing a comforting zero.',
     '📊 <b>Stats looks like something now</b> — the overview opened with six identical grey boxes and no sense of direction. It now leads with your streak, then Mood, Energy and Polymath each with a 14-day sparkline and an arrow comparing this week to the one before. The three colours were checked for colour-blind readability and contrast in both light and dark, not just picked because they looked nice.',
     '🔔 <b>Notification fixes</b> — please update in the Play Store. Daylog\'s notifications showed a generic "i" instead of an icon, because there was no notification icon at all; there is now. And the activity-timer notification counts <b>live</b> — Android ticks it itself, so it keeps counting with the app closed, instead of just saying when you started. Pause and Stop are proper buttons.',
@@ -2551,6 +2552,7 @@ function renderTime() {
       ${manual}
     </div>
     ${segEditHTML()}
+    ${gapCardHTML(ttDate)}
     <div class="card">
       <h2>⏳ Where the ${isToday ? 'day is going' : 'day went'} <span class="hint">${prettyDate(ttDate)}</span></h2>
       ${timeTotalsHTML(ttDate)}
@@ -5616,7 +5618,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'gapskip', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -8768,6 +8770,263 @@ document.addEventListener('change', (ev) => {
      only the structural fields redraw. The header inputs already show what was typed. */
   if (['status', 'prio', 'due', 'act'].includes(k)) renderProjects();
   else { const st = document.getElementById('screen-sub'); if (st) st.textContent = pjHealth(pjById(pjOpen)).label; }
+});
+
+
+/* ============================================================
+   GAP FILLER — "you didn't track 09:00–11:15; on weekdays that's usually Work. Was it?"
+   ------------------------------------------------------------
+   Forgetting to start the timer is the biggest hole in any time tracker: the hours are simply
+   gone. This finds the untracked stretches of a past day and, where your OWN history actually
+   supports a guess, names the likeliest activity and asks. It never fills anything in itself.
+
+   The honesty rules — they matter more here than anywhere else in the app, because a wrong
+   guess becomes permanent data:
+
+   ① A guess is only named when it is genuinely supported: the same clock window on at least
+      GAP_MIN_DAYS other days, with one activity holding at least GAP_MIN_SHARE of the tracked
+      minutes there. Below that the row still appears but says there is no pattern and offers
+      the picker instead of a guess.
+   ② The support is always shown — "6 of your last 9 tracked weekdays" — so you can judge the
+      guess rather than trust it. No invented confidence percentages.
+   ③ Weekdays and weekends are tallied separately, because sleep and work are exactly what
+      differs. It falls back to all days only when a day-type has too few samples, and says
+      which basis it used.
+   ④ Nothing is auto-accepted, and "leave blank" is a first-class answer that is remembered.
+   ⑤ A gap is SPLIT wherever the likely activity changes, so you are asked about 09:00–12:00
+      and 13:00–17:00 separately. Asking "were you working for 17½ hours?" — which is what a
+      single whole-gap guess produced — is worse than not asking.
+   ============================================================ */
+
+const GAP_MIN_MS = 30 * 60000;      // shorter stretches are normal life, not missing data
+const GAP_SLOT_MS = 30 * 60000;     // resolution the day is modelled at (48 slots)
+const GAP_SLOTS = 48;
+const GAP_LOOKBACK = 90;            // days of history to learn from
+const GAP_MIN_DAYS = 3;             // distinct supporting days before naming an activity
+const GAP_MIN_SHARE = 0.4;          // the leader must hold this share of tracked minutes
+const GAP_MAX_ROWS = 8;             // a wall of rows is not a prompt, it is noise
+let gapOpen = null;                 // start-ms (as a string) of the row whose picker is open
+
+function gapSkips() { return safeParse(localStorage.getItem('dp.gapskip'), {}); }
+function gapSkip(dateStr, a) {
+  const m = gapSkips(); m[dateStr + '|' + a] = 1;
+  localStorage.setItem('dp.gapskip', JSON.stringify(m));
+}
+function gapSkipped(dateStr, a) { return !!gapSkips()[dateStr + '|' + a]; }
+function gapIsWeekend(ds) { const d = new Date(ds + 'T00:00:00').getDay(); return d === 0 || d === 6; }
+/* A gap that runs to the end of the day ends at midnight, and fmtClock renders that as
+   "00:00" — which reads as the START of the day. */
+function gapClock(ms, dayStart) { return ms - dayStart >= 86400000 ? '24:00' : fmtClock(ms); }
+
+/* Untracked stretches of a day, as absolute ms ranges. Never anything in the future:
+   "you didn't track 20:00–24:00" at lunchtime is not missing data. */
+function gapsRaw(dateStr) {
+  const d0 = new Date(dateStr + 'T00:00:00').getTime();
+  const cap = Math.min(d0 + 86400000, Date.now());
+  if (cap <= d0) return [];
+  const out = []; let cur = d0;
+  segsForDay(dateStr).slice().sort((x, y) => x.a - y.a).forEach(({ a, b }) => {
+    if (a > cur) out.push({ a: cur, b: Math.min(a, cap) });
+    cur = Math.max(cur, b);
+  });
+  if (cur < cap) out.push({ a: cur, b: cap });
+  return out.filter(g => g.b - g.a >= GAP_MIN_MS);
+}
+
+/* ONE pass over the log builds a per-half-hour picture of the day, for matching-day-type and
+   for all days at once. Predicting each slot with its own scan of 90 days would re-walk the
+   whole log ~35 times for a long gap, on every render of the Time screen. */
+function gapModel(dateStr) {
+  const blank = () => ({
+    mins: Array.from({ length: GAP_SLOTS }, () => ({})),
+    days: Array.from({ length: GAP_SLOTS }, () => ({})),
+    sample: Array.from({ length: GAP_SLOTS }, () => ({})),
+  });
+  const same = blank(), all = blank();
+  const wantWeekend = gapIsWeekend(dateStr);
+  const log = DB.timelog().filter(s => s.end != null);   // a running block has no settled span
+  for (let i = 1; i <= GAP_LOOKBACK; i++) {
+    const ds = addDays(dateStr, -i);
+    const b0 = new Date(ds + 'T00:00:00').getTime(), b1 = b0 + 86400000;
+    const targets = gapIsWeekend(ds) === wantWeekend ? [all, same] : [all];
+    log.forEach(s => {
+      const a = Math.max(s.start, b0), b = Math.min(s.end, b1);
+      if (b <= a) return;
+      const k0 = Math.floor((a - b0) / GAP_SLOT_MS), k1 = Math.ceil((b - b0) / GAP_SLOT_MS);
+      for (let k = k0; k < k1 && k < GAP_SLOTS; k++) {
+        const ka = b0 + k * GAP_SLOT_MS;
+        const ov = Math.min(b, ka + GAP_SLOT_MS) - Math.max(a, ka);
+        if (ov <= 0) continue;
+        targets.forEach(m => {
+          m.mins[k][s.act] = (m.mins[k][s.act] || 0) + ov;
+          (m.days[k][s.act] = m.days[k][s.act] || {})[ds] = 1;
+          m.sample[k][ds] = 1;
+        });
+      }
+    });
+  }
+  return { same, all, wantWeekend };
+}
+
+/* Aggregate slots [k0,k1) of one tally and name a winner, or decline to. */
+function gapFromTally(t, k0, k1) {
+  const mins = {}, days = {}, sample = {};
+  for (let k = k0; k < k1 && k < GAP_SLOTS; k++) {
+    Object.keys(t.mins[k]).forEach(a => { mins[a] = (mins[a] || 0) + t.mins[k][a]; });
+    Object.keys(t.days[k]).forEach(a => { days[a] = days[a] || {}; Object.assign(days[a], t.days[k][a]); });
+    Object.assign(sample, t.sample[k]);
+  }
+  const total = Object.values(mins).reduce((x, y) => x + y, 0);
+  const sampleDays = Object.keys(sample).length;
+  if (!total) return { act: null, sampleDays: 0 };
+  const best = Object.keys(mins).sort((x, y) => mins[y] - mins[x])[0];
+  const nDays = Object.keys(days[best] || {}).length;
+  const share = mins[best] / total;
+  if (nDays < GAP_MIN_DAYS || share < GAP_MIN_SHARE) return { act: null, sampleDays };
+  return { act: best, share, days: nDays, sampleDays };
+}
+
+/* Same day-type first — pooling a Tuesday with a Sunday is how you end up suggesting
+   "Work" for a Saturday lie-in. Falls back to all days only when samples are too thin. */
+function gapPredictSlots(model, k0, k1) {
+  const s = gapFromTally(model.same, k0, k1);
+  if (s.act || s.sampleDays >= GAP_MIN_DAYS)
+    return Object.assign(s, { basis: model.wantWeekend ? 'weekend days' : 'weekdays' });
+  const a = gapFromTally(model.all, k0, k1);
+  return Object.assign(a, { basis: 'days' });
+}
+
+/* How many distinct days in the lookback window have any tracked time? Below GAP_MIN_DAYS
+   there is nothing to learn from, and the card would otherwise appear on every past day of a
+   brand-new install saying "00:00–24:00, what were you doing?" — which is not missing data,
+   it is an app that has not been used yet. */
+function gapHistoryDays(dateStr) {
+  const log = DB.timelog().filter(s => s.end != null);
+  if (!log.length) return 0;
+  const days = {};
+  for (let i = 1; i <= GAP_LOOKBACK; i++) {
+    const ds = addDays(dateStr, -i);
+    const b0 = new Date(ds + 'T00:00:00').getTime(), b1 = b0 + 86400000;
+    if (log.some(s => s.end > b0 && s.start < b1)) days[ds] = 1;
+  }
+  return Object.keys(days).length;
+}
+
+/* Rows to ask about: each raw gap split wherever the likely activity changes. */
+function gapSegments(dateStr) {
+  const d0 = new Date(dateStr + 'T00:00:00').getTime();
+  const raw = gapsRaw(dateStr);
+  if (!raw.length) return [];
+  if (gapHistoryDays(dateStr) < GAP_MIN_DAYS) return [];
+  /* A day with nothing tracked at all is one 24-hour "gap". Asking an open-ended "what were
+     you doing?" about a whole unused day is useless, so on those days only windows where
+     history actually names something are offered — the guesses, and silence elsewhere. */
+  const dayIsEmpty = segsForDay(dateStr).length === 0;
+  const model = gapModel(dateStr);
+  const rows = [];
+  raw.forEach(g => {
+    const k0 = Math.floor((g.a - d0) / GAP_SLOT_MS);
+    const kN = Math.ceil((g.b - d0) / GAP_SLOT_MS);
+    const mine = [];
+    let run = null;
+    for (let k = k0; k < kN; k++) {
+      const act = gapPredictSlots(model, k, k + 1).act;
+      if (run && run.act === act) run.k1 = k + 1;
+      else { if (run) mine.push(run); run = { k0: k, k1: k + 1, act }; }
+    }
+    if (run) mine.push(run);
+    /* Clamp back inside THIS gap — slots are half-open half-hours and the gap edges rarely
+       land on one, so without this a row can claim tracked time either side. Clamping `rows`
+       (everything accumulated so far) instead of `mine` re-clamped the first gap's rows to
+       the second gap's bounds, inverting them so they were silently dropped: with two gaps in
+       a day, only the last one was ever offered. */
+    mine.forEach(r => {
+      r.a = Math.max(g.a, d0 + r.k0 * GAP_SLOT_MS);
+      r.b = Math.min(g.b, d0 + r.k1 * GAP_SLOT_MS);
+    });
+    mine.forEach(r => rows.push(r));
+  });
+  return rows
+    .filter(r => r.b - r.a >= GAP_MIN_MS && !gapSkipped(dateStr, r.a))
+    .filter(r => !dayIsEmpty || r.act)
+    .map(r => Object.assign(r, { pred: gapPredictSlots(model, r.k0, r.k1) }))
+    .slice(0, GAP_MAX_ROWS);
+}
+
+/* Write the confirmed block. The boundaries come from the user's own tracked blocks and a
+   half-hour grid, and the user has confirmed the activity — so this is a recollection, not an
+   estimate, and it is stored like any other manual entry. */
+function gapFill(dateStr, a, b, actId) {
+  const log = DB.timelog();
+  let id = 'ts' + a, n = 0;
+  while (log.some(s => s.id === id)) id = 'ts' + a + '-' + (++n);
+  log.push({ id, act: actId, start: a, end: b, upd: Date.now() });
+  DB.saveTimelog(log);
+  gapOpen = null;
+  renderTime();
+  buzz(12);
+  toast(`Logged ${fmtDur(b - a, true)} of ${actById(actId).name}`);
+}
+
+function gapCardHTML(dateStr) {
+  const rows = gapSegments(dateStr);
+  if (!rows.length) return '';
+  const d0 = new Date(dateStr + 'T00:00:00').getTime();
+  const untracked = gapsRaw(dateStr).reduce((x, g) => x + (g.b - g.a), 0);
+  const acts = allActs();
+
+  const html = rows.map(r => {
+    const when = `${gapClock(r.a, d0)}–${gapClock(r.b, d0)}`;
+    const len = fmtDur(r.b - r.a, true);
+    const isOpen = gapOpen === String(r.a);
+    const picker = `<div class="gap-pick">${acts.map(x =>
+      `<button class="gap-act" data-gap-set="${r.a}:${r.b}:${x.id}">${x.emoji || ''} ${escapeHtml(x.name)}</button>`).join('')}</div>`;
+    const head = `<div class="gap-when"><b>${when}</b> <span class="gap-len">${len}</span></div>`;
+    const p = r.pred;
+
+    if (p.act) {
+      const a2 = actById(p.act);
+      return `<div class="gap-row">${head}
+        ${/* "Was this X?" not "Were you X?" — activity names are nouns ("Sleep", "Work",
+             "Reading"), so "Were you Sleep?" is ungrammatical for most of them. */''}
+        <div class="gap-q">Was this ${a2.emoji ? a2.emoji + ' ' : ''}<b>${escapeHtml(a2.name)}</b>?</div>
+        <div class="gap-why">You logged it in this window on <b>${p.days}</b> of your last ${p.sampleDays} tracked ${p.basis}.</div>
+        <div class="gap-btns">
+          <button class="btn btn-primary btn-sm" data-gap-set="${r.a}:${r.b}:${p.act}">Yes, log it</button>
+          <button class="btn btn-ghost btn-sm" data-gap-other="${r.a}">${isOpen ? '✕ Close' : 'Something else'}</button>
+          <button class="gap-skip" data-gap-skip="${r.a}">Leave blank</button>
+        </div>${isOpen ? picker : ''}</div>`;
+    }
+    return `<div class="gap-row">${head}
+      <div class="gap-q">What were you doing?</div>
+      <div class="gap-why">${p.sampleDays
+        ? `Nothing you do regularly at this time — ${p.sampleDays} tracked ${p.basis} to compare with, and no clear favourite.`
+        : 'No history for this time of day yet, so there is nothing to guess from.'}</div>
+      <div class="gap-btns">
+        <button class="btn btn-ghost btn-sm" data-gap-other="${r.a}">${isOpen ? '✕ Close' : 'Pick an activity'}</button>
+        <button class="gap-skip" data-gap-skip="${r.a}">Leave blank</button>
+      </div>${isOpen ? picker : ''}</div>`;
+  }).join('');
+
+  /* The header total is ALL untracked time; the rows are only what can be asked about, which
+     is less once windows are skipped, capped, or have no pattern on an empty day. Stating the
+     big number next to two short rows looks like a bug, so the difference is spelled out. */
+  const offered = rows.reduce((x, r) => x + (r.b - r.a), 0);
+  const rest = untracked - offered;
+  return `<div class="card gap-card">
+    <h2>🧩 Untracked time <span class="hint">${fmtDur(untracked, true)} on ${shortDate(dateStr)}</span></h2>
+    <div class="hint" style="margin-bottom:10px">Nothing is filled in unless you say so. Suggestions come from what <b>you</b> logged at the same time of day before — never from anyone else, and never from an average.${
+      rest >= GAP_MIN_MS ? ` Asking about ${fmtDur(offered, true)} of it below; the other ${fmtDur(rest, true)} has no pattern to go on${rows.length >= GAP_MAX_ROWS ? ' or is past the limit for one day' : ''}.` : ''}</div>
+    ${html}</div>`;
+}
+
+document.addEventListener('click', (ev) => {
+  const set = ev.target.closest('[data-gap-set]');
+  if (set) { const [a, b, actId] = set.dataset.gapSet.split(':'); gapFill(ttDate, +a, +b, actId); return; }
+  const other = ev.target.closest('[data-gap-other]');
+  if (other) { gapOpen = gapOpen === other.dataset.gapOther ? null : other.dataset.gapOther; renderTime(); return; }
+  const sk = ev.target.closest('[data-gap-skip]');
+  if (sk) { gapSkip(ttDate, +sk.dataset.gapSkip); gapOpen = null; renderTime(); toast('Left blank'); return; }
 });
 
 
