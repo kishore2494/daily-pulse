@@ -897,6 +897,69 @@
     if (sSnap != null) localStorage.setItem('dp.gapskip', sSnap); else localStorage.removeItem('dp.gapskip');
   })();
 
+  /* ---- TROPHY CASE (v217 medals) ---- */
+  (function () {
+    /* Rank must come from position WITHIN a family. Consistency has 11 tiers and Weeks has 6,
+       so an absolute tier index would rank the hardest weekly award below an easy streak. */
+    const first = g => awRank({ grp: g, tier: AWARD_FAMILIES.find(f => f.grp === g).tiers[0] }).k;
+    const last = g => { const f = AWARD_FAMILIES.find(x => x.grp === g);
+      return awRank({ grp: g, tier: f.tiers[f.tiers.length - 1] }).k; };
+    ok('the easiest tier of every family is bronze',
+      AWARD_FAMILIES.every(f => first(f.grp) === 'bronze'),
+      AWARD_FAMILIES.map(f => f.grp + ':' + first(f.grp)).join(' '));
+    ok('the hardest tier of every family is diamond',
+      AWARD_FAMILIES.every(f => last(f.grp) === 'diamond'),
+      AWARD_FAMILIES.map(f => f.grp + ':' + last(f.grp)).join(' '));
+    ok('the top weekly award outranks an easy streak award',
+      AW_RANKS.findIndex(r => r.k === last('weeks')) > AW_RANKS.findIndex(r => r.k === first('streak')));
+    ok('rank never falls as the tier rises', AWARD_FAMILIES.every(f => {
+      let prev = -1;
+      return f.tiers.every(t => { const i = AW_RANKS.findIndex(r => r.k === awRank({ grp: f.grp, tier: t }).k);
+        const okk = i >= prev; prev = i; return okk; });
+    }));
+    ok('every award resolves to a known rank',
+      awardList().every(a => AW_RANKS.some(r => r.k === awRank(a).k)));
+
+    // --- the screen renders both filters, and locked medals are not tappable ---
+    const eSnap = localStorage.getItem('dp.entries'), aSnap = localStorage.getItem('dp.awards');
+    const ents = {}; for (let i = 0; i < 14; i++) ents[addDays(todayStr(), -i)] = { mood: 7, energy: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(ents));
+    const prevF = awFilter;
+    awFilter = 'all'; renderAwards();
+    const el = document.getElementById('s-awards');
+    const all = el.querySelectorAll('.aw-medal');
+    ok('every award has a medal in the All view', all.length === awardList().length, all.length);
+    ok('locked medals are not buttons',
+      [...el.querySelectorAll('.aw-medal.locked')].every(m => m.tagName !== 'BUTTON'));
+    ok('unlocked medals open a share card',
+      [...el.querySelectorAll('.aw-medal:not(.locked)')].every(m => !!m.dataset.awShare));
+    ok('locked medals never carry a share target',
+      [...el.querySelectorAll('.aw-medal.locked')].every(m => !m.dataset.awShare));
+    ok('a locked medal says how far off it is',
+      [...el.querySelectorAll('.aw-medal.locked')].every(m => /to go/.test(m.textContent)));
+    ok('every medal names its rank in text, not colour alone',
+      [...el.querySelectorAll('.aw-medal:not(.locked)')].every(m => !!m.querySelector('.aw-rank')));
+    ok('the hero ring is present', !!el.querySelector('.aw-ring-fg'));
+    const earnedN = awardList().filter(a => a.earned).length;
+    awFilter = 'earned'; renderAwards();
+    const el2 = document.getElementById('s-awards');
+    ok('the Unlocked filter shows only earned medals',
+      el2.querySelectorAll('.aw-medal').length === earnedN &&
+      el2.querySelectorAll('.aw-medal.locked').length === 0, el2.querySelectorAll('.aw-medal').length);
+    awFilter = prevF;
+    if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+    if (aSnap != null) localStorage.setItem('dp.awards', aSnap); else localStorage.removeItem('dp.awards');
+  })();
+
+  /* ---- SHARE CARD DEFAULT SHAPE ---- */
+  (function () {
+    const r = safeParse(localStorage.getItem('dp.cardratio'), null);
+    ok('share cards default to story 9:16', (r || '9:16') === '9:16' ? cardState.ratio === (r || '9:16') : true);
+    ok('9:16 is a real ratio the builder knows', !!CARD_RATIOS['9:16']);
+    ok('story is taller than post', CARD_RATIOS['9:16'] > CARD_RATIOS['4:5']);
+    ok('cardratio is backed up', BACKUP_KEYS.includes('cardratio'));
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

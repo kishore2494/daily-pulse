@@ -32,7 +32,7 @@ boot() {  # width height
   return 0
 }
 
-SCREENS="today time tasks notes plans projects focus waves gym habits dash cal write history settings search"
+SCREENS="today time tasks notes plans projects awards focus waves gym habits dash cal write history settings search"
 echo "[" > "$OUT"; FIRST=1
 
 for VP in "320 640" "360 740" "412 820"; do
@@ -52,11 +52,18 @@ for VP in "320 640" "360 740" "412 820"; do
 
   # Stats sub-tabs are not reachable through show(), so drive dashTab directly. Without
   # this the trophy case and the health charts were never measured at any width.
-  for T in awards health check time; do
+  for T in health check time; do
     $B js "try{ dashTab='$T'; show('dash'); renderDash(); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
     R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
     case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"dash-%s","w":%s,"h":%s,"r":%s}' "$T" "$W" "$H" "$R" >> "$OUT";; esac
   done
+
+  # The trophy case with its "Unlocked only" filter — a different set of tiles (no locked
+  # medals, no mini progress bars) that the default view never renders.
+  $B js "try{ awFilter='earned'; show('awards'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"awards-earned","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ awFilter='all'; }catch(e){} 'ok'" >/dev/null 2>&1
 
   # The untracked-time card only exists on a PAST day that has gaps and enough history to
   # guess from — a fresh eval store has none, so it was never measured. Seeded with both row

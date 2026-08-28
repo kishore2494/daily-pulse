@@ -1327,16 +1327,7 @@ input[type="range"] { height: 30px; }
 .aw-grp:first-of-type { margin-top: 4px; }
 .aw-grp-h { font-size: 12.5px; font-weight: 700; color: var(--text-dim); letter-spacing: .02em; }
 .aw-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
-.aw-badge { display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
-  padding: 7px 11px; cursor: pointer; min-height: 44px; text-align: left; font: inherit; }
-.aw-badge:active { opacity: .6; }
-/* Scoped to .aw-badge and renamed: .aw-t/.aw-d were ALREADY taken by the alarm-health
-   warning rows defined earlier in this file. Identical specificity plus later source order
-   meant the trophy case silently restyled that warning's body text down to 10.5px in the
-   faintest ink — a multi-sentence message the user has to act on. Fourth class collision. */
-.aw-badge .awb-t { font-size: 13px; font-weight: 700; color: var(--text); }
-.aw-badge .awb-d { font-size: 10.5px; margin-top: 2px; color: var(--text-faint); }
+/* .aw-badge/.awb-* removed in v217 — the flat text pills were replaced by ranked medals. */
 .aw-tip { margin-top: 12px; }
 .aw-next { margin-top: 11px; }
 .aw-next-h { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 650; color: var(--text); }
@@ -1802,3 +1793,79 @@ input[type="range"] { height: 30px; }
 .gap-act:hover { border-color: var(--accent); }
 .pj-chiprow-h { font-size: 11.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
   color: var(--text-faint); margin: 14px 0 7px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* ---------- v217: trophy case ---------- */
+/* Metals validated as TEXT against all three grounds: worst case bronze 4.77:1 on white,
+   6.01:1 on navy, 7.43:1 on black. Rank is also written on each medal, so two metals are
+   never told apart by colour alone. Light values are the base; dark overrides follow. */
+:root {
+  --m-bronze:#d08a4e; --m-silver:#a9b6cf; --m-gold:#e0b53c; --m-platinum:#3fd1c4; --m-diamond:#a394f5;
+}
+:root[data-mode="light"] {
+  --m-bronze:#a4632c; --m-silver:#5d6884; --m-gold:#8a6708; --m-platinum:#0a7d74; --m-diamond:#6a4fd0;
+}
+[data-rank="bronze"]   { --m: var(--m-bronze); }
+[data-rank="silver"]   { --m: var(--m-silver); }
+[data-rank="gold"]     { --m: var(--m-gold); }
+[data-rank="platinum"] { --m: var(--m-platinum); }
+[data-rank="diamond"]  { --m: var(--m-diamond); }
+
+.aw-hero-top { display: flex; align-items: center; gap: 14px; }
+.aw-ring-wrap { position: relative; flex: 0 0 auto; width: 84px; height: 84px; }
+.aw-ring { display: block; }
+.aw-ring-bg { fill: none; stroke: var(--bg-input); stroke-width: 8; }
+.aw-ring-fg { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round;
+  transition: stroke-dasharray .6s cubic-bezier(.2,.7,.3,1); }
+.aw-ring-n { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 25px; font-weight: 750; letter-spacing: -1px; }
+.aw-hero-txt { min-width: 0; }
+.aw-hero-h { font-family: var(--font-display); font-size: 19px; font-weight: 750; letter-spacing: -.4px; }
+.aw-hero-s { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+.aw-tally { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.aw-t-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
+  color: var(--text-dim); background: rgba(127,127,127,.1); border-radius: 99px; padding: 2px 8px; }
+.aw-t-chip > i { width: 8px; height: 8px; border-radius: 99px; background: var(--m); }
+.aw-closest { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border); }
+.aw-closest-h { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 8px; }
+.aw-allgot { font-size: 13px; color: var(--text-dim); text-align: center; }
+
+.aw-fam { padding: 14px 12px 12px; }
+.aw-fam-h { display: flex; align-items: center; gap: 8px; }
+.aw-fam-ico { font-size: 17px; }
+.aw-fam-t { flex: 1 1 auto; min-width: 0; font-family: var(--font-display); font-size: 15px; font-weight: 700; }
+.aw-fam-c { font-size: 11.5px; font-weight: 700; color: var(--text-faint); }
+.aw-fam-bar { height: 4px; border-radius: 99px; background: var(--bg-input); overflow: hidden; margin: 8px 0 12px; }
+.aw-fam-bar > i { display: block; height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent))); }
+
+.aw-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 359px) { .aw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.aw-medal { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 11px 6px 9px; min-height: 44px; border-radius: 14px; cursor: pointer; font: inherit;
+  color: var(--text); text-align: center; border: 1px solid var(--border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--m) 13%, var(--bg-card)), var(--bg-card)); }
+.aw-medal:active { transform: scale(.97); }
+.aw-disc { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px;
+  border-radius: 99px; border: 2.5px solid var(--m); margin-bottom: 3px;
+  background: color-mix(in srgb, var(--m) 16%, var(--bg-card)); }
+.aw-ico { font-size: 19px; line-height: 1; }
+.aw-n { font-family: var(--font-display); font-size: 17px; font-weight: 800; letter-spacing: -.5px;
+  color: var(--m); line-height: 1.1; }
+.aw-u { font-size: 10px; color: var(--text-dim); line-height: 1.25; overflow-wrap: anywhere; }
+.aw-meta { font-size: 9.5px; color: var(--text-faint); margin-top: 3px; }
+.aw-rank { position: absolute; top: 6px; right: 7px; font-size: 8.5px; font-weight: 800;
+  letter-spacing: .3px; text-transform: uppercase; color: var(--m); opacity: .85; }
+.aw-medal.locked { cursor: default; border-style: dashed; background: var(--bg-card); }
+/* Not opacity on the whole tile: that would drag the "N to go" text under contrast too.
+   The disc and number recede; the text that has to stay readable keeps its own token. */
+.aw-medal.locked .aw-disc { border-color: var(--border-hi); background: var(--bg-input); }
+.aw-medal.locked .aw-ico { filter: grayscale(1); opacity: .45; }
+.aw-medal.locked .aw-n { color: var(--text-faint); }
+.aw-lock { position: absolute; top: 6px; right: 7px; font-size: 10px; opacity: .5; }
+.aw-mini { display: block; width: 70%; height: 3px; border-radius: 99px; background: var(--bg-input);
+  overflow: hidden; margin-top: 5px; }
+.aw-mini > i { display: block; height: 100%; border-radius: 99px; background: var(--text-faint); }
+.aw-tip { text-align: center; padding: 2px 0 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

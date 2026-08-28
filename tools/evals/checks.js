@@ -75,6 +75,12 @@
     const hasText = Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
     if (!hasText) return;
     const cs = getComputedStyle(el);
+    /* Visually-hidden text (the sr-only / clip-rect pattern) is a 1px box on purpose and is
+       ALWAYS "clipped" by definition. Reporting it drowned 2 real findings under 54 fake
+       ones the first time a screen using the pattern was measured. */
+    const box = el.getBoundingClientRect();
+    if ((box.width <= 2 && box.height <= 2) || cs.clip !== 'auto' ||
+        (cs.clipPath && cs.clipPath !== 'none' && /inset\(\s*(50%|100%)/.test(cs.clipPath))) return;
     if (cs.overflow === 'auto' || cs.overflow === 'scroll' || cs.overflowX === 'auto' || cs.overflowX === 'scroll') return;
     if (!(el.scrollWidth > el.clientWidth + 1) || el.clientWidth <= 0) return;
     const ellipsising = cs.textOverflow === 'ellipsis' && (cs.overflowX === 'hidden' || cs.overflow === 'hidden');

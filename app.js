@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v216';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v217';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -850,8 +850,10 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w15',
+  v: 'w16',
   items: [
+    '\ud83c\udfc5 <b>The trophy case, rebuilt</b> \u2014 every award used to be the same grey pill, so a 365-day streak looked exactly like a 3-day one, and the 49 you had not earned were invisible. Each award is now a <b>ranked medal</b> \u2014 Bronze through Diamond by how far up its family\u2019s ladder it sits \u2014 and the locked ones are shown too, dimmed, with exactly how far off you are. A progress ring counts your collection, and there is a per-family bar so you can see which ladder you are furthest up. The five metals were contrast-checked as text in light, navy and black, and every medal writes its rank in words, so none of it depends on telling two colours apart.',
+    '\ud83d\udcf1 <b>Share cards default to Story</b> \u2014 9:16 instead of 4:5, because that is the shape Instagram, WhatsApp and Snapchat stories actually use full-screen; a 4:5 post gets letterboxed there. Change it once and it is remembered.',
     '\ud83e\udde9 <b>Untracked time, filled in by asking</b> \u2014 the Time screen now finds the stretches of a past day you never tracked and, where your own history actually supports a guess, asks: \u201c09:00\u201311:15 \u2014 were you \ud83d\udcbc Work?\u201d Tap yes and it is logged. It only names an activity when you logged it in that same window on at least 3 other days, it counts weekdays and weekends separately (sleep and work are exactly what differ), and it always shows the support \u2014 \u201c6 of your last 9 tracked weekdays\u201d \u2014 so you can judge the guess rather than trust it. Nothing is ever filled in on its own, and \u201cleave blank\u201d is remembered.',
     '\ud83d\uddc2\ufe0f <b>Projects</b> \u2014 a new screen in the \u2630 menu. Anything with an outcome and more than one step: a launch, a renovation, a course, a side business. Each project holds milestones, steps, a decision log and links, and shows one honest badge \u2014 <i>On track</i>, <i>Due in 3d</i>, <i>4d overdue</i> or <i>Untouched 12d</i>. The bit no other project tracker can do: hours come from <b>time you actually logged</b>, not hours you typed in. Time on a project is logged <b>as that project</b> \u2014 not under a borrowed tag \u2014 so it shows on your 24-hour timeline as \ud83d\uddc2\ufe0f the project name, in its own colour, and appears by name in where-the-time-went. Start it from the project or from the Projects row on the Time screen. A block belongs to one project or none, so two projects never claim the same hours \u2014 and a project with nothing tracked says so instead of showing a comforting zero.',
     '📊 <b>Stats looks like something now</b> — the overview opened with six identical grey boxes and no sense of direction. It now leads with your streak, then Mood, Energy and Polymath each with a 14-day sparkline and an arrow comparing this week to the one before. The three colours were checked for colour-blind readability and contrast in both light and dark, not just picked because they looked nice.',
@@ -5655,7 +5657,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'cardratio', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -7419,6 +7421,69 @@ function renderAwards() {
   document.getElementById('s-awards').innerHTML = awardsHTML() + '<div style="height:14px"></div>';
 }
 
+/* ---------- Trophy case rendering ----------
+   The case used to be one grey pill per award, identical for every tier, so a 365-day streak
+   looked exactly like a 3-day one and 49 of the 60 awards were invisible entirely. A trophy
+   case with nothing to chase and no sense of rank is not a trophy case, it is a list.
+
+   Now each award is a medal ranked by how far up its family's ladder it sits, locked ones are
+   shown dimmed with the distance left, and the metals were contrast-checked as text against
+   all three themes (worst case 4.77:1 light, 6.01:1 navy, 7.43:1 black) rather than picked
+   for looking metallic. Rank is also written on every medal, so colour is never the only
+   thing telling two apart. */
+const AW_RANKS = [
+  { k: 'bronze',   label: 'Bronze' },
+  { k: 'silver',   label: 'Silver' },
+  { k: 'gold',     label: 'Gold' },
+  { k: 'platinum', label: 'Platinum' },
+  { k: 'diamond',  label: 'Diamond' },
+];
+/* Rank comes from position WITHIN the family, not an absolute tier index: Consistency has 11
+   tiers and Weeks has 6, so an absolute index would make the hardest weekly award a mere
+   silver while an easy streak tier outranked it. */
+function awRank(a) {
+  const f = AWARD_FAMILIES.find(x => x.grp === a.grp);
+  if (!f) return AW_RANKS[0];
+  const i = f.tiers.indexOf(a.tier);
+  const n = f.tiers.length - 1;
+  const pos = n <= 0 ? 1 : i / n;
+  return AW_RANKS[Math.min(AW_RANKS.length - 1, Math.floor(pos * AW_RANKS.length + 1e-9))];
+}
+let awFilter = 'all';   // all | earned
+
+function awMedal(a) {
+  const r = awRank(a);
+  const left = Math.max(0, a.tier - a.hi);
+  const pct = Math.max(0, Math.min(100, Math.round(a.hi / a.tier * 100)));
+  const num = a.grp === 'steps' ? (a.tier >= 1e6 ? (a.tier / 1e6) + 'M' : (a.tier / 1000) + 'k')
+            : a.grp === 'strength' ? a.tier + '%'
+            : a.tier.toLocaleString();
+  const unit = a.unit.replace(/^% /, '');
+  const inner = `
+    <span class="aw-disc"><span class="aw-ico">${a.ico}</span></span>
+    <span class="aw-n">${num}</span>
+    <span class="aw-u">${escapeHtml(unit)}</span>
+    <span class="aw-meta">${a.earned ? (a.on ? shortDate(a.on) : 'earned') : left.toLocaleString() + ' to go'}</span>`;
+  if (!a.earned) {
+    return `<div class="aw-medal locked" data-rank="${r.k}" role="img"
+      aria-label="Locked: ${escapeHtml(awardName(a))}, ${left.toLocaleString()} to go">
+      <span class="aw-lock" aria-hidden="true">🔒</span>${inner}
+      <span class="aw-mini"><i style="width:${pct}%"></i></span></div>`;
+  }
+  return `<button type="button" class="aw-medal" data-rank="${r.k}" data-aw-share="${a.id}">
+    <span class="aw-rank">${r.label}</span>${inner}</button>`;
+}
+
+function awRing(done, total) {
+  const R = 34, C = 2 * Math.PI * R;
+  const pct = total ? done / total : 0;
+  return `<svg class="aw-ring" width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">
+    <circle cx="42" cy="42" r="${R}" class="aw-ring-bg"></circle>
+    <circle cx="42" cy="42" r="${R}" class="aw-ring-fg"
+      stroke-dasharray="${(C * pct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 42 42)"></circle>
+  </svg>`;
+}
+
 function awardsHTML() {
   const list = awardList();
   /* Sample data is real entries in the real store, so every award family counts it. The
@@ -7432,9 +7497,10 @@ function awardsHTML() {
     // sampleBar first: the early return used to skip it entirely, so a sample-loaded store
     // with no entries would have shown an unlabelled case.
     return `${sampleBar}<div class="card"><h2 class="h2-icon">${hicon('star')}<span>Trophy case</span></h2>
-      <div class="empty">Log a day and your first award lands here.</div></div>`;
+      <div class="empty">Log a day and your first award lands here.<br><br>There are <b>${list.length}</b> to collect across <b>${AWARD_FAMILIES.length}</b> families, all worked out from your own log — so none of them can be faked, and none is ever taken away.</div></div>`;
   }
-  // Next up, one per family: the goal-gradient effect only works if you can SEE the gap.
+
+  // Closest to unlocking, one per family: the goal-gradient effect only works if you can SEE the gap.
   const next = [];
   AWARD_FAMILIES.forEach(f => {
     const t = list.filter(a => a.grp === f.grp && !a.earned).sort((a, b) => a.tier - b.tier)[0];
@@ -7442,33 +7508,57 @@ function awardsHTML() {
   });
   next.sort((a, b) => (b.hi / b.tier) - (a.hi / a.tier));
 
-  const byGrp = {};
-  earned.forEach(a => { (byGrp[a.grp] = byGrp[a.grp] || []).push(a); });
+  const tally = {};
+  AW_RANKS.forEach(r => tally[r.k] = 0);
+  earned.forEach(a => tally[awRank(a).k]++);
 
-  return `${sampleBar}<div class="card">
-    <h2 class="h2-icon">${hicon('star')}<span>Trophy case</span>
-      <span class="hint" style="margin-left:auto">${earned.length} of ${list.length}</span></h2>
-    ${AWARD_FAMILIES.filter(f => byGrp[f.grp]).map(f => `
-      <div class="aw-grp">
-        <div class="aw-grp-h">${f.ico} ${f.title}</div>
-        <div class="aw-list">${byGrp[f.grp].sort((a, b) => b.tier - a.tier).map(a => `
-          <button type="button" class="aw-badge" data-aw-share="${a.id}">
-            <span class="awb-t">${awardName(a)}</span>
-            <span class="awb-d">${a.on ? shortDate(a.on) : 'earned earlier'}</span>
-          </button>`).join('')}</div>
-      </div>`).join('')}
-    ${earned.length ? '<div class="hint aw-tip">Tap any award to make a share card.</div>' : ''}
+  const shown = awFilter === 'earned' ? earned : list;
+  const byGrp = {};
+  shown.forEach(a => { (byGrp[a.grp] = byGrp[a.grp] || []).push(a); });
+
+  return `${sampleBar}
+  <div class="card aw-hero">
+    <div class="aw-hero-top">
+      <div class="aw-ring-wrap">${awRing(earned.length, list.length)}
+        <span class="aw-ring-n">${earned.length}</span></div>
+      <div class="aw-hero-txt">
+        <div class="aw-hero-h">Trophy case</div>
+        <div class="aw-hero-s"><b>${earned.length}</b> of ${list.length} unlocked · ${AWARD_FAMILIES.length} families</div>
+        <div class="aw-tally">${AW_RANKS.map(r => `<span class="aw-t-chip" data-rank="${r.k}"><i></i>${tally[r.k]}</span>`).join('')}</div>
+      </div>
+    </div>
+    ${next.length ? `<div class="aw-closest">
+      <div class="aw-closest-h">Closest to unlocking</div>
+      ${next.slice(0, 3).map(a => { const pct = Math.max(2, Math.min(100, Math.round(a.hi / a.tier * 100)));
+        return `<div class="aw-next" data-rank="${awRank(a).k}">
+          <div class="aw-next-h"><span>${a.ico} ${escapeHtml(awardName(a))}</span>
+            <span class="aw-next-n">${Math.max(0, a.tier - a.hi).toLocaleString()} to go</span></div>
+          <div class="aw-bar"><span style="width:${pct}%"></span></div>
+        </div>`; }).join('')}
+    </div>` : `<div class="aw-closest"><div class="aw-allgot">Every award unlocked. There is nothing left to chase 🏆</div></div>`}
   </div>
-  ${next.length ? `<div class="card">
-    <h2 class="h2-icon">${hicon('target')}<span>Next up</span></h2>
-    ${next.slice(0, 6).map(a => { const pct = Math.max(2, Math.min(100, Math.round(a.hi / a.tier * 100)));
-      const left = Math.max(0, a.tier - a.hi);
-      return `<div class="aw-next">
-        <div class="aw-next-h"><span>${a.ico} ${awardName(a)}</span>
-          <span class="aw-next-n">${left.toLocaleString()} to go</span></div>
-        <div class="aw-bar"><span style="width:${pct}%"></span></div>
-      </div>`; }).join('')}
-  </div>` : ''}`;
+
+  <div class="card" style="padding:12px">
+    <div class="seg-row">
+      <button class="seg-btn ${awFilter === 'all' ? 'on' : ''}" data-aw-filter="all">All ${list.length}</button>
+      <button class="seg-btn ${awFilter === 'earned' ? 'on' : ''}" data-aw-filter="earned">Unlocked ${earned.length}</button>
+    </div>
+  </div>
+
+  ${AWARD_FAMILIES.filter(f => byGrp[f.grp] && byGrp[f.grp].length).map(f => {
+    const all = list.filter(a => a.grp === f.grp);
+    const got = all.filter(a => a.earned).length;
+    return `<div class="card aw-fam">
+      <div class="aw-fam-h">
+        <span class="aw-fam-ico">${f.ico}</span>
+        <span class="aw-fam-t">${escapeHtml(f.title)}</span>
+        <span class="aw-fam-c">${got}/${all.length}</span>
+      </div>
+      <div class="aw-fam-bar"><i style="width:${Math.round(got / all.length * 100)}%"></i></div>
+      <div class="aw-grid">${byGrp[f.grp].sort((a, b) => a.tier - b.tier).map(awMedal).join('')}</div>
+    </div>`; }).join('')}
+
+  ${earned.length ? '<div class="hint aw-tip">Tap any unlocked medal to make a share card.</div>' : ''}`;
 }
 
 /* ============================================================
@@ -7492,7 +7582,12 @@ function bodyTop(H) { return (H - CARD_BODY) / 2; }
 const CARD_INK = '#f2f5ff', CARD_DIM = '#8f9bbd', CARD_BG = '#0d1220', CARD_BG2 = '#141b2e';
 const CARD_ACCENT = '#6d8cff', CARD_WARM = '#fbbf24', CARD_GOOD = '#4ad6c0';
 
-let cardState = { kind: 'streak', ratio: '4:5', arg: null, blob: null, busy: false, hint: '', sending: false };
+/* Story (9:16) is the default: it is the shape Instagram, WhatsApp and Snapchat stories
+   actually use full-screen, which is where these get shared. A 4:5 post gets letterboxed
+   there. Remembered per device once changed — picking a shape twice for the same preference
+   is the kind of small friction that stops people sharing at all. */
+let cardState = { kind: 'streak', ratio: safeParse(localStorage.getItem('dp.cardratio'), null) || '9:16',
+  arg: null, blob: null, busy: false, hint: '', sending: false };
 
 function cardFont(px, weight) { return `${weight || 400} ${px}px "DM Sans", "Twemoji Mozilla", system-ui, sans-serif`; }
 
@@ -7817,7 +7912,7 @@ function drawAward(g, H, id) {
 
 async function buildCardBlob(kind, ratio, arg) {
   await cardFontsReady();
-  const H = CARD_RATIOS[ratio] || CARD_RATIOS['4:5'];
+  const H = CARD_RATIOS[ratio] || CARD_RATIOS['9:16'];
   const cv = document.createElement('canvas');
   cv.width = CARD_W; cv.height = H;
   const g = cv.getContext('2d');
@@ -8016,7 +8111,7 @@ document.addEventListener('click', async (ev) => {
   if (kb) { cardState.kind = kb.dataset.cardKind; shareSheetRender(); cardPreview(); return; }
 
   const rb = t.closest('[data-card-ratio]');
-  if (rb) { cardState.ratio = rb.dataset.cardRatio; shareSheetRender(); cardPreview(); return; }
+  if (rb) { cardState.ratio = rb.dataset.cardRatio; localStorage.setItem('dp.cardratio', JSON.stringify(cardState.ratio)); shareSheetRender(); cardPreview(); return; }
 
   if (t.id === 'ss-send') {
     // Re-entrancy guard: deliverCard awaits, and a second tap during that await fired a
@@ -9059,6 +9154,11 @@ function gapCardHTML(dateStr) {
       rest >= GAP_MIN_MS ? ` Asking about ${fmtDur(offered, true)} of it below; the other ${fmtDur(rest, true)} has no pattern to go on${rows.length >= GAP_MAX_ROWS ? ' or is past the limit for one day' : ''}.` : ''}</div>
     ${html}</div>`;
 }
+
+document.addEventListener('click', (ev) => {
+  const af = ev.target.closest('[data-aw-filter]');
+  if (af) { awFilter = af.dataset.awFilter; renderAwards(); window.scrollTo(0, 0); return; }
+});
 
 document.addEventListener('click', (ev) => {
   const set = ev.target.closest('[data-gap-set]');
