@@ -660,6 +660,104 @@
     renderSettings();
   })();
 
+  /* ---- PROJECTS ---- */
+  (function () {
+    const pSnap = localStorage.getItem('dp.projects'), tSnap = localStorage.getItem('dp.timelog');
+    const H = 3600000, now = Date.now();
+    const mk = o => Object.assign({ name: 'x', status: 'active', act: '', steps: [], miles: [],
+      notes: [], links: [], color: '#5570dd', created: todayStr(), prio: 2, outcome: '', due: '' }, o);
+
+    // --- hours are exact: a block belongs to ONE project, or none ---
+    const monday = (() => { const d = new Date(); d.setHours(9, 0, 0, 0);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); })();
+    localStorage.setItem('dp.projects', JSON.stringify([mk({ id: 'pA' }), mk({ id: 'pB' })]));
+    localStorage.setItem('dp.timelog', JSON.stringify([
+      { id: 'b1', act: 'work', start: monday, end: monday + 2 * H, upd: 1, pid: 'pA' },
+      { id: 'b2', act: 'work', start: monday + 3 * H, end: monday + 4 * H, upd: 1, pid: 'pB' },
+      { id: 'b3', act: 'work', start: monday + 5 * H, end: monday + 6 * H, upd: 1 },
+      { id: 'b4', act: 'work', start: monday - 7 * 24 * H, end: monday - 7 * 24 * H + 4 * H, upd: 1, pid: 'pA' },
+    ]));
+    ok('project hours count only tagged blocks', pjMs('pA') === 6 * H, pjMs('pA') / H);
+    ok('a shared activity does not leak hours between projects', pjMs('pB') === 1 * H, pjMs('pB') / H);
+    ok('an untagged block belongs to no project',
+      pjMs('pA') + pjMs('pB') === 7 * H && DB.timelog().length === 4);
+    ok('this-week hours exclude last week', pjWeekMs('pA') === 2 * H, pjWeekMs('pA') / H);
+    const wk = pjWeeks('pA', 8);
+    ok('week buckets land in the right slot', wk.length === 8 && wk[7] === 2 && wk[6] === 4, wk.join(','));
+
+    // --- a running block counts up to now, not to zero ---
+    localStorage.setItem('dp.timelog', JSON.stringify(
+      [{ id: 'r1', act: 'work', start: now - 90 * 60000, end: null, upd: 1, pid: 'pA' }]));
+    const runMs = pjMs('pA');
+    ok('a running block counts toward its project', runMs > 88 * 60000 && runMs < 92 * 60000, runMs / 60000);
+
+    // --- progress: no plan is NOT 0% ---
+    localStorage.setItem('dp.timelog', '[]');
+    ok('a project with no steps has no fake progress', pjProgress(pjNorm(mk({ id: 'p0' }))) === null);
+    const pr = pjProgress(pjNorm(mk({ id: 'p0',
+      steps: [{ id: 'a', done: true }, { id: 'b', done: false }], miles: [{ id: 'c', done: true }] })));
+    ok('progress counts steps AND milestones', pr.done === 2 && pr.tot === 3 && pr.pct === 67, JSON.stringify(pr));
+
+    // --- health badges, worst-first ---
+    const H2 = p => pjHealth(pjNorm(p)).k;
+    const openStep = [{ id: 's', text: 'a', done: false }];
+    ok('overdue beats everything', H2(mk({ id: '1', due: addDays(todayStr(), -5), steps: openStep })) === 'overdue');
+    ok('due within 3 days warns', H2(mk({ id: '2', due: addDays(todayStr(), 2), steps: openStep })) === 'due');
+    ok('an active project untouched a week is stalled',
+      H2(mk({ id: '3', steps: openStep, notes: [{ id: 'n', at: now - 12 * 86400000, text: 'x' }] })) === 'stalled');
+    ok('recent work is on track',
+      H2(mk({ id: '4', steps: openStep, notes: [{ id: 'n', at: now - 2 * 86400000, text: 'x' }] })) === 'on');
+    /* Paused deliberately outranks overdue: you put it down on purpose, so nagging about a
+       date you already chose to miss would be wrong. */
+    ok('paused is not reported as overdue',
+      H2(mk({ id: '5', status: 'paused', due: addDays(todayStr(), -9), steps: openStep })) === 'paused');
+    ok('a finished project is never overdue',
+      H2(mk({ id: '6', status: 'done', due: addDays(todayStr(), -9), steps: openStep })) === 'done');
+    ok('all steps done clears an overdue flag',
+      H2(mk({ id: '7', due: addDays(todayStr(), -5), steps: [{ id: 's', done: true, doneAt: now }] })) !== 'overdue');
+
+    // --- startAct tags, and switches project on the same activity ---
+    localStorage.setItem('dp.timelog', '[]');
+    startAct('work', 'pA');
+    const first = runningSeg();
+    ok('startAct tags the new block with the project', first && first.pid === 'pA');
+    ok('two blocks made in the same millisecond get different ids',
+      new Set(DB.timelog().map(x => x.id)).size === DB.timelog().length);
+    startAct('work', 'pB');
+    const second = runningSeg();
+    ok('same activity for another project opens a NEW block', second && second.id !== first.id && second.pid === 'pB');
+    ok('the previous project\'s block was closed, keeping its own pid',
+      DB.timelog().find(x => x.id === first.id).end != null &&
+      DB.timelog().find(x => x.id === first.id).pid === 'pA');
+    startAct('work', 'pB');
+    ok('same activity AND same project stops the timer', runningSeg() == null);
+    startAct('work');
+    ok('an untagged start carries no pid', !('pid' in runningSeg()));
+    localStorage.setItem('dp.timelog', '[]');
+
+    // --- the screen renders, and reaches the detail view ---
+    localStorage.setItem('dp.projects', JSON.stringify([mk({ id: 'pS', name: 'Screen test', steps: openStep })]));
+    const before = pjOpen; pjOpen = null;
+    renderProjects();
+    const el = document.getElementById('s-projects');
+    ok('projects screen renders a card per project', !!el.querySelector('[data-pj-open="pS"]'));
+    ok('projects screen has a create button', !!document.getElementById('pj-add-open'));
+    pjOpen = 'pS'; renderProjects();
+    ok('detail view renders', !!document.getElementById('pj-back') && !!document.getElementById('pj-timer'));
+    ok('detail view has a back button, milestones, steps, log and links',
+      ['pj-mile-add', 'pj-step-add', 'pj-note-add', 'pj-link-add', 'pj-del'].every(i => !!document.getElementById(i)));
+    ok('timer button is disabled until an activity is picked', document.getElementById('pj-timer').disabled);
+    pjOpen = before;
+
+    // --- Projects is reachable from the nav ---
+    ok('projects is a nav destination', !!navCfg().find(n => n.k === 'projects'));
+    ok('projects has a render function', typeof RENDER.projects === 'function');
+    ok('projects is backed up', BACKUP_KEYS.includes('projects'));
+
+    if (pSnap != null) localStorage.setItem('dp.projects', pSnap); else localStorage.removeItem('dp.projects');
+    if (tSnap != null) localStorage.setItem('dp.timelog', tSnap); else localStorage.removeItem('dp.timelog');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

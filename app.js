@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v215';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v216';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -269,6 +269,9 @@ const DB = {
 
   plans() { return safeParse(localStorage.getItem('dp.plans'), []); },
   savePlans(p) { safeSet('dp.plans', JSON.stringify(p)); pushState(); },
+
+  projects() { return safeParse(localStorage.getItem('dp.projects'), []); },
+  saveProjects(p) { safeSet('dp.projects', JSON.stringify(p)); pushState(); },
 
   docs() { return safeParse(localStorage.getItem('dp.docs'), []); },
   saveDocs(d) { safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
@@ -617,7 +620,7 @@ function pushState(now) {
   clearTimeout(pushTimer);
   const send = () => {
     const payload = { type: 'state', touched,
-      entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(),
+      entries: DB.entries(), tasks: DB.tasks(), notes: DB.notes(), plans: DB.plans(), projects: DB.projects(),
       reminders: DB.reminders(), gym: DB.gym(), exercises: DB.exercises(),
       timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
       docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg(),
@@ -709,7 +712,7 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -847,8 +850,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w14',
+  v: 'w15',
   items: [
+    '\ud83d\uddc2\ufe0f <b>Projects</b> \u2014 a new screen in the \u2630 menu. Anything with an outcome and more than one step: a launch, a renovation, a course, a side business. Each project holds milestones, steps, a decision log and links, and shows one honest badge \u2014 <i>On track</i>, <i>Due in 3d</i>, <i>4d overdue</i> or <i>Untouched 12d</i>. The bit no other project tracker can do: hours come from <b>time you actually logged</b>, not hours you typed in. Tap \u25b6 Start timing on a project, or pick the project when you stop a timer. A block belongs to one project or none, so two projects that both use \u201cWork\u201d never claim the same hours \u2014 and a project with nothing tagged says so instead of showing a comforting zero.',
     '📊 <b>Stats looks like something now</b> — the overview opened with six identical grey boxes and no sense of direction. It now leads with your streak, then Mood, Energy and Polymath each with a 14-day sparkline and an arrow comparing this week to the one before. The three colours were checked for colour-blind readability and contrast in both light and dark, not just picked because they looked nice.',
     '🔔 <b>Notification fixes</b> — please update in the Play Store. Daylog\'s notifications showed a generic "i" instead of an icon, because there was no notification icon at all; there is now. And the activity-timer notification counts <b>live</b> — Android ticks it itself, so it keeps counting with the app closed, instead of just saying when you started. Pause and Stop are proper buttons.',
     '🏆 <b>Awards moved</b> — the trophy case is now its own screen in the ☰ menu, so Stats keeps all four of its tabs (Health was getting pushed off the edge on smaller phones).',
@@ -2387,12 +2391,17 @@ function fmtDur(ms, short) {
 }
 function fmtClock(ms) { const d = new Date(ms); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
 
-function startAct(actId) {
+/* `pid` tags the new block to a project. Passing it is what makes project hours exact: a
+   block belongs to one project or none, so two projects sharing an activity never both
+   claim the same time. */
+function startAct(actId, pid) {
   const log = DB.timelog(); const now = Date.now();
   const run = log.find(s => s.end == null);
   if (run) {
     run.end = now; run.upd = now;
-    if (run.act === actId) {   // tapping the running activity = just stop it
+    // Same activity AND same project = stop. Same activity for a DIFFERENT project has to
+    // start a fresh block, or the hours would land on whichever project started first.
+    if (run.act === actId && (run.pid || '') === (pid || '')) {   // tapping the running activity = just stop it
       DB.saveTimelog(log); renderTime(); refreshTimerNotif();
       toast(`⏹ ${actById(actId).name} stopped · ${fmtDur(run.end - run.start)}`);
       // The block is saved above FIRST, so the save sheet is pure enrichment and dismissing
@@ -2401,7 +2410,16 @@ function startAct(actId) {
       return;
     }
   }
-  log.push({ id: 'ts' + now, act: actId, start: now, end: null, upd: now });
+  /* Block ids were plain 'ts' + Date.now(). Two blocks created inside the same millisecond
+     therefore shared an id, and every lookup in this file is `log.find(s => s.id === …)` —
+     so an edit, a delete or a save-sheet commit would silently hit the wrong block. A human
+     cannot tap twice in a millisecond, but a notification action being consumed at the same
+     moment as a tap can, and the cost of being wrong is corrupted history. */
+  let id = 'ts' + now, n = 0;
+  while (log.some(s => s.id === id)) id = 'ts' + now + '-' + (++n);
+  const blk = { id, act: actId, start: now, end: null, upd: now };
+  if (pid) blk.pid = pid;
+  log.push(blk);
   DB.saveTimelog(log); ttDate = todayStr(); renderTime(); refreshTimerNotif();
   toast(`▶ ${actById(actId).name} started`);
 }
@@ -2565,7 +2583,7 @@ function segById(id) { return DB.timelog().find(s => s.id === id) || null; }
 function saveSheetOpen(segId) {
   const seg = segById(segId);
   if (!seg) return;
-  saveState = { id: segId, title: seg.t || '', rpe: seg.rpe == null ? null : +seg.rpe, note: seg.note || '' };
+  saveState = { id: segId, title: seg.t || '', rpe: seg.rpe == null ? null : +seg.rpe, note: seg.note || '', pid: seg.pid || '' };
   let el = document.getElementById('savesheet');
   if (!el) { el = document.createElement('div'); el.id = 'savesheet'; el.className = 'sharesheet'; document.body.appendChild(el); }
   el.classList.add('on');
@@ -2589,6 +2607,7 @@ function saveSheetCommit() {
   if (t) seg.t = t; else delete seg.t;
   if (nt) seg.note = nt; else delete seg.note;
   if (saveState.rpe != null) seg.rpe = saveState.rpe; else delete seg.rpe;
+  if (saveState.pid) seg.pid = saveState.pid; else delete seg.pid;
   seg.upd = Date.now();
   DB.saveTimelog(log);
   syncTimelog();
@@ -2623,6 +2642,15 @@ function saveSheetRender() {
       <input type="text" id="sv-title" maxlength="80" autocomplete="off"
         placeholder="e.g. rewrote the parser" value="${escapeHtml(saveState.title)}"></div>
 
+    ${/* The only place ordinary stop-the-timer flow can attribute hours to a project. Hidden
+         entirely when there are no projects, so it never adds a field to answer for people
+         who don't use them. */''}
+    ${DB.projects().length ? `<div class="field"><label for="sv-pid">Part of a project?</label>
+      <select id="sv-pid"><option value="">— not project work —</option>
+        ${pjAll().filter(p => p.status !== 'done' || p.id === saveState.pid).map(p =>
+          `<option value="${p.id}"${saveState.pid === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+      </select></div>` : ''}
+
     <div class="field"><label>How hard did it feel?</label>
       <div class="scale sv-scale">${Array.from({ length: 10 }, (_, i) => i + 1).map(n =>
         `<button type="button" class="${saveState.rpe === n ? 'on' : ''}" data-sv-rpe="${n}">${n}</button>`).join('')}</div>
@@ -2655,15 +2683,17 @@ document.addEventListener('click', (ev) => {
     const n = +r.dataset.svRpe;
     saveState.rpe = (saveState.rpe === n) ? null : n;     // tap again to clear
     // keep whatever is typed but not yet committed
-    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note');
+    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note'), pi = document.getElementById('sv-pid');
     if (ti) saveState.title = ti.value;
     if (no) saveState.note = no.value;
+    if (pi) saveState.pid = pi.value;
     saveSheetRender(); buzz(6); return;
   }
   if (t.id === 'sv-save') {
-    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note');
+    const ti = document.getElementById('sv-title'), no = document.getElementById('sv-note'), pi = document.getElementById('sv-pid');
     if (ti) saveState.title = ti.value;
     if (no) saveState.note = no.value;
+    if (pi) saveState.pid = pi.value;
     saveSheetCommit(); return;
   }
   const ed = t.closest('[data-sv-edit]');
@@ -5586,7 +5616,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -8246,6 +8276,501 @@ async function scheduleBackgroundNotifications() {
   } catch (e) { return false; }
 }
 
+/* ============================================================
+   PROJECTS — a portfolio hub wired to time you actually logged.
+   ------------------------------------------------------------
+   The point of difference from every other project tracker: hours here are not typed in by
+   hand and they are not guessed from "activities that look related". A time block counts
+   toward a project ONLY if it carries that project's id in `pid`. Two projects that both use
+   the "work" activity therefore never claim the same hours, and a project with no tagged
+   blocks honestly reports "no time logged yet" rather than a comforting zero.
+
+   Tag time three ways: ▶ Start timing from the project, the project picker on the
+   post-activity save sheet, or the picker on any block in the timeline.
+
+   Everything is derived, never stored: progress, hours, last-touched, stalled, overdue. So
+   editing a step or logging an hour updates every number at once and none can drift.
+   ============================================================ */
+
+const PJ_STATUS = [
+  { k: 'planning', label: 'Planning' },
+  { k: 'active',   label: 'In progress' },
+  { k: 'paused',   label: 'Paused' },
+  { k: 'done',     label: 'Done' },
+];
+/* Same validated series hues the Stats overview uses — a lightness band and chroma floor that
+   stay distinguishable from each other in both themes and under the common CVD types. */
+const PJ_COLORS = ['#5570dd', '#26a892', '#7f63dd', '#dd7a3c', '#c8489a', '#3c9dd6', '#c9a227', '#5f6b85'];
+const PJ_PRIO = { 3: 'High', 2: 'Normal', 1: 'Low' };
+const PJ_STALE_DAYS = 7;      // an active project untouched this long is flagged, not hidden
+const PJ_SPARK_WEEKS = 8;
+
+let pjOpen = null;            // project id shown in the detail view, or null for the list
+let pjFilter = 'open';        // open | active | planning | paused | done | all
+let pjSort = 'smart';
+let pjAddOpen = false;
+
+/* ---- store ---- */
+function pjNorm(p) {
+  const o = Object.assign({
+    id: 'pj0', name: '', outcome: '', status: 'active', prio: 2, color: PJ_COLORS[0],
+    created: todayStr(), due: '', act: '', steps: [], miles: [], notes: [], links: [],
+  }, p || {});
+  ['steps', 'miles', 'notes', 'links'].forEach(k => { if (!Array.isArray(o[k])) o[k] = []; });
+  if (!PJ_STATUS.find(s => s.k === o.status)) o.status = 'active';
+  o.prio = [1, 2, 3].includes(+o.prio) ? +o.prio : 2;
+  return o;
+}
+function pjAll() { return DB.projects().map(pjNorm); }
+function pjById(id) { return pjAll().find(p => p.id === id) || null; }
+function pjPut(p) {
+  const all = DB.projects(); const i = all.findIndex(x => x.id === p.id);
+  if (i >= 0) all[i] = p; else all.push(p);
+  DB.saveProjects(all);
+}
+function pjMutate(id, fn) { const p = pjById(id); if (!p) return null; fn(p); pjPut(p); return p; }
+
+/* ---- time, from tagged blocks only ---- */
+function pjBlocks(id) { return DB.timelog().filter(s => s.pid === id); }
+function pjMs(id, fromMs, toMs) {
+  const now = Date.now();
+  const lo = fromMs == null ? -Infinity : fromMs, hi = toMs == null ? Infinity : toMs;
+  return pjBlocks(id).reduce((acc, s) => {
+    const end = s.end == null ? now : s.end;          // a running block counts up to now
+    return acc + Math.max(0, Math.min(end, hi) - Math.max(s.start, lo));
+  }, 0);
+}
+/* Monday-start week boundaries by real date arithmetic, not ms multiples — adding
+   7*86400000 across a DST change lands an hour off and silently shifts a week's hours. */
+function pjWeekStartDate(back) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7 * (back || 0));
+  return d;
+}
+function pjWeekMs(id, back) {
+  const a = pjWeekStartDate(back), b = new Date(a); b.setDate(b.getDate() + 7);
+  return pjMs(id, a.getTime(), b.getTime());
+}
+function pjWeeks(id, n) {
+  const out = [];
+  for (let i = (n || PJ_SPARK_WEEKS) - 1; i >= 0; i--) out.push(+(pjWeekMs(id, i) / 3600000).toFixed(2));
+  return out;
+}
+
+/* ---- derived state ---- */
+function pjProgress(p) {
+  const items = (p.steps || []).concat(p.miles || []);
+  if (!items.length) return null;      // no plan yet is NOT 0% — don't invent a denominator
+  const done = items.filter(x => x.done).length;
+  return { done, tot: items.length, pct: Math.round(done * 100 / items.length) };
+}
+function pjLastMs(p) {
+  let last = 0;
+  pjBlocks(p.id).forEach(s => { const b = s.end == null ? Date.now() : s.end; if (b > last) last = b; });
+  (p.steps || []).concat(p.miles || []).forEach(x => { if (x.doneAt > last) last = x.doneAt; });
+  (p.notes || []).forEach(n => { if (n.at > last) last = n.at; });
+  return last;
+}
+function pjDaysIdle(p) { const l = pjLastMs(p); return l ? Math.floor((Date.now() - l) / 86400000) : null; }
+function pjDaysToDue(p) {
+  if (!p.due) return null;
+  return Math.round((new Date(p.due + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
+}
+/* One badge per project, worst-first. Order matters: an overdue project is overdue even if it
+   was touched this morning, and a stalled one is stalled even if nothing is due. */
+function pjHealth(p) {
+  if (p.status === 'done') return { k: 'done', label: 'Done', cls: 'ok' };
+  const pr = pjProgress(p);
+  const openWork = !pr || pr.done < pr.tot;
+  const dd = pjDaysToDue(p);
+  if (p.status !== 'paused' && dd != null && dd < 0 && openWork)
+    return { k: 'overdue', label: `${-dd}d overdue`, cls: 'bad' };
+  if (p.status === 'paused') return { k: 'paused', label: 'Paused', cls: 'mute' };
+  if (dd != null && dd <= 3 && openWork)
+    return { k: 'due', label: dd === 0 ? 'Due today' : `Due in ${dd}d`, cls: 'warn' };
+  const idle = pjDaysIdle(p);
+  if (p.status === 'active' && openWork && idle != null && idle >= PJ_STALE_DAYS)
+    return { k: 'stalled', label: `Untouched ${idle}d`, cls: 'warn' };
+  if (p.status === 'active' && openWork && idle == null)
+    return { k: 'new', label: 'Not started', cls: 'mute' };
+  if (p.status === 'planning') return { k: 'planning', label: 'Planning', cls: 'mute' };
+  return { k: 'on', label: 'On track', cls: 'ok' };
+}
+function pjNextItem(p) {
+  const m = (p.miles || []).filter(x => !x.done).sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1)[0];
+  if (m) return { kind: 'Milestone', text: m.text, due: m.due };
+  const s = (p.steps || []).find(x => !x.done);
+  return s ? { kind: 'Next step', text: s.text, due: s.due } : null;
+}
+function pjNeedsAttention() {
+  return pjAll().filter(p => ['overdue', 'due', 'stalled'].includes(pjHealth(p).k));
+}
+
+/* ---- list ordering ---- */
+const PJ_SORTS = [
+  { k: 'smart',  label: 'Needs me' },
+  { k: 'due',    label: 'Due date' },
+  { k: 'hours',  label: 'Hours' },
+  { k: 'prog',   label: 'Progress' },
+  { k: 'name',   label: 'A–Z' },
+];
+function pjSorted(list) {
+  const rank = { overdue: 0, due: 1, stalled: 2, on: 3, new: 4, planning: 5, paused: 6, done: 7 };
+  const arr = list.slice();
+  if (pjSort === 'smart') {
+    arr.sort((a, b) => (rank[pjHealth(a).k] - rank[pjHealth(b).k]) || (b.prio - a.prio) ||
+      ((pjDaysIdle(b) || 0) - (pjDaysIdle(a) || 0)));
+  } else if (pjSort === 'due') {
+    arr.sort((a, b) => (a.due || '9999-99-99').localeCompare(b.due || '9999-99-99') || (b.prio - a.prio));
+  } else if (pjSort === 'hours') {
+    arr.sort((a, b) => pjMs(b.id) - pjMs(a.id));
+  } else if (pjSort === 'prog') {
+    arr.sort((a, b) => ((pjProgress(b) || {}).pct || 0) - ((pjProgress(a) || {}).pct || 0));
+  } else {
+    arr.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return arr;
+}
+function pjFiltered() {
+  const all = pjAll();
+  if (pjFilter === 'all') return pjSorted(all);
+  if (pjFilter === 'open') return pjSorted(all.filter(p => p.status !== 'done'));
+  return pjSorted(all.filter(p => p.status === pjFilter));
+}
+
+/* ---- bits of markup ---- */
+function pjHrs(ms) { return ms >= 3600000 ? fmtDur(ms) : (ms > 0 ? fmtDur(ms, true) : '—'); }
+function pjBadge(h) { return `<span class="pj-badge ${h.cls}">${escapeHtml(h.label)}</span>`; }
+function pjBar(p) {
+  const pr = pjProgress(p);
+  if (!pr) return `<div class="pj-noplan">No steps yet — add the first one to track progress</div>`;
+  return `<div class="pj-bar" role="img" aria-label="${pr.done} of ${pr.tot} done">
+      <i style="width:${pr.pct}%;background:${p.color}"></i></div>
+    <div class="pj-bar-l"><b>${pr.pct}%</b> · ${pr.done} of ${pr.tot} done</div>`;
+}
+function pjCard(p) {
+  const h = pjHealth(p), wk = pjWeekMs(p.id), tot = pjMs(p.id), nx = pjNextItem(p);
+  const idle = pjDaysIdle(p);
+  return `<button class="pj-card" data-pj-open="${p.id}" style="--pj:${p.color}">
+    <div class="pj-card-top">
+      <span class="pj-name">${escapeHtml(p.name)}</span>
+      ${pjBadge(h)}
+    </div>
+    ${p.outcome ? `<div class="pj-outcome">${escapeHtml(p.outcome)}</div>` : ''}
+    ${pjBar(p)}
+    <div class="pj-meta">
+      <span>${wk > 0 ? `<b>${pjHrs(wk)}</b> this week` : (tot > 0 ? `<b>${pjHrs(tot)}</b> total` : 'No time logged')}</span>
+      <span>${idle == null ? 'never touched' : idle === 0 ? 'touched today' : `${idle}d ago`}</span>
+    </div>
+    ${nx ? `<div class="pj-next"><span class="pj-next-k">${nx.kind}</span> ${escapeHtml(nx.text)}${nx.due ? ` <span class="pj-next-d">· ${shortDate(nx.due)}</span>` : ''}</div>` : ''}
+  </button>`;
+}
+
+/* ---- the screen ---- */
+function renderProjects() {
+  const el = document.getElementById('s-projects');
+  if (!el) return;
+  document.getElementById('screen-title').textContent = 'Projects';
+  if (pjOpen && pjById(pjOpen)) return pjRenderDetail(el);
+  pjOpen = null;
+
+  const all = pjAll();
+  const open = all.filter(p => p.status !== 'done');
+  const attn = pjNeedsAttention();
+  const weekMs = all.reduce((a, p) => a + pjWeekMs(p.id), 0);
+  document.getElementById('screen-sub').textContent =
+    all.length ? `${open.length} open · ${all.length - open.length} done` : 'nothing yet';
+
+  const counts = { open: open.length, all: all.length };
+  PJ_STATUS.forEach(s => counts[s.k] = all.filter(p => p.status === s.k).length);
+  const tabs = [{ k: 'open', label: 'Open' }].concat(PJ_STATUS.map(s => ({ k: s.k, label: s.label })));
+  const list = pjFiltered();
+
+  el.innerHTML = `
+    ${all.length ? `<div class="card pj-hero">
+      <div class="pj-hero-row">
+        <div class="pj-hero-cell"><div class="pj-hero-n">${open.length}</div><div class="pj-hero-l">open</div></div>
+        <div class="pj-hero-cell"><div class="pj-hero-n">${weekMs > 0 ? pjHrs(weekMs) : '—'}</div><div class="pj-hero-l">logged this week</div></div>
+        <div class="pj-hero-cell ${attn.length ? 'hot' : ''}"><div class="pj-hero-n">${attn.length}</div><div class="pj-hero-l">need you</div></div>
+      </div>
+      ${attn.length ? `<div class="pj-attn">${attn.slice(0, 4).map(p =>
+        `<button class="pj-attn-row" data-pj-open="${p.id}"><span class="pj-dot" style="background:${p.color}"></span>
+          <span class="pj-attn-n">${escapeHtml(p.name)}</span>${pjBadge(pjHealth(p))}</button>`).join('')}</div>`
+      : `<div class="pj-allgood">Nothing overdue, nothing stalled 🎉</div>`}
+    </div>` : ''}
+
+    <div class="card">
+      ${pjAddOpen ? `
+        <h2>New project</h2>
+        <div class="field"><label>Name</label><input type="text" id="pj-new-name" placeholder="e.g. Ship Daylog v3" autocomplete="off"></div>
+        <div class="field"><label>What does done look like? <span class="hint">(optional)</span></label>
+          <input type="text" id="pj-new-outcome" placeholder="e.g. 500 installs and a 4★ rating"></div>
+        <div class="pj-row2">
+          <div class="field"><label>Status</label><select id="pj-new-status">${PJ_STATUS.filter(s => s.k !== 'done').map(s => `<option value="${s.k}"${s.k === 'active' ? ' selected' : ''}>${s.label}</option>`).join('')}</select></div>
+          <div class="field"><label>Target date <span class="hint">(optional)</span></label><input type="date" id="pj-new-due"></div>
+        </div>
+        <div class="pj-btns"><button class="btn btn-primary btn-sm" id="pj-create">Create project</button>
+          <button class="btn btn-ghost btn-sm" id="pj-create-cancel">Cancel</button></div>
+      ` : `<button class="btn btn-primary" id="pj-add-open" style="width:100%">＋ New project</button>`}
+    </div>
+
+    ${all.length ? `<div class="card" style="padding:12px 12px 8px">
+      <div class="seg-row">${tabs.map(t => `<button class="seg-btn ${pjFilter === t.k ? 'on' : ''}" data-pj-filter="${t.k}">${t.label}${counts[t.k] ? ` <span class="pj-c">${counts[t.k]}</span>` : ''}</button>`).join('')}</div>
+      <div class="pj-sort">Sort ${PJ_SORTS.map(s => `<button class="pj-sortb ${pjSort === s.k ? 'on' : ''}" data-pj-sort="${s.k}">${s.label}</button>`).join('')}</div>
+    </div>` : ''}
+
+    <div class="pj-list">${list.length ? list.map(pjCard).join('')
+      : `<div class="card"><div class="empty">${all.length ? 'Nothing in this filter.' : 'No projects yet.<br><br>A project is anything with an outcome and more than one step — a launch, a renovation, a course, a side business. Create one above, then tag your logged time to it to see where the hours really go.'}</div></div>`}</div>`;
+}
+
+/* ---- detail ---- */
+function pjRenderDetail(el) {
+  const p = pjById(pjOpen);
+  const h = pjHealth(p), pr = pjProgress(p);
+  const tot = pjMs(p.id), wk = pjWeekMs(p.id), weeks = pjWeeks(p.id, PJ_SPARK_WEEKS);
+  const idle = pjDaysIdle(p), dd = pjDaysToDue(p);
+  const run = runningSeg();
+  const running = run && run.pid === p.id;
+  const acts = allActs();
+  const blocks = pjBlocks(p.id).slice().sort((a, b) => b.start - a.start).slice(0, 6);
+  document.getElementById('screen-sub').textContent = h.label;
+
+  el.innerHTML = `
+    <button class="back-btn" id="pj-back">← All projects</button>
+
+    <div class="card pj-head" style="--pj:${p.color}">
+      <input type="text" class="pj-title-in" data-pj-field="name" value="${escapeHtml(p.name)}" placeholder="Project name">
+      <input type="text" class="pj-out-in" data-pj-field="outcome" value="${escapeHtml(p.outcome)}" placeholder="What does done look like?">
+      <div class="pj-chips">${pjBadge(h)}
+        <span class="pj-chip">${PJ_PRIO[p.prio]} priority</span>
+        ${p.due ? `<span class="pj-chip">${dd < 0 ? `${-dd}d overdue` : `${shortDate(p.due)}`}</span>` : ''}
+        <span class="pj-chip">since ${shortDate(p.created)}</span></div>
+      ${pjBar(p)}
+    </div>
+
+    <div class="card">
+      <h2>⏱ Time on this project</h2>
+      ${tot > 0 ? `<div class="pj-time-row">
+          <div class="pj-time-cell"><div class="pj-time-n">${pjHrs(tot)}</div><div class="pj-hero-l">total</div></div>
+          <div class="pj-time-cell"><div class="pj-time-n">${pjHrs(wk)}</div><div class="pj-hero-l">this week</div></div>
+          <div class="pj-time-cell">${sparkline(weeks, 'mood', 96, 30)}<div class="pj-hero-l">${PJ_SPARK_WEEKS} weeks</div></div>
+        </div>`
+        : `<div class="pj-noplan">No time tagged to this project yet. Start the timer below, or tap any block on the Time screen and assign it here.</div>`}
+      <div class="pj-row2">
+        <div class="field"><label>Timer activity</label>
+          <select data-pj-field="act"><option value="">— pick one —</option>
+            ${acts.map(a => `<option value="${a.id}"${p.act === a.id ? ' selected' : ''}>${a.emoji || ''} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>&nbsp;</label>
+          <button class="btn ${running ? 'pj-stop' : 'btn-primary'}" id="pj-timer" ${p.act ? '' : 'disabled'} style="width:100%">${running ? '⏹ Stop timing' : '▶ Start timing'}</button></div>
+      </div>
+      ${blocks.length ? `<div class="pj-blocks">${blocks.map(s => `<div class="pj-block">
+          <span>${actById(s.act).emoji || ''} ${escapeHtml(s.t || actById(s.act).name)}</span>
+          <span class="pj-block-d">${shortDate(todayStr(new Date(s.start)))} · ${s.end == null ? 'running' : fmtDur(s.end - s.start, true)}</span>
+        </div>`).join('')}</div>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>🚩 Milestones <span class="hint">${(p.miles || []).filter(x => x.done).length}/${(p.miles || []).length}</span></h2>
+      ${(p.miles || []).length ? `<div class="pj-items">${p.miles.map(m => pjItemRow(p, m, 'miles')).join('')}</div>` : ''}
+      <div class="pj-add-h">Add a milestone</div>
+      ${/* Text, date and Add on one flex row squeezed the text field to 39px at 320px wide —
+             unusable. The name gets its own row; the date and button share the next. */''}
+      <div class="pj-mile-form">
+        <input type="text" id="pj-mile-in" placeholder="e.g. Beta with 10 testers" autocomplete="off">
+        <div class="pj-mile-form-row">
+          <input type="date" id="pj-mile-due" aria-label="milestone target date">
+          <button class="btn btn-primary btn-sm" id="pj-mile-add">Add</button></div>
+      </div>
+      <div class="hint" style="margin-top:8px">Milestones are the few outcomes that matter. Steps below are the work.</div>
+    </div>
+
+    <div class="card">
+      <h2>✅ Steps <span class="hint">${(p.steps || []).filter(x => x.done).length}/${(p.steps || []).length}</span></h2>
+      ${(p.steps || []).length ? `<div class="pj-items">${p.steps.map(s => pjItemRow(p, s, 'steps')).join('')}</div>` : ''}
+      <div class="pj-add-h">Add a step</div>
+      <div class="task-add"><input type="text" id="pj-step-in" placeholder="Next concrete thing to do…" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="pj-step-add">Add</button></div>
+      ${(p.steps || []).some(x => !x.done) ? `<div class="hint" style="margin-top:8px">Tap <b>↗</b> on any step to drop it into today's tasks.</div>` : ''}
+    </div>
+
+    <div class="card">
+      <h2>📓 Log <span class="hint">${(p.notes || []).length}</span></h2>
+      ${(p.notes || []).length ? `<div class="pj-notes">${p.notes.slice().sort((a, b) => b.at - a.at).map(n => `
+        <div class="pj-note"><div class="pj-note-h">${shortDate(todayStr(new Date(n.at)))}
+          <button class="del" data-pj-note-del="${n.id}">×</button></div>
+          <div class="pj-note-t">${escapeHtml(n.text)}</div></div>`).join('')}</div>` : ''}
+      <div class="pj-add-h">Add an entry</div>
+      <div class="task-add"><input type="text" id="pj-note-in" placeholder="Decision, blocker, what happened…" autocomplete="off">
+        <button class="btn btn-primary btn-sm" id="pj-note-add">Add</button></div>
+    </div>
+
+    <div class="card">
+      <h2>🔗 Links <span class="hint">${(p.links || []).length}</span></h2>
+      ${(p.links || []).length ? `<div class="pj-items">${p.links.map(l => `<div class="pj-item">
+        <a class="pj-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label || l.url)}</a>
+        <button class="del" data-pj-link-del="${l.id}">×</button></div>`).join('')}</div>` : ''}
+      <div class="pj-add-h">Add a link</div>
+      <div class="task-add"><input type="text" id="pj-link-label" placeholder="Label" style="max-width:110px">
+        <input type="text" id="pj-link-url" placeholder="https://…" inputmode="url">
+        <button class="btn btn-primary btn-sm" id="pj-link-add">Add</button></div>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ Project settings</h2>
+      <div class="pj-row2">
+        <div class="field"><label>Status</label><select data-pj-field="status">${PJ_STATUS.map(s => `<option value="${s.k}"${p.status === s.k ? ' selected' : ''}>${s.label}</option>`).join('')}</select></div>
+        <div class="field"><label>Priority</label><select data-pj-field="prio">${[3, 2, 1].map(v => `<option value="${v}"${p.prio === v ? ' selected' : ''}>${PJ_PRIO[v]}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Target date</label><input type="date" data-pj-field="due" value="${escapeHtml(p.due)}"></div>
+      <div class="field"><label>Colour</label>
+        <div class="pj-swatches">${PJ_COLORS.map(c => `<button class="pj-sw ${p.color === c ? 'on' : ''}" data-pj-color="${c}" style="background:${c}" aria-label="colour ${c}"></button>`).join('')}</div></div>
+      <button class="btn pj-danger btn-sm" id="pj-del" style="margin-top:6px">Delete this project</button>
+      <div class="hint" style="margin-top:8px">Deleting a project keeps your time blocks — they just stop being tagged to it.</div>
+    </div>`;
+}
+
+function pjItemRow(p, it, kind) {
+  const done = !!it.done;
+  return `<div class="pj-item ${done ? 'done' : ''}">
+    <button class="pj-tick" data-pj-tick="${kind}:${it.id}" aria-label="${done ? 'mark not done' : 'mark done'}">${done ? '☑' : '☐'}</button>
+    <span class="pj-item-t">${escapeHtml(it.text)}${it.due ? ` <span class="pj-next-d">· ${shortDate(it.due)}</span>` : ''}</span>
+    ${done ? '' : `<button class="pj-push" data-pj-push="${kind}:${it.id}" title="add to today's tasks">↗</button>`}
+    <button class="del" data-pj-item-del="${kind}:${it.id}">×</button></div>`;
+}
+
+/* ---- handlers ---- */
+document.addEventListener('click', (ev) => {
+  const t = ev.target;
+
+  const openB = t.closest('[data-pj-open]');
+  if (openB) { pjOpen = openB.dataset.pjOpen; navigateTo('projects'); return; }
+  if (t.id === 'pj-back') { pjOpen = null; renderProjects(); return; }
+
+  const fb = t.closest('[data-pj-filter]');
+  if (fb) { pjFilter = fb.dataset.pjFilter; renderProjects(); return; }
+  const sb = t.closest('[data-pj-sort]');
+  if (sb) { pjSort = sb.dataset.pjSort; renderProjects(); return; }
+
+  if (t.id === 'pj-add-open') { pjAddOpen = true; renderProjects();
+    setTimeout(() => { const i = document.getElementById('pj-new-name'); if (i) i.focus(); }, 30); return; }
+  if (t.id === 'pj-create-cancel') { pjAddOpen = false; renderProjects(); return; }
+  if (t.id === 'pj-create') {
+    const name = (document.getElementById('pj-new-name').value || '').trim().slice(0, 80);
+    if (!name) { toast('Give the project a name', true); return; }
+    const p = pjNorm({
+      id: 'pj' + Date.now(), name,
+      outcome: (document.getElementById('pj-new-outcome').value || '').trim().slice(0, 160),
+      status: document.getElementById('pj-new-status').value,
+      due: document.getElementById('pj-new-due').value || '',
+      color: PJ_COLORS[DB.projects().length % PJ_COLORS.length],
+    });
+    pjPut(p); pjAddOpen = false; pjOpen = p.id; renderProjects(); buzz(12); toast('Project created');
+    return;
+  }
+
+  if (!pjOpen) return;   // everything below is detail-view only
+
+  const tick = t.closest('[data-pj-tick]');
+  if (tick) {
+    const [kind, id] = tick.dataset.pjTick.split(':');
+    pjMutate(pjOpen, p => {
+      const it = (p[kind] || []).find(x => x.id === id);
+      if (!it) return;
+      it.done = !it.done;
+      if (it.done) { it.doneAt = Date.now(); buzz(10); } else delete it.doneAt;
+    });
+    renderProjects(); return;
+  }
+  const push = t.closest('[data-pj-push]');
+  if (push) {
+    const [kind, id] = push.dataset.pjPush.split(':');
+    const p = pjById(pjOpen);
+    const it = (p[kind] || []).find(x => x.id === id);
+    if (!it) return;
+    const tasks = DB.tasks();
+    tasks.unshift({ id: 't' + Date.now(), text: `${p.name}: ${it.text}`, done: false, created: todayStr(), color: '' });
+    DB.saveTasks(tasks); buzz(12); toast("Added to today's tasks ✅");
+    return;
+  }
+  const idel = t.closest('[data-pj-item-del]');
+  if (idel) {
+    const [kind, id] = idel.dataset.pjItemDel.split(':');
+    pjMutate(pjOpen, p => { p[kind] = (p[kind] || []).filter(x => x.id !== id); });
+    renderProjects(); return;
+  }
+  if (t.id === 'pj-mile-add' || t.id === 'pj-step-add') {
+    const step = t.id === 'pj-step-add';
+    const inp = document.getElementById(step ? 'pj-step-in' : 'pj-mile-in');
+    const text = (inp.value || '').trim().slice(0, 140);
+    if (!text) return;
+    const due = step ? '' : (document.getElementById('pj-mile-due').value || '');
+    pjMutate(pjOpen, p => (p[step ? 'steps' : 'miles']).push({ id: 'i' + Date.now(), text, due, done: false }));
+    renderProjects();
+    const again = document.getElementById(step ? 'pj-step-in' : 'pj-mile-in'); if (again) again.focus();
+    return;
+  }
+  if (t.id === 'pj-note-add') {
+    const inp = document.getElementById('pj-note-in');
+    const text = (inp.value || '').trim().slice(0, 800);
+    if (!text) return;
+    pjMutate(pjOpen, p => p.notes.push({ id: 'n' + Date.now(), at: Date.now(), text }));
+    renderProjects(); return;
+  }
+  const ndel = t.closest('[data-pj-note-del]');
+  if (ndel) { pjMutate(pjOpen, p => { p.notes = p.notes.filter(n => n.id !== ndel.dataset.pjNoteDel); }); renderProjects(); return; }
+  if (t.id === 'pj-link-add') {
+    let url = (document.getElementById('pj-link-url').value || '').trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;      // a bare domain must not become a relative link
+    const label = (document.getElementById('pj-link-label').value || '').trim().slice(0, 60);
+    pjMutate(pjOpen, p => p.links.push({ id: 'l' + Date.now(), label, url: url.slice(0, 500) }));
+    renderProjects(); return;
+  }
+  const ldel = t.closest('[data-pj-link-del]');
+  if (ldel) { pjMutate(pjOpen, p => { p.links = p.links.filter(l => l.id !== ldel.dataset.pjLinkDel); }); renderProjects(); return; }
+
+  const sw = t.closest('[data-pj-color]');
+  if (sw) { pjMutate(pjOpen, p => p.color = sw.dataset.pjColor); renderProjects(); return; }
+
+  if (t.id === 'pj-timer') {
+    const p = pjById(pjOpen);
+    if (!p.act) { toast('Pick a timer activity first', true); return; }
+    const run = runningSeg();
+    if (run && run.pid === p.id) { startAct(run.act, p.id); }      // same project+act = stop
+    else startAct(p.act, p.id);
+    renderProjects(); return;
+  }
+  if (t.id === 'pj-del') {
+    const p = pjById(pjOpen);
+    if (!confirm(`Delete "${p.name}"? Its steps, milestones and log are removed. Your time blocks are kept.`)) return;
+    DB.saveProjects(DB.projects().filter(x => x.id !== pjOpen));
+    /* Untag the orphaned blocks. Leaving a dead pid behind means the hours are invisible
+       everywhere: excluded from every project AND from the "untagged" pool. */
+    const log = DB.timelog(); let touched = false;
+    log.forEach(s => { if (s.pid === pjOpen) { delete s.pid; s.upd = Date.now(); touched = true; } });
+    if (touched) DB.saveTimelog(log);
+    pjOpen = null; renderProjects(); toast('Project deleted');
+    return;
+  }
+});
+
+/* Field edits: <input>/<select> carrying data-pj-field write straight onto the project. */
+document.addEventListener('change', (ev) => {
+  const f = ev.target.closest('[data-pj-field]');
+  if (!f || !pjOpen) return;
+  const k = f.dataset.pjField;
+  let v = f.value;
+  if (k === 'prio') v = +v;
+  if (k === 'name') { v = (v || '').trim().slice(0, 80); if (!v) { toast('A project needs a name', true); renderProjects(); return; } }
+  if (k === 'outcome') v = (v || '').trim().slice(0, 160);
+  pjMutate(pjOpen, p => p[k] = v);
+  /* Name/outcome are free text — re-rendering on every keystroke-blur would steal focus, so
+     only the structural fields redraw. The header inputs already show what was typed. */
+  if (['status', 'prio', 'due', 'act'].includes(k)) renderProjects();
+  else { const st = document.getElementById('screen-sub'); if (st) st.textContent = pjHealth(pjById(pjOpen)).label; }
+});
+
+
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
 // Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
 const NAV_DEF = [
@@ -8254,6 +8779,7 @@ const NAV_DEF = [
   { k: 'tasks',    ico: 'check',    label: 'Tasks' },
   { k: 'notes',    ico: 'note',     label: 'Notes' },
   { k: 'plans',    ico: 'list',     label: 'Plans' },
+  { k: 'projects', ico: 'layers',   label: 'Projects' },
   { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
   { k: 'waves',    ico: 'radio',    label: 'Waves' },
   { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
@@ -8466,7 +8992,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
