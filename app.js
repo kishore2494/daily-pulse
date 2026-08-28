@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v214';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v215';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5180,7 +5180,7 @@ function renderSettings() {
     ${alarmHealthHTML()}
     <div class="card">
       <h2>⏰ Reminders <span class="hint">${DB.reminders().length} set</span></h2>
-      ${DB.reminders().length ? DB.reminders().map(r => `
+      ${DB.reminders().length ? `<div class="rem-list">` + DB.reminders().map(r => `
         <div class="rem ${r.enabled?'':'off'}" data-remid="${r.id}">
           <div class="rem-top">
             <button class="rem-toggle" data-rem-toggle="${r.id}" title="on/off">${r.enabled?'🔔':'🔕'}</button>
@@ -5189,7 +5189,14 @@ function renderSettings() {
             <button class="del" data-rem-del="${r.id}">×</button>
           </div>
           <button class="rem-mode" data-rem-mode="${r.id}" title="tap to switch">${(r.mode||'alarm')==='alarm'?'⏰ Full-screen alarm':'🔔 Just a notification'}</button>
-        </div>`).join('') : '<div class="empty">No reminders yet. Add one below 👇</div>'}
+        </div>`).join('') + `</div>` : '<div class="empty">No reminders yet — add your first one below 👇</div>'}
+      ${/* This heading is load-bearing, not decoration. A saved reminder row (time + name + ×)
+             and the blank add-row (time + placeholder + Add) look almost identical, and the
+             add-row defaults to 21:00 — the same time onboarding sets. A user who set a
+             reminder during onboarding read the add-row as the only control and concluded
+             their reminder had not been saved at all. The saved rows now sit on their own
+             surface and this label marks where the list ends. */''}
+      <div class="rem-add-h">${DB.reminders().length ? 'Add another' : 'Add a reminder'}</div>
       <div class="task-add">
         <input type="time" id="rem-new-time" value="21:00" style="max-width:120px">
         <input type="text" id="rem-new-label" placeholder="Reminder name…">

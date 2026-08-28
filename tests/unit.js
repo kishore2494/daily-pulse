@@ -626,6 +626,40 @@
   if (aSnapS != null) localStorage.setItem('dp.sampleMeta', aSnapS); else localStorage.removeItem('dp.sampleMeta');
   _goalMap = null;
 
+  /* A reminder created during onboarding IS saved and IS listed in Settings — but the saved
+     row and the blank add-row below it were visually identical (both time + text + button,
+     both defaulting to 21:00), so it read as "my reminder never saved". These assert the two
+     things that keep them distinguishable: saved rows live in their own .rem-list container,
+     and a heading marks where that list ends and the add-form begins. */
+  (function () {
+    const rSnap = localStorage.getItem('dp.reminders');
+    localStorage.setItem('dp.reminders', JSON.stringify(
+      [{ id: 'remTEST1', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' }]));
+    renderSettings();
+    const card = [...document.querySelectorAll('#s-settings .card')]
+      .find(c => /Reminders/.test((c.querySelector('h2') || {}).textContent || ''));
+    ok('settings has a Reminders card', !!card);
+    if (card) {
+      ok('a saved reminder is listed', !!card.querySelector('[data-remid="remTEST1"]'));
+      ok('saved reminder is editable (time + label inputs)',
+        !!card.querySelector('[data-rem-time="remTEST1"]') && !!card.querySelector('[data-rem-label="remTEST1"]'));
+      ok('saved reminder is deletable', !!card.querySelector('[data-rem-del="remTEST1"]'));
+      ok('saved rows sit in their own list container', !!card.querySelector('.rem-list'));
+      const h = card.querySelector('.rem-add-h');
+      ok('add-form is separated by a heading', !!h && /add another/i.test(h.textContent));
+      ok('saved row is not inside the add-form',
+        !card.querySelector('.task-add [data-remid]'));
+    }
+    localStorage.removeItem('dp.reminders');
+    renderSettings();
+    const card2 = [...document.querySelectorAll('#s-settings .card')]
+      .find(c => /Reminders/.test((c.querySelector('h2') || {}).textContent || ''));
+    const h2 = card2 && card2.querySelector('.rem-add-h');
+    ok('empty state says "Add a reminder", not "Add another"', !!h2 && /add a reminder/i.test(h2.textContent));
+    if (rSnap != null) localStorage.setItem('dp.reminders', rSnap); else localStorage.removeItem('dp.reminders');
+    renderSettings();
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
