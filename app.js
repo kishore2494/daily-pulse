@@ -853,7 +853,7 @@ const WHATS_NEW = {
   v: 'w15',
   items: [
     '\ud83e\udde9 <b>Untracked time, filled in by asking</b> \u2014 the Time screen now finds the stretches of a past day you never tracked and, where your own history actually supports a guess, asks: \u201c09:00\u201311:15 \u2014 were you \ud83d\udcbc Work?\u201d Tap yes and it is logged. It only names an activity when you logged it in that same window on at least 3 other days, it counts weekdays and weekends separately (sleep and work are exactly what differ), and it always shows the support \u2014 \u201c6 of your last 9 tracked weekdays\u201d \u2014 so you can judge the guess rather than trust it. Nothing is ever filled in on its own, and \u201cleave blank\u201d is remembered.',
-    '\ud83d\uddc2\ufe0f <b>Projects</b> \u2014 a new screen in the \u2630 menu. Anything with an outcome and more than one step: a launch, a renovation, a course, a side business. Each project holds milestones, steps, a decision log and links, and shows one honest badge \u2014 <i>On track</i>, <i>Due in 3d</i>, <i>4d overdue</i> or <i>Untouched 12d</i>. The bit no other project tracker can do: hours come from <b>time you actually logged</b>, not hours you typed in. Tap \u25b6 Start timing on a project, or pick the project when you stop a timer. A block belongs to one project or none, so two projects that both use \u201cWork\u201d never claim the same hours \u2014 and a project with nothing tagged says so instead of showing a comforting zero.',
+    '\ud83d\uddc2\ufe0f <b>Projects</b> \u2014 a new screen in the \u2630 menu. Anything with an outcome and more than one step: a launch, a renovation, a course, a side business. Each project holds milestones, steps, a decision log and links, and shows one honest badge \u2014 <i>On track</i>, <i>Due in 3d</i>, <i>4d overdue</i> or <i>Untouched 12d</i>. The bit no other project tracker can do: hours come from <b>time you actually logged</b>, not hours you typed in. Time on a project is logged <b>as that project</b> \u2014 not under a borrowed tag \u2014 so it shows on your 24-hour timeline as \ud83d\uddc2\ufe0f the project name, in its own colour, and appears by name in where-the-time-went. Start it from the project or from the Projects row on the Time screen. A block belongs to one project or none, so two projects never claim the same hours \u2014 and a project with nothing tracked says so instead of showing a comforting zero.',
     '📊 <b>Stats looks like something now</b> — the overview opened with six identical grey boxes and no sense of direction. It now leads with your streak, then Mood, Energy and Polymath each with a 14-day sparkline and an arrow comparing this week to the one before. The three colours were checked for colour-blind readability and contrast in both light and dark, not just picked because they looked nice.',
     '🔔 <b>Notification fixes</b> — please update in the Play Store. Daylog\'s notifications showed a generic "i" instead of an icon, because there was no notification icon at all; there is now. And the activity-timer notification counts <b>live</b> — Android ticks it itself, so it keeps counting with the app closed, instead of just saying when you started. Pause and Stop are proper buttons.',
     '🏆 <b>Awards moved</b> — the trophy case is now its own screen in the ☰ menu, so Stats keeps all four of its tabs (Health was getting pushed off the edge on smaller phones).',
@@ -2376,7 +2376,25 @@ let TIME_ACTS_ALL = actCfg();
 /* visible activities = non-hidden defaults + non-hidden customs */
 function allActs() { return TIME_ACTS_ALL.filter(a => !a.hidden).concat(DB.timeacts().filter(a => !a.hidden)); }
 /* lookups include hidden ones so old timeline blocks still render right */
-function actById(id) { return TIME_ACTS_ALL.concat(DB.timeacts()).find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' }; }
+/* Project timers get their own identity rather than borrowing a category tag. Three projects
+   all timed as "Work" were indistinguishable on the 24h timeline, in the legend, in the
+   where-the-time-went breakdown and in the Android notification — all four of which resolve a
+   block through this one function, so teaching it about `pj:<id>` fixes every one of them.
+
+   `dp.pjnames` is a tombstone written when a project is deleted: without it, that project's
+   past blocks would resolve to the raw string "pj:pj1787…" forever. History stays readable. */
+const PJ_ACT = 'pj:';
+function actById(id) {
+  if (typeof id === 'string' && id.indexOf(PJ_ACT) === 0) {
+    const pid = id.slice(PJ_ACT.length);
+    const live = (safeParse(localStorage.getItem('dp.projects'), []) || []).find(x => x.id === pid);
+    if (live) return { id, emoji: '🗂️', name: live.name, color: live.color || '#5570dd', project: pid };
+    const gone = safeParse(localStorage.getItem('dp.pjnames'), {})[pid];
+    if (gone) return { id, emoji: '🗂️', name: gone.name, color: gone.color || '#5f6b85', project: pid, gone: true };
+    return { id, emoji: '🗂️', name: 'Former project', color: '#5f6b85', project: pid, gone: true };
+  }
+  return TIME_ACTS_ALL.concat(DB.timeacts()).find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' };
+}
 
 let ttDate = todayStr();       // day being viewed on the timeline
 let ttSelSeg = null;           // selected segment id (shows the edit card)
@@ -2522,10 +2540,23 @@ function renderTime() {
       style="--c:${a.color}"><span class="emoji">${a.emoji}</span><span>${escapeHtml(a.name)}</span>${on ? '<span class="live">●</span>' : ''}</button>`;
   }).join('');
 
+  /* Project time is a real category now, so it has to be startable from the place people
+     start timers — not only from inside the project. Same identity either way: act
+     'pj:<id>', tagged with the project id. */
+  const pjChips = (typeof pjAll === 'function' ? pjAll() : []).filter(x => x.status !== 'done');
+  const projectRow = pjChips.length ? `
+    <div class="pj-chiprow-h">Projects</div>
+    <div class="act-grid">${pjChips.map(x => {
+      const on = run && run.pid === x.id;
+      return `<button class="act-chip ${on ? 'on' : ''}" data-act-start="${PJ_ACT}${x.id}" data-act-pid="${x.id}"
+        style="--c:${x.color}"><span class="emoji">🗂️</span><span>${escapeHtml(x.name)}</span>${on ? '<span class="live">●</span>' : ''}</button>`;
+    }).join('')}</div>` : '';
+
   const isToday = ttDate === todayStr();
   const manual = ttShowManual ? `
     <div class="tt-manual">
-      <select id="tt-m-act">${allActs().map(a => `<option value="${a.id}">${a.emoji} ${escapeHtml(a.name)}</option>`).join('')}</select>
+      <select id="tt-m-act">${allActs().map(a => `<option value="${a.id}">${a.emoji} ${escapeHtml(a.name)}</option>`).join('')}${
+        pjChips.map(x => `<option value="${PJ_ACT}${x.id}">🗂️ ${escapeHtml(x.name)}</option>`).join('')}</select>
       <input type="time" id="tt-m-start"><span class="hint">to</span><input type="time" id="tt-m-end">
       <button class="btn btn-primary btn-sm" id="tt-m-save">Add</button>
     </div>` : '';
@@ -2535,6 +2566,7 @@ function renderTime() {
     <div class="card">
       <h2>Switch to <span class="hint">tapping switches instantly — the old timer stops itself</span></h2>
       <div class="act-grid">${chips}</div>
+      ${projectRow}
       <div class="task-add" style="margin-top:10px">
         <input type="text" id="tt-newact" placeholder="Add your own activity… (e.g. Cooking)" autocomplete="off">
         <button class="btn btn-ghost btn-sm" id="tt-newact-add">Add</button>
@@ -2767,7 +2799,7 @@ setInterval(() => {
 document.addEventListener('click', (ev) => {
   if (!document.getElementById('s-time').classList.contains('on')) return;
   const st = ev.target.closest('[data-act-start]');
-  if (st) { startAct(st.dataset.actStart); return; }
+  if (st) { startAct(st.dataset.actStart, st.dataset.actPid || ''); return; }
   if (ev.target.id === 'tt-stop') { const run = runningSeg(); if (run) startAct(run.act); return; }   // startAct on the running act = stop
   const sg = ev.target.closest('[data-seg]');
   if (sg) { ttSelSeg = (ttSelSeg === sg.dataset.seg) ? null : sg.dataset.seg; renderTime(); return; }
@@ -2787,7 +2819,12 @@ document.addEventListener('click', (ev) => {
     if (sv === ev2) { toast('Start and end are the same', true); return; }
     if (b <= a) b += 86400000;   // end earlier than start → it crosses midnight (e.g. 23:00 → 07:00 sleep)
     const log = DB.timelog(); const now = Date.now();
-    log.push({ id: 'ts' + now, act, start: a, end: b, upd: now });
+    let mid = 'ts' + now, mn = 0;
+    while (log.some(x => x.id === mid)) mid = 'ts' + now + '-' + (++mn);
+    const mblk = { id: mid, act, start: a, end: b, upd: now };
+    // A manual block picked as a project must count toward it, not just look like it.
+    if (act.indexOf(PJ_ACT) === 0) mblk.pid = act.slice(PJ_ACT.length);
+    log.push(mblk);
     log.sort((x, y) => x.start - y.start);
     DB.saveTimelog(log); ttShowManual = false; renderTime(); toast('Block added ✅'); return;
   }
@@ -5618,7 +5655,7 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'gapskip', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -8533,7 +8570,6 @@ function pjRenderDetail(el) {
   const idle = pjDaysIdle(p), dd = pjDaysToDue(p);
   const run = runningSeg();
   const running = run && run.pid === p.id;
-  const acts = allActs();
   const blocks = pjBlocks(p.id).slice().sort((a, b) => b.start - a.start).slice(0, 6);
   document.getElementById('screen-sub').textContent = h.label;
 
@@ -8558,13 +8594,11 @@ function pjRenderDetail(el) {
           <div class="pj-time-cell">${sparkline(weeks, 'mood', 96, 30)}<div class="pj-hero-l">${PJ_SPARK_WEEKS} weeks</div></div>
         </div>`
         : `<div class="pj-noplan">No time tagged to this project yet. Start the timer below, or tap any block on the Time screen and assign it here.</div>`}
-      <div class="pj-row2">
-        <div class="field"><label>Timer activity</label>
-          <select data-pj-field="act"><option value="">— pick one —</option>
-            ${acts.map(a => `<option value="${a.id}"${p.act === a.id ? ' selected' : ''}>${a.emoji || ''} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>&nbsp;</label>
-          <button class="btn ${running ? 'pj-stop' : 'btn-primary'}" id="pj-timer" ${p.act ? '' : 'disabled'} style="width:100%">${running ? '⏹ Stop timing' : '▶ Start timing'}</button></div>
-      </div>
+      ${/* No activity picker: time on a project is logged AS the project, not under a
+             borrowed tag. It appears on the timeline, in the legend and in the breakdown as
+             🗂️ <the project name> in the project's own colour. */''}
+      <button class="btn ${running ? 'pj-stop' : 'btn-primary'}" id="pj-timer" style="width:100%">${running ? '⏹ Stop timing' : '▶ Start timing this project'}</button>
+      <div class="hint" style="margin-top:8px">Logs to your 24-hour timeline as <b>🗂️ ${escapeHtml(p.name)}</b>. Tracked something under a normal activity instead? Tap that block on the Time screen and assign it here.</div>
       ${blocks.length ? `<div class="pj-blocks">${blocks.map(s => `<div class="pj-block">
           <span>${actById(s.act).emoji || ''} ${escapeHtml(s.t || actById(s.act).name)}</span>
           <span class="pj-block-d">${shortDate(todayStr(new Date(s.start)))} · ${s.end == null ? 'running' : fmtDur(s.end - s.start, true)}</span>
@@ -8736,10 +8770,9 @@ document.addEventListener('click', (ev) => {
 
   if (t.id === 'pj-timer') {
     const p = pjById(pjOpen);
-    if (!p.act) { toast('Pick a timer activity first', true); return; }
     const run = runningSeg();
-    if (run && run.pid === p.id) { startAct(run.act, p.id); }      // same project+act = stop
-    else startAct(p.act, p.id);
+    if (run && run.pid === p.id) startAct(run.act, p.id);   // same project = stop
+    else startAct(PJ_ACT + p.id, p.id);
     renderProjects(); return;
   }
   if (t.id === 'pj-del') {
@@ -8751,6 +8784,13 @@ document.addEventListener('click', (ev) => {
     const log = DB.timelog(); let touched = false;
     log.forEach(s => { if (s.pid === pjOpen) { delete s.pid; s.upd = Date.now(); touched = true; } });
     if (touched) DB.saveTimelog(log);
+    /* Blocks logged AS this project keep act 'pj:<id>'. Remember the name and colour so they
+       do not degrade into a raw id string on the timeline for the rest of time. */
+    if (log.some(s => s.act === PJ_ACT + pjOpen)) {
+      const names = safeParse(localStorage.getItem('dp.pjnames'), {});
+      names[pjOpen] = { name: p.name, color: p.color };
+      localStorage.setItem('dp.pjnames', JSON.stringify(names));
+    }
     pjOpen = null; renderProjects(); toast('Project deleted');
     return;
   }

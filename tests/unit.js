@@ -746,7 +746,32 @@
     ok('detail view renders', !!document.getElementById('pj-back') && !!document.getElementById('pj-timer'));
     ok('detail view has a back button, milestones, steps, log and links',
       ['pj-mile-add', 'pj-step-add', 'pj-note-add', 'pj-link-add', 'pj-del'].every(i => !!document.getElementById(i)));
-    ok('timer button is disabled until an activity is picked', document.getElementById('pj-timer').disabled);
+    ok('the timer needs no activity picked first', !document.getElementById('pj-timer').disabled);
+    ok('there is no borrowed-activity picker any more', !document.querySelector('[data-pj-field="act"]'));
+
+    /* Time on a project is logged AS the project. Three projects all timed under "Work" were
+       indistinguishable on the timeline, in the legend, in the breakdown and in the Android
+       notification — every one of which resolves a block through actById. */
+    localStorage.setItem('dp.timelog', '[]');
+    document.getElementById('pj-timer').click();
+    const pr1 = runningSeg();
+    ok('starting a project logs under the project\'s own activity id', pr1 && pr1.act === PJ_ACT + 'pS', pr1 && pr1.act);
+    ok('and is still tagged so the hours count', pr1 && pr1.pid === 'pS');
+    const shown = actById(pr1.act);
+    ok('the block resolves to the project name, not a borrowed tag', shown.name === 'Screen test', shown.name);
+    ok('the block carries the project colour', shown.color === '#5570dd', shown.color);
+    ok('two projects are distinguishable on the timeline',
+      actById(PJ_ACT + 'pS').name !== actById(PJ_ACT + 'nope').name);
+    /* Without a tombstone a deleted project's blocks resolve to the raw string "pj:pS". */
+    localStorage.setItem('dp.pjnames', JSON.stringify({ zz: { name: 'Old thing', color: '#dd7a3c' } }));
+    ok('a deleted project\'s history stays readable', actById(PJ_ACT + 'zz').name === 'Old thing');
+    ok('and is marked as gone', actById(PJ_ACT + 'zz').gone === true);
+    ok('an unknown project never shows a raw id', !/^pj:/.test(actById(PJ_ACT + 'never').name));
+    localStorage.removeItem('dp.pjnames');
+    ok('project names are backed up', BACKUP_KEYS.includes('pjnames'));
+    /* Project pseudo-activities must not leak into the activity grid or the customiser. */
+    ok('projects do not appear in the normal activity list', !allActs().some(a => /^pj:/.test(a.id)));
+    localStorage.setItem('dp.timelog', '[]');
     pjOpen = before;
 
     // --- Projects is reachable from the nav ---
