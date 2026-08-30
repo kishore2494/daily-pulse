@@ -808,8 +808,13 @@
     localStorage.removeItem('dp.gapskip');
 
     // --- a weekday with two tracked blocks leaves gaps, split where the guess changes ---
+    /* build() seeds days 2..42 back. Whether the target day falls inside that range depends
+       on what weekday today is — on a Sunday the most recent weekday IS day 2 and arrives
+       pre-filled, so the gaps the test needs do not exist. Strip the target day explicitly
+       instead of relying on the calendar, the way the weekend case below already does. */
     const wd = pastDay(false), wb = new Date(wd + 'T00:00:00').getTime();
-    let log = build();
+    const clearDay = (arr, b0) => arr.filter(x => !(x.start < b0 + 86400000 && x.end > b0 + 7 * H));
+    let log = clearDay(build(), wb);
     log.push({ id: 'y1', act: 'sleep', start: wb - 2 * H, end: wb + 6.5 * H, upd: 1 });
     log.push({ id: 'y2', act: 'gym', start: wb + 12 * H, end: wb + 13 * H, upd: 1 });
     localStorage.setItem('dp.timelog', JSON.stringify(log));
@@ -840,7 +845,7 @@
 
     // --- the weekday/weekend split is the whole point ---
     const we = pastDay(true), eb = new Date(we + 'T00:00:00').getTime();
-    log = build().filter(s => !(s.start < eb + 86400000 && s.end > eb + 7 * H));
+    log = clearDay(build(), eb);
     log.push({ id: 'w1', act: 'sleep', start: eb - 2 * H, end: eb + 6.5 * H, upd: 1 });
     localStorage.setItem('dp.timelog', JSON.stringify(log));
     const wrows = gapSegments(we);
@@ -886,7 +891,7 @@
        offered, so it never becomes a single useless "what were you doing all day?" row. */
     const blank = pastDay(false), bb = new Date(blank + 'T00:00:00').getTime();
     localStorage.setItem('dp.timelog', JSON.stringify(build().filter(x =>
-      !(x.end > bb && x.start < bb + 86400000))));
+      !(x.end > bb && x.start < bb + 86400000))));   // fully blank, including the night block
     localStorage.removeItem('dp.gapskip');
     const brows = gapSegments(blank);
     ok('an untracked day offers only windows with a real guess',
@@ -958,6 +963,56 @@
     ok('9:16 is a real ratio the builder knows', !!CARD_RATIOS['9:16']);
     ok('story is taller than post', CARD_RATIOS['9:16'] > CARD_RATIOS['4:5']);
     ok('cardratio is backed up', BACKUP_KEYS.includes('cardratio'));
+  })();
+
+  /* ---- SHEET SYNC ---- */
+  (function () {
+    const sSnap = localStorage.getItem('dp.settings');
+    renderSettings();
+    const card = [...document.querySelectorAll('#s-settings .card')]
+      .find(c => /Sync/.test((c.querySelector('h2') || {}).textContent || ''));
+    ok('the sync section is visible again', !!card);
+    ok('it takes a sheet link', !!document.getElementById('sync-url'));
+    ok('it links to the setup guide', !!card && /sheets-setup\.html/.test(card.innerHTML));
+    ok('it discloses what is sent', !!card && /Never sent/.test(card.textContent));
+
+    /* The whole Data Safety answer rests on this: Health Connect readings must never appear
+       in the push payload. If a future change adds them, this fails before it ships. */
+    const s0 = DB.settings(); s0.syncUrl = ''; DB.saveSettings(s0);
+    const hSnap = localStorage.getItem('dp.health');
+    localStorage.setItem('dp.health', JSON.stringify({ '2026-01-01': { steps: 9999, hr: 61 } }));
+    let captured = null;
+    const realFetch = window.fetch;
+    window.fetch = (u, o) => { captured = o && o.body; return Promise.resolve({ ok: true }); };
+    const s1 = DB.settings(); s1.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(s1);
+    pushState(true);
+    window.fetch = realFetch;
+    ok('a push actually happened', typeof captured === 'string' && captured.length > 0);
+    if (typeof captured === 'string') {
+      const sent = JSON.parse(captured);
+      ok('Health Connect data is NOT in the sync payload', !('health' in sent));
+      ok('and no health reading leaks into it', !/9999|"hr"\s*:\s*61/.test(captured));
+      ok('the per-device card shape is not synced', !('cardratio' in sent));
+      ok('projects are synced', 'projects' in sent);
+      ok('project name tombstones are synced', 'projectnames' in sent);
+      ok('the award ledger is synced', 'awards' in sent);
+    }
+    if (hSnap != null) localStorage.setItem('dp.health', hSnap); else localStorage.removeItem('dp.health');
+
+    /* Awards and gap dismissals must UNION, never adopt: a stale second phone pushing its
+       older ledger must not be able to un-earn an award. */
+    localStorage.setItem('dp.awards', JSON.stringify({ 'streak:7': '2026-01-05' }));
+    applyRemoteState({ touched: 1, awards: { 'streak:14': '2026-02-01' } });
+    const led = safeParse(localStorage.getItem('dp.awards'), {});
+    ok('a remote award is added', led['streak:14'] === '2026-02-01');
+    ok('and a local award is never removed by the merge', led['streak:7'] === '2026-01-05');
+    applyRemoteState({ touched: 1, awards: {} });
+    ok('an empty remote ledger cannot wipe local awards',
+      Object.keys(safeParse(localStorage.getItem('dp.awards'), {})).length === 2);
+    localStorage.removeItem('dp.awards');
+
+    if (sSnap != null) localStorage.setItem('dp.settings', sSnap); else localStorage.removeItem('dp.settings');
+    renderSettings();
   })();
 
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');

@@ -214,5 +214,12 @@
   // 7 — vertical density: how much scrolling this screen costs
   const screens = de.scrollHeight / VH;
 
-  return JSON.stringify({ vw: VW, vh: VH, screensTall: +screens.toFixed(2), findings: out });
+  /* Page identity, stamped on every measurement. The browse daemon is shared with other
+     work on this machine, and `eval` runs against whatever tab is active — so a stray tab
+     from another project got recorded as a Daylog screen, complete with its contrast
+     findings ("Voltage levels", "Customer sign-off"). Numbers from the wrong page are worse
+     than no numbers, so report.py drops any row that is not Daylog and says how many. */
+  const app = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null;
+  return JSON.stringify({ vw: VW, vh: VH, screensTall: +screens.toFixed(2),
+    app: app, href: location.href, findings: out });
 })();

@@ -1,0 +1,83 @@
+PLAY CONSOLE ▸ App content ▸ Data safety
+Update required before shipping v218 (Google Sheet sync).
+=========================================================
+
+WHY THIS CHANGES
+Until v217 the declaration said Daylog collects no data, and that was true — nothing left
+the device. v218 adds an OPT-IN Google Sheet sync. When a user connects it, their log is
+transmitted off the device to a Google Apps Script they deployed in their own Google
+account. That is "collected" under Play's definition (transmitted off the device), even
+though it goes to the user's own Drive and the developer never receives it.
+
+Leaving the old declaration in place while shipping the feature is a policy violation.
+Update the form BEFORE the release that turns sync on.
+
+--------------------------------------------------------------------------------
+SECTION 1 — Data collection and security
+--------------------------------------------------------------------------------
+Does your app collect or share any of the required user data types?
+  → YES
+
+Is all of the user data collected by your app encrypted in transit?
+  → YES
+    (Apps Script web-app endpoints are HTTPS only.)
+
+Do you provide a way for users to request that their data is deleted?
+  → YES
+    (The sheet is in the user's own Drive; deleting it deletes the copy. Clearing the link
+     in Settings stops all transmission. Both are stated in the app.)
+
+--------------------------------------------------------------------------------
+SECTION 2 — Data types
+--------------------------------------------------------------------------------
+For EVERY type below, the answers are the same:
+  Collected: YES        Shared: NO
+  Processed ephemerally: NO
+  Required or optional: OPTIONAL — users can choose whether this data is collected
+  Purpose: App functionality  (do NOT tick Analytics, Advertising, or Personalization)
+
+Tick these types:
+
+  Personal info ▸ Name
+    Only if the user types a name in Settings. It is optional and free-text.
+
+  Health and fitness ▸ Health info
+    Journal/log fields the USER TYPES: mood, energy, sleep hours they enter by hand,
+    workout log, habit ticks.
+    ⚠ Health CONNECT readings (steps, distance, heart rate, sleep sessions, calories,
+      workouts) are NOT transmitted — dp.health is deliberately excluded from the sync
+      payload. Do not declare those as collected, and do not start sending them without
+      revisiting this form and the Health Connect terms.
+
+  Personal info ▸ Other personal info
+    Free-text journal and reflection entries, notes, plans, project notes.
+
+  App activity ▸ Other actions
+    Time-tracking blocks, tasks, goals, awards.
+
+Do NOT tick: Location, Financial info, Messages, Photos/Videos, Audio, Files,
+Contacts, Calendar, Web browsing, App info and performance, Device or other IDs.
+
+--------------------------------------------------------------------------------
+SECTION 3 — Things to check yourself, because I could not verify them
+--------------------------------------------------------------------------------
+1. Play may treat a destination the USER configures and controls differently from a
+   developer-run server. If such an exemption exists it could simplify the above. I could
+   not confirm the current policy text, so everything here is the CONSERVATIVE answer:
+   declaring more than strictly required is safe; declaring less is not.
+
+2. Health Connect has its own terms on top of Data Safety, and they are stricter about
+   moving health data off the device. This is exactly why dp.health is excluded from the
+   sync. If you ever want Health Connect data in the sheet, read those terms first — do
+   not just add the key to the payload.
+
+3. The privacy policy URL in the listing must describe the sync too. Updated copy is in
+   privacy.html; re-upload it wherever the listing points.
+
+--------------------------------------------------------------------------------
+SECTION 4 — Order of operations
+--------------------------------------------------------------------------------
+1. Publish the updated privacy.html.
+2. Update Data safety as above and SAVE (it can be submitted without a new release).
+3. Only then roll out the build with sync visible.
+Doing 3 before 2 is the thing that gets apps pulled.

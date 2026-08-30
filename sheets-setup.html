@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b14">
+  <meta name="color-scheme" content="light dark">
+  <title>Daylog — set up Google Sheet sync</title>
+  <meta name="description" content="Sync Daylog to your own Google Sheet in about five minutes. Your data goes to your Drive; Daylog has no server.">
+  <link rel="canonical" href="https://kishore2494.github.io/daily-pulse/sheets-setup.html">
+<style>
+    :root{color-scheme:dark;--bg:#070b14;--card:#141c2e;--border:#232f47;--hi:#31405f;--text:#eaeffa;--dim:#93a0b8;--faint:#5d6b85;--accent:#6d8cff;--accent2:#8f7bff;--teal:#4ad6c0;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;
+      background-image:radial-gradient(60% 40% at 12% -4%,rgba(109,140,255,.16),transparent 62%),radial-gradient(55% 38% at 96% 8%,rgba(143,123,255,.10),transparent 60%);}
+    .wrap{max-width:760px;margin:0 auto;padding:34px 20px 90px;}
+    .top{text-align:center;margin-bottom:14px;}
+    .fire{font-size:52px;filter:drop-shadow(0 6px 24px rgba(251,191,36,.4));}
+    h1{font-family:'Sora',sans-serif;font-size:34px;font-weight:800;letter-spacing:-1px;margin-top:6px;color:var(--text);}
+    .lede{color:var(--dim);font-size:16px;max-width:520px;margin:8px auto 0;}
+    .toc{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:26px 0 8px;}
+    .toc a{font-size:13px;font-weight:600;color:#c4d1ff;text-decoration:none;border:1px solid var(--hi);
+      background:rgba(255,255,255,.04);border-radius:999px;padding:7px 14px;transition:.15s;}
+    .toc a:hover{border-color:var(--accent);}
+    section{background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 42%),var(--card);
+      border:1px solid var(--border);border-top-color:var(--hi);border-radius:20px;padding:24px;margin-top:22px;
+      display:grid;grid-template-columns:220px 1fr;gap:26px;align-items:start;}
+    section.flip{grid-template-columns:1fr 220px;}
+    section.flip .shot{order:2;}
+    .shot{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--hi);background:#0c1322;
+      box-shadow:0 14px 40px rgba(0,0,0,.5);}
+    .shot img{display:block;width:100%;height:auto;}
+    .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;
+      font-family:'Sora';font-weight:800;font-size:15px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));
+      box-shadow:0 4px 14px rgba(109,140,255,.4);flex:0 0 auto;}
+    .head{display:flex;align-items:center;gap:12px;margin-bottom:4px;}
+    h2{font-family:'Sora',sans-serif;font-size:21px;font-weight:700;letter-spacing:-.4px;}
+    .what{color:var(--dim);font-size:15px;margin:6px 0 12px;}
+    ul{list-style:none;display:flex;flex-direction:column;gap:9px;}
+    li{position:relative;padding-left:22px;font-size:14.5px;color:var(--text);}
+    li::before{content:'';position:absolute;left:2px;top:9px;width:7px;height:7px;border-radius:2px;background:var(--teal);}
+    li b{color:var(--text);}
+    .try{margin-top:14px;font-size:14px;color:#c4d1ff;background:rgba(109,140,255,.1);border:1px solid rgba(109,140,255,.3);
+      border-radius:12px;padding:10px 14px;}
+    .try b{color:var(--text);}
+    .foot{text-align:center;margin-top:34px;color:var(--faint);font-size:13px;}
+    /* NOT `.foot a` — (0,1,1) beats .cta (0,1,0) regardless of source order, so the
+       "Back to Daylog" button's text was painted in --accent on a gradient that STARTS with
+       --accent. Identical colour, 1.00:1, completely invisible. Scoped to plain links. */
+    .foot a:not(.cta){color:var(--accent);}
+    .cta, .cta:link, .cta:visited, .cta:hover, .cta:active{color:#fff;}
+    .cta{display:inline-block;margin-top:16px;font-family:'Sora';font-weight:700;font-size:15px;color:#fff;text-decoration:none;
+      /* Its OWN gradient, not var(--accent)/var(--accent2): those are tuned for text and
+         thin strokes elsewhere, and white on the lighter stop measured 3.07:1 — under the
+         4.5 that 15px bold still needs. These two clear 8:1. */
+      background:linear-gradient(135deg,#3a4a94,#4a3f96);padding:13px 26px;border-radius:14px;box-shadow:0 6px 22px rgba(58,74,148,.38);}
+    @media(max-width:560px){section,section.flip{grid-template-columns:1fr;gap:16px;}
+      section.flip .shot{order:0;} .shot{max-width:260px;margin:0 auto;} h1{font-size:28px;}}
+      .backbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:6px;padding:13px 16px;
+      background:rgba(11,17,32,.92);backdrop-filter:blur(8px);color:#8fa0ff;font-weight:700;text-decoration:none;
+      border-bottom:1px solid rgba(255,255,255,.06);}
+    /* light mode — follows the APP's theme (read from dp.settings at load) */
+    html[data-mode="light"]{color-scheme:light;--bg:#f4f6fb;--card:#ffffff;--border:#dfe4ee;--hi:#cfd6e4;--text:#101626;--dim:#4a5570;--faint:#8b95ab;--accent:#4a5db0;--accent2:#6d8cff;--teal:#0e8f82;}
+    html[data-mode="light"] body{background-image:radial-gradient(60% 40% at 12% -4%,rgba(109,140,255,.10),transparent 62%),radial-gradient(55% 38% at 96% 8%,rgba(143,123,255,.06),transparent 60%);}
+    html[data-mode="light"] .backbar{background:rgba(255,255,255,.92);color:#4a5db0;border-bottom:1px solid rgba(20,30,60,.10);}
+    html[data-mode="light"] .toc a{color:#3a4a8a;background:rgba(90,110,200,.07);}
+    html[data-mode="light"] .try{color:#33418a;background:rgba(109,140,255,.08);border-color:rgba(109,140,255,.25);}
+    html[data-mode="light"] .shot{background:#eef1f7;box-shadow:0 10px 26px rgba(30,42,70,.14);}
+    html[data-mode="light"] section{background:var(--card);}
+    /* Sections that have no screenshot must not be squeezed into the 220px image column. */
+    section.full{grid-template-columns:1fr;}
+</style>
+<style>
+  .steps { counter-reset: st; list-style: none; padding: 0; }
+  .steps > li { counter-increment: st; position: relative; padding: 0 0 18px 44px; }
+  .steps > li::before { content: counter(st); position: absolute; left: 0; top: -2px;
+    width: 30px; height: 30px; border-radius: 99px; display: grid; place-items: center;
+    background: var(--accent, #6d8cff); color: #fff; font-weight: 800; font-size: 14px; }
+  .steps > li > b { display: block; margin-bottom: 3px; }
+  pre.code { max-height: 320px; overflow: auto; background: rgba(127,127,127,.1);
+    border: 1px solid rgba(127,127,127,.28); border-radius: 12px; padding: 12px;
+    font-size: 11.5px; line-height: 1.5; white-space: pre; }
+  .copybtn { min-height: 44px; }
+  .warn-box { border-left: 3px solid #d08a4e; padding-left: 12px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <a class="cta back" href="index.html">&larr; Back to Daylog</a>
+  <h1>Sync to your own Google Sheet</h1>
+  <p class="lead">About five minutes, once. After this, every day you log also lands in a
+  spreadsheet in your own Google Drive — so you have a copy you can read, chart, or keep
+  forever, and your phones stay in step.</p>
+
+  <div class="card">
+    <h2>Before you start — what this actually does</h2>
+    <ul>
+      <li><b>There is no Daylog server.</b> You deploy a small script into <i>your</i> Google
+        account. Your data goes from your phone to your Drive. I never see it, and there is
+        nowhere for me to see it from.</li>
+      <li><b>It is off until you finish these steps.</b> Nothing is sent before that.</li>
+      <li><b>Health Connect data is never sent</b> — steps, sleep, heart rate, distance,
+        calories, workouts stay on the phone whether sync is on or off.</li>
+      <li><b>To stop:</b> clear the link in Settings. To delete the copy, delete the sheet.</li>
+    </ul>
+  </div>
+
+  <ol class="steps">
+    <li><b>Make a spreadsheet</b>
+      Go to <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a>. Name it
+      anything — &ldquo;Daylog&rdquo; is fine. Do this on a computer if you can; the Apps Script
+      editor is awkward on a phone.</li>
+    <li><b>Open the script editor</b>
+      In the sheet: <b>Extensions &rsaquo; Apps Script</b>. A new tab opens with a file called
+      <code>Code.gs</code> containing a few lines of placeholder.</li>
+    <li><b>Paste the script</b>
+      Select everything in that editor and delete it, then paste the whole script below.
+      Press <b>Ctrl/Cmd + S</b> to save.</li>
+    <li><b>Deploy it as a web app</b>
+      Click <b>Deploy &rsaquo; New deployment</b>. Click the gear next to &ldquo;Select type&rdquo;
+      and choose <b>Web app</b>. Set:
+      <ul>
+        <li>Execute as: <b>Me</b></li>
+        <li>Who has access: <b>Anyone</b></li>
+      </ul>
+      Then <b>Deploy</b>.</li>
+    <li><b>Authorise it</b>
+      Google will warn you the app is not verified. That warning is about <i>your own</i>
+      script, which you just pasted and can read in full — click
+      <b>Advanced &rsaquo; Go to (your project name)</b>, then <b>Allow</b>.</li>
+    <li><b>Copy the Web app URL</b>
+      It ends in <code>/exec</code>. Copy the whole thing.</li>
+    <li><b>Paste it into Daylog</b>
+      <b>Menu &rsaquo; Settings &rsaquo; Sync &amp; login</b>, paste the link, tap
+      <b>Connect / Log in</b>. It will pull anything already in the sheet, then keep the two
+      in step. Tap <b>Push all to Sheet</b> once to send everything you have logged so far.</li>
+  </ol>
+
+  <div class="card">
+    <h2>Using it on a second phone</h2>
+    <p>Paste the same link into Settings on the other phone. That link is your login — there is
+    no account and no password. Newest edit wins; nothing is deleted from either side.</p>
+    <p class="warn-box"><b>So treat the link like a password.</b> Anyone who has it can read and
+    write your sheet. Do not post it anywhere.</p>
+  </div>
+
+  <div class="card">
+    <h2>If it does not work</h2>
+    <ul>
+      <li><b>&ldquo;Connected (nothing to pull yet)&rdquo;</b> — that is correct on a brand-new
+        sheet. Tap <b>Push all to Sheet</b> and check the Log tab fills in.</li>
+      <li><b>Nothing appears</b> — the most common cause is <i>Who has access</i> being set to
+        something other than <b>Anyone</b>. Redeploy and check it.</li>
+      <li><b>You edited the script</b> — Apps Script keeps serving the old version until you do
+        <b>Deploy &rsaquo; Manage deployments &rsaquo; edit &rsaquo; New version</b>.</li>
+      <li><b>The URL must end in <code>/exec</code></b>, not <code>/dev</code>.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>The script</h2>
+    <p>This is the whole thing. Read it if you like — it only touches the spreadsheet it is
+    attached to.</p>
+    <button class="cta copybtn" id="copy">Copy the script</button>
+    <pre class="code" id="src">/**
+ * Daily Pulse → Google Sheet sync backend
+ * --------------------------------------------------------------
+ * SETUP (one time, ~3 minutes):
+ *  1. Open your Google Sheet (or make a new one).
+ *  2. Extensions ▸ Apps Script.
+ *  3. Delete anything there, paste THIS whole file, click Save.
+ *  4. Click Deploy ▸ New deployment ▸ type "Web app".
+ *       - Execute as: Me
+ *       - Who has access: Anyone
+ *     Click Deploy, authorize, and COPY the Web App URL.
+ *  5. In the app: More ▸ Google Sheet sync ▸ paste the URL ▸ Save link.
+ * That's it — every saved day appends/updates a row in the "Log" tab.
+ */
+
+var SHEET_NAME = 'Log';
+
+// Column order written to the sheet. Add keys here to capture more fields.
+var COLUMNS = [
+  'date', 'updatedAt', 'mood', 'energy', 'sleepHours', 'deepWorkHours',
+  'tasksDone', 'tasksPlanned',
+  // habits (flattened)
+  'workout', 'faceWorkout', 'meditation', 'english', 'reading',
+  'projectAI', 'projectSpace', 'healthyFood', 'posted', 'consumed', 'hairCare', 'skinCare',
+  // reflection
+  'wentWell', 'improve', 'journal',
+  // workout summary (from the Gym tab)
+  'workoutsDone', 'workoutDetail',
+  // deep log — mind &amp; wellbeing
+  'focus', 'productivity', 'clarity', 'motivation',
+  'stress', 'anxiety', 'happiness', 'meditationMin', 'gratitude',
+  // deep log — health
+  'sleepQuality', 'water', 'caffeine', 'weight', 'meals',
+  // deep log — work
+  'efficiency', 'workSatisfaction', 'workHours', 'meetings', 'goalsAchieved',
+  // deep log — learning
+  'retention', 'codeLines', 'papers', 'topics', 'newConcepts', 'crossDomain',
+  // deep log — finance
+  'financialStress', 'income', 'expenses', 'savings',
+  // deep log — digital
+  'screenTime', 'socialMedia',
+  // deep log — growth
+  'lifeSatisfaction', 'purposeClarity', 'keyInsight', 'breakthrough', 'priorities',
+  // time tracker summary (per-activity totals for the day)
+  'timeSummary',
+  // weekly
+  'weekWins', 'weekFocus',
+  // grooming / care routines (tick lists)
+  'hairRoutine', 'skinRoutine',
+  // tasks open on this date (carried until completed)
+  'tasks'
+];
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.type === 'reminders') return saveReminders_(data.items || []);
+    if (data.type === 'notes') return saveList_('Notes', ['text', 'color', 'created'], data.items || []);
+    if (data.type === 'timelog') return saveTimelog_(data.items || []);
+    if (data.type === 'events') return saveList_('Events', ['date', 'time', 'label', 'alarm'], data.items || []);
+    if (data.type === 'docs') return saveList_('Articles', ['title', 'updated', 'text'], data.items || []);
+    if (data.type === 'state') return saveState_(e.postData.contents);
+    var sheet = getSheet_();
+    flatten_(data);
+    var row = COLUMNS.map(function (k) { return data[k] !== undefined &amp;&amp; data[k] !== null ? data[k] : ''; });
+
+    // Upsert by date (column 1). Guard against an empty sheet (header only).
+    var lastRow = sheet.getLastRow();
+    var found = -1;
+    if (lastRow &gt; 1) {
+      var dates = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var i = 0; i &lt; dates.length; i++) {
+        if (ymd_(dates[i][0]) === String(data.date)) { found = i + 2; break; }
+      }
+    }
+    if (found &gt; 0) sheet.getRange(found, 1, 1, row.length).setValues([row]);
+    else sheet.appendRow(row);
+
+    return json_({ ok: true });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+
+function doGet(e) {
+  // Multi-device pull: returns the full app state. Uses JSONP (?callback=) to dodge CORS.
+  if (e &amp;&amp; e.parameter &amp;&amp; e.parameter.type === 'pull') {
+    var raw = readState_();              // the exact JSON string the app last pushed (or '{}')
+    if (e.parameter.callback) {
+      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
+  }
+  return json_({ ok: true, msg: 'Daily Pulse sync is live.' });
+}
+
+// Full-state snapshot for device sync, stored chunked in a hidden "_State" tab.
+function saveState_(jsonStr) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('_State') || ss.insertSheet('_State');
+  sh.clear();
+  var size = 45000, rows = [];
+  for (var i = 0; i &lt; jsonStr.length; i += size) rows.push([jsonStr.substr(i, size)]);
+  if (rows.length) sh.getRange(1, 1, rows.length, 1).setValues(rows);
+  try { sh.hideSheet(); } catch (_) {}
+  return json_({ ok: true, bytes: jsonStr.length });
+}
+function readState_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('_State');
+  if (!sh || sh.getLastRow() === 0) return '{}';
+  var vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
+  return vals.map(function (r) { return r[0]; }).join('') || '{}';
+}
+
+// Reminders → a dedicated "Reminders" tab (rewritten each time)
+function saveReminders_(items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Reminders') || ss.insertSheet('Reminders');
+  sh.clear();
+  sh.appendRow(['time', 'label', 'enabled']);
+  sh.setFrozenRows(1);
+  items.forEach(function (r) { sh.appendRow([r.time || '', r.label || '', r.enabled ? 'Yes' : 'No']); });
+  return json_({ ok: true, count: items.length });
+}
+
+// Time tracker → a "Time Log" tab, one row per activity block (rewritten each time).
+// Blocks that cross midnight arrive already split per day by the app.
+function saveTimelog_(items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Time Log') || ss.insertSheet('Time Log');
+  sh.clear();
+  var header = ['date', 'activity', 'start', 'end', 'duration', 'hours'];
+  sh.getRange(1, 1, 1, header.length).setValues([header]);
+  sh.setFrozenRows(1);
+  sh.getRange('A:A').setNumberFormat('@');   // keep dates as plain text
+  var rows = items.map(function (s) {
+    return [s.date || '', s.activity || '', s.start || '', s.end || '', s.duration || '', s.hours || ''];
+  });
+  if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
+  return json_({ ok: true, count: rows.length });
+}
+
+// Generic: rewrite a tab from a list of objects (used by Notes).
+function saveList_(sheetName, cols, items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  sh.clear();
+  sh.appendRow(cols);
+  sh.setFrozenRows(1);
+  items.forEach(function (it) { sh.appendRow(cols.map(function (c) { return it[c] !== undefined &amp;&amp; it[c] !== null ? it[c] : ''; })); });
+  return json_({ ok: true, count: items.length });
+}
+
+function getSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) { sheet = ss.insertSheet(SHEET_NAME); }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(COLUMNS);
+    sheet.setFrozenRows(1);
+    sheet.getRange('A:A').setNumberFormat('@'); // keep dates as plain text
+  }
+  return sheet;
+}
+
+// Normalize a date cell (string or auto-parsed Date) back to YYYY-MM-DD
+function ymd_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2) + '-' + ('0' + v.getDate()).slice(-2);
+  }
+  return String(v);
+}
+
+// Flatten nested objects (habits, topics) onto the top level
+function flatten_(data) {
+  // habits -&gt; one Yes/'' column per habit key
+  if (data.habits &amp;&amp; typeof data.habits === 'object') {
+    Object.keys(data.habits).forEach(function (k) { data[k] = data.habits[k] ? 'Yes' : ''; });
+    delete data.habits;
+  }
+  // any remaining tick-group object (topics, hairRoutine, skinRoutine, …) -&gt; comma list of ticked items
+  Object.keys(data).forEach(function (k) {
+    var v = data[k];
+    if (v &amp;&amp; typeof v === 'object' &amp;&amp; !(v instanceof Array)) {
+      data[k] = Object.keys(v).filter(function (x) { return v[x]; }).join(', ');
+    }
+  });
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+</pre>
+  </div>
+
+  <a class="cta back" href="index.html">&larr; Back to Daylog</a>
+</main>
+<script>
+  document.getElementById('copy').addEventListener('click', function () {
+    var t = document.getElementById('src').textContent;
+    var done = function () { var b = document.getElementById('copy');
+      b.textContent = 'Copied \u2713'; setTimeout(function () { b.textContent = 'Copy the script'; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, function () { fallback(t, done); });
+    } else { fallback(t, done); }
+    function fallback(text, cb) {
+      var a = document.createElement('textarea'); a.value = text; document.body.appendChild(a);
+      a.select(); try { document.execCommand('copy'); cb(); } catch (e) {} a.remove();
+    }
+  });
+</script>
+</body>
+</html>

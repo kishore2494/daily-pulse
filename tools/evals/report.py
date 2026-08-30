@@ -3,6 +3,16 @@
 import json, sys, collections
 rows = json.load(open(sys.argv[1]))
 
+# Drop anything that was not measured on Daylog. The browse daemon is shared, and `eval` runs
+# against the ACTIVE tab — a stray tab from another project once contributed 8 contrast
+# findings under a Daylog screen name. A wrong number is worse than a missing one.
+_all = len(rows)
+rows = [r for r in rows if (r.get('r') or {}).get('app')]
+_foreign = _all - len(rows)
+if _foreign:
+    print('!! dropped %d of %d measurements taken on a NON-DAYLOG page '
+          '(shared browser tab). Those numbers are excluded.' % (_foreign, _all))
+
 # A run that measured NOTHING is a failure, not a perfect score. When the browse server is
 # wedged (port 9400 in use) every boot() fails, the JSON comes back empty, and this used to
 # print "errors: 0  warns: 0  PENALTY SCORE: 0  (0 = clean)" — reporting success on total

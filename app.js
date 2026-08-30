@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v217';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v218';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -625,7 +625,13 @@ function pushState(now) {
       timelog: DB.timelog(), timeacts: DB.timeacts(), events: DB.events(),
       docs: DB.docs(), habitcfg: habitCfg(), actcfg: actCfg(), deepcfg: deepCfg(), gymcfg: gymCfg(),
       corecfg: coreCfg(), daycfg: gymDays(), gymgroups: gymGroups(), navcfg: navCfg(),
-      pomo: DB.pomo(), timebox: DB.timebox(), goals: DBgoals() };
+      pomo: DB.pomo(), timebox: DB.timebox(), goals: DBgoals(),
+      /* Added after the first cut of the sync. NOT here on purpose: dp.health (Health
+         Connect readings never leave the phone — see the Data Safety note in Settings),
+         and dp.cardratio (a per-device preference, not data). */
+      projectnames: safeParse(localStorage.getItem('dp.pjnames'), {}),
+      gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
+      awards: safeParse(localStorage.getItem('dp.awards'), {}) };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
   now ? send() : (pushTimer = setTimeout(send, 1200));
@@ -712,12 +718,25 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals'], ['projectnames', 'dp.pjnames']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
       }
     });
+  }
+  /* Outside the remoteNewer branch on purpose. These two are UNIONS, not adoptions: an award
+     earned on either device is earned, and a gap you dismissed on either device stays
+     dismissed. Adopting the remote copy wholesale would let a stale phone un-earn an award,
+     which is the one thing the award ledger exists to prevent. */
+  [['awards', 'dp.awards'], ['gapskip', 'dp.gapskip']].forEach(([key, store]) => {
+    if (!remote[key] || typeof remote[key] !== 'object') return;
+    const local = safeParse(localStorage.getItem(store), {}) || {};
+    let hit = false;
+    Object.keys(remote[key]).forEach(k => { if (!(k in local)) { local[k] = remote[key][k]; hit = true; } });
+    if (hit) { localStorage.setItem(store, JSON.stringify(local)); changed = true; }
+  });
+  if (remoteNewer) {
     // Pomodoro: adopt remote SETTINGS + higher done-count, but NEVER the live `run`
     // countdown (that's device-local — a timer must not "run" on two phones).
     if (remote.pomo && remote.pomo.cfg) {
@@ -850,8 +869,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w16',
+  v: 'w17',
   items: [
+    '\u2601\ufe0f <b>Google Sheet sync is back on</b> \u2014 Settings \u25b8 Sync &amp; login. Off until you connect it. There is no Daylog server: you deploy a small script into <b>your own</b> Google account, so your log goes to a spreadsheet in your Drive and nowhere else. Paste the same link on a second phone and they stay in step \u2014 that link is your login, so treat it like a password. <b>Health Connect readings are never sent</b>, sync on or off: steps, sleep, heart rate, distance, calories and workouts stay on the phone. There is a five-minute setup guide linked from the Settings card.',
     '\ud83c\udfc5 <b>The trophy case, rebuilt</b> \u2014 every award used to be the same grey pill, so a 365-day streak looked exactly like a 3-day one, and the 49 you had not earned were invisible. Each award is now a <b>ranked medal</b> \u2014 Bronze through Diamond by how far up its family\u2019s ladder it sits \u2014 and the locked ones are shown too, dimmed, with exactly how far off you are. A progress ring counts your collection, and there is a per-family bar so you can see which ladder you are furthest up. The five metals were contrast-checked as text in light, navy and black, and every medal writes its rank in words, so none of it depends on telling two colours apart.',
     '\ud83d\udcf1 <b>Share cards default to Story</b> \u2014 9:16 instead of 4:5, because that is the shape Instagram, WhatsApp and Snapchat stories actually use full-screen; a 4:5 post gets letterboxed there. Change it once and it is remembered.',
     '\ud83e\udde9 <b>Untracked time, filled in by asking</b> \u2014 the Time screen now finds the stretches of a past day you never tracked and, where your own history actually supports a guess, asks: \u201c09:00\u201311:15 \u2014 were you \ud83d\udcbc Work?\u201d Tap yes and it is logged. It only names an activity when you logged it in that same window on at least 3 other days, it counts weekdays and weekends separately (sleep and work are exactly what differ), and it always shows the support \u2014 \u201c6 of your last 9 tracked weekdays\u201d \u2014 so you can judge the guess rather than trust it. Nothing is ever filled in on its own, and \u201cleave blank\u201d is remembered.',
@@ -5159,11 +5179,17 @@ function renderSettings() {
   document.getElementById('screen-title').textContent = 'Settings';
   document.getElementById('screen-sub').textContent = 'Customize, reminders, data';
   const s = DB.settings();
-  // Sync UI hidden for production: the Data Safety answer is "collects no data", and a
-  // visible sync/login section would contradict it. Sync returns as the paid feature
-  // (Google Sign-In + pay-what-you-want) — see the wiki roadmap. Existing sync users'
-  // saved syncUrl keeps working silently; only the UI is hidden.
-  const SHOW_SYNC = false;
+  /* Sync is visible again as of v218. It was hidden because the Play Data Safety answer said
+     "collects no data" and a visible sync section contradicts it. That is a form to update,
+     not a feature to hide — so the form gets updated (store/PASTE-6-data-safety.txt) and the
+     app states plainly what leaves the phone.
+
+     Two things keep the claim honest, and both are enforced in code, not just copy:
+       · dp.health — every Health Connect reading — is deliberately absent from the push
+         payload. Health data never leaves the device, synced or not.
+       · there is no Daylog server. The endpoint is an Apps Script the user deploys into
+         their OWN Google account, so the data goes to their sheet and nowhere else. */
+  const SHOW_SYNC = true;
   // PIS sync was added by a different session and pushes to http://127.0.0.1:5001 — a
   // localhost-only integration with another of the owner's apps. It is meaningless (and
   // confusing) to public Play Store users, so it is hidden rather than deleted: the code
@@ -5204,6 +5230,16 @@ function renderSettings() {
         <button class="btn btn-ghost btn-sm" id="resync">Push all to Sheet</button>
       </div>
       <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Newest edit wins.</div>
+      <details class="sync-what"><summary>Exactly what gets sent, and where</summary>
+        <div class="hint">
+          <p><b>Off unless you connect it.</b> With no link pasted above, nothing ever leaves this phone.</p>
+          <p><b>It goes to your own Google Sheet.</b> Daylog has no server and no account. You deploy a small script into <i>your</i> Google account and paste its link here — so your data goes to your Drive, and the person who built this app cannot see it.</p>
+          <p><b>Sent:</b> your log entries, habits, tasks, notes, plans, projects, time blocks, gym log, journal, goals and awards.</p>
+          <p><b>Never sent:</b> anything from Health Connect — steps, sleep, heart rate, distance, calories, workouts. Those readings stay on this phone whether sync is on or off.</p>
+          <p><b>To stop:</b> clear the box above. To delete the copy, delete the sheet in your Drive.</p>
+          <p><a href="sheets-setup.html">How to set it up (5 minutes)</a></p>
+        </div>
+      </details>
     </div>` : ''}
     ${(() => { const at = autoTrackCfg();
       const row = (k, label, sub) => `<div class="at-row ${at.on ? '' : 'at-dim'}">
