@@ -12,6 +12,18 @@ _foreign = _all - len(rows)
 if _foreign:
     print('!! dropped %d of %d measurements taken on a NON-DAYLOG page '
           '(shared browser tab). Those numbers are excluded.' % (_foreign, _all))
+    # Losing a slice of the run and then printing a LOWER error count is success-on-failure:
+    # the score improves precisely because screens went unmeasured. Refuse to report it as a
+    # result.
+    if _foreign > _all * 0.05:
+        print()
+        print('   That is %.0f%% of the run. The numbers below are NOT comparable to a clean '
+              'run — re-run when no other session is using the browser.' % (_foreign / _all * 100))
+        _INCOMPLETE = True
+    else:
+        _INCOMPLETE = False
+else:
+    _INCOMPLETE = False
 
 # A run that measured NOTHING is a failure, not a perfect score. When the browse server is
 # wedged (port 9400 in use) every boot() fails, the JSON comes back empty, and this used to
@@ -63,3 +75,6 @@ else:
 print('\nTallest screens (viewport-heights of scrolling):')
 for s, w, t in sorted(tall, key=lambda x: -x[2])[:8]:
     print('  %-16s %dw  %.2f screens' % (s, w, t))
+
+if _INCOMPLETE:
+    sys.exit(3)

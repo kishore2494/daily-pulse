@@ -16,6 +16,21 @@ OUT="${1:-/tmp/eval-report.json}"
 lsof -ti :$PORT >/dev/null 2>&1 || (python3 -m http.server $PORT >/dev/null 2>&1 &)
 sleep 2
 
+# Another Claude session on this machine shares the browse daemon and can navigate the tab
+# out from under a run — one full viewport pass was silently measured against a Qube preview
+# page from a different project. This re-claims the tab when that happens, so a hijack costs
+# a reload instead of a third of the run.
+claim() {
+  local n=0
+  while [ "$($B js "typeof APP_VERSION!=='undefined'" 2>/dev/null | tail -1)" != "true" ]; do
+    n=$((n+1)); [ $n -gt 3 ] && { echo "  !! tab hijacked and could not be reclaimed" >&2; return 1; }
+    echo "  .. tab drifted to another page; reclaiming" >&2
+    $B goto "http://localhost:$PORT/?cb=$RANDOM$RANDOM" >/dev/null 2>&1
+    sleep 2
+  done
+  return 0
+}
+
 boot() {  # width height
   $B viewport "${1}x${2}" >/dev/null 2>&1
   $B goto "http://localhost:$PORT/?cb=$RANDOM$RANDOM" >/dev/null 2>&1
@@ -32,19 +47,21 @@ boot() {  # width height
   return 0
 }
 
-SCREENS="today time tasks notes plans projects awards focus waves gym habits dash cal write history settings search"
+SCREENS="today time tasks notes plans projects money awards focus waves gym habits dash cal write history settings search"
 echo "[" > "$OUT"; FIRST=1
 
 for VP in "320 640" "360 740" "412 820"; do
   set -- $VP; W=$1; H=$2
   boot "$W" "$H" || { echo "  !! boot failed at ${W}x${H}" >&2; continue; }
   for S in $SCREENS; do
+    claim || break
     $B js "try{ show('$S'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
     R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
     case "$R" in \{*) ;; *) continue;; esac
     [ $FIRST -eq 0 ] && echo "," >> "$OUT"; FIRST=0
     printf '{"screen":"%s","w":%s,"h":%s,"r":%s}' "$S" "$W" "$H" "$R" >> "$OUT"
   done
+  claim || continue
   # the bottom of the Log screen too (where the habit grid + deep log live)
   $B js "show('today'); window.scrollTo(0, document.documentElement.scrollHeight); 'ok'" >/dev/null 2>&1
   R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
@@ -58,6 +75,48 @@ for VP in "320 640" "360 740" "412 820"; do
     case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"dash-%s","w":%s,"h":%s,"r":%s}' "$T" "$W" "$H" "$R" >> "$OUT";; esac
   done
 
+  claim || continue
+  # Money: four tabs, and the empty state is a different page again. Seeded with a credit card
+  # in debt and a loan so the negative-balance styling is actually measured, plus the quick-add
+  # form and the CSV column-mapper, which only exist while open.
+  $B js "try{ var T=todayStr(), ym=finYm(T);
+    localStorage.setItem('dp.finaccts', JSON.stringify([
+      {id:'bank',name:'HDFC savings account',kind:'bank',opening:parseAmt('50000')},
+      {id:'card',name:'Amazon Pay credit card',kind:'card',opening:0},
+      {id:'flat',name:'The flat',kind:'asset',opening:0},
+      {id:'hl',name:'Home loan',kind:'loan',opening:0}]));
+    localStorage.setItem('dp.finmarks', JSON.stringify([
+      {id:'m1',ac:'flat',d:T,v:parseAmt('4500000')},{id:'m2',ac:'hl',d:T,v:parseAmt('2800000')}]));
+    var tx=[]; for(var i=1;i<=30;i++){ var d=addDays(T,-i);
+      tx.push({id:'e'+i,d:d,a:parseAmt(String(300+i*40)),dir:'out',ac:i%3?'bank':'card',
+               c:['food','grocery','transport','subs','shopping','fun'][i%6],n:'A fairly long merchant name '+i}); }
+    tx.push({id:'sal',d:ym+'-02',a:parseAmt('85000'),dir:'in',ac:'bank',c:'salary',n:'Salary'});
+    localStorage.setItem('dp.fintx', JSON.stringify(tx));
+    localStorage.setItem('dp.finbudget', JSON.stringify({food:parseAmt('6000'),grocery:parseAmt('4000')}));
+    mnTab='over'; mnYm=null; mnAddOpen=false; mnImport=null; show('money'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-over","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  for MT in tx accts ins; do
+    $B js "try{ mnTab='$MT'; show('money'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
+    R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+    case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-%s","w":%s,"h":%s,"r":%s}' "$MT" "$W" "$H" "$R" >> "$OUT";; esac
+  done
+  $B js "try{ mnTab='over'; mnAddOpen='out'; show('money'); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-add","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ mnAddOpen=false; mnTab='accts';
+    var head=['Date','Narration','Withdrawal Amt.','Deposit Amt.'];
+    mnImport={head:head, rows:[['03/08/26','UPI-SWIGGY BANGALORE','450.00',''],['04/08/26','SALARY','','85000.00']], map:mnGuessMap(head)};
+    show('money'); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-import","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+  $B js "try{ mnImport=null; mnTab='over';
+    ['dp.finaccts','dp.fintx','dp.finmarks','dp.finbudget'].forEach(function(k){localStorage.removeItem(k);});
+    show('money'); }catch(e){} 'ok'" >/dev/null 2>&1
+  R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
+  case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-empty","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
+
+  claim || continue
   # The trophy case with its "Unlocked only" filter — a different set of tiles (no locked
   # medals, no mini progress bars) that the default view never renders.
   $B js "try{ awFilter='earned'; show('awards'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
@@ -65,6 +124,7 @@ for VP in "320 640" "360 740" "412 820"; do
   case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"awards-earned","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
   $B js "try{ awFilter='all'; }catch(e){} 'ok'" >/dev/null 2>&1
 
+  claim || continue
   # The untracked-time card only exists on a PAST day that has gaps and enough history to
   # guess from — a fresh eval store has none, so it was never measured. Seeded with both row
   # shapes: one carrying a named guess (Yes / Something else / Leave blank) and one open-ended.
@@ -85,6 +145,7 @@ for VP in "320 640" "360 740" "412 820"; do
   case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"time-gaps-picker","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
   $B js "try{ gapOpen=null; ttDate=todayStr(); localStorage.removeItem('dp.timelog'); localStorage.removeItem('dp.gapskip'); }catch(e){} 'ok'" >/dev/null 2>&1
 
+  claim || continue
   # The project DETAIL view is not reachable through show() — it needs pjOpen set first, and
   # it holds most of the new markup: status badges on tinted grounds, the inline title inputs,
   # colour swatches and the delete button. Seeded with one of every health state so each

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v218';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v219';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -630,6 +630,8 @@ function pushState(now) {
          Connect readings never leave the phone — see the Data Safety note in Settings),
          and dp.cardratio (a per-device preference, not data). */
       projectnames: safeParse(localStorage.getItem('dp.pjnames'), {}),
+      finaccts: finAccts(), fintx: finTx(), finmarks: finMarks(),
+      finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}) };
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
@@ -718,7 +720,9 @@ function applyRemoteState(remote) {
   // a union-of-ids would never propagate those. So when the other device changed more recently,
   // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals'], ['projectnames', 'dp.pjnames']].forEach(([key, store]) => {
+    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals'], ['projectnames', 'dp.pjnames'],
+     ['finaccts', 'dp.finaccts'], ['fintx', 'dp.fintx'], ['finmarks', 'dp.finmarks'], ['finbudget', 'dp.finbudget'],
+     ['fincats', 'dp.fincats'], ['finset', 'dp.finset']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
@@ -869,8 +873,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w17',
+  v: 'w18',
   items: [
+    '\ud83d\udcb0 <b>Money</b> \u2014 a new screen in the \u2630 menu. Accounts, cash, credit cards, investments, property and loans in one place, with net worth worked out from them. Record money in, out and transfers; set optional caps per category; import a bank CSV and it works out which column is which (importing the same statement twice adds nothing). Balances are <b>derived from your own records</b>, so they can never disagree with your ledger, and amounts are held as whole paise rather than decimals \u2014 a hundred 10-paise entries come to exactly \u20b910, not \u20b99.99999999999998.<br><br>The part a finance app cannot do: your spending sits next to your mood, sleep and screen time in the same app, so <b>Patterns</b> can tell you things like \u201cyou spend \u20b9900 more a day on lower-mood days\u201d \u2014 split on your own median, with the sample size shown, and never reported below 6 days on either side. Nothing is uploaded, and there is no bank login.',
     '\u2601\ufe0f <b>Google Sheet sync is back on</b> \u2014 Settings \u25b8 Sync &amp; login. Off until you connect it. There is no Daylog server: you deploy a small script into <b>your own</b> Google account, so your log goes to a spreadsheet in your Drive and nowhere else. Paste the same link on a second phone and they stay in step \u2014 that link is your login, so treat it like a password. <b>Health Connect readings are never sent</b>, sync on or off: steps, sleep, heart rate, distance, calories and workouts stay on the phone. There is a five-minute setup guide linked from the Settings card.',
     '\ud83c\udfc5 <b>The trophy case, rebuilt</b> \u2014 every award used to be the same grey pill, so a 365-day streak looked exactly like a 3-day one, and the 49 you had not earned were invisible. Each award is now a <b>ranked medal</b> \u2014 Bronze through Diamond by how far up its family\u2019s ladder it sits \u2014 and the locked ones are shown too, dimmed, with exactly how far off you are. A progress ring counts your collection, and there is a per-family bar so you can see which ladder you are furthest up. The five metals were contrast-checked as text in light, navy and black, and every medal writes its rank in words, so none of it depends on telling two colours apart.',
     '\ud83d\udcf1 <b>Share cards default to Story</b> \u2014 9:16 instead of 4:5, because that is the shape Instagram, WhatsApp and Snapchat stories actually use full-screen; a 4:5 post gets letterboxed there. Change it once and it is remembered.',
@@ -5693,7 +5698,8 @@ function sendFeedback(text, contact) {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'cardratio', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'cardratio',
+  'finaccts', 'fintx', 'finmarks', 'finbudget', 'fincats', 'finset', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -9206,6 +9212,952 @@ document.addEventListener('click', (ev) => {
 });
 
 
+/* ============================================================
+   MONEY — accounts, transactions, assets, debts and the analysis on top.
+   ------------------------------------------------------------
+   Amounts are stored as INTEGER MINOR UNITS (paise/cents), never as decimals. Summing a few
+   hundred 2-decimal floats drifts — 0.1 + 0.2 is not 0.3 — and a balance that is wrong by a
+   rupee is a balance nobody trusts again. Everything converts at the edges: parseAmt on the
+   way in, finFmt on the way out.
+
+   Two kinds of account, because they answer different questions:
+     · transactional (bank, cash, card, wallet) — the balance is DERIVED from transactions, so
+       it can never disagree with the ledger.
+     · valued (investments, property, gold, loans) — you cannot itemise every market move, so
+       these carry dated value marks and the balance is the latest mark. The mark history is
+       what makes a truthful net-worth line possible.
+
+   A credit card is just an account that goes negative, and paying it off is a transfer. That
+   keeps one rule for everything instead of special-casing debt.
+   ============================================================ */
+
+const FIN_KINDS = [
+  { k: 'bank',   label: 'Bank account', ico: '🏦', mode: 'tx',     sign:  1 },
+  { k: 'cash',   label: 'Cash',         ico: '💵', mode: 'tx',     sign:  1 },
+  { k: 'wallet', label: 'Wallet / UPI', ico: '📲', mode: 'tx',     sign:  1 },
+  { k: 'card',   label: 'Credit card',  ico: '💳', mode: 'tx',     sign:  1 },
+  { k: 'invest', label: 'Investment',   ico: '📈', mode: 'valued', sign:  1 },
+  { k: 'asset',  label: 'Asset',        ico: '🏠', mode: 'valued', sign:  1 },
+  { k: 'loan',   label: 'Loan owed',    ico: '📉', mode: 'valued', sign: -1 },
+];
+function finKind(k) { return FIN_KINDS.find(x => x.k === k) || FIN_KINDS[0]; }
+
+const FIN_CATS = [
+  { id: 'food',      name: 'Food & dining',      ico: '🍽️', dir: 'out' },
+  { id: 'grocery',   name: 'Groceries',          ico: '🛒', dir: 'out' },
+  { id: 'transport', name: 'Transport & fuel',   ico: '🚗', dir: 'out' },
+  { id: 'home',      name: 'Rent & bills',       ico: '🏠', dir: 'out' },
+  { id: 'health',    name: 'Health',             ico: '🩺', dir: 'out' },
+  { id: 'shopping',  name: 'Shopping',           ico: '🛍️', dir: 'out' },
+  { id: 'fun',       name: 'Fun & going out',    ico: '🎬', dir: 'out' },
+  { id: 'subs',      name: 'Subscriptions',      ico: '🔁', dir: 'out' },
+  { id: 'edu',       name: 'Learning',           ico: '📚', dir: 'out' },
+  { id: 'gift',      name: 'Gifts & giving',     ico: '🎁', dir: 'out' },
+  { id: 'fees',      name: 'Fees & interest',    ico: '🧾', dir: 'out' },
+  { id: 'invested',  name: 'Money invested',     ico: '📈', dir: 'out' },
+  { id: 'otherout',  name: 'Other spending',     ico: '•',  dir: 'out' },
+  { id: 'salary',    name: 'Salary',             ico: '💼', dir: 'in'  },
+  { id: 'freelance', name: 'Freelance & side',   ico: '🧑‍💻', dir: 'in' },
+  { id: 'refund',    name: 'Refund',             ico: '↩️', dir: 'in'  },
+  { id: 'returns',   name: 'Interest & returns', ico: '🪙', dir: 'in'  },
+  { id: 'otherin',   name: 'Other income',       ico: '•',  dir: 'in'  },
+];
+function finCats() {
+  const custom = safeParse(localStorage.getItem('dp.fincats'), []) || [];
+  return FIN_CATS.concat(Array.isArray(custom) ? custom : []);
+}
+function finCat(id) {
+  return finCats().find(c => c.id === id) || { id, name: id || 'Uncategorised', ico: '•', dir: 'out' };
+}
+
+/* ---- stores ---- */
+function finAccts() { const v = safeParse(localStorage.getItem('dp.finaccts'), []); return Array.isArray(v) ? v : []; }
+function finSaveAccts(a) { safeSet('dp.finaccts', JSON.stringify(a)); pushState(); }
+function finTx() { const v = safeParse(localStorage.getItem('dp.fintx'), []); return Array.isArray(v) ? v : []; }
+function finSaveTx(t) { safeSet('dp.fintx', JSON.stringify(t)); pushState(); }
+function finMarks() { const v = safeParse(localStorage.getItem('dp.finmarks'), []); return Array.isArray(v) ? v : []; }
+function finSaveMarks(m) { safeSet('dp.finmarks', JSON.stringify(m)); pushState(); }
+function finBudgets() { return safeParse(localStorage.getItem('dp.finbudget'), {}) || {}; }
+function finSaveBudgets(b) { localStorage.setItem('dp.finbudget', JSON.stringify(b)); pushState(); }
+function finSet() {
+  return Object.assign({ cur: '₹', dp: 2 }, safeParse(localStorage.getItem('dp.finset'), {}) || {});
+}
+function finSaveSet(s) { localStorage.setItem('dp.finset', JSON.stringify(s)); pushState(); }
+function finAcct(id) { return finAccts().find(a => a.id === id) || null; }
+
+/* ---- money in and out of text ----
+   Accepts what people actually type: "1,234.50", "₹1200", "1.2k", "-450", "1 200".
+   Returns integer minor units, or null when there is no number in there at all — null is a
+   parse FAILURE and callers must treat it as one, never as zero. */
+function parseAmt(str) {
+  if (typeof str === 'number') return Math.round(str * 100);
+  let s = String(str == null ? '' : str).trim();
+  if (!s) return null;
+  let mult = 1;
+  if (/^-/.test(s)) { s = s.slice(1); }                       // sign is carried by dir, not the amount
+  if (/[kK]$/.test(s)) { mult = 1000; s = s.slice(0, -1); }
+  else if (/[lL]$/.test(s)) { mult = 100000; s = s.slice(0, -1); }   // 1L = one lakh
+  s = s.replace(/[^0-9.]/g, '');                              // strips ₹ , spaces and stray text
+  if (!s || !/[0-9]/.test(s)) return null;
+  const parts = s.split('.');
+  const whole = parts[0] || '0';
+  const frac = (parts[1] || '').slice(0, 2).padEnd(2, '0');
+  const minor = (parseInt(whole, 10) * 100 + parseInt(frac, 10)) * mult;
+  return Number.isFinite(minor) ? Math.round(minor) : null;
+}
+function finFmt(minor, opts) {
+  opts = opts || {};
+  const s = finSet();
+  const neg = minor < 0;
+  const abs = Math.abs(minor || 0);
+  let body;
+  if (opts.compact && abs >= 100000 * 100) body = (abs / (100000 * 100)).toFixed(abs >= 1000000 * 100 ? 0 : 1) + 'L';
+  else if (opts.compact && abs >= 1000 * 100) body = (abs / (1000 * 100)).toFixed(abs >= 100000 ? 1 : 1) + 'k';
+  else {
+    const whole = Math.floor(abs / 100), cents = abs % 100;
+    body = whole.toLocaleString(undefined) + (opts.noPaise || cents === 0 ? '' : '.' + String(cents).padStart(2, '0'));
+  }
+  return (neg ? '−' : '') + s.cur + body;
+}
+
+/* ---- balances ---- */
+function finYm(d) { return String(d).slice(0, 7); }
+function finMonthEnd(ym) { const [y, m] = ym.split('-').map(Number); return todayStr(new Date(y, m, 0)); }
+
+/* Net movement on a transactional account up to and including `upto` (or all time). */
+function finTxNet(acctId, upto) {
+  let n = 0;
+  finTx().forEach(t => {
+    if (upto && t.d > upto) return;
+    if (t.dir === 'xfer') {
+      if (t.ac === acctId) n -= t.a;
+      if (t.to === acctId) n += t.a;
+      return;
+    }
+    if (t.ac !== acctId) return;
+    n += t.dir === 'in' ? t.a : -t.a;
+  });
+  return n;
+}
+/* The latest value mark on or before `upto`. Valued accounts have no balance before their
+   first mark — that is null, not zero, so net worth does not pretend an unmarked asset is
+   worth nothing. */
+function finMarkAt(acctId, upto) {
+  const ms = finMarks().filter(m => m.ac === acctId && (!upto || m.d <= upto)).sort((a, b) => a.d < b.d ? -1 : 1);
+  return ms.length ? ms[ms.length - 1].v : null;
+}
+/* Signed balance, positive = adds to net worth. Returns null for a valued account with no
+   mark yet, so callers can tell "nothing recorded" from "zero". */
+function finBal(acctId, upto) {
+  const a = finAcct(acctId); if (!a) return 0;
+  const k = finKind(a.kind);
+  if (k.mode === 'valued') {
+    const v = finMarkAt(acctId, upto);
+    return v == null ? null : v * k.sign;
+  }
+  return (a.opening || 0) + finTxNet(acctId, upto);
+}
+function finNetWorth(upto) {
+  return finAccts().filter(a => !a.archived)
+    .reduce((s, a) => { const b = finBal(a.id, upto); return s + (b == null ? 0 : b); }, 0);
+}
+function finSplitWorth(upto) {
+  let assets = 0, debts = 0;
+  finAccts().filter(a => !a.archived).forEach(a => {
+    const b = finBal(a.id, upto);
+    if (b == null) return;
+    if (b >= 0) assets += b; else debts += -b;
+  });
+  return { assets, debts, net: assets - debts };
+}
+
+/* ---- monthly analysis ---- */
+function finMonth(ym) {
+  const from = ym + '-01', to = finMonthEnd(ym);
+  let inc = 0, out = 0; const byCat = {}, byAcct = {};
+  finTx().forEach(t => {
+    if (t.d < from || t.d > to) return;
+    if (t.dir === 'xfer') return;      // moving your own money is not income or spending
+    if (t.dir === 'in') inc += t.a; else out += t.a;
+    byCat[t.c] = (byCat[t.c] || 0) + t.a * (t.dir === 'in' ? 0 : 1);
+    byAcct[t.ac] = (byAcct[t.ac] || 0) + (t.dir === 'in' ? t.a : -t.a);
+  });
+  Object.keys(byCat).forEach(k => { if (!byCat[k]) delete byCat[k]; });
+  const net = inc - out;
+  return { ym, in: inc, out, net, byCat, byAcct,
+    /* Savings rate is only meaningful against income. With no income recorded it is not 0% —
+       it is unknown, and showing 0% would read as "you saved nothing". */
+    rate: inc > 0 ? Math.round(net / inc * 100) : null };
+}
+function finRecentMonths(n) {
+  const out = [];
+  const d = new Date(); d.setDate(1);
+  for (let i = n - 1; i >= 0; i--) {
+    const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    out.push(finYm(todayStr(x)));
+  }
+  return out;
+}
+function finWorthSeries(n) {
+  return finRecentMonths(n).map(ym => {
+    const end = ym > finYm(todayStr()) ? todayStr() : finMonthEnd(ym);
+    return { ym, v: finNetWorth(end > todayStr() ? todayStr() : end) };
+  });
+}
+/* Which categories moved most against the previous month. Percentages need a base: a jump
+   from nothing to something has no percentage, so those report the absolute change only. */
+function finMovers(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const prev = finYm(todayStr(new Date(y, m - 2, 1)));
+  const a = finMonth(ym).byCat, b = finMonth(prev).byCat;
+  const keys = [...new Set(Object.keys(a).concat(Object.keys(b)))];
+  return keys.map(k => {
+    const now = a[k] || 0, was = b[k] || 0;
+    return { cat: k, now, was, delta: now - was, pct: was > 0 ? Math.round((now - was) / was * 100) : null };
+  }).filter(x => x.delta !== 0).sort((x, y2) => Math.abs(y2.delta) - Math.abs(x.delta));
+}
+
+/* Repeat charges that look like subscriptions: the same category and a near-identical amount
+   showing up in 3+ distinct months. Deliberately conservative — telling someone they have a
+   subscription they do not have is worse than missing one. */
+function finRecurring() {
+  const groups = {};
+  finTx().filter(t => t.dir === 'out').forEach(t => {
+    const label = (t.n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const bucket = Math.round(t.a / 100 / 50) * 50;          // ±₹25 tolerance
+    const key = (label || t.c) + '|' + t.c + '|' + bucket;
+    (groups[key] = groups[key] || []).push(t);
+  });
+  return Object.keys(groups).map(k => {
+    const list = groups[k];
+    const months = [...new Set(list.map(t => finYm(t.d)))].sort();
+    const avg = Math.round(list.reduce((s, t) => s + t.a, 0) / list.length);
+    const last = list.map(t => t.d).sort().slice(-1)[0];
+    return { key: k, n: list.length, months: months.length, avg, last,
+      label: (list[0].n || '').trim() || finCat(list[0].c).name, cat: list[0].c };
+  }).filter(g => g.months >= 3).sort((a, b) => b.avg * b.months - a.avg * a.months);
+}
+
+/* ---- the thing a standalone finance app cannot do ----
+   Daylog already holds mood, energy, sleep and screen time for the same days as the spending.
+   Every split below is on the user's OWN median, every one states its sample size, and none
+   is reported below FIN_MIN_DAYS days on each side. A spurious "you spend more when sad" is
+   worse than no insight at all. */
+const FIN_MIN_DAYS = 6;
+function finDailySpend() {
+  const byDay = {};
+  finTx().forEach(t => { if (t.dir === 'out') byDay[t.d] = (byDay[t.d] || 0) + t.a; });
+  return byDay;
+}
+function finPatterns() {
+  const spend = finDailySpend();
+  const days = Object.keys(spend);
+  if (days.length < FIN_MIN_DAYS * 2) return [];
+  const ents = DB.entries(), hs = (typeof healthStore === 'function' ? healthStore() : {}) || {};
+  const out = [];
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+
+  /* `belowLabel` names days where the METRIC is below your median, `aboveLabel` above it.
+     Named this way on purpose: the first cut took (lowWord, highWord) and three of the four
+     call sites passed them the other way round, so the insight reported the exact opposite of
+     the truth — "you spend more on better-mood days" when the data said the reverse. An
+     insight that is backwards is worse than no insight, and the parameter names are the only
+     thing standing between the two. */
+  const split = (label, valueOf, belowLabel, aboveLabel, unit) => {
+    const pairs = days.map(d => ({ d, s: spend[d], v: valueOf(d) })).filter(p => p.v != null);
+    if (pairs.length < FIN_MIN_DAYS * 2) return;
+    const med = dpMedian(pairs.map(p => p.v));
+    if (med == null) return;
+    const below = pairs.filter(p => p.v < med), above = pairs.filter(p => p.v >= med);
+    if (below.length < FIN_MIN_DAYS || above.length < FIN_MIN_DAYS) return;
+    const aBelow = avg(below.map(p => p.s)), aAbove = avg(above.map(p => p.s));
+    const diff = aAbove - aBelow;
+    if (Math.abs(diff) < 5000) return;                        // under ₹50/day is noise, not a pattern
+    const costlier = diff > 0 ? aboveLabel : belowLabel;
+    const cheaper  = diff > 0 ? belowLabel : aboveLabel;
+    const hiAmt = diff > 0 ? aAbove : aBelow, loAmt = diff > 0 ? aBelow : aAbove;
+    const money = v => finFmt(Math.round(v), { compact: true, noPaise: true });
+    out.push({
+      head: `You spend ${money(Math.abs(diff))} more a day on ${costlier}`,
+      body: `${money(hiAmt)} a day on ${costlier} vs ${money(loAmt)} on ${cheaper}. ` +
+            `Split at your own median ${label}${unit ? ' of ' + med.toFixed(1) + unit : ''}, over ${pairs.length} days with both recorded.`,
+      n: pairs.length, mag: Math.abs(diff),
+    });
+  };
+
+  split('mood', d => (ents[d] && ents[d].mood != null) ? +ents[d].mood : null,
+    'lower-mood days', 'better-mood days', '/10');
+  split('energy', d => (ents[d] && ents[d].energy != null) ? +ents[d].energy : null,
+    'lower-energy days', 'higher-energy days', '/10');
+  split('sleep', d => {
+    const h = hs[d] && hs[d].sleepMin != null ? hs[d].sleepMin / 60 : null;
+    return h != null ? h : (ents[d] && ents[d].sleepHours != null ? +ents[d].sleepHours : null);
+  }, 'short-sleep days', 'well-slept days', 'h');
+  split('screen time', d => {
+    const m = hs[d] && hs[d].screenMin != null ? hs[d].screenMin / 60 : null;
+    return m != null ? m : (ents[d] && ents[d].screenTime != null ? +ents[d].screenTime : null);
+  }, 'low-screen days', 'high-screen days', 'h');
+
+  /* Weekday vs weekend needs no other tracking at all, so it works from day one. */
+  const wk = days.filter(d => { const g = new Date(d + 'T00:00:00').getDay(); return g !== 0 && g !== 6; });
+  const we = days.filter(d => { const g = new Date(d + 'T00:00:00').getDay(); return g === 0 || g === 6; });
+  if (wk.length >= FIN_MIN_DAYS && we.length >= FIN_MIN_DAYS) {
+    const aW = avg(wk.map(d => spend[d])), aE = avg(we.map(d => spend[d]));
+    if (Math.abs(aE - aW) >= 5000) {
+      /* Leads with the costlier side, like every other pattern above. Leading with whichever
+         happens to be the weekend made the body contradict the emphasis of its own heading. */
+      const money = v => finFmt(Math.round(v), { compact: true, noPaise: true });
+      const weekendCostlier = aE > aW;
+      out.push({
+        head: `${weekendCostlier ? 'Weekends' : 'Weekdays'} cost you ${money(Math.abs(aE - aW))} more a day`,
+        body: `${money(weekendCostlier ? aE : aW)} on an average ${weekendCostlier ? 'weekend day' : 'weekday'} vs ` +
+              `${money(weekendCostlier ? aW : aE)} on a ${weekendCostlier ? 'weekday' : 'weekend day'}, ` +
+              `over ${we.length} weekend and ${wk.length} weekday days with spending.`,
+        n: days.length, mag: Math.abs(aE - aW),
+      });
+    }
+  }
+  return out.sort((a, b) => b.mag - a.mag);
+}
+
+/* Month-end projection from the run rate so far. Only after a few days — projecting a month
+   from one day of data produces a number that is wrong by an order of magnitude. */
+function finProjection(ym) {
+  if (ym !== finYm(todayStr())) return null;
+  const day = +todayStr().slice(8, 10);
+  if (day < 5) return null;
+  const m = finMonth(ym);
+  const total = +finMonthEnd(ym).slice(8, 10);
+  return { spent: m.out, projected: Math.round(m.out / day * total), dayOf: day, days: total };
+}
+
+/* ---------- Money screen ---------- */
+let mnTab = 'over';          // over | tx | accts | ins
+let mnYm = null;             // month being viewed (null = current)
+let mnAcctOpen = null;       // account id being edited
+let mnTxEdit = null;         // transaction id being edited
+let mnAddOpen = false;
+let mnImport = null;         // { rows, head, map } while a CSV is being mapped
+let mnFilter = { acct: '', cat: '' };
+
+function mnMonth() { return mnYm || finYm(todayStr()); }
+function mnMonthLabel(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+function mnShiftMonth(n) {
+  const [y, m] = mnMonth().split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  const ym = finYm(todayStr(d));
+  if (ym > finYm(todayStr())) return;          // no future months
+  mnYm = ym; renderMoney();
+}
+
+function renderMoney() {
+  const el = document.getElementById('s-money');
+  if (!el) return;
+  document.getElementById('screen-title').textContent = 'Money';
+  const accts = finAccts().filter(a => !a.archived);
+  const w = finSplitWorth();
+  document.getElementById('screen-sub').textContent =
+    accts.length ? finFmt(w.net, { compact: true, noPaise: true }) + ' net worth' : 'set up your accounts';
+
+  if (!accts.length && !finAccts().length) return mnRenderEmpty(el);
+
+  const tabs = [{ k: 'over', label: 'Overview' }, { k: 'tx', label: 'Money in/out' },
+                { k: 'accts', label: 'Accounts' }, { k: 'ins', label: 'Patterns' }];
+  el.innerHTML = `<div class="card" style="padding:12px">
+      <div class="seg-row">${tabs.map(t => `<button class="seg-btn ${mnTab === t.k ? 'on' : ''}" data-mn-tab="${t.k}">${t.label}</button>`).join('')}</div>
+    </div>` +
+    (mnTab === 'over' ? mnOverviewHTML() : mnTab === 'tx' ? mnTxHTML()
+      : mnTab === 'accts' ? mnAcctsHTML() : mnInsightsHTML());
+}
+
+function mnRenderEmpty(el) {
+  el.innerHTML = `<div class="card">
+    <h2 class="h2-icon">${hicon('wallet')}<span>Money</span></h2>
+    <div class="empty" style="text-align:left;padding:14px 4px">
+      <p><b>Track what you own, what you owe, and where it goes</b> — on this phone only, like
+      everything else here. No bank login, nothing uploaded.</p>
+      <p>Add an account to start. A bank account and cash is enough; you can add a credit card,
+      investments, property or a loan later.</p>
+      <p style="color:var(--text-dim)">Because your spending sits next to your mood, sleep and
+      screen time in the same app, <b>Patterns</b> can tell you things a finance app never
+      can — like whether short nights cost you money.</p>
+    </div>
+    <div class="mn-quick">${FIN_KINDS.map(k => `<button class="mn-kbtn" data-mn-new-kind="${k.k}">${k.ico} ${k.label}</button>`).join('')}</div>
+  </div>` + (mnAcctOpen === 'new' ? mnAcctFormHTML() : '');
+}
+
+/* ---- overview ---- */
+function mnOverviewHTML() {
+  const ym = mnMonth(), m = finMonth(ym), w = finSplitWorth();
+  const series = finWorthSeries(8).map(x => x.v / 100);
+  const proj = finProjection(ym);
+  const budgets = finBudgets();
+  const cats = Object.keys(m.byCat).sort((a, b) => m.byCat[b] - m.byCat[a]);
+  const top = cats.slice(0, 7);
+  const maxCat = top.length ? m.byCat[top[0]] : 0;
+  const months = finRecentMonths(6);
+
+  return `
+  <div class="card mn-worth">
+    <div class="mn-worth-top">
+      <div>
+        <div class="mn-lbl">Net worth</div>
+        <div class="mn-big ${w.net < 0 ? 'neg' : ''}">${finFmt(w.net, { compact: true, noPaise: true })}</div>
+        <div class="mn-sub">${finFmt(w.assets, { compact: true, noPaise: true })} owned · ${finFmt(w.debts, { compact: true, noPaise: true })} owed</div>
+      </div>
+      ${series.filter(v => v !== 0).length >= 2 ? `<div class="mn-spark">${sparkline(series, 'nrg', 104, 40)}<div class="mn-lbl" style="text-align:right">8 months</div></div>` : ''}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="mn-mhead">
+      <button class="mn-arrow" data-mn-month="-1" aria-label="previous month">‹</button>
+      <div class="mn-mname">${escapeHtml(mnMonthLabel(ym))}</div>
+      <button class="mn-arrow" data-mn-month="1" aria-label="next month" ${ym >= finYm(todayStr()) ? 'disabled' : ''}>›</button>
+    </div>
+    <div class="mn-3">
+      <div class="mn-cell"><div class="mn-n in">${finFmt(m.in, { compact: true, noPaise: true })}</div><div class="mn-lbl">came in</div></div>
+      <div class="mn-cell"><div class="mn-n out">${finFmt(m.out, { compact: true, noPaise: true })}</div><div class="mn-lbl">went out</div></div>
+      <div class="mn-cell"><div class="mn-n ${m.net < 0 ? 'out' : 'in'}">${finFmt(m.net, { compact: true, noPaise: true })}</div><div class="mn-lbl">kept</div></div>
+    </div>
+    ${m.rate != null ? `<div class="mn-rate">You kept <b>${m.rate}%</b> of what came in this month.</div>`
+      : `<div class="mn-rate mn-dim">No income recorded this month, so there is no savings rate to work out.</div>`}
+    ${proj ? `<div class="mn-proj">At this rate — ${finFmt(proj.spent, { compact: true, noPaise: true })} over ${proj.dayOf} days — this month lands near
+      <b>${finFmt(proj.projected, { compact: true, noPaise: true })}</b>. It is a run-rate, not a forecast.</div>` : ''}
+  </div>
+
+  <div class="card">
+    <h2>Where it went <span class="hint">${cats.length ? cats.length + ' categories' : 'nothing yet'}</span></h2>
+    ${top.length ? top.map(c => {
+      const cat = finCat(c), v = m.byCat[c];
+      const b = budgets[c] || 0;
+      const pct = maxCat ? Math.round(v / maxCat * 100) : 0;
+      const over = b > 0 && v > b;
+      return `<div class="mn-cat">
+        <div class="mn-cat-h"><span>${cat.ico} ${escapeHtml(cat.name)}</span>
+          ${/* Both numbers use the SAME format. Mixing compact and full rendered an on-budget
+                category as "₹22,000 / ₹22.0k" — two spellings of one number, which reads as
+                a bug even when the figures agree. */''}
+          <span class="mn-cat-v">${finFmt(v, { noPaise: true })}${b > 0 ? ` <span class="${over ? 'mn-over' : 'mn-dim'}">of ${finFmt(b, { noPaise: true })}</span>` : ''}</span></div>
+        <div class="mn-bar"><i style="width:${pct}%" class="${over ? 'over' : ''}"></i></div>
+      </div>`; }).join('')
+      : '<div class="empty">Nothing recorded for this month.</div>'}
+    ${cats.length > 7 ? `<div class="hint" style="margin-top:8px">+${cats.length - 7} smaller categories — see Money in/out.</div>` : ''}
+  </div>
+
+  ${months.length > 1 ? `<div class="card">
+    <h2>Month by month <span class="hint">in vs out</span></h2>
+    <div class="mn-bars">${(() => {
+      const data = months.map(y => finMonth(y));
+      const peak = Math.max(1, ...data.map(d => Math.max(d.in, d.out)));
+      return data.map((d, i) => `<div class="mn-bcol ${months[i] === ym ? 'on' : ''}" data-mn-jump="${months[i]}">
+        <div class="mn-btrack"><i class="bin" style="height:${Math.round(d.in / peak * 100)}%"></i><i class="bout" style="height:${Math.round(d.out / peak * 100)}%"></i></div>
+        <div class="mn-blbl">${months[i].slice(5)}</div></div>`).join('');
+    })()}</div>
+    <div class="mn-legend"><span><i class="bin"></i>in</span><span><i class="bout"></i>out</span></div>
+  </div>` : ''}
+
+  ${mnQuickAddHTML()}`;
+}
+
+/* ---- quick add, shared by Overview and the ledger ---- */
+function mnQuickAddHTML() {
+  const accts = finAccts().filter(a => !a.archived && finKind(a.kind).mode === 'tx');
+  if (!accts.length) return `<div class="card"><div class="empty">Add a bank, cash or card account to record money in and out.</div></div>`;
+  if (!mnAddOpen) return `<div class="card"><button class="btn btn-primary" id="mn-add-open" style="width:100%">＋ Record money in or out</button></div>`;
+  const dir = mnAddOpen === true ? 'out' : mnAddOpen;
+  const cats = finCats().filter(c => c.dir === (dir === 'in' ? 'in' : 'out'));
+  return `<div class="card">
+    <h2>Record ${dir === 'xfer' ? 'a transfer' : dir === 'in' ? 'money in' : 'money out'}</h2>
+    <div class="seg-row" style="margin-bottom:11px">
+      ${[['out', 'Money out'], ['in', 'Money in'], ['xfer', 'Transfer']].map(([k, l]) =>
+        `<button class="seg-btn ${dir === k ? 'on' : ''}" data-mn-dir="${k}">${l}</button>`).join('')}
+    </div>
+    <div class="field"><label>Amount</label>
+      <input type="text" id="mn-amt" inputmode="decimal" placeholder="e.g. 450 or 1.2k" autocomplete="off"></div>
+    <div class="pj-row2">
+      <div class="field"><label>${dir === 'xfer' ? 'From' : 'Account'}</label>
+        <select id="mn-acct">${accts.map(a => `<option value="${a.id}">${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
+      ${dir === 'xfer'
+        ? `<div class="field"><label>To</label><select id="mn-to">${accts.map(a => `<option value="${a.id}">${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('')}</select></div>`
+        : `<div class="field"><label>Category</label><select id="mn-cat">${cats.map(c => `<option value="${c.id}">${c.ico} ${escapeHtml(c.name)}</option>`).join('')}</select></div>`}
+    </div>
+    <div class="pj-row2">
+      <div class="field"><label>Date</label><input type="date" id="mn-date" value="${todayStr()}" max="${todayStr()}"></div>
+      <div class="field"><label>Note <span class="hint">optional</span></label><input type="text" id="mn-note" placeholder="e.g. Netflix" autocomplete="off"></div>
+    </div>
+    <div class="pj-btns"><button class="btn btn-primary btn-sm" id="mn-save">Save</button>
+      <button class="btn btn-ghost btn-sm" id="mn-add-cancel">Cancel</button></div>
+  </div>`;
+}
+
+/* ---- ledger ---- */
+function mnTxHTML() {
+  const ym = mnMonth();
+  const from = ym + '-01', to = finMonthEnd(ym);
+  let list = finTx().filter(t => t.d >= from && t.d <= to);
+  if (mnFilter.acct) list = list.filter(t => t.ac === mnFilter.acct || t.to === mnFilter.acct);
+  if (mnFilter.cat) list = list.filter(t => t.c === mnFilter.cat);
+  list.sort((a, b) => a.d === b.d ? (b.id > a.id ? 1 : -1) : (a.d < b.d ? 1 : -1));
+  const byDay = {};
+  list.forEach(t => { (byDay[t.d] = byDay[t.d] || []).push(t); });
+  const accts = finAccts();
+  const usedCats = [...new Set(finTx().map(t => t.c).filter(Boolean))];
+
+  return `${mnQuickAddHTML()}
+  <div class="card">
+    <div class="mn-mhead">
+      <button class="mn-arrow" data-mn-month="-1" aria-label="previous month">‹</button>
+      <div class="mn-mname">${escapeHtml(mnMonthLabel(ym))}<span class="hint" style="display:block;font-weight:400">${list.length} record${list.length === 1 ? '' : 's'}</span></div>
+      <button class="mn-arrow" data-mn-month="1" aria-label="next month" ${ym >= finYm(todayStr()) ? 'disabled' : ''}>›</button>
+    </div>
+    <div class="pj-row2">
+      <div class="field"><label>Account</label><select id="mn-f-acct"><option value="">All accounts</option>
+        ${accts.map(a => `<option value="${a.id}"${mnFilter.acct === a.id ? ' selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Category</label><select id="mn-f-cat"><option value="">All categories</option>
+        ${usedCats.map(c => `<option value="${c}"${mnFilter.cat === c ? ' selected' : ''}>${escapeHtml(finCat(c).name)}</option>`).join('')}</select></div>
+    </div>
+  </div>
+  ${Object.keys(byDay).length ? Object.keys(byDay).sort().reverse().map(d => {
+    const dayOut = byDay[d].filter(t => t.dir === 'out').reduce((s, t) => s + t.a, 0);
+    return `<div class="card mn-day">
+      <div class="mn-day-h"><span>${shortDate(d)}</span>${dayOut ? `<span class="mn-day-t">${finFmt(dayOut, { noPaise: true })} out</span>` : ''}</div>
+      ${byDay[d].map(mnTxRow).join('')}
+    </div>`; }).join('')
+    : `<div class="card"><div class="empty">Nothing recorded${mnFilter.acct || mnFilter.cat ? ' for this filter' : ' this month'}.</div></div>`}`;
+}
+function mnTxRow(t) {
+  const editing = mnTxEdit === t.id;
+  const cat = finCat(t.c), a = finAcct(t.ac);
+  const to = t.to ? finAcct(t.to) : null;
+  const sign = t.dir === 'in' ? '+' : t.dir === 'out' ? '−' : '⇄';
+  const label = t.dir === 'xfer'
+    ? `${a ? escapeHtml(a.name) : '?'} → ${to ? escapeHtml(to.name) : '?'}`
+    : (t.n ? escapeHtml(t.n) : escapeHtml(cat.name));
+  return `<div class="mn-tx ${t.dir}">
+    <button class="mn-tx-main" data-mn-tx="${t.id}">
+      <span class="mn-tx-ico">${t.dir === 'xfer' ? '⇄' : cat.ico}</span>
+      <span class="mn-tx-txt"><span class="mn-tx-l">${label}</span>
+        <span class="mn-tx-s">${t.dir === 'xfer' ? 'transfer' : escapeHtml(cat.name)}${a && t.dir !== 'xfer' ? ' · ' + escapeHtml(a.name) : ''}</span></span>
+      <span class="mn-tx-a">${sign}${finFmt(t.a, { noPaise: true }).replace('−', '')}</span>
+    </button>
+    ${editing ? `<div class="mn-tx-edit">
+      <button class="btn btn-ghost btn-sm" data-mn-tx-del="${t.id}">Delete</button>
+      <span class="hint">${escapeHtml(t.n || '')}${t.n ? ' · ' : ''}${finFmt(t.a)} on ${shortDate(t.d)}</span></div>` : ''}
+  </div>`;
+}
+
+/* ---- accounts ---- */
+function mnAcctsHTML() {
+  const all = finAccts();
+  const groups = FIN_KINDS.map(k => ({ k, list: all.filter(a => a.kind === k.k && !a.archived) })).filter(g => g.list.length);
+  const arch = all.filter(a => a.archived);
+  const w = finSplitWorth();
+  return `
+  <div class="card">
+    <div class="mn-3">
+      <div class="mn-cell"><div class="mn-n">${finFmt(w.assets, { compact: true, noPaise: true })}</div><div class="mn-lbl">owned</div></div>
+      <div class="mn-cell"><div class="mn-n out">${finFmt(w.debts, { compact: true, noPaise: true })}</div><div class="mn-lbl">owed</div></div>
+      <div class="mn-cell"><div class="mn-n ${w.net < 0 ? 'out' : 'in'}">${finFmt(w.net, { compact: true, noPaise: true })}</div><div class="mn-lbl">net worth</div></div>
+    </div>
+  </div>
+  ${groups.map(g => `<div class="card">
+    <h2>${g.k.ico} ${g.k.label}${g.list.length > 1 ? 's' : ''}</h2>
+    ${g.list.map(a => {
+      const b = finBal(a.id);
+      const mode = finKind(a.kind).mode;
+      return `<div class="mn-acct">
+        <button class="mn-acct-main" data-mn-acct="${a.id}">
+          <span class="mn-acct-n">${escapeHtml(a.name)}</span>
+          <span class="mn-acct-b ${b == null ? 'mn-dim' : b < 0 ? 'out' : ''}">${b == null ? 'no value yet' : finFmt(Math.abs(b), { noPaise: true })}</span>
+        </button>
+        ${mode === 'valued' ? `<div class="mn-acct-sub">${(() => {
+          const ms = finMarks().filter(m => m.ac === a.id).sort((x, y) => x.d < y.d ? 1 : -1);
+          return ms.length ? `last updated ${shortDate(ms[0].d)} · ${ms.length} value${ms.length === 1 ? '' : 's'} recorded` : 'add a value to include it in your net worth';
+        })()}</div>` : ''}
+        ${mnAcctOpen === a.id ? mnAcctFormHTML(a) : ''}
+      </div>`; }).join('')}
+  </div>`).join('')}
+  <div class="card">
+    <h2>Add an account</h2>
+    <div class="mn-quick">${FIN_KINDS.map(k => `<button class="mn-kbtn" data-mn-new-kind="${k.k}">${k.ico} ${k.label}</button>`).join('')}</div>
+    ${mnAcctOpen === 'new' ? mnAcctFormHTML() : ''}
+  </div>
+  ${arch.length ? `<div class="card"><h2>Closed <span class="hint">${arch.length}</span></h2>
+    ${arch.map(a => `<div class="mn-acct"><button class="mn-acct-main" data-mn-acct="${a.id}">
+      <span class="mn-acct-n mn-dim">${escapeHtml(a.name)}</span><span class="mn-acct-b mn-dim">closed</span></button>
+      ${mnAcctOpen === a.id ? mnAcctFormHTML(a) : ''}</div>`).join('')}</div>` : ''}
+  ${mnImportHTML()}
+  <div class="card">
+    <h2>Currency</h2>
+    <div class="field"><label>Symbol</label>
+      <input type="text" id="mn-cur" maxlength="3" value="${escapeHtml(finSet().cur)}" style="max-width:90px"></div>
+    <div class="hint">Only the symbol shown. Nothing is converted — Daylog does not fetch exchange rates, because that would mean talking to a server.</div>
+  </div>`;
+}
+
+function mnAcctFormHTML(a) {
+  const isNew = !a;
+  const kind = isNew ? (mnNewKind || 'bank') : a.kind;
+  const k = finKind(kind);
+  return `<div class="mn-form">
+    <div class="field"><label>Name</label>
+      <input type="text" id="mn-a-name" value="${isNew ? '' : escapeHtml(a.name)}" placeholder="${k.k === 'bank' ? 'e.g. HDFC savings' : k.k === 'card' ? 'e.g. Amazon Pay card' : k.k === 'asset' ? 'e.g. Gold, or the flat' : 'e.g. ' + k.label}" autocomplete="off"></div>
+    ${k.mode === 'tx'
+      ? `<div class="field"><label>${isNew ? 'Balance right now' : 'Opening balance'} <span class="hint">${k.k === 'card' ? 'leave blank if nothing owed' : ''}</span></label>
+          <input type="text" id="mn-a-open" inputmode="decimal" value="${isNew || !a.opening ? '' : (a.opening / 100)}" placeholder="0"></div>
+         <div class="hint" style="margin-bottom:9px">The balance is worked out from this plus everything you record, so it can never disagree with your own ledger.</div>`
+      : `<div class="field"><label>${k.sign < 0 ? 'Amount still owed' : 'What it is worth'} today</label>
+          <input type="text" id="mn-a-val" inputmode="decimal" placeholder="0"></div>
+         <div class="hint" style="margin-bottom:9px">Update this whenever you like — each update is kept with its date, which is what makes the net-worth line real rather than a straight guess.</div>`}
+    <div class="pj-btns">
+      <button class="btn btn-primary btn-sm" id="mn-a-save" data-kind="${kind}" data-id="${isNew ? '' : a.id}">${isNew ? 'Add account' : 'Save'}</button>
+      <button class="btn btn-ghost btn-sm" id="mn-a-cancel">Cancel</button>
+      ${isNew ? '' : `<button class="gap-skip" data-mn-a-arch="${a.id}">${a.archived ? 'Reopen' : 'Close account'}</button>
+        <button class="gap-skip" data-mn-a-del="${a.id}">Delete</button>`}
+    </div>
+  </div>`;
+}
+let mnNewKind = 'bank';
+
+/* ---- patterns ---- */
+function mnInsightsHTML() {
+  const pats = finPatterns();
+  const rec = finRecurring();
+  const ym = mnMonth();
+  const movers = finMovers(ym).slice(0, 6);
+  const spendDays = Object.keys(finDailySpend()).length;
+
+  return `
+  <div class="card">
+    <h2 class="h2-icon">${hicon('sparkle')}<span>What your spending follows</span></h2>
+    ${pats.length ? pats.map(p => `<div class="mn-ins">
+        <div class="mn-ins-h">${escapeHtml(p.head)}</div>
+        <div class="mn-ins-b">${escapeHtml(p.body)}</div></div>`).join('')
+      : `<div class="mn-noins">
+          <p>Nothing solid yet. These come from comparing your spending against your own mood,
+          energy, sleep and screen time on the same days — so they need both sides recorded on
+          at least ${FIN_MIN_DAYS} days either side of your own median.</p>
+          <p class="mn-dim">${spendDays} day${spendDays === 1 ? '' : 's'} with spending recorded so far. Keep logging both and they will appear.</p>
+        </div>`}
+    ${pats.length ? `<div class="hint" style="margin-top:6px">Each split is on <b>your own</b> median, not a general rule, and none is shown below ${FIN_MIN_DAYS} days on either side. A pattern that is not really there is worse than none.</div>` : ''}
+  </div>
+
+  <div class="card">
+    <h2>Biggest changes <span class="hint">vs the month before</span></h2>
+    ${movers.length ? movers.map(mv => {
+      const c = finCat(mv.cat), up = mv.delta > 0;
+      return `<div class="mn-mv">
+        <span class="mn-mv-c">${c.ico} ${escapeHtml(c.name)}</span>
+        <span class="mn-mv-d ${up ? 'up' : 'down'}">${up ? '+' : '−'}${finFmt(Math.abs(mv.delta), { compact: true, noPaise: true })}${
+          mv.pct != null ? ` <span class="mn-dim">${mv.pct < 0 ? '−' : '+'}${Math.abs(mv.pct)}%</span>` : ' <span class="mn-dim">new</span>'}</span>
+      </div>`; }).join('')
+      : '<div class="empty">Not enough months to compare yet.</div>'}
+  </div>
+
+  <div class="card">
+    <h2>Looks like a subscription <span class="hint">${rec.length || 'none found'}</span></h2>
+    ${rec.length ? `${rec.slice(0, 8).map(r => `<div class="mn-mv">
+        <span class="mn-mv-c">${finCat(r.cat).ico} ${escapeHtml(r.label)}</span>
+        <span class="mn-mv-d">${finFmt(r.avg, { noPaise: true })} <span class="mn-dim">× ${r.months} months</span></span>
+      </div>`).join('')}
+      <div class="hint" style="margin-top:8px">Charges of about the same size in the same category across 3+ months. It is a guess from your own records, not a bank feed — check before cancelling anything.</div>`
+      : `<div class="mn-noins"><p>Nothing repeating three months or more yet. Add a note like “Netflix” when you record a charge and repeats get easier to spot.</p></div>`}
+  </div>
+
+  <div class="card">
+    <h2>Budgets <span class="hint">optional</span></h2>
+    <div class="hint" style="margin-bottom:10px">Set a monthly cap on any category and it shows on the Overview bars. Leave blank for no cap.</div>
+    ${(() => { const b = finBudgets(); const m = finMonth(ym);
+      const cats = [...new Set(Object.keys(m.byCat).concat(Object.keys(b)))];
+      if (!cats.length) return '<div class="empty">Record some spending first.</div>';
+      return cats.sort((x, y) => (m.byCat[y] || 0) - (m.byCat[x] || 0)).map(c => `<div class="mn-bud">
+        <span class="mn-bud-c">${finCat(c).ico} ${escapeHtml(finCat(c).name)}</span>
+        <input type="text" inputmode="decimal" data-mn-bud="${c}" value="${b[c] ? (b[c] / 100) : ''}" placeholder="no cap">
+      </div>`).join('');
+    })()}
+  </div>`;
+}
+
+/* ---- CSV import ---- */
+function mnImportHTML() {
+  if (!mnImport) return `<div class="card">
+    <h2>Import from a statement</h2>
+    <div class="hint" style="margin-bottom:10px">Most banks let you download a CSV. Pick the file and tell Daylog which column is which — nothing is uploaded, the file is read on this phone.</div>
+    <input type="file" id="mn-csv" accept=".csv,text/csv,text/plain">
+  </div>`;
+  const { head, rows } = mnImport;
+  const accts = finAccts().filter(a => !a.archived && finKind(a.kind).mode === 'tx');
+  const pick = (id, label, hint) => `<div class="field"><label>${label} ${hint ? `<span class="hint">${hint}</span>` : ''}</label>
+    <select data-mn-map="${id}">${['', ...head.map((h, i) => i)].map(i =>
+      i === '' ? `<option value="">— none —</option>`
+        : `<option value="${i}"${String(mnImport.map[id]) === String(i) ? ' selected' : ''}>${escapeHtml(head[i] || 'column ' + (i + 1))}</option>`).join('')}</select></div>`;
+  const prev = mnImportPreview();
+  return `<div class="card">
+    <h2>Import — ${rows.length} row${rows.length === 1 ? '' : 's'} found</h2>
+    <div class="field"><label>Into which account</label>
+      <select data-mn-map="acct">${accts.map(a => `<option value="${a.id}"${mnImport.map.acct === a.id ? ' selected' : ''}>${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
+    ${pick('date', 'Date column')}
+    ${pick('desc', 'Description column')}
+    ${pick('out', 'Money out / debit')}
+    ${pick('in', 'Money in / credit', 'leave as none if one column holds both')}
+    ${mnImport.map.in === '' || mnImport.map.in == null
+      ? `<div class="hint" style="margin-bottom:9px">With only one amount column, negative values are treated as money out and positive as money in.</div>` : ''}
+    <div class="hint" style="margin-bottom:9px"><b>${prev.ok}</b> of ${rows.length} rows read cleanly${prev.bad ? `, <b>${prev.bad}</b> skipped (no date or no amount)` : ''}${prev.dupes ? `, <b>${prev.dupes}</b> already recorded and will be skipped` : ''}.</div>
+    ${prev.sample.length ? `<div class="mn-prev">${prev.sample.map(r => `<div class="mn-prev-r">
+      <span>${shortDate(r.d)}</span><span class="mn-prev-n">${escapeHtml(r.n || '—')}</span>
+      <span class="${r.dir === 'in' ? 'in' : 'out'}">${r.dir === 'in' ? '+' : '−'}${finFmt(r.a, { noPaise: true })}</span></div>`).join('')}</div>` : ''}
+    <div class="pj-btns">
+      <button class="btn btn-primary btn-sm" id="mn-imp-go" ${prev.ok ? '' : 'disabled'}>Import ${prev.ok} record${prev.ok === 1 ? '' : 's'}</button>
+      <button class="btn btn-ghost btn-sm" id="mn-imp-cancel">Cancel</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Everything lands in <b>Other spending</b> or <b>Other income</b> — recategorise from Money in/out. Rows that match something already recorded on the same day for the same amount are skipped, so importing twice does not double your history.</div>
+  </div>`;
+}
+
+/* ---- CSV: a real parser, because bank statements contain commas inside quotes ---- */
+function csvParse(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  const s = String(text).replace(/\r\n?/g, '\n');
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      if (c === '"') { if (s[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => String(x).trim() !== ''));
+}
+/* Banks write dates every possible way. Handles ISO, dd/mm/yyyy, dd-mm-yy and "12 Jan 2026".
+   dd/mm is assumed over mm/dd — this app's users are not all American, and guessing wrong
+   silently reorders someone's whole year. Ambiguous rows are dropped, not guessed. */
+function csvDate(v) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2, '0')}-${String(+m[3]).padStart(2, '0')}`;
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (+d > 31 || +mo > 12) return null;
+    if (y.length === 2) y = (+y > 70 ? '19' : '20') + y;
+    return `${y}-${String(+mo).padStart(2, '0')}-${String(+d).padStart(2, '0')}`;
+  }
+  const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  m = s.match(/^(\d{1,2})[\s\-]([A-Za-z]{3})[A-Za-z]*[\s\-,]*(\d{2,4})/);
+  if (m) {
+    const mi = MON.indexOf(m[2].toLowerCase());
+    if (mi < 0) return null;
+    let y = m[3]; if (y.length === 2) y = '20' + y;
+    return `${y}-${String(mi + 1).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+  }
+  return null;
+}
+function mnGuessMap(head) {
+  const f = (...pats) => {
+    for (const p of pats) {
+      const i = head.findIndex(h => new RegExp(p, 'i').test(String(h)));
+      if (i >= 0) return i;
+    }
+    return '';
+  };
+  return {
+    acct: (finAccts().filter(a => !a.archived && finKind(a.kind).mode === 'tx')[0] || {}).id || '',
+    date: f('^date', 'txn.*date', 'value.*date', 'date'),
+    desc: f('narration', 'description', 'particular', 'remark', 'detail', 'refer'),
+    out:  f('withdraw', 'debit', 'dr\\b', 'spent', 'paid.*out', '^amount$'),
+    in:   f('deposit', '^credit', 'cr\\b', 'received', 'paid.*in'),
+  };
+}
+/* Reads the mapped rows into transactions. Never writes — the preview and the import share
+   this, so what you see is exactly what gets saved. */
+function mnImportRows() {
+  if (!mnImport) return { rows: [], bad: 0, dupes: 0 };
+  const { rows, map } = mnImport;
+  const has = k => map[k] !== '' && map[k] != null;
+  const existing = new Set(finTx().map(t => t.d + '|' + t.a + '|' + t.dir));
+  const out = []; let bad = 0, dupes = 0;
+  rows.forEach(r => {
+    const d = has('date') ? csvDate(r[map.date]) : null;
+    if (!d || d > todayStr()) { bad++; return; }
+    let a = null, dir = 'out';
+    const rawOut = has('out') ? String(r[map.out] || '').trim() : '';
+    const rawIn = has('in') ? String(r[map.in] || '').trim() : '';
+    if (has('in') && rawIn && parseAmt(rawIn)) { a = parseAmt(rawIn); dir = 'in'; }
+    else if (rawOut && parseAmt(rawOut)) {
+      a = parseAmt(rawOut);
+      /* One-column statements carry the sign. With separate debit/credit columns the sign is
+         already implied by which column it sat in, so a stray minus must not flip it. */
+      dir = (!has('in') && /^\s*-/.test(rawOut)) ? 'out' : (!has('in') && !/^\s*-/.test(rawOut) ? 'in' : 'out');
+    }
+    if (!a) { bad++; return; }
+    const key = d + '|' + a + '|' + dir;
+    if (existing.has(key)) { dupes++; return; }
+    out.push({ d, a, dir, n: has('desc') ? String(r[map.desc] || '').trim().slice(0, 90) : '',
+      c: dir === 'in' ? 'otherin' : 'otherout', ac: map.acct });
+  });
+  return { rows: out, bad, dupes };
+}
+function mnImportPreview() {
+  const r = mnImportRows();
+  return { ok: r.rows.length, bad: r.bad, dupes: r.dupes, sample: r.rows.slice(0, 6) };
+}
+
+/* ---- writes ---- */
+function mnTxId() {
+  const log = finTx(); let id = 'f' + Date.now(), n = 0;
+  while (log.some(t => t.id === id)) id = 'f' + Date.now() + '-' + (++n);
+  return id;
+}
+function mnAddTx(o) {
+  const list = finTx();
+  list.push(Object.assign({ id: mnTxId() }, o));
+  finSaveTx(list);
+}
+
+/* ---- handlers ---- */
+document.addEventListener('click', (ev) => {
+  const t = ev.target;
+  const tab = t.closest('[data-mn-tab]');
+  if (tab) { mnTab = tab.dataset.mnTab; mnTxEdit = null; mnAcctOpen = null; renderMoney(); window.scrollTo(0, 0); return; }
+  const mo = t.closest('[data-mn-month]');
+  if (mo) { if (!mo.disabled) mnShiftMonth(+mo.dataset.mnMonth); return; }
+  const jump = t.closest('[data-mn-jump]');
+  if (jump) { mnYm = jump.dataset.mnJump; renderMoney(); return; }
+
+  const nk = t.closest('[data-mn-new-kind]');
+  if (nk) { mnNewKind = nk.dataset.mnNewKind; mnAcctOpen = 'new'; renderMoney();
+    setTimeout(() => { const i = document.getElementById('mn-a-name'); if (i) i.focus(); }, 30); return; }
+  const ac = t.closest('[data-mn-acct]');
+  if (ac) { mnAcctOpen = mnAcctOpen === ac.dataset.mnAcct ? null : ac.dataset.mnAcct; renderMoney(); return; }
+  if (t.id === 'mn-a-cancel') { mnAcctOpen = null; renderMoney(); return; }
+  if (t.id === 'mn-a-save') {
+    const kind = t.dataset.kind, id = t.dataset.id;
+    const name = (document.getElementById('mn-a-name').value || '').trim().slice(0, 60);
+    if (!name) { toast('Give the account a name', true); return; }
+    const k = finKind(kind);
+    const all = finAccts();
+    if (id) {
+      const a = all.find(x => x.id === id); if (!a) return;
+      a.name = name;
+      if (k.mode === 'tx') { const v = parseAmt(document.getElementById('mn-a-open').value); a.opening = v == null ? 0 : v; }
+      finSaveAccts(all);
+    } else {
+      const nid = 'a' + Date.now();
+      const rec = { id: nid, name, kind, opening: 0 };
+      if (k.mode === 'tx') { const v = parseAmt(document.getElementById('mn-a-open').value); rec.opening = v == null ? 0 : v; }
+      all.push(rec); finSaveAccts(all);
+      if (k.mode === 'valued') {
+        const v = parseAmt(document.getElementById('mn-a-val').value);
+        if (v != null) { const ms = finMarks(); ms.push({ id: 'm' + Date.now(), ac: nid, d: todayStr(), v }); finSaveMarks(ms); }
+      }
+    }
+    mnAcctOpen = null; renderMoney(); buzz(12); toast(id ? 'Saved' : 'Account added');
+    return;
+  }
+  const arch = t.closest('[data-mn-a-arch]');
+  if (arch) { const all = finAccts(); const a = all.find(x => x.id === arch.dataset.mnAArch);
+    if (a) { a.archived = !a.archived; finSaveAccts(all); }
+    mnAcctOpen = null; renderMoney(); return; }
+  const adel = t.closest('[data-mn-a-del]');
+  if (adel) {
+    const id = adel.dataset.mnADel, a = finAcct(id);
+    const n = finTx().filter(x => x.ac === id || x.to === id).length;
+    if (!confirm(`Delete "${a ? a.name : 'this account'}"?` + (n ? `\n\n${n} record${n === 1 ? '' : 's'} on it will be deleted too. This cannot be undone — "Close account" keeps the history instead.` : ''))) return;
+    finSaveAccts(finAccts().filter(x => x.id !== id));
+    finSaveTx(finTx().filter(x => x.ac !== id && x.to !== id));
+    finSaveMarks(finMarks().filter(m => m.ac !== id));
+    mnAcctOpen = null; renderMoney(); toast('Account deleted');
+    return;
+  }
+
+  if (t.id === 'mn-add-open') { mnAddOpen = 'out'; renderMoney();
+    setTimeout(() => { const i = document.getElementById('mn-amt'); if (i) i.focus(); }, 30); return; }
+  if (t.id === 'mn-add-cancel') { mnAddOpen = false; renderMoney(); return; }
+  const dirb = t.closest('[data-mn-dir]');
+  if (dirb) { mnAddOpen = dirb.dataset.mnDir; renderMoney();
+    setTimeout(() => { const i = document.getElementById('mn-amt'); if (i) i.focus(); }, 30); return; }
+  if (t.id === 'mn-save') {
+    const a = parseAmt(document.getElementById('mn-amt').value);
+    if (a == null || a <= 0) { toast('Enter an amount', true); return; }
+    const dir = mnAddOpen === true ? 'out' : mnAddOpen;
+    const ac = document.getElementById('mn-acct').value;
+    const d = document.getElementById('mn-date').value || todayStr();
+    const n = (document.getElementById('mn-note').value || '').trim().slice(0, 90);
+    if (dir === 'xfer') {
+      const to = document.getElementById('mn-to').value;
+      if (to === ac) { toast('Pick two different accounts', true); return; }
+      mnAddTx({ d, a, dir: 'xfer', ac, to, c: '', n });
+    } else {
+      mnAddTx({ d, a, dir, ac, c: document.getElementById('mn-cat').value, n });
+    }
+    mnAddOpen = false; mnYm = finYm(d); renderMoney(); buzz(12);
+    toast(`${dir === 'in' ? 'Money in' : dir === 'xfer' ? 'Transfer' : 'Money out'} recorded`);
+    return;
+  }
+
+  const tx = t.closest('[data-mn-tx]');
+  if (tx) { mnTxEdit = mnTxEdit === tx.dataset.mnTx ? null : tx.dataset.mnTx; renderMoney(); return; }
+  const txd = t.closest('[data-mn-tx-del]');
+  if (txd) { finSaveTx(finTx().filter(x => x.id !== txd.dataset.mnTxDel)); mnTxEdit = null; renderMoney(); toast('Deleted'); return; }
+
+  if (t.id === 'mn-imp-cancel') { mnImport = null; renderMoney(); return; }
+  if (t.id === 'mn-imp-go') {
+    const r = mnImportRows();
+    if (!r.rows.length) { toast('Nothing to import', true); return; }
+    const list = finTx();
+    r.rows.forEach((x, i) => list.push(Object.assign({ id: 'f' + Date.now() + '-' + i }, x)));
+    finSaveTx(list);
+    mnImport = null; mnTab = 'tx'; renderMoney(); buzz(14);
+    toast(`Imported ${r.rows.length} record${r.rows.length === 1 ? '' : 's'}`);
+    return;
+  }
+});
+
+document.addEventListener('change', (ev) => {
+  const t = ev.target;
+  if (t.id === 'mn-f-acct') { mnFilter.acct = t.value; renderMoney(); return; }
+  if (t.id === 'mn-f-cat') { mnFilter.cat = t.value; renderMoney(); return; }
+  if (t.id === 'mn-cur') {
+    const s = finSet(); s.cur = (t.value || '₹').trim().slice(0, 3) || '₹'; finSaveSet(s); renderMoney(); return;
+  }
+  const bud = t.closest('[data-mn-bud]');
+  if (bud) {
+    const b = finBudgets(); const v = parseAmt(bud.value);
+    if (v == null || v <= 0) delete b[bud.dataset.mnBud]; else b[bud.dataset.mnBud] = v;
+    finSaveBudgets(b); renderMoney(); return;
+  }
+  const map = t.closest('[data-mn-map]');
+  if (map && mnImport) { mnImport.map[map.dataset.mnMap] = map.value; renderMoney(); return; }
+  if (t.id === 'mn-csv' && t.files && t.files[0]) {
+    const f = t.files[0];
+    const rd = new FileReader();
+    rd.onload = () => {
+      const rows = csvParse(rd.result || '');
+      if (rows.length < 2) { toast('That file has no rows Daylog can read', true); return; }
+      /* First row is a header only if it has no readable date in it — some exports start
+         straight into data, and eating the first transaction is a silent data loss. */
+      const looksHeader = !csvDate(rows[0][0]) && !rows[0].some(c => csvDate(c));
+      const head = looksHeader ? rows[0].map(h => String(h).trim()) : rows[0].map((_, i) => 'Column ' + (i + 1));
+      const body = looksHeader ? rows.slice(1) : rows;
+      mnImport = { head, rows: body, map: mnGuessMap(head) };
+      mnTab = 'accts'; renderMoney();
+      toast(`Read ${body.length} rows — check the columns below`);
+    };
+    rd.onerror = () => toast('Could not read that file', true);
+    rd.readAsText(f);
+    return;
+  }
+});
+
+
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
 // Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
 const NAV_DEF = [
@@ -9215,6 +10167,7 @@ const NAV_DEF = [
   { k: 'notes',    ico: 'note',     label: 'Notes' },
   { k: 'plans',    ico: 'list',     label: 'Plans' },
   { k: 'projects', ico: 'layers',   label: 'Projects' },
+  { k: 'money',    ico: 'wallet',   label: 'Money' },
   { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
   { k: 'waves',    ico: 'radio',    label: 'Waves' },
   { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
@@ -9427,7 +10380,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.

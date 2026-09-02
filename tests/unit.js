@@ -1015,6 +1015,186 @@
     renderSettings();
   })();
 
+  /* ---- MONEY ---- */
+  (function () {
+    const snapA = localStorage.getItem('dp.finaccts'), snapT = localStorage.getItem('dp.fintx');
+    const snapM = localStorage.getItem('dp.finmarks'), snapE = localStorage.getItem('dp.entries');
+    const snapB = localStorage.getItem('dp.finbudget');
+    const T = todayStr(), ym = finYm(T);
+
+    // --- amounts are integer minor units, so sums cannot drift ---
+    ok('parses a plain amount', parseAmt('450') === 45000);
+    ok('parses grouped digits and paise', parseAmt('1,234.50') === 123450);
+    ok('ignores a currency symbol', parseAmt('₹1200') === 120000);
+    ok('understands k and L shorthand', parseAmt('1.2k') === 120000 && parseAmt('1L') === 10000000);
+    /* null is a parse FAILURE, not zero. Treating unparseable input as 0 silently records a
+       zero-rupee transaction instead of telling the user their input was wrong. */
+    ok('unparseable input is null, never zero',
+      parseAmt('') === null && parseAmt('abc') === null && parseAmt('   ') === null);
+    ok('a stray minus does not change the magnitude', parseAmt('-450') === 45000);
+    let sum = 0; for (let i = 0; i < 100; i++) sum += parseAmt('0.10');
+    ok('100 x 0.10 sums to exactly 10.00, not 9.99999...', sum === 1000, sum);
+
+    // --- balances derive from the ledger, and a credit card just goes negative ---
+    localStorage.setItem('dp.finaccts', JSON.stringify([
+      { id: 'bank', name: 'Bank', kind: 'bank', opening: parseAmt('50000') },
+      { id: 'cash', name: 'Cash', kind: 'cash', opening: parseAmt('2000') },
+      { id: 'card', name: 'Card', kind: 'card', opening: 0 },
+      { id: 'mf', name: 'Funds', kind: 'invest', opening: 0 },
+      { id: 'hl', name: 'Loan', kind: 'loan', opening: 0 },
+      { id: 'unset', name: 'Unmarked asset', kind: 'asset', opening: 0 },
+    ]));
+    localStorage.setItem('dp.finmarks', JSON.stringify([
+      { id: 'm1', ac: 'mf', d: addDays(T, -60), v: parseAmt('120000') },
+      { id: 'm2', ac: 'mf', d: T, v: parseAmt('141000') },
+      { id: 'm3', ac: 'hl', d: T, v: parseAmt('2800000') },
+    ]));
+    localStorage.setItem('dp.fintx', JSON.stringify([
+      { id: 't1', d: ym + '-02', a: parseAmt('85000'), dir: 'in', ac: 'bank', c: 'salary', n: 'Salary' },
+      { id: 't2', d: ym + '-03', a: parseAmt('22000'), dir: 'out', ac: 'bank', c: 'home', n: 'Rent' },
+      { id: 't3', d: ym + '-04', a: parseAmt('3400'), dir: 'out', ac: 'card', c: 'grocery', n: 'BigBasket' },
+      { id: 't4', d: ym + '-05', a: parseAmt('649'), dir: 'out', ac: 'card', c: 'subs', n: 'Netflix' },
+      { id: 't5', d: ym + '-06', a: parseAmt('5000'), dir: 'xfer', ac: 'bank', to: 'cash', c: '', n: 'ATM' },
+    ]));
+    /* 50,000 opening + 85,000 salary − 22,000 rent − 5,000 moved to cash = 108,000. */
+    ok('a transactional balance is opening plus the ledger',
+      finBal('bank') === parseAmt('108000'), finBal('bank'));
+    ok('a transfer moves money without creating or destroying it',
+      finBal('cash') === parseAmt('7000'), finBal('cash'));
+    ok('spending on a credit card makes it negative',
+      finBal('card') === -parseAmt('4049'), finBal('card'));
+    ok('a valued account uses its latest mark', finBal('mf') === parseAmt('141000'));
+    ok('an earlier date sees the earlier mark',
+      finBal('mf', addDays(T, -30)) === parseAmt('120000'));
+    ok('a loan counts against you', finBal('hl') === -parseAmt('2800000'));
+    /* null, not 0: an asset you have never valued is unknown, and calling it zero would
+       quietly understate net worth rather than admitting the gap. */
+    ok('an unvalued asset is null, not zero', finBal('unset') === null);
+
+    const w = finSplitWorth();
+    ok('net worth is what you own minus what you owe', w.net === w.assets - w.debts);
+    ok('net worth adds up',
+      w.assets === parseAmt('108000') + parseAmt('7000') + parseAmt('141000') &&
+      w.debts === parseAmt('2800000') + parseAmt('4049'), JSON.stringify(w));
+
+    // --- the month view ---
+    const m = finMonth(ym);
+    ok('income and spending are counted separately',
+      m.in === parseAmt('85000') && m.out === parseAmt('26049'), m.in + '/' + m.out);
+    /* Moving your own money between your own accounts is neither income nor spending. */
+    ok('transfers are excluded from income and spending', m.in + m.out === parseAmt('111049'));
+    ok('kept is income minus spending', m.net === parseAmt('58951'));
+    ok('savings rate is a percentage of income', m.rate === 69, m.rate);
+    localStorage.setItem('dp.fintx', JSON.stringify(
+      [{ id: 'z', d: ym + '-02', a: parseAmt('500'), dir: 'out', ac: 'bank', c: 'food', n: '' }]));
+    /* With no income there is no rate. 0% would read as "you saved nothing this month". */
+    ok('no income means no savings rate, not 0%', finMonth(ym).rate === null);
+
+    // --- patterns: direction, and the floors that stop invented findings ---
+    const seed = (days, lowSpend, highSpend, lowMood, highMood) => {
+      const tx = [], ents = {};
+      for (let i = 1; i <= days; i++) {
+        const d = addDays(T, -i), low = i % 2 === 0;
+        ents[d] = { mood: low ? lowMood : highMood, updatedAt: d };
+        tx.push({ id: 'p' + i, d, a: parseAmt(String(low ? lowSpend : highSpend)),
+          dir: 'out', ac: 'bank', c: 'fun', n: '' });
+      }
+      localStorage.setItem('dp.entries', JSON.stringify(ents));
+      localStorage.setItem('dp.fintx', JSON.stringify(tx));
+    };
+    /* THE bug this catches: split() took (lowWord, highWord) and three of four call sites
+       passed them reversed, so the app reported "you spend more on better-mood days" when the
+       data said the exact opposite. A backwards insight is worse than none. */
+    seed(40, 1200, 300, 4, 8);      // low mood -> HIGH spending
+    const pm = finPatterns().find(p => /mood/.test(p.body));
+    ok('a mood pattern is found when one is really there', !!pm);
+    ok('the mood pattern points the right way',
+      !!pm && /more a day on lower-mood days/.test(pm.head), pm && pm.head);
+    ok('and its body agrees with its heading',
+      !!pm && /on lower-mood days vs .* on better-mood days/.test(pm.body), pm && pm.body);
+    seed(40, 300, 1200, 4, 8);      // reversed: low mood -> LOW spending
+    const pm2 = finPatterns().find(p => /mood/.test(p.body));
+    ok('reversing the data reverses the finding',
+      !!pm2 && /more a day on better-mood days/.test(pm2.head), pm2 && pm2.head);
+    ok('every pattern states its sample size', finPatterns().every(p => /over \d+ days/.test(p.body)));
+    seed(8, 2000, 100, 3, 9);
+    ok('too few days yields no pattern at all', finPatterns().length === 0);
+    seed(40, 510, 500, 3, 9);
+    ok('a difference under the noise floor is not reported', finPatterns().length === 0);
+
+    // --- recurring charges ---
+    const rtx = [];
+    for (let k = 0; k < 4; k++) {
+      const b = new Date(); b.setDate(1); b.setMonth(b.getMonth() - k);
+      rtx.push({ id: 'r' + k, d: finYm(todayStr(b)) + '-05', a: parseAmt('649'),
+        dir: 'out', ac: 'bank', c: 'subs', n: 'Netflix' });
+    }
+    rtx.push({ id: 'one', d: T, a: parseAmt('45000'), dir: 'out', ac: 'bank', c: 'shopping', n: 'Laptop' });
+    localStorage.setItem('dp.fintx', JSON.stringify(rtx));
+    const rec = finRecurring();
+    ok('a monthly charge across 4 months is flagged', rec.length === 1 && rec[0].months === 4);
+    ok('a one-off purchase is not flagged as a subscription', !rec.some(r => /Laptop/i.test(r.label)));
+
+    // --- CSV import ---
+    const csv = 'Date,Narration,Withdrawal Amt.,Deposit Amt.\n' +
+      '03/08/26,"UPI-SWIGGY, BANGALORE",450.00,\n' +
+      '04/08/26,SALARY AUG,,85000.00\n' +
+      'no date here,,,\n';
+    const rows = csvParse(csv);
+    ok('a quoted comma does not split a cell', rows[1][1] === 'UPI-SWIGGY, BANGALORE');
+    ok('ISO dates parse', csvDate('2026-08-03') === '2026-08-03');
+    /* dd/mm is assumed, not mm/dd — guessing wrong silently reorders someone's whole year. */
+    ok('dd/mm/yy parses as day first', csvDate('03/08/26') === '2026-08-03');
+    ok('a written month parses', csvDate('15-Mar-2026') === '2026-03-15');
+    ok('an impossible date is rejected, not guessed', csvDate('32/01/2026') === null);
+    ok('junk is rejected', csvDate('nonsense') === null);
+
+    localStorage.setItem('dp.fintx', '[]');
+    const head = rows[0].map(h => String(h).trim());
+    const guess = mnGuessMap(head);
+    ok('columns are auto-detected from a real bank header',
+      head[guess.date] === 'Date' && head[guess.out] === 'Withdrawal Amt.' &&
+      head[guess.in] === 'Deposit Amt.', JSON.stringify(guess));
+    const prevImport = mnImport;
+    mnImport = { head, rows: rows.slice(1), map: guess };
+    const p1 = mnImportRows();
+    ok('clean rows import and junk is skipped', p1.rows.length === 2 && p1.bad === 1,
+      p1.rows.length + '/' + p1.bad);
+    ok('debit and credit columns set the direction',
+      p1.rows[0].dir === 'out' && p1.rows[1].dir === 'in');
+    ok('the amount survives the round trip', p1.rows[1].a === parseAmt('85000'));
+    const list = finTx();
+    p1.rows.forEach((x, i) => list.push(Object.assign({ id: 'imp' + i }, x)));
+    finSaveTx(list);
+    /* Importing the same statement twice is a thing people do. */
+    const p2 = mnImportRows();
+    ok('re-importing the same file adds nothing', p2.rows.length === 0 && p2.dupes === 2);
+    mnImport = prevImport;
+
+    // --- screen renders ---
+    const prevTab = mnTab, prevYm = mnYm;
+    localStorage.setItem('dp.fintx', JSON.stringify([
+      { id: 'v1', d: ym + '-02', a: parseAmt('85000'), dir: 'in', ac: 'bank', c: 'salary', n: 'Salary' },
+      { id: 'v2', d: ym + '-03', a: parseAmt('22000'), dir: 'out', ac: 'bank', c: 'home', n: 'Rent' },
+    ]));
+    ['over', 'tx', 'accts', 'ins'].forEach(tb => {
+      mnTab = tb; renderMoney();
+      ok('the ' + tb + ' tab renders', (document.getElementById('s-money').innerHTML || '').length > 200);
+    });
+    mnTab = 'over'; renderMoney();
+    ok('money is a nav destination', !!navCfg().find(n => n.k === 'money'));
+    ok('money has a render function', typeof RENDER.money === 'function');
+    ['finaccts', 'fintx', 'finmarks', 'finbudget', 'finset'].forEach(k =>
+      ok(k + ' is backed up', BACKUP_KEYS.includes(k)));
+    mnTab = prevTab; mnYm = prevYm;
+
+    if (snapA != null) localStorage.setItem('dp.finaccts', snapA); else localStorage.removeItem('dp.finaccts');
+    if (snapT != null) localStorage.setItem('dp.fintx', snapT); else localStorage.removeItem('dp.fintx');
+    if (snapM != null) localStorage.setItem('dp.finmarks', snapM); else localStorage.removeItem('dp.finmarks');
+    if (snapB != null) localStorage.setItem('dp.finbudget', snapB); else localStorage.removeItem('dp.finbudget');
+    if (snapE != null) localStorage.setItem('dp.entries', snapE); else localStorage.removeItem('dp.entries');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
