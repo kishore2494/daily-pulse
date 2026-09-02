@@ -1195,6 +1195,132 @@
     if (snapE != null) localStorage.setItem('dp.entries', snapE); else localStorage.removeItem('dp.entries');
   })();
 
+  /* ---- MONEY: analysis and charts ---- */
+  (function () {
+    const sA = localStorage.getItem('dp.finaccts'), sT = localStorage.getItem('dp.fintx');
+    const sM = localStorage.getItem('dp.finmarks'), sE = localStorage.getItem('dp.entries');
+    const T = todayStr(), ym = finYm(T), H = 1;
+
+    // --- month arithmetic, including the cases that break naive code ---
+    ok('month end handles a 31-day month', finMonthEnd('2026-01') === '2026-01-31');
+    ok('month end handles February', finMonthEnd('2026-02') === '2026-02-28');
+    ok('month end handles a leap February', finMonthEnd('2024-02') === '2024-02-29');
+    ok('month end handles December', finMonthEnd('2026-12') === '2026-12-31');
+
+    // --- net worth must not invent history before an account existed ---
+    localStorage.setItem('dp.finaccts', JSON.stringify(
+      [{ id: 'b', name: 'B', kind: 'bank', opening: parseAmt('50000'), since: addDays(T, -90) }]));
+    localStorage.setItem('dp.fintx', JSON.stringify(
+      [{ id: 'p', d: addDays(T, -40), a: parseAmt('1000'), dir: 'out', ac: 'b', c: 'food', n: '' }]));
+    /* The opening balance carries no date. Applied unconditionally it made an account opened
+       today appear to hold its balance a year ago — fabricated wealth in the one chart people
+       read most literally. */
+    ok('an account has no balance before it existed', finBal('b', addDays(T, -200)) === null);
+    ok('and none is counted toward net worth then', finNetWorth(addDays(T, -200)) === 0);
+    ok('but it does right after it started', finBal('b', addDays(T, -89)) === parseAmt('50000'));
+    ok('and today reflects the ledger', finBal('b') === parseAmt('49000'));
+    /* An account saved before `since` existed infers its start from its own earliest record
+       rather than needing a migration. */
+    localStorage.setItem('dp.finaccts', JSON.stringify([{ id: 'L', name: 'Legacy', kind: 'bank', opening: parseAmt('9000') }]));
+    localStorage.setItem('dp.fintx', JSON.stringify(
+      [{ id: 'q', d: addDays(T, -50), a: parseAmt('100'), dir: 'out', ac: 'L', c: 'food', n: '' }]));
+    ok('a legacy account infers its start date', finSince(finAcct('L')) === addDays(T, -50));
+    ok('and has no balance before that', finBal('L', addDays(T, -60)) === null);
+
+    // --- future-dated rows must not enter the analysis ---
+    localStorage.setItem('dp.finaccts', JSON.stringify([{ id: 'b', name: 'B', kind: 'bank', opening: 0, since: addDays(T, -300) }]));
+    localStorage.setItem('dp.fintx', JSON.stringify([
+      { id: 'now', d: T, a: parseAmt('500'), dir: 'out', ac: 'b', c: 'food', n: '' },
+      { id: 'later', d: addDays(T, 5), a: parseAmt('9999'), dir: 'out', ac: 'b', c: 'food', n: '' },
+    ]));
+    ok('a future-dated row is excluded from daily spending', !finDailySpend()[addDays(T, 5)]);
+    ok('and today is still counted', finDailySpend()[T] === parseAmt('500'));
+    ok('but it can be asked for explicitly', !!finDailySpend(true)[addDays(T, 5)]);
+
+    // --- day of week: median, because the mean is hijacked by one monthly bill ---
+    /* Rent on the 3rd made the MEAN report whichever weekday the 3rd fell on as the most
+       expensive day. Real data: mean said Friday at Rs2,770; median said Rs476 and correctly
+       named the weekend. A day-of-week profile describes behaviour, and one bill is not
+       behaviour. */
+    const dtx = [];
+    /* Rent lands on the 3rd of the month — ONCE a month, as rent does. Putting it on every
+       Friday (the first version of this fixture) made Friday genuinely expensive and the
+       median correctly said so, which tested nothing. */
+    for (let i = 1; i <= 240; i++) {
+      const d = addDays(T, -i), g = new Date(d + 'T00:00:00').getDay(), we = g === 0 || g === 6;
+      dtx.push({ id: 'w' + i, d, a: parseAmt(String(we ? 1200 : 400)), dir: 'out', ac: 'b', c: 'fun', n: '' });
+      if (d.slice(8, 10) === '03') dtx.push({ id: 'r' + i, d, a: parseAmt('60000'), dir: 'out', ac: 'b', c: 'home', n: 'Rent' });
+    }
+    localStorage.setItem('dp.fintx', JSON.stringify(dtx));
+    const prof = finDowProfile();
+    /* Whichever weekday the 3rd most often fell on is the one the mean over-reports. */
+    const rentDow = {};
+    dtx.filter(t => t.n === 'Rent').forEach(t => {
+      const i = (new Date(t.d + 'T00:00:00').getDay() + 6) % 7;
+      rentDow[i] = (rentDow[i] || 0) + 1;
+    });
+    const hitWeekday = Object.keys(rentDow).map(Number).filter(i => i < 5)
+      .sort((a, b) => rentDow[b] - rentDow[a])[0];
+    ok('a weekday caught the monthly bill at least once', hitWeekday != null, JSON.stringify(rentDow));
+    if (hitWeekday != null) {
+      const hit = prof[hitWeekday], sat = prof[5];
+      ok('the mean is inflated by the monthly bill on that weekday',
+        hit.avg > hit.typical * 1.5, hit.avg + ' mean vs ' + hit.typical + ' median');
+      ok('but the median is not', hit.typical < sat.typical,
+        'weekday median ' + hit.typical + ' vs weekend ' + sat.typical);
+    }
+    ok('the median names the weekend as the expensive time',
+      prof.slice().sort((a, b) => b.typical - a.typical)[0].i >= 5,
+      JSON.stringify(prof.map(p => p.typical)));
+    ok('each weekday reports how many of it there were', prof.every(d => d.n > 0));
+
+    // --- the calendar heatmap must not collapse to one shade ---
+    /* Scaling to the maximum let one rent payment push every ordinary day into the lightest
+       step, leaving the grid monochrome — the opposite of what a heatmap is for. */
+    const cal = chCalendar(ym);
+    const steps = (cal.match(/ch-cal-c s(\d)/g) || []).map(x => x.slice(-1));
+    const used = [...new Set(steps.filter(x => x !== '0'))];
+    ok('the heatmap uses more than one intensity', used.length >= 3, used.join(','));
+    ok('the heatmap says when its scale is clipped', /\+<\/span>/.test(cal) || !/22,000/.test(cal));
+
+    // --- cumulative comparison ---
+    const cum = finCumulative(ym);
+    ok('cumulative runs to the length of the month',
+      cum.now.length === +finMonthEnd(ym).slice(8, 10));
+    ok('days after today are null, not zero',
+      cum.now.slice(+T.slice(8, 10)).every(v => v === null));
+    ok('the running total never goes down',
+      cum.now.filter(v => v != null).every((v, i, a) => i === 0 || v >= a[i - 1]));
+    ok('last month is a full series', cum.was.filter(v => v != null).length > 0);
+
+    // --- chart primitives are honest when there is nothing to draw ---
+    ok('an all-empty line chart says so, not an empty box',
+      /ch-empty/.test(chLines([{ key: 'a', label: 'A', cls: 'x', pts: [] }], [], {})));
+    ok('an all-zero bar chart says so',
+      /ch-empty/.test(chBars([{ label: 'a', bars: [{ cls: 'x', v: 0 }] }], {})));
+    ok('an empty ranked list says so', /ch-empty/.test(chRanked([], {})));
+    ok('a line chart is announced to a screen reader',
+      /role="img"/.test(chLines([{ key: 'a', label: 'A', cls: 'x', pts: [1, 2, 3] }], ['a', 'b', 'c'], {})));
+    ok('a single data point still renders', 
+      /ch-dot/.test(chLines([{ key: 'a', label: 'A', cls: 'x', pts: [5] }], ['a'], {})));
+    ok('charts never emit a second y axis', !/y2Axis|axisRight/.test(chLines.toString()));
+
+    // --- the tab renders ---
+    const prevTab = mnTab, prevYm = mnYm;
+    mnTab = 'charts'; renderMoney();
+    const html = document.getElementById('s-money').innerHTML || '';
+    ok('the charts tab renders', html.length > 1000, html.length);
+    ok('it draws at least four figures', (html.match(/<svg/g) || []).length >= 4,
+      (html.match(/<svg/g) || []).length);
+    ok('it includes the spending calendar', /ch-cal-g/.test(html));
+    mnTab = prevTab; mnYm = prevYm; renderMoney();
+
+    if (sA != null) localStorage.setItem('dp.finaccts', sA); else localStorage.removeItem('dp.finaccts');
+    if (sT != null) localStorage.setItem('dp.fintx', sT); else localStorage.removeItem('dp.fintx');
+    if (sM != null) localStorage.setItem('dp.finmarks', sM); else localStorage.removeItem('dp.finmarks');
+    if (sE != null) localStorage.setItem('dp.entries', sE); else localStorage.removeItem('dp.entries');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

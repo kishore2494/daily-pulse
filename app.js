@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v219';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v220';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -873,8 +873,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w18',
+  v: 'w19',
   items: [
+    '\ud83d\udcca <b>Money now has a Charts tab</b> \u2014 net worth over 12 months, your spending so far this month drawn against the same point last month, income vs spending by month, a ranked category breakdown, a typical-spend-by-weekday profile, a calendar of every day\u2019s spending, and 12-month trends per category that only say \u201crising\u201d or \u201cfalling\u201d past a 15% change rather than dressing up noise as a trend.<br><br>Three things were wrong and are fixed: net worth used to show an account opened today as already holding its balance a year ago \u2014 accounts now have a start date and count for nothing before it. The weekday chart used the average, which one monthly rent payment could turn into \u201cFriday is your most expensive day\u201d; it now uses the middle day instead. And the spending calendar was washed out by a single big bill setting the scale, so it now scales to your ordinary days and marks where it clips.',
     '\ud83d\udcb0 <b>Money</b> \u2014 a new screen in the \u2630 menu. Accounts, cash, credit cards, investments, property and loans in one place, with net worth worked out from them. Record money in, out and transfers; set optional caps per category; import a bank CSV and it works out which column is which (importing the same statement twice adds nothing). Balances are <b>derived from your own records</b>, so they can never disagree with your ledger, and amounts are held as whole paise rather than decimals \u2014 a hundred 10-paise entries come to exactly \u20b910, not \u20b99.99999999999998.<br><br>The part a finance app cannot do: your spending sits next to your mood, sleep and screen time in the same app, so <b>Patterns</b> can tell you things like \u201cyou spend \u20b9900 more a day on lower-mood days\u201d \u2014 split on your own median, with the sample size shown, and never reported below 6 days on either side. Nothing is uploaded, and there is no bank login.',
     '\u2601\ufe0f <b>Google Sheet sync is back on</b> \u2014 Settings \u25b8 Sync &amp; login. Off until you connect it. There is no Daylog server: you deploy a small script into <b>your own</b> Google account, so your log goes to a spreadsheet in your Drive and nowhere else. Paste the same link on a second phone and they stay in step \u2014 that link is your login, so treat it like a password. <b>Health Connect readings are never sent</b>, sync on or off: steps, sleep, heart rate, distance, calories and workouts stay on the phone. There is a five-minute setup guide linked from the Settings card.',
     '\ud83c\udfc5 <b>The trophy case, rebuilt</b> \u2014 every award used to be the same grey pill, so a 365-day streak looked exactly like a 3-day one, and the 49 you had not earned were invisible. Each award is now a <b>ranked medal</b> \u2014 Bronze through Diamond by how far up its family\u2019s ladder it sits \u2014 and the locked ones are shown too, dimmed, with exactly how far off you are. A progress ring counts your collection, and there is a per-family bar so you can see which ladder you are furthest up. The five metals were contrast-checked as text in light, navy and black, and every medal writes its rank in words, so none of it depends on telling two colours apart.',
@@ -9346,11 +9347,26 @@ function finMarkAt(acctId, upto) {
   const ms = finMarks().filter(m => m.ac === acctId && (!upto || m.d <= upto)).sort((a, b) => a.d < b.d ? -1 : 1);
   return ms.length ? ms[ms.length - 1].v : null;
 }
-/* Signed balance, positive = adds to net worth. Returns null for a valued account with no
-   mark yet, so callers can tell "nothing recorded" from "zero". */
+/* When this account's history starts. Without it, the opening balance — which has no date —
+   was applied to EVERY past month, so a net-worth chart showed an account opened today as
+   already holding its balance a year ago. That is fabricated history in the one chart people
+   read most literally. Accounts saved before this existed get their start inferred from their
+   own earliest record rather than a migration. */
+function finSince(a) {
+  if (!a) return null;
+  if (a.since) return a.since;
+  const ds = finTx().filter(t => t.ac === a.id || t.to === a.id).map(t => t.d)
+    .concat(finMarks().filter(m => m.ac === a.id).map(m => m.d));
+  return ds.length ? ds.sort()[0] : (a.created || todayStr());
+}
+
+/* Signed balance, positive = adds to net worth. Returns null when the account did not exist
+   yet, and for a valued account with no mark yet — so callers can tell "nothing recorded"
+   from "zero", and history is never invented. */
 function finBal(acctId, upto) {
   const a = finAcct(acctId); if (!a) return 0;
   const k = finKind(a.kind);
+  if (upto) { const since = finSince(a); if (since && upto < since) return null; }
   if (k.mode === 'valued') {
     const v = finMarkAt(acctId, upto);
     return v == null ? null : v * k.sign;
@@ -9444,9 +9460,17 @@ function finRecurring() {
    is reported below FIN_MIN_DAYS days on each side. A spurious "you spend more when sad" is
    worse than no insight at all. */
 const FIN_MIN_DAYS = 6;
-function finDailySpend() {
-  const byDay = {};
-  finTx().forEach(t => { if (t.dir === 'out') byDay[t.d] = (byDay[t.d] || 0) + t.a; });
+/* Spending per day, EXCLUDING days that have not happened yet. The add form blocks future
+   dates and the importer rejects them, but a scheduled payment typed in by hand or a bad
+   statement row can still land ahead of today — and "your average Friday" must not include a
+   Friday that has not arrived. */
+function finDailySpend(includeFuture) {
+  const byDay = {}, today = todayStr();
+  finTx().forEach(t => {
+    if (t.dir !== 'out') return;
+    if (!includeFuture && t.d > today) return;
+    byDay[t.d] = (byDay[t.d] || 0) + t.a;
+  });
   return byDay;
 }
 function finPatterns() {
@@ -9565,11 +9589,13 @@ function renderMoney() {
   if (!accts.length && !finAccts().length) return mnRenderEmpty(el);
 
   const tabs = [{ k: 'over', label: 'Overview' }, { k: 'tx', label: 'Money in/out' },
-                { k: 'accts', label: 'Accounts' }, { k: 'ins', label: 'Patterns' }];
+                { k: 'charts', label: 'Charts' }, { k: 'ins', label: 'Patterns' },
+                { k: 'accts', label: 'Accounts' }];
   el.innerHTML = `<div class="card" style="padding:12px">
       <div class="seg-row">${tabs.map(t => `<button class="seg-btn ${mnTab === t.k ? 'on' : ''}" data-mn-tab="${t.k}">${t.label}</button>`).join('')}</div>
     </div>` +
     (mnTab === 'over' ? mnOverviewHTML() : mnTab === 'tx' ? mnTxHTML()
+      : mnTab === 'charts' ? mnChartsHTML()
       : mnTab === 'accts' ? mnAcctsHTML() : mnInsightsHTML());
 }
 
@@ -9807,9 +9833,14 @@ function mnAcctFormHTML(a) {
     <div class="field"><label>Name</label>
       <input type="text" id="mn-a-name" value="${isNew ? '' : escapeHtml(a.name)}" placeholder="${k.k === 'bank' ? 'e.g. HDFC savings' : k.k === 'card' ? 'e.g. Amazon Pay card' : k.k === 'asset' ? 'e.g. Gold, or the flat' : 'e.g. ' + k.label}" autocomplete="off"></div>
     ${k.mode === 'tx'
-      ? `<div class="field"><label>${isNew ? 'Balance right now' : 'Opening balance'} <span class="hint">${k.k === 'card' ? 'leave blank if nothing owed' : ''}</span></label>
+      ? `${/* This said "Balance right now", which was a lie: it is applied BEFORE everything
+               you record, so entering today's balance and then adding a past expense left the
+               account short by that expense. */''}
+         <div class="field"><label>Starting balance <span class="hint">${k.k === 'card' ? 'what was owed at the start' : 'before anything you record'}</span></label>
           <input type="text" id="mn-a-open" inputmode="decimal" value="${isNew || !a.opening ? '' : (a.opening / 100)}" placeholder="0"></div>
-         <div class="hint" style="margin-bottom:9px">The balance is worked out from this plus everything you record, so it can never disagree with your own ledger.</div>`
+         <div class="field"><label>Starting from</label>
+          <input type="date" id="mn-a-since" value="${escapeHtml(isNew ? todayStr() : (finSince(a) || todayStr()))}" max="${todayStr()}"></div>
+         <div class="hint" style="margin-bottom:9px">The balance is this figure plus everything you record after that date, so it can never disagree with your own ledger. Before that date the account simply does not count — your net-worth history stays honest instead of pretending it always existed.</div>`
       : `<div class="field"><label>${k.sign < 0 ? 'Amount still owed' : 'What it is worth'} today</label>
           <input type="text" id="mn-a-val" inputmode="decimal" placeholder="0"></div>
          <div class="hint" style="margin-bottom:9px">Update this whenever you like — each update is kept with its date, which is what makes the net-worth line real rather than a straight guess.</div>`}
@@ -10047,12 +10078,20 @@ document.addEventListener('click', (ev) => {
     if (id) {
       const a = all.find(x => x.id === id); if (!a) return;
       a.name = name;
-      if (k.mode === 'tx') { const v = parseAmt(document.getElementById('mn-a-open').value); a.opening = v == null ? 0 : v; }
+      if (k.mode === 'tx') {
+        const v = parseAmt(document.getElementById('mn-a-open').value); a.opening = v == null ? 0 : v;
+        const sc = document.getElementById('mn-a-since');
+        if (sc && sc.value) a.since = sc.value;
+      }
       finSaveAccts(all);
     } else {
       const nid = 'a' + Date.now();
-      const rec = { id: nid, name, kind, opening: 0 };
-      if (k.mode === 'tx') { const v = parseAmt(document.getElementById('mn-a-open').value); rec.opening = v == null ? 0 : v; }
+      const rec = { id: nid, name, kind, opening: 0, created: todayStr() };
+      if (k.mode === 'tx') {
+        const v = parseAmt(document.getElementById('mn-a-open').value); rec.opening = v == null ? 0 : v;
+        const sc = document.getElementById('mn-a-since');
+        rec.since = (sc && sc.value) || todayStr();
+      }
       all.push(rec); finSaveAccts(all);
       if (k.mode === 'valued') {
         const v = parseAmt(document.getElementById('mn-a-val').value);
@@ -10156,6 +10195,298 @@ document.addEventListener('change', (ev) => {
     return;
   }
 });
+
+
+/* ============================================================
+   MONEY CHARTS — SVG built here, no library, theme-aware through CSS variables.
+   ------------------------------------------------------------
+   Rules these follow, from the app's own data-viz discipline:
+     · one hero figure per view, not a wall of equal-weight charts
+     · colour carries the SERIES, never the rank, so a filter cannot repaint the survivors
+     · money direction is status (in/out), which uses the *-ink tokens, not the accent
+     · never a second y-axis — two measures of different scale get two charts
+     · every figure is role="img" with a spoken summary, and every one has an honest empty
+       state that says what is missing rather than drawing an empty box
+   Coordinates are a fixed viewBox scaled by CSS, so one code path serves every width.
+   ============================================================ */
+
+const CH_W = 320, CH_H = 150, CH_PAD = { t: 12, r: 8, b: 20, l: 38 };
+/* The y-axis gutter has to fit the LONGEST tick label it will draw. A fixed 38 units was
+   enough for "₹0" and not for "₹2.8L": tick text is anchored at the gutter's right edge and
+   grows leftwards, so a 52-unit label started at x=-19 and was sliced off the viewBox. The
+   layout eval caught it as text-clipped. ~4.7 units per character at the 8px tick size,
+   measured against the rendered labels rather than guessed. */
+function chPadL(labels) {
+  const longest = labels.reduce((m, l) => Math.max(m, String(l).length), 2);
+  return Math.min(96, Math.max(26, Math.round(longest * 4.7) + 9));
+}
+function chNice(max) {
+  if (max <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(max)));
+  return Math.ceil(max / mag) * mag;
+}
+function chAxisLabel(minor) { return finFmt(minor, { compact: true, noPaise: true }); }
+function chEmpty(msg) { return `<div class="ch-empty">${escapeHtml(msg)}</div>`; }
+
+/* Multi-series line/area. `series` = [{ key, label, cls, pts: [num] }] sharing one x scale. */
+function chLines(series, xLabels, opts) {
+  opts = opts || {};
+  const live = series.filter(s => s.pts.some(v => v != null));
+  if (!live.length) return chEmpty(opts.empty || 'Nothing to chart yet.');
+  const all = live.flatMap(s => s.pts.filter(v => v != null));
+  const hi = chNice(Math.max(...all, 1));
+  const lo = opts.zero === false ? Math.min(...all, 0) : 0;
+  const ticks = [0, 0.5, 1].map(f => lo + (hi - lo) * f);
+  const padL = chPadL(ticks.map(chAxisLabel));
+  const iw = CH_W - padL - CH_PAD.r, ih = CH_H - CH_PAD.t - CH_PAD.b;
+  const n = Math.max(1, xLabels.length - 1);
+  const X = i => padL + (i / n) * iw;
+  const Y = v => CH_PAD.t + ih - ((v - lo) / (hi - lo || 1)) * ih;
+  const grid = ticks.map(v =>
+    `<line class="ch-grid" x1="${padL}" x2="${CH_W - CH_PAD.r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"></line>
+      <text class="ch-ytick" x="${padL - 5}" y="${(Y(v) + 3.5).toFixed(1)}">${chAxisLabel(v)}</text>`).join('');
+  const every = Math.ceil(xLabels.length / 6);
+  const xt = xLabels.map((l, i) => (i % every === 0 || i === xLabels.length - 1)
+    ? `<text class="ch-xtick" x="${X(i).toFixed(1)}" y="${CH_H - 5}">${escapeHtml(l)}</text>` : '').join('');
+  const paths = live.map(s => {
+    const pts = s.pts.map((v, i) => v == null ? null : [X(i), Y(v)]).filter(Boolean);
+    if (pts.length < 2) {
+      return pts.length === 1 ? `<circle class="ch-dot ${s.cls}" cx="${pts[0][0].toFixed(1)}" cy="${pts[0][1].toFixed(1)}" r="3.5"></circle>` : '';
+    }
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const area = opts.area ? `<path class="ch-area ${s.cls}" d="${d} L${pts[pts.length - 1][0].toFixed(1)},${Y(lo).toFixed(1)} L${pts[0][0].toFixed(1)},${Y(lo).toFixed(1)} Z"></path>` : '';
+    const last = pts[pts.length - 1];
+    return `${area}<path class="ch-line ${s.cls}" d="${d}"></path>
+      <circle class="ch-dot ${s.cls}" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5"></circle>`;
+  }).join('');
+  const spoken = live.map(s => {
+    const v = s.pts.filter(x => x != null);
+    return `${s.label}: ${chAxisLabel(v[v.length - 1])} latest, ${chAxisLabel(Math.max(...v))} highest`;
+  }).join('. ');
+  return `<div class="ch-wrap"><svg class="ch" viewBox="0 0 ${CH_W} ${CH_H}" role="img"
+    aria-label="${escapeHtml((opts.title || 'Chart') + '. ' + spoken)}">${grid}${paths}${xt}</svg></div>
+    ${live.length > 1 ? `<div class="ch-legend">${live.map(s => `<span><i class="${s.cls}"></i>${escapeHtml(s.label)}</span>`).join('')}</div>` : ''}`;
+}
+
+/* Grouped bars. `groups` = [{ label, bars: [{ cls, v, label }] }] */
+function chBars(groups, opts) {
+  opts = opts || {};
+  const all = groups.flatMap(g => g.bars.map(b => b.v));
+  if (!all.length || !all.some(v => v > 0)) return chEmpty(opts.empty || 'Nothing to chart yet.');
+  const hi = chNice(Math.max(...all, 1));
+  const ticks = [0, 0.5, 1].map(f => hi * f);
+  const padL = chPadL(ticks.map(chAxisLabel));
+  const iw = CH_W - padL - CH_PAD.r, ih = CH_H - CH_PAD.t - CH_PAD.b;
+  const slot = iw / groups.length;
+  const nb = Math.max(1, groups[0].bars.length);
+  const bw = Math.max(3, Math.min(14, (slot - 6) / nb));
+  const Y = v => CH_PAD.t + ih - (v / hi) * ih;
+  const grid = ticks.map(v =>
+    `<line class="ch-grid" x1="${padL}" x2="${CH_W - CH_PAD.r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"></line>
+      <text class="ch-ytick" x="${padL - 5}" y="${(Y(v) + 3.5).toFixed(1)}">${chAxisLabel(v)}</text>`).join('');
+  const bars = groups.map((g, gi) => {
+    const cx = padL + slot * gi + slot / 2;
+    const startX = cx - (nb * bw + (nb - 1) * 2) / 2;
+    return g.bars.map((b, bi) => {
+      const h = Math.max(b.v > 0 ? 2 : 0, CH_PAD.t + ih - Y(b.v));
+      /* 4px rounded top only, anchored to the baseline — a fully rounded bar reads as a
+         different mark and detaches from its axis. */
+      return `<rect class="ch-bar ${b.cls}" x="${(startX + bi * (bw + 2)).toFixed(1)}" y="${(CH_PAD.t + ih - h).toFixed(1)}"
+        width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5"></rect>`;
+    }).join('') +
+      `<text class="ch-xtick" x="${cx.toFixed(1)}" y="${CH_H - 5}">${escapeHtml(g.label)}</text>`;
+  }).join('');
+  const spoken = groups.map(g => `${g.label} ${g.bars.map(b => `${b.label || ''} ${chAxisLabel(b.v)}`).join(', ')}`).join('. ');
+  return `<div class="ch-wrap"><svg class="ch" viewBox="0 0 ${CH_W} ${CH_H}" role="img"
+    aria-label="${escapeHtml((opts.title || 'Chart') + '. ' + spoken)}">${grid}${bars}</svg></div>
+    ${nb > 1 ? `<div class="ch-legend">${groups[0].bars.map(b => `<span><i class="${b.cls}"></i>${escapeHtml(b.label || '')}</span>`).join('')}</div>` : ''}`;
+}
+
+/* Horizontal ranked bars — the right form for "which categories, biggest first". */
+function chRanked(items, opts) {
+  opts = opts || {};
+  if (!items.length) return chEmpty(opts.empty || 'Nothing to chart yet.');
+  const hi = Math.max(...items.map(i => i.v), 1);
+  return `<div class="ch-rank" role="img" aria-label="${escapeHtml((opts.title || '') + '. ' + items.map(i => i.label + ' ' + chAxisLabel(i.v)).join(', '))}">
+    ${items.map(i => `<div class="ch-rank-r">
+      <div class="ch-rank-h"><span>${i.ico ? i.ico + ' ' : ''}${escapeHtml(i.label)}</span><span class="ch-rank-v">${finFmt(i.v, { noPaise: true })}</span></div>
+      <div class="ch-rank-t"><i style="width:${Math.max(1, Math.round(i.v / hi * 100))}%"></i></div>
+    </div>`).join('')}</div>`;
+}
+
+/* A month as a calendar of spending intensity. Five steps of ONE hue — sequential data must
+   never be a rainbow — and days with no spending stay empty rather than becoming step zero,
+   because "no spending" and "least spending" are different facts. */
+function chCalendar(ym) {
+  const spend = finDailySpend();
+  const from = ym + '-01', to = finMonthEnd(ym);
+  const days = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) days.push({ d, v: spend[d] || 0 });
+  const vals = days.map(x => x.v).filter(v => v > 0);
+  if (!vals.length) return chEmpty('No spending recorded this month.');
+  /* Scale to the 90th percentile, not the maximum. One rent payment of 22,000 against normal
+     days of 300-1,600 pushed every ordinary day into the lightest step and left the grid
+     effectively monochrome — the opposite of what a heatmap is for. Days above the ceiling
+     clamp to the darkest step and the key says so, so nothing is hidden. */
+  const sorted = vals.slice().sort((a, b) => a - b);
+  const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+  const peak = Math.max(...vals);
+  const hi = Math.max(1, p90);
+  const clipped = peak > hi;
+  const step = v => v <= 0 ? 0 : Math.min(5, Math.max(1, Math.ceil(v / hi * 5)));
+  const lead = new Date(from + 'T00:00:00').getDay();
+  const offset = (lead + 6) % 7;                       // weeks start Monday
+  const cells = Array(offset).fill('<i class="ch-cal-pad"></i>')
+    .concat(days.map(x => `<i class="ch-cal-c s${step(x.v)}" title="${shortDate(x.d)} · ${x.v ? finFmt(x.v, { noPaise: true }) : 'nothing'}"></i>`)).join('');
+  const busiest = days.slice().sort((a, b) => b.v - a.v)[0];
+  return `<div class="ch-cal" role="img" aria-label="Spending by day. Busiest ${shortDate(busiest.d)} at ${finFmt(busiest.v, { noPaise: true })}.">
+      <div class="ch-cal-h">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="ch-cal-g">${cells}</div>
+    </div>
+    <div class="ch-cal-k"><span>less</span>${[1, 2, 3, 4, 5].map(s => `<i class="ch-cal-c s${s}"></i>`).join('')}<span>${clipped ? finFmt(hi, { compact: true, noPaise: true }) + '+' : 'more'}</span>
+      <span class="ch-cal-max">busiest ${shortDate(busiest.d)} · ${finFmt(busiest.v, { noPaise: true })}</span></div>`;
+}
+
+/* ---- the Charts tab ---- */
+/* MEDIAN, not mean. On real data the mean is hijacked by whichever weekday the rent happens
+   to land on: with rent on the 3rd, the mean reported Friday as the most expensive day at
+   ₹2,770 while the median put Friday at ₹476 and correctly identified the weekend. A
+   day-of-week profile is meant to describe behaviour, and one monthly bill is not behaviour.
+   The mean is kept alongside so the two can be compared rather than one hidden. */
+function finDowProfile() {
+  const spend = finDailySpend();
+  const buckets = [[], [], [], [], [], [], []];
+  Object.keys(spend).forEach(d => {
+    buckets[(new Date(d + 'T00:00:00').getDay() + 6) % 7].push(spend[d]);   // Mon = 0
+  });
+  return buckets.map((b, i) => ({
+    i, n: b.length,
+    typical: b.length ? Math.round(dpMedian(b)) : 0,
+    avg: b.length ? Math.round(b.reduce((x, y) => x + y, 0) / b.length) : 0,
+  }));
+}
+/* Cumulative spend through the month, this month against last — the one chart that answers
+   "am I ahead or behind?", which a monthly total cannot. */
+function finCumulative(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const prev = finYm(todayStr(new Date(y, m - 2, 1)));
+  const build = key => {
+    const end = +finMonthEnd(key).slice(8, 10);
+    const spend = finDailySpend();
+    const out = []; let run = 0;
+    for (let d = 1; d <= end; d++) {
+      const ds = key + '-' + String(d).padStart(2, '0');
+      run += spend[ds] || 0;
+      out.push(ds > todayStr() ? null : run);
+    }
+    return out;
+  };
+  return { ym, prev, now: build(ym), was: build(prev) };
+}
+
+function mnChartsHTML() {
+  const ym = mnMonth();
+  const months = finRecentMonths(12);
+  const worth = finWorthSeries(12);
+  const anyWorth = worth.some(w => w.v !== 0);
+  const md = months.map(k => finMonth(k));
+  const cum = finCumulative(ym);
+  const dow = finDowProfile();
+  const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const m = finMonth(ym);
+  const catRows = Object.keys(m.byCat).sort((a, b) => m.byCat[b] - m.byCat[a]).slice(0, 8)
+    .map(c => ({ label: finCat(c).name, ico: finCat(c).ico, v: m.byCat[c] }));
+  const topCats = Object.keys(md.reduce((acc, x) => { Object.keys(x.byCat).forEach(k => acc[k] = (acc[k] || 0) + x.byCat[k]); return acc; }, {}))
+    .sort((a, b) => md.reduce((s, x) => s + (x.byCat[b] || 0), 0) - md.reduce((s, x) => s + (x.byCat[a] || 0), 0))
+    .slice(0, 6);
+
+  return `
+  <div class="card">
+    <h2>Net worth <span class="hint">12 months</span></h2>
+    ${anyWorth
+      ? chLines([{ key: 'nw', label: 'Net worth', cls: 'c-nw', pts: worth.map(w => w.v) }],
+          months.map(k => k.slice(5)), { area: true, zero: false, title: 'Net worth over 12 months' })
+      : chEmpty('Add an account with a balance to chart your net worth.')}
+    <div class="hint" style="margin-top:6px">Months before an account existed are not counted, so this line does not pretend you always held what you hold now.</div>
+  </div>
+
+  <div class="card">
+    <h2>Spending so far <span class="hint">this month vs last</span></h2>
+    ${chLines([
+        { key: 'now', label: mnMonthLabel(cum.ym).split(' ')[0], cls: 'c-now', pts: cum.now },
+        { key: 'was', label: mnMonthLabel(cum.prev).split(' ')[0], cls: 'c-was', pts: cum.was },
+      ], cum.now.map((_, i) => String(i + 1)), { title: 'Cumulative spending, this month against last month' })}
+    ${(() => {
+      const nowV = cum.now.filter(v => v != null);
+      const day = nowV.length;
+      if (!day || !cum.was.length) return '';
+      const wasAtSameDay = cum.was[Math.min(day, cum.was.length) - 1];
+      if (wasAtSameDay == null) return '';
+      const diff = nowV[day - 1] - wasAtSameDay;
+      if (Math.abs(diff) < 100) return `<div class="hint" style="margin-top:6px">Level with last month at this point.</div>`;
+      return `<div class="ch-note ${diff > 0 ? 'bad' : 'good'}">
+        ${finFmt(Math.abs(diff), { noPaise: true })} ${diff > 0 ? 'more' : 'less'} than by day ${day} last month.</div>`;
+    })()}
+  </div>
+
+  <div class="card">
+    <h2>In, out and kept <span class="hint">12 months</span></h2>
+    ${chBars(months.map((k, i) => ({ label: k.slice(5), bars: [
+        { cls: 'c-in', v: md[i].in, label: 'in' },
+        { cls: 'c-out', v: md[i].out, label: 'out' },
+      ] })), { title: 'Income and spending by month', empty: 'Record some money in and out to chart this.' })}
+    ${(() => {
+      const kept = md.map(x => x.net);
+      const good = kept.filter(v => v > 0).length;
+      return md.some(x => x.in || x.out)
+        ? `<div class="hint" style="margin-top:6px">You kept more than you spent in <b>${good}</b> of the last ${months.length} months.</div>` : '';
+    })()}
+  </div>
+
+  <div class="card">
+    <h2>Where it went <span class="hint">${escapeHtml(mnMonthLabel(ym))}</span></h2>
+    ${chRanked(catRows, { title: 'Spending by category', empty: 'Nothing recorded for this month.' })}
+  </div>
+
+  <div class="card">
+    <h2>Day of the week <span class="hint">typical spend</span></h2>
+    ${dow.some(d => d.n)
+      ? chBars(dow.map(d => ({ label: DOW[d.i].slice(0, 1), bars: [{ cls: 'c-out', v: d.typical, label: DOW[d.i] }] })),
+          { title: 'Typical spending by day of week' })
+      : chEmpty('Record a few days of spending to see this.')}
+    ${(() => {
+      const withData = dow.filter(d => d.n >= 3);
+      if (withData.length < 4) return '<div class="hint" style="margin-top:6px">Needs at least three of each weekday before the shape means anything.</div>';
+      const worst = withData.slice().sort((a, b) => b.typical - a.typical)[0];
+      const skewed = withData.filter(d => d.avg > d.typical * 2);
+      return `<div class="hint" style="margin-top:6px"><b>${DOW[worst.i]}</b> is your most expensive day — a typical one costs ${finFmt(worst.typical, { noPaise: true })}, across ${worst.n} of them.
+        This is the <b>middle</b> day rather than the average${skewed.length ? `, because a single monthly bill would otherwise make ${(() => {
+          const ns = skewed.map(d => DOW[d.i]);
+          return ns.length === 1 ? ns[0] : ns.slice(0, -1).join(', ') + ' and ' + ns[ns.length - 1];
+        })()} look like ${skewed.length === 1 ? 'a habit' : 'habits'}` : ''}.</div>`;
+    })()}
+  </div>
+
+  <div class="card">
+    <h2>Every day this month <span class="hint">${escapeHtml(mnMonthLabel(ym))}</span></h2>
+    ${chCalendar(ym)}
+  </div>
+
+  ${topCats.length ? `<div class="card">
+    <h2>Category trends <span class="hint">12 months</span></h2>
+    <div class="ch-small">${topCats.map(c => {
+      const pts = md.map(x => (x.byCat[c] || 0) / 100);
+      const first = pts.slice(0, 6).reduce((a, b) => a + b, 0), last = pts.slice(6).reduce((a, b) => a + b, 0);
+      const dir = last > first * 1.15 ? 'up' : last < first * 0.85 ? 'down' : 'flat';
+      return `<div class="ch-sm">
+        <div class="ch-sm-h">${finCat(c).ico} ${escapeHtml(finCat(c).name)}
+          <span class="ch-sm-d ${dir}">${dir === 'up' ? '▲ rising' : dir === 'down' ? '▼ falling' : '— steady'}</span></div>
+        ${sparkline(pts, 'poly', 132, 30)}
+        <div class="ch-sm-f">${finFmt(md[md.length - 1].byCat[c] || 0, { compact: true, noPaise: true })} this month · ${finFmt(Math.round(pts.reduce((a, b) => a + b, 0) * 100 / pts.length), { compact: true, noPaise: true })} monthly average</div>
+      </div>`; }).join('')}</div>
+    <div class="hint" style="margin-top:8px">Rising or falling compares the last six months against the six before. Under a 15% change it is called steady rather than dressed up as a trend.</div>
+  </div>` : ''}`;
+}
 
 
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */

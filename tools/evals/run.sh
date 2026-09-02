@@ -96,7 +96,7 @@ for VP in "320 640" "360 740" "412 820"; do
     mnTab='over'; mnYm=null; mnAddOpen=false; mnImport=null; show('money'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
   R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
   case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-over","w":%s,"h":%s,"r":%s}' "$W" "$H" "$R" >> "$OUT";; esac
-  for MT in tx accts ins; do
+  for MT in tx charts ins accts; do
     $B js "try{ mnTab='$MT'; show('money'); window.scrollTo(0,0); }catch(e){} 'ok'" >/dev/null 2>&1
     R=$($B eval "$PWD/tools/evals/checks.js" 2>/dev/null | tail -1)
     case "$R" in \{*) echo "," >> "$OUT"; printf '{"screen":"money-%s","w":%s,"h":%s,"r":%s}' "$MT" "$W" "$H" "$R" >> "$OUT";; esac

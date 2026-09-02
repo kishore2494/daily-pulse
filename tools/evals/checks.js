@@ -16,11 +16,15 @@
     if (!el || el === document.body) return 'body';
     let s = el.tagName.toLowerCase();
     if (el.id) return s + '#' + el.id;
-    const cls = (el.className || '').toString().trim().split(/\s+/).filter(Boolean).slice(0, 3);
+    /* An SVG element's .className is an SVGAnimatedString, so String()-ing it produced
+       "[object SVGAnimatedString]" and every finding inside a chart was unidentifiable.
+       getAttribute('class') is a string on both HTML and SVG. */
+    const clsOf = e => (e.getAttribute ? (e.getAttribute('class') || '') : (e.className || '')).toString();
+    const cls = clsOf(el).trim().split(/\s+/).filter(Boolean).slice(0, 3);
     if (cls.length) s += '.' + cls.join('.');
     const p = el.parentElement;
     if (p && p !== document.body) {
-      const pc = (p.className || '').toString().trim().split(/\s+/).filter(Boolean).slice(0, 2);
+      const pc = clsOf(p).trim().split(/\s+/).filter(Boolean).slice(0, 2);
       s = (p.id ? '#' + p.id : p.tagName.toLowerCase() + (pc.length ? '.' + pc.join('.') : '')) + ' > ' + s;
     }
     return s;
