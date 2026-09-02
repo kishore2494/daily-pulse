@@ -1,4 +1,18 @@
-## 2026-08-26 — 🚀 LIVE ON GOOGLE PLAY · real Health Connect auto-capture · Strava research
+## 2026-09-02 — data model section rewritten for v220
+
+Ingested the current storage reality into `architecture.md`. The old section predated
+Projects, the gap filler and the whole Money module, and listed neither `safeSet`'s
+quota-failure contract nor the derived-never-stored principle.
+
+Added: the two storage shapes (date-keyed object vs id'd array) with real dumps from a live
+store; why money is integer minor units; the full 63-key table grouped by purpose; the
+`dp.health`-never-syncs guarantee that the Play Data Safety answer rests on; the backup
+format; and the four-list checklist extended to note that `awards`/`gapskip` union rather
+than adopt.
+
+Measured, not estimated: ~17 KB total on a two-week sample store, 0.3% of a 5 MB quota,
+`dp.timelog` the largest single key at 9.1 KB for 84 blocks.
+
 
 **Daylog is published on Google Play.** Production access granted 08-23, released 08-26.
 
@@ -54,6 +68,8 @@ free private tracker can simply give away.
 ethical-design and retention areas, all 13 verifications and the final grading did not run.
 **Re-run after the limit resets** — the script is cached, so completed agents replay free:
 `Workflow({scriptPath: '.../behaviour-design-audit-daylog-wf_d9f8a6cb-91a.js', resumeFromRunId: 'wf_d9f8a6cb-91a'})`
+
+## 2026-08-26 — 🚀 LIVE ON GOOGLE PLAY · real Health Connect auto-capture · Strava research
 
 ## 2026-08-26 (later) — in-app alarm sound picker · web v146 + bundle 111/71
 
