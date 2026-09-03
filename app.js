@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v223';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v224';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -72,7 +72,7 @@ const DEFAULT_DEEP_SECTIONS = [
    sections (titles, hidden flags, renamed/hidden/added fields). DEEP_SECTIONS
    is the cooked, visible-only view the Today screen renders. */
 function deepCfg() { const v = safeParse(localStorage.getItem('dp.deepcfg'), null); return Array.isArray(v) ? v : JSON.parse(JSON.stringify(DEFAULT_DEEP_SECTIONS)); }
-function saveDeepCfg(cfg) { localStorage.setItem('dp.deepcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
+function saveDeepCfg(cfg) { const ok = safeSet('dp.deepcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
 function cookDeep(cfg) {
   return cfg.filter(sec => !sec.hidden).map(sec => Object.assign({}, sec, {
     scales: (sec.scales || []).filter(f => !f.hidden),
@@ -120,7 +120,7 @@ function bedwakeHours(bed, wake) {
 // Decimal hours ⇄ HH:MM for the clock picker. 7.5 ⇄ "07:30".
 function hoursToHM(v) { if (v === '' || v == null || isNaN(v)) return ''; const t = Math.max(0, Math.round(+v * 60)); const h = Math.floor(t / 60), m = t % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
 function hmToHours(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) return ''; return +(+m[1] + (+m[2]) / 60).toFixed(2); }
-function saveCoreCfg(cfg) { localStorage.setItem('dp.corecfg', JSON.stringify(cfg)); pushState(); }
+function saveCoreCfg(cfg) { const ok = safeSet('dp.corecfg', JSON.stringify(cfg)); pushState(); return ok; }
 
 /* Default gym routine — fully editable in the Gym tab. */
 const DEFAULT_EXERCISES = [
@@ -270,7 +270,7 @@ const DB = {
   putGymDay(date, d) { const g = this.gym(); g[date] = d; return this.saveGym(g); },
 
   reminders() { return safeParse(localStorage.getItem('dp.reminders'), []); },
-  saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); pushState(); },
+  saveReminders(r) { const ok = safeSet('dp.reminders', JSON.stringify(r)); pushState(); return ok; },
 
   notes() { return safeParse(localStorage.getItem('dp.notes'), []); },
   saveNotes(n) { const ok = safeSet('dp.notes', JSON.stringify(n)); pushState(); return ok; },
@@ -285,20 +285,20 @@ const DB = {
   saveDocs(d) { const ok = safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); return ok; },
 
   events() { return safeParse(localStorage.getItem('dp.events'), []); },
-  saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
+  saveEvents(x) { const ok = safeSet('dp.events', JSON.stringify(x)); pushState(); syncEvents(); return ok; },
 
   pomo() { return safeParse(localStorage.getItem('dp.pomo'), null); },
-  savePomo(p) { localStorage.setItem('dp.pomo', JSON.stringify(p)); pushState(); },
+  savePomo(p) { const ok = safeSet('dp.pomo', JSON.stringify(p)); pushState(); return ok; },
   timebox() { return safeParse(localStorage.getItem('dp.timebox'), []); },
-  saveTimebox(t) { localStorage.setItem('dp.timebox', JSON.stringify(t)); pushState(); },
+  saveTimebox(t) { const ok = safeSet('dp.timebox', JSON.stringify(t)); pushState(); return ok; },
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
   saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
-  saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
+  saveTimeacts(a) { const ok = safeSet('dp.timeacts', JSON.stringify(a)); pushState(); return ok; },
 
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
-  saveSettings(s) { localStorage.setItem('dp.settings', JSON.stringify(s)); },
+  saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); return ok; },
 };
 
 /* ---------- Date helpers ---------- */
@@ -1407,7 +1407,7 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.id === 'ge-remove') {
     const cfg = habitCfg(); const h = cfg.find(x => x.key === m.dataset.key); if (!h) return;
-    delete h.goal; saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); toast('Back to a simple tick'); return;
+    delete h.goal; const wrote0 = saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); savedToast(wrote0, 'Back to a simple tick'); return;
   }
 });
 
@@ -2268,11 +2268,11 @@ let openExr = new Set();
    custom: {groupId: [{id:'cx…', name, sets, tip}]} }. The cooked* helpers apply
    overrides + customs on top of WORKOUT_PLAN, so the plan file stays pristine. */
 function gymCfg() { const s = localStorage.getItem('dp.gymcfg'); return s ? JSON.parse(s) : { ex: {}, custom: {} }; }
-function saveGymCfg(c) { localStorage.setItem('dp.gymcfg', JSON.stringify(c)); pushState(); }
+function saveGymCfg(c) { const ok = safeSet('dp.gymcfg', JSON.stringify(c)); pushState(); return ok; }
 /* Custom muscle groups (dp.gymgroups) — brand-new groups whose exercises all
    live in gymCfg().custom[groupId]. */
 function gymGroups() { return safeParse(localStorage.getItem('dp.gymgroups'), []); }
-function saveGymGroups(g) { localStorage.setItem('dp.gymgroups', JSON.stringify(g)); pushState(); }
+function saveGymGroups(g) { const ok = safeSet('dp.gymgroups', JSON.stringify(g)); pushState(); return ok; }
 function anyGroupById(id) {
   const cg = gymGroups().find(g => g.id === id);
   return cg ? Object.assign({ exercises: [] }, cg) : groupById(id);
@@ -2284,7 +2284,7 @@ function gymDays() {
   const s = localStorage.getItem('dp.daycfg');
   return s ? JSON.parse(s) : WORKOUT_DAYS.map(d => Object.assign({}, d));
 }
-function saveGymDays(d) { localStorage.setItem('dp.daycfg', JSON.stringify(d)); pushState(); }
+function saveGymDays(d) { const ok = safeSet('dp.daycfg', JSON.stringify(d)); pushState(); return ok; }
 function cookedGroupById(id) {
   const g = anyGroupById(id); const cfg = gymCfg();
   const own = g.exercises.map(e => Object.assign({}, e, cfg.ex[e.id] || {}));
@@ -2470,7 +2470,7 @@ const DEFAULT_TIME_ACTS = [
 ];
 const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
 function actCfg() { const v = safeParse(localStorage.getItem('dp.actcfg'), null); return Array.isArray(v) ? v : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
-function saveActCfg(cfg) { localStorage.setItem('dp.actcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
+function saveActCfg(cfg) { const ok = safeSet('dp.actcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
 let TIME_ACTS_ALL = actCfg();
 /* visible activities = non-hidden defaults + non-hidden customs */
 function allActs() { return TIME_ACTS_ALL.filter(a => !a.hidden).concat(DB.timeacts().filter(a => !a.hidden)); }
@@ -4304,7 +4304,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
   if (ev.target.id === 'doc-del') {
     if (!confirm('Delete this whole article?')) return;
-    DB.saveDocs(DB.docs().filter(x => x.id !== curDoc)); curDoc = null; renderWrite(); toast('Article deleted'); return;
+    const wrote1 = DB.saveDocs(DB.docs().filter(x => x.id !== curDoc)); curDoc = null; renderWrite(); savedToast(wrote1, 'Article deleted'); return;
   }
   const ab = ev.target.closest('[data-addblk]');
   if (ab) { addBlock(ab.dataset.addblk); return; }
@@ -4622,13 +4622,13 @@ document.addEventListener('click', (ev) => {
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
     const cfg = habitCfg();
     cfg.push({ key: 'ch' + Date.now(), emoji: (m && m[2]) ? m[1] : '⭐', label: (m && m[2]) ? m[2] : raw, custom: true, added: todayStr() });
-    saveHabitCfg(cfg); renderCustom(); toast('Habit added'); return;
+    const wrote2 = saveHabitCfg(cfg); renderCustom(); savedToast(wrote2, 'Habit added'); return;
   }
   if (ev.target.id === 'cfg-add-act') {
     const inp = document.getElementById('cfg-new-act'); const name = inp.value.trim(); if (!name) return;
     const acts = DB.timeacts();
     const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
-    DB.saveTimeacts(acts); renderCustom(); toast('Activity added'); return;
+    const wrote3 = DB.saveTimeacts(acts); renderCustom(); savedToast(wrote3, 'Activity added'); return;
   }
   const cc = ev.target.closest('[data-cfg-color]');
   if (cc) { const [k, id] = cc.dataset.cfgColor.split(':'); const f = cfgFind(k, id);
@@ -4664,7 +4664,7 @@ document.addEventListener('click', (ev) => {
     const cfg = deepCfg(); const sec = cfg.find(s => s.id === secId); if (!sec) return;
     sec[list] = sec[list] || [];
     sec[list].push({ key: 'cf' + Date.now(), label, custom: true });
-    saveDeepCfg(cfg); renderCustom(); toast('Field added'); return; }
+    const wrote4 = saveDeepCfg(cfg); renderCustom(); savedToast(wrote4, 'Field added'); return; }
   if (ev.target.id === 'cfg-add-deepsec') {
     const raw = (document.getElementById('cfg-new-deepsec').value || '').trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
@@ -4673,7 +4673,7 @@ document.addEventListener('click', (ev) => {
     const cfg = deepCfg();
     cfg.push({ id, title, scales: [], nums: [], texts: [], custom: true });
     openCfgSecs.add('deep:' + id);   // open it so the user can add fields right away
-    saveDeepCfg(cfg); renderCustom(); toast('Section added — now add fields'); return; }
+    const wrote5 = saveDeepCfg(cfg); renderCustom(); savedToast(wrote5, 'Section added — now add fields'); return; }
   const dsd = ev.target.closest('[data-dsec-del]');
   if (dsd) { ev.preventDefault();
     if (!confirm('Delete this whole section and its fields? Logged history stays.')) return;
@@ -4695,7 +4695,7 @@ document.addEventListener('click', (ev) => {
     const m = raw.match(/^(.*?)\s+(\d+\s*[×x].*|\d+\s*min.*)$/i);
     const cfg = gymCfg(); cfg.custom[gid] = cfg.custom[gid] || [];
     cfg.custom[gid].push({ id: 'cx' + Date.now(), name: m ? m[1] : raw, sets: m ? m[2].replace(/x/i, '×') : '3 × 15' });
-    saveGymCfg(cfg); renderCustom(); toast('Exercise added'); return; }
+    const wrote6 = saveGymCfg(cfg); renderCustom(); savedToast(wrote6, 'Exercise added'); return; }
 
   // ---- theme / nav / gym-group controls ----
   const th = ev.target.closest('[data-theme]');
@@ -4713,14 +4713,14 @@ document.addEventListener('click', (ev) => {
     if (n.primary && cfg.filter(x => !x.hidden && x.primary).length > 5) toast('Tip: 4–5 pinned tabs stay easiest to tap');
     return; }
   const nd = ev.target.closest('[data-nav-default]');
-  if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; DB.saveSettings(s); renderCustom(); toast('Default tab set'); return; }
+  if (nd) { const s = DB.settings(); s.defaultTab = nd.dataset.navDefault; const wrote7 = DB.saveSettings(s); renderCustom(); savedToast(wrote7, 'Default tab set'); return; }
   if (ev.target.id === 'cfg-add-group') {
     const inp = document.getElementById('cfg-new-group'); const raw = inp.value.trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
     const gs = gymGroups();
     gs.push({ id: 'cg' + Date.now(), emoji: (m && m[2]) ? m[1] : '🏷️', name: (m && m[2]) ? m[2] : raw,
       color: CUSTOM_ACT_COLORS[gs.length % CUSTOM_ACT_COLORS.length] });
-    saveGymGroups(gs); renderCustom(); toast('Group added — now add its exercises below'); return;
+    const wrote8 = saveGymGroups(gs); renderCustom(); savedToast(wrote8, 'Group added — now add its exercises below'); return;
   }
   const gd = ev.target.closest('[data-ggroup-del]');
   if (gd) { ev.preventDefault();
@@ -5050,7 +5050,7 @@ document.addEventListener('click', (ev) => {
     if (!start || !end) { toast('Set start and end', true); return; }
     const tb = DB.timebox();
     tb.push({ id: 'tb' + Date.now(), date: todayStr(), start, end, label, act, alarm });
-    DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); toast('Block added 📦'); return;
+    const wrote9 = DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); savedToast(wrote9, 'Block added 📦'); return;
   }
   const ts = ev.target.closest('[data-tb-start]');
   if (ts) { const b = DB.timebox().find(x => x.id === ts.dataset.tbStart); if (b && b.act) { startAct(b.act); toast('▶ ' + actById(b.act).name + ' started'); } return; }
@@ -5093,7 +5093,7 @@ const WAVE_PRESETS = [
 ];
 let _waveCtx = null, _waveNodes = null, _wavePlaying = null, _waveTimer = null, _waveEndsAt = 0;
 function waveSettings() { return Object.assign({ carrier: 200, vol: 0.25, minutes: 0 }, safeParse(localStorage.getItem('dp.waves'), {})); }
-function saveWaveSettings(w) { localStorage.setItem('dp.waves', JSON.stringify(w)); }
+function saveWaveSettings(w) { const ok = safeSet('dp.waves', JSON.stringify(w)); return ok; }
 function wavesStop() {
   if (_waveNodes) { try { _waveNodes.oL.stop(); _waveNodes.oR.stop(); } catch (_) {} _waveNodes = null; }
   _wavePlaying = null; clearTimeout(_waveTimer); _waveTimer = null; _waveEndsAt = 0;
@@ -5280,7 +5280,7 @@ document.addEventListener('click', (ev) => {
     toast('Event added 📌'); return;
   }
   const ed = ev.target.closest('[data-ev-del]');
-  if (ed) { DB.saveEvents(DB.events().filter(x => x.id !== ed.dataset.evDel)); renderCal(); setupReminders(); toast('Event deleted'); return; }
+  if (ed) { const wrote10 = DB.saveEvents(DB.events().filter(x => x.id !== ed.dataset.evDel)); renderCal(); setupReminders(); savedToast(wrote10, 'Event deleted'); return; }
 });
 
 /* ============================================================
@@ -5537,7 +5537,7 @@ document.addEventListener('click', async (ev) => {
   const rm = ev.target.closest('[data-rem-mode]');
   if (rm) { const r = DB.reminders(); const x = r.find(z => z.id === rm.dataset.remMode); if (x) { x.mode = (x.mode || 'alarm') === 'alarm' ? 'notify' : 'alarm'; DB.saveReminders(r); renderSettings(); syncReminders(); setupReminders(); toast(x.mode === 'alarm' ? 'Full-screen alarm ⏰' : 'Just a notification 🔔'); } return; }
   const rd = ev.target.closest('[data-rem-del]');
-  if (rd) { DB.saveReminders(DB.reminders().filter(z => z.id !== rd.dataset.remDel)); renderSettings(); syncReminders(); setupReminders(); toast('Reminder deleted'); return; }
+  if (rd) { const wrote11 = DB.saveReminders(DB.reminders().filter(z => z.id !== rd.dataset.remDel)); renderSettings(); syncReminders(); setupReminders(); savedToast(wrote11, 'Reminder deleted'); return; }
   if (ev.target.id === 'rem-test') {
     unlockAudio();
     if ('Notification' in window && Notification.permission !== 'granted') Notification.requestPermission();
@@ -6154,7 +6154,7 @@ const AUTOTRACK_DEF = { on: true, sleep: true, steps: true, calories: true, work
 function autoTrackCfg() { return Object.assign({}, AUTOTRACK_DEF, DB.settings().autoTrack || {}); }
 function saveAutoTrack(patch) { const s = DB.settings(); s.autoTrack = Object.assign(autoTrackCfg(), patch); DB.saveSettings(s); }
 function healthStore() { try { return safeParse(localStorage.getItem('dp.health'), {}); } catch (e) { return {}; } }
-function saveHealthStore(h) { localStorage.setItem('dp.health', JSON.stringify(h)); }
+function saveHealthStore(h) { const ok = safeSet('dp.health', JSON.stringify(h)); return ok; }
 function healthFor(date) { return healthStore()[date] || null; }
 async function syncHealth(opts) {
   opts = opts || {};
@@ -6696,7 +6696,7 @@ const GOAL_METRICS = [
 function goalMetric(k) { return GOAL_METRICS.find(m => m.k === k) || null; }
 
 function DBgoals() { const g = safeParse(localStorage.getItem('dp.goals'), null); return Array.isArray(g) ? g : []; }
-function saveGoals(g) { localStorage.setItem('dp.goals', JSON.stringify(g)); pushState(); }
+function saveGoals(g) { const ok = safeSet('dp.goals', JSON.stringify(g)); pushState(); return ok; }
 
 /* Shared context so nine measures do not each re-read the store. */
 function goalCtx() {
@@ -9393,11 +9393,11 @@ function finSaveTx(t) { const ok = safeSet('dp.fintx', JSON.stringify(t)); pushS
 function finMarks() { const v = safeParse(localStorage.getItem('dp.finmarks'), []); return Array.isArray(v) ? v : []; }
 function finSaveMarks(m) { const ok = safeSet('dp.finmarks', JSON.stringify(m)); pushState(); return ok; }
 function finBudgets() { return safeParse(localStorage.getItem('dp.finbudget'), {}) || {}; }
-function finSaveBudgets(b) { localStorage.setItem('dp.finbudget', JSON.stringify(b)); pushState(); }
+function finSaveBudgets(b) { const ok = safeSet('dp.finbudget', JSON.stringify(b)); pushState(); return ok; }
 function finSet() {
   return Object.assign({ cur: '₹', dp: 2 }, safeParse(localStorage.getItem('dp.finset'), {}) || {});
 }
-function finSaveSet(s) { localStorage.setItem('dp.finset', JSON.stringify(s)); pushState(); }
+function finSaveSet(s) { const ok = safeSet('dp.finset', JSON.stringify(s)); pushState(); return ok; }
 function finAcct(id) { return finAccts().find(a => a.id === id) || null; }
 
 /* ---- money in and out of text ----
@@ -10259,7 +10259,7 @@ document.addEventListener('click', (ev) => {
   const tx = t.closest('[data-mn-tx]');
   if (tx) { mnTxEdit = mnTxEdit === tx.dataset.mnTx ? null : tx.dataset.mnTx; renderMoney(); return; }
   const txd = t.closest('[data-mn-tx-del]');
-  if (txd) { finSaveTx(finTx().filter(x => x.id !== txd.dataset.mnTxDel)); mnTxEdit = null; renderMoney(); toast('Deleted'); return; }
+  if (txd) { const wrote12 = finSaveTx(finTx().filter(x => x.id !== txd.dataset.mnTxDel)); mnTxEdit = null; renderMoney(); savedToast(wrote12, 'Deleted'); return; }
 
   if (t.id === 'mn-imp-cancel') { mnImport = null; renderMoney(); return; }
   if (t.id === 'mn-imp-go') {
@@ -10640,7 +10640,7 @@ function navCfg() {
   cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); if (d) n.ico = d.ico; });
   return cfg;
 }
-function saveNavCfg(cfg) { localStorage.setItem('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); }
+function saveNavCfg(cfg) { const ok = safeSet('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); return ok; }
 function defaultTab() {
   const dt = DB.settings().defaultTab || 'today';
   const n = navCfg().find(x => x.k === dt);
