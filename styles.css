@@ -908,7 +908,7 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 
 /* ---------- v91: tracker→log chip, connected insights, milestone rewards ---------- */
 .tracked-chip { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11.5px;
-  border-radius: 999px; padding: 4px 10px; border: 1px solid var(--border); background: var(--bg-input);
+  border-radius: 999px; padding: 10px 10px; border: 1px solid var(--border); background: var(--bg-input);
   color: var(--text-dim); cursor: pointer; font-family: inherit; }
 .tracked-chip.on { color: var(--good-ink); border-color: color-mix(in srgb, var(--good) 45%, transparent); cursor: default; }
 .tracked-chip:not(.on):active { transform: scale(.96); }
@@ -1106,7 +1106,7 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
   color: var(--text-faint); margin: 5px 0 0 34px; }
 .mm-head { font-size: 12.5px; color: var(--text-dim); margin-top: 9px; }
 .mm-words { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.mm-word { font: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 99px;
+.mm-word { font: inherit; font-size: 12.5px; padding: 8px 11px; border-radius: 99px;
   border: 1.5px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer; }
 .mm-word:active { opacity: .6; }
 .mm-hint { margin-top: 7px; font-size: 11.5px; }
@@ -1215,6 +1215,10 @@ svg.chart, .chart-bar, #graph-svg { max-width: 100%; display: block; }
 .hist-moods { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 
 /* [tap-tiny] text links were 25x16. Grow the hit area without moving the layout. */
+/* Padding + equal negative margin grows the TAP TARGET without moving anything on screen.
+   8px only reached 35x35 (eval: tap-small); 12px vertical lands on ~44, Android's guidance. */
+/* NOTE: the padding here is overridden by the later rule for the same selectors further
+   down this file — keep the tap-target sizing THERE, not here. */
 #mm-hide, #otd-hide, .hint > a { display: inline-block; padding: 8px 6px; margin: -8px -6px; }
 
 /* [tap-tiny] native checkboxes render 13x13 — too small to hit reliably. */
@@ -1258,7 +1262,10 @@ input[type="range"] { height: 30px; }
 
 /* [escapes-parent] the hit-area padding must never overhang the RIGHT edge (these sit at
    the end of a flex header), so grow left + vertical only. */
-#mm-hide, #otd-hide, .hint > a { padding: 9px 0 9px 10px; margin: -9px 0 -9px -10px; }
+/* Grows the TAP TARGET without moving layout (padding + equal negative margin). The
+   asymmetry is deliberate: extending left only keeps the box off the card's right edge.
+   9px vertical measured 35x35 in the eval; 13px puts it on ~44, Android's guidance. */
+#mm-hide, #otd-hide, .hint > a { padding: 13px 0 13px 10px; margin: -13px 0 -13px -10px; }
 
 /* [escapes-parent] a full-width input with a border could exceed the card's content box. */
 .field input, .field select, .field textarea { max-width: 100%; box-sizing: border-box; }
@@ -1631,7 +1638,10 @@ input[type="range"] { height: 30px; }
 
 @media (max-width: 360px) {
   .ov-num { font-size: 46px; }
-  .st-val { font-size: 21px; }
+  /* 21px still clipped a 3-digit value by 2px at 320w (eval: text-clipped, scrollWidth 32 >
+     clientWidth 30). Tightening the tracking rather than shrinking again keeps the figure
+     the same visual weight while giving it the couple of pixels it needed. */
+  .st-val { font-size: 21px; letter-spacing: -1.1px; }
   .st-label { font-size: 10.5px; }
 }
 

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v224';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v225';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
