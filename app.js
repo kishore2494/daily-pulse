@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v225';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v226';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -245,6 +245,17 @@ function safeSet(key, value) {
 /* A save that failed must never be reported as done. safeSet() does warn about a full phone,
    but only once an hour — so a second failure inside that window would otherwise be silent
    AND crowned with a "Saved ✅". Route every success toast that follows a write through here. */
+/* Seeded preview rows carry `sample: true`, but that flag is ONLY read by the clear-sample
+   routine — no analytics path filters on it. So while a preview is active, Stats, Habits,
+   History and the PDF are computed over Math.random() days and were presenting them as real
+   findings with nothing on screen to say so. Health and Awards already had a banner; this is
+   the same banner, made reusable so every surface whose numbers move can carry it. */
+function sampleActive() { try { return !!localStorage.getItem('dp.sampleMeta'); } catch (_) { return false; } }
+function sampleBannerHTML(what) {
+  if (!sampleActive()) return '';
+  return `<div class="card sample-bar"><span>👀 Includes <b>sample data</b> — ${what} below are a preview, not your real figures.</span><button class="btn btn-ghost btn-sm" id="hc-sample-clear">Clear sample</button></div>`;
+}
+
 function savedToast(ok, msg) {
   if (ok === false) { toast('Could not save — your phone storage is full', true); return false; }
   toast(msg); return true;
@@ -2989,7 +3000,7 @@ function renderHabits() {
       </div>
     </div>`;
   }).join('');
-  document.getElementById('s-habits').innerHTML = cards;
+  document.getElementById('s-habits').innerHTML = sampleBannerHTML('these streaks') + cards;
 }
 
 /* ============================================================
@@ -4076,7 +4087,7 @@ function renderDash() {
   // here rather than put in the map — a function reference would stringify its own source
   // into the page. It is also the only tab that replays full history, so it stays lazy.
   const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
-  document.getElementById('s-dash').innerHTML = `
+  document.getElementById('s-dash').innerHTML = sampleBannerHTML('these trends') + `
     <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
     ${dashTab === 'check' ? '' : rangeRow}
     ${body}`;
@@ -5697,6 +5708,15 @@ async function generatePdfReport() {
   const heading = t => { ensure(34); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(70, 90, 210); doc.text(t, M, y); y += 6; doc.setDrawColor(222, 226, 238); doc.line(M, y, W - M, y); y += 15; };
   const row = (l, r) => { ensure(18); doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(45, 45, 60); doc.text(String(l), M, y); doc.text(String(r), W - M, y, { align: 'right' }); y += 18; };
   doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(22, 22, 34); doc.text('Daylog — Report', M, y); y += 22;
+  // A report built while the sample preview is active is computed over seeded Math.random()
+  // days, because nothing filters `sample: true` out of the analytics. Saying so on the page
+  // is the minimum: a PDF outlives the banner on screen and can be read by someone who never
+  // saw it — which is exactly how fake figures get mistaken for real ones.
+  if (sampleActive()) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(180, 60, 30);
+    doc.text('Includes SAMPLE DATA — a preview, not your real figures.', M, y); y += 16;
+    doc.setTextColor(22, 22, 34);
+  }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 142);
   const name = (DB.settings().name || '').trim();
   doc.text((name ? name + ' · ' : '') + prettyDate(todayStr()) + ' · ' + dates.length + ' days logged', M, y); y += 26;
