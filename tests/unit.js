@@ -968,13 +968,20 @@
   /* ---- SHEET SYNC ---- */
   (function () {
     const sSnap = localStorage.getItem('dp.settings');
+    /* The offer is withdrawn until the Play Data Safety form matches it (v222): no card for
+       a user who never connected, the FULL card for one who did — an off switch must never
+       be hidden from the person who turned the thing on. */
+    const sHid = DB.settings(); sHid.syncUrl = ''; DB.saveSettings(sHid);
     renderSettings();
-    const card = [...document.querySelectorAll('#s-settings .card')]
+    const findCard = () => [...document.querySelectorAll('#s-settings .card')]
       .find(c => /Sync/.test((c.querySelector('h2') || {}).textContent || ''));
-    ok('the sync section is visible again', !!card);
-    ok('it takes a sheet link', !!document.getElementById('sync-url'));
-    ok('it links to the setup guide', !!card && /sheets-setup\.html/.test(card.innerHTML));
-    ok('it discloses what is sent', !!card && /Never sent/.test(card.textContent));
+    ok('sync is NOT offered while Data Safety says "collects no data"', !findCard());
+    const sOn = DB.settings(); sOn.syncUrl = 'https://script.google.com/macros/s/x/exec'; DB.saveSettings(sOn);
+    renderSettings();
+    const card = findCard();
+    ok('a user who already connected keeps the card', !!card);
+    ok('including the link box, to disconnect', !!document.getElementById('sync-url'));
+    ok('and the disclosure of what is sent', !!card && /Never sent/.test(card.textContent));
 
     /* The whole Data Safety answer rests on this: Health Connect readings must never appear
        in the push payload. If a future change adds them, this fails before it ships. */
@@ -1377,6 +1384,53 @@
     if (fSnap != null) localStorage.setItem('dp.fintx', fSnap); else localStorage.removeItem('dp.fintx');
     if (aSnap != null) localStorage.setItem('dp.finaccts', aSnap); else localStorage.removeItem('dp.finaccts');
     if (pSnap != null) localStorage.setItem('dp.projects', pSnap); else localStorage.removeItem('dp.projects');
+  })();
+
+  /* ---- THE ONE REVIEW ASK ---- */
+  (function () {
+    const rSnap = localStorage.getItem('dp.rateAsk'), eSnap = localStorage.getItem('dp.entries');
+    const capSnap = window.Capacitor;
+    window.Capacitor = window.Capacitor || { Plugins: { LocalNotifications: {} } };   // nativeShell() true
+    const el = () => document.getElementById('rate-ask');
+    const shown = () => !!el() && el().classList.contains('on');
+    const hide = () => { if (el()) el().classList.remove('on'); };
+
+    localStorage.removeItem('dp.rateAsk');
+    // under 7 logged days: never
+    const few = {}; for (let i = 0; i < 3; i++) few[addDays(todayStr(), -i)] = { mood: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(few));
+    maybeAskForReview();
+    ok('no review ask before 7 logged days', !shown());
+    ok('and an early call burns no ask', rateState().asks === 0);
+
+    const many = {}; for (let i = 0; i < 9; i++) many[addDays(todayStr(), -i)] = { mood: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(many));
+    maybeAskForReview();
+    ok('asks once real use exists', shown());
+    ok('the copy says it is a one-person app', /one person/.test(el().textContent));
+    ok('the copy promises a cap', /twice, ever/.test(el().textContent));
+    hide();
+    maybeAskForReview();
+    ok('a second ask inside 14 days is suppressed', !shown());
+    const st = rateState(); st.last = Date.now() - 15 * 86400000; rateSave(st);
+    maybeAskForReview();
+    ok('after 14 days it may ask once more', shown());
+    hide();
+    maybeAskForReview();
+    ok('never a third time', !shown() && rateState().asks === 2);
+
+    localStorage.removeItem('dp.rateAsk');
+    maybeAskForReview();
+    const go = document.getElementById('rate-go');
+    ok('the rate button exists', !!go);
+    const st2 = rateState(); st2.done = true; rateSave(st2); hide();
+    maybeAskForReview();
+    ok('tapping rate ends it permanently', !shown());
+
+    window.Capacitor = capSnap;
+    if (!capSnap) maybeAskForReview(), ok('no store, no ask (plain browser)', !shown());
+    if (rSnap != null) localStorage.setItem('dp.rateAsk', rSnap); else localStorage.removeItem('dp.rateAsk');
+    if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
   })();
 
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');

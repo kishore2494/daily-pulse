@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v221';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v222';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -878,7 +878,6 @@ const WHATS_NEW = {
     '\ud83d\udcbe <b>Export a backup as a real file again</b> \u2014 please update in the Play Store. Inside the app, exporting could only ever offer \u201ccopy to clipboard\u201d, and the Share button next to it did nothing at all: Android\u2019s WebView has no share API and blocks ordinary downloads, and the failure was being swallowed silently. The new build writes the file straight to your <b>Downloads</b> folder, so Import can pick it like any other file. Until you update, the copy box now says why and the Share button tells you instead of failing quietly.',
     '\ud83d\udcca <b>Money now has a Charts tab</b> \u2014 net worth over 12 months, your spending so far this month drawn against the same point last month, income vs spending by month, a ranked category breakdown, a typical-spend-by-weekday profile, a calendar of every day\u2019s spending, and 12-month trends per category that only say \u201crising\u201d or \u201cfalling\u201d past a 15% change rather than dressing up noise as a trend.<br><br>Three things were wrong and are fixed: net worth used to show an account opened today as already holding its balance a year ago \u2014 accounts now have a start date and count for nothing before it. The weekday chart used the average, which one monthly rent payment could turn into \u201cFriday is your most expensive day\u201d; it now uses the middle day instead. And the spending calendar was washed out by a single big bill setting the scale, so it now scales to your ordinary days and marks where it clips.',
     '\ud83d\udcb0 <b>Money</b> \u2014 a new screen in the \u2630 menu. Accounts, cash, credit cards, investments, property and loans in one place, with net worth worked out from them. Record money in, out and transfers; set optional caps per category; import a bank CSV and it works out which column is which (importing the same statement twice adds nothing). Balances are <b>derived from your own records</b>, so they can never disagree with your ledger, and amounts are held as whole paise rather than decimals \u2014 a hundred 10-paise entries come to exactly \u20b910, not \u20b99.99999999999998.<br><br>The part a finance app cannot do: your spending sits next to your mood, sleep and screen time in the same app, so <b>Patterns</b> can tell you things like \u201cyou spend \u20b9900 more a day on lower-mood days\u201d \u2014 split on your own median, with the sample size shown, and never reported below 6 days on either side. Nothing is uploaded, and there is no bank login.',
-    '\u2601\ufe0f <b>Google Sheet sync is back on</b> \u2014 Settings \u25b8 Sync &amp; login. Off until you connect it. There is no Daylog server: you deploy a small script into <b>your own</b> Google account, so your log goes to a spreadsheet in your Drive and nowhere else. Paste the same link on a second phone and they stay in step \u2014 that link is your login, so treat it like a password. <b>Health Connect readings are never sent</b>, sync on or off: steps, sleep, heart rate, distance, calories and workouts stay on the phone. There is a five-minute setup guide linked from the Settings card.',
     '\ud83c\udfc5 <b>The trophy case, rebuilt</b> \u2014 every award used to be the same grey pill, so a 365-day streak looked exactly like a 3-day one, and the 49 you had not earned were invisible. Each award is now a <b>ranked medal</b> \u2014 Bronze through Diamond by how far up its family\u2019s ladder it sits \u2014 and the locked ones are shown too, dimmed, with exactly how far off you are. A progress ring counts your collection, and there is a per-family bar so you can see which ladder you are furthest up. The five metals were contrast-checked as text in light, navy and black, and every medal writes its rank in words, so none of it depends on telling two colours apart.',
     '\ud83d\udcf1 <b>Share cards default to Story</b> \u2014 9:16 instead of 4:5, because that is the shape Instagram, WhatsApp and Snapchat stories actually use full-screen; a 4:5 post gets letterboxed there. Change it once and it is remembered.',
     '\ud83e\udde9 <b>Untracked time, filled in by asking</b> \u2014 the Time screen now finds the stretches of a past day you never tracked and, where your own history actually supports a guess, asks: \u201c09:00\u201311:15 \u2014 were you \ud83d\udcbc Work?\u201d Tap yes and it is logged. It only names an activity when you logged it in that same window on at least 3 other days, it counts weekdays and weekends separately (sleep and work are exactly what differ), and it always shows the support \u2014 \u201c6 of your last 9 tracked weekdays\u201d \u2014 so you can judge the guess rather than trust it. Nothing is ever filled in on its own, and \u201cleave blank\u201d is remembered.',
@@ -1690,6 +1689,62 @@ function autosaveDraft() {
   const targetDate = logDate, targetDraft = draft;
   _autosaveTimer = setTimeout(() => { _autosaveTimer = null; saveDraftNow(targetDate, targetDraft); }, 700);
 }
+/* ---------- The one review ask ----------
+   Reviews gate every distribution channel, and this app never asks for one. The rules that
+   keep this from becoming the nagging every store app does:
+     · Only at a genuine high point — the moment a 7-day-or-better streak milestone or an
+       award celebration is DISMISSED, never at launch and never mid-task.
+     · Only after real use: 7+ logged days.
+     · Asked at most twice, ever. "Maybe later" retries once, 14+ days later; a second
+       dismissal or a tap on Rate ends it permanently. dp.rateAsk stores the state.
+     · Inside the shell the Play listing opens via market:// (Capacitor hands unknown
+       schemes to the system); in a browser it opens the web listing. */
+let _rateArm = false;   // set by a qualifying celebration; consumed on its dismissal
+const RATE_URL_APP = 'market://details?id=io.github.kishore2494.dailypulse';
+const RATE_URL_WEB = 'https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse';
+function rateState() { return safeParse(localStorage.getItem('dp.rateAsk'), { asks: 0, last: 0, done: false }) || { asks: 0, last: 0, done: false }; }
+function rateSave(st) { localStorage.setItem('dp.rateAsk', JSON.stringify(st)); }
+function maybeAskForReview() {
+  try {
+    if (!nativeShell()) return;                                  // only where a store rating exists
+    const st = rateState();
+    if (st.done || st.asks >= 2) return;
+    if (st.asks === 1 && Date.now() - st.last < 14 * 86400000) return;
+    if (Object.keys(DB.entries()).length < 7) return;            // real use, not day one
+    const el = document.getElementById('rate-ask') || (() => {
+      const d = document.createElement('div'); d.id = 'rate-ask'; d.className = 'sharesheet';
+      document.body.appendChild(d); return d; })();
+    el.innerHTML = `<div class="ss-inner rate-card">
+      <div class="rate-emoji">🙏</div>
+      <h2>A one-time ask</h2>
+      <p class="rate-p">Daylog is built by one person, with no company and no ads. If it has
+        been useful, a rating on the Play Store is genuinely the thing that helps most —
+        it is how other people find an app with no marketing budget.</p>
+      <p class="rate-p rate-dim">This is asked ${st.asks === 0 ? 'at most twice, ever' : 'only this once more'}. Nothing here nags.</p>
+      <div class="pj-btns" style="justify-content:center">
+        <button class="btn btn-primary" id="rate-go">Rate Daylog</button>
+        <button class="btn btn-ghost" id="rate-later">${st.asks === 0 ? 'Maybe later' : 'No thanks'}</button>
+      </div></div>`;
+    el.classList.add('on');
+    rateSave({ asks: st.asks + 1, last: Date.now(), done: false });
+  } catch (e) {}
+}
+document.addEventListener('click', (ev) => {
+  const el = document.getElementById('rate-ask');
+  if (!el || !el.classList.contains('on')) return;
+  if (ev.target.id === 'rate-go') {
+    const st = rateState(); st.done = true; rateSave(st);
+    el.classList.remove('on');
+    // market:// first (opens the Play app); the web URL is the browser/desktop path.
+    try { window.location.href = nativeShell() ? RATE_URL_APP : RATE_URL_WEB; } catch (e) {}
+    return;
+  }
+  if (ev.target.id === 'rate-later' || ev.target === el) {
+    const st = rateState(); if (st.asks >= 2) st.done = true; rateSave(st);
+    el.classList.remove('on'); return;
+  }
+});
+
 /* ---------- Streak milestone celebrations ----------
    Hitting 3/5/7/10/14/21/30/50/75/100/150/200/365 logged days in a row pops a
    full-screen confetti reward — once per milestone per streak run. */
@@ -1703,6 +1758,7 @@ function checkStreakMilestone() {
   if (shown[key]) return;
   shown[key] = 1; localStorage.setItem('dp.milestones', JSON.stringify(shown));
   showMilestone(st);
+  if (st >= 7) _rateArm = true;   // ask when the celebration is dismissed, not over it
 }
 /* Awards can be earned by editing ANY past day, not just today, so this runs on every
    save. Only genuinely new awards are announced, and at most one at a time — a batch of
@@ -1734,6 +1790,7 @@ function checkNewAwards(savedDate) {
   const depth = a => { const f = AWARD_FAMILIES.find(x => x.grp === a.grp);
     return f ? (f.tiers.indexOf(a.tier) + 1) / f.tiers.length : 0; };
   fresh.sort((a, b) => depth(b) - depth(a));
+  _rateArm = true;                       // an award is a high point; ask on dismissal
   showAward(fresh[0], fresh.length - 1);
 }
 function showAward(a, more) {
@@ -1782,7 +1839,12 @@ function showMilestone(n) {
   buzzPattern([80, 60, 80, 60, 160]);
 }
 document.addEventListener('click', (ev) => {
-  if (ev.target.id === 'ms-close' || (ev.target.id === 'milestone')) { const m = document.getElementById('milestone'); if (m) m.classList.remove('on'); }
+  if (ev.target.id === 'ms-close' || (ev.target.id === 'milestone')) {
+    const m = document.getElementById('milestone'); if (m) m.classList.remove('on');
+    /* The ask rides on the dismissal of a celebration — the user just chose to end a good
+       moment, so nothing is being interrupted. */
+    if (_rateArm) { _rateArm = false; setTimeout(maybeAskForReview, 450); }
+  }
 });
 function saveDraftNow(date, d) {
   d.updatedAt = new Date().toISOString();
@@ -5220,17 +5282,24 @@ function renderSettings() {
   document.getElementById('screen-title').textContent = 'Settings';
   document.getElementById('screen-sub').textContent = 'Customize, reminders, data';
   const s = DB.settings();
-  /* Sync is visible again as of v218. It was hidden because the Play Data Safety answer said
-     "collects no data" and a visible sync section contradicts it. That is a form to update,
-     not a feature to hide — so the form gets updated (store/PASTE-6-data-safety.txt) and the
-     app states plainly what leaves the phone.
+  /* SYNC IS HIDDEN AGAIN (v222) — offered only to users who already connected it.
 
-     Two things keep the claim honest, and both are enforced in code, not just copy:
-       · dp.health — every Health Connect reading — is deliberately absent from the push
-         payload. Health data never leaves the device, synced or not.
-       · there is no Daylog server. The endpoint is an Apps Script the user deploys into
-         their OWN Google account, so the data goes to their sheet and nowhere else. */
-  const SHOW_SYNC = true;
+     v218 turned the section on for everyone, reasoning that the Data Safety form was "a form
+     to update, not a feature to hide". That got the order backwards: this app ships its web
+     layer from a URL, so the deploy WAS the rollout, and for four days the store declaration
+     ("collects no data") contradicted a live feature. The declaration must change BEFORE the
+     offer exists, not after.
+
+     Until store/PASTE-6-data-safety.txt has been entered in Play Console:
+       · users with s.syncUrl set keep the full card — they must always be able to see,
+         sync and DISCONNECT something they already connected. Hiding their only off
+         switch would be worse than the original mistake.
+       · everyone else gets no offer. Their app transmits nothing, which is exactly what
+         the declaration says.
+     After the form is updated, make this `true` again. dp.health stays out of the payload
+     either way, and there is still no Daylog server — the endpoint is the user's own
+     Apps Script. */
+  const SHOW_SYNC = !!s.syncUrl;
   // PIS sync was added by a different session and pushes to http://127.0.0.1:5001 — a
   // localhost-only integration with another of the owner's apps. It is meaningless (and
   // confusing) to public Play Store users, so it is hidden rather than deleted: the code
