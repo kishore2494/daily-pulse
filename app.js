@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v222';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v223';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -24,7 +24,7 @@ const DEFAULT_HABITS = [
   { key: 'healthyFood', emoji: '🥗', label: 'Healthy food', color: '#fb923c' },
 ];
 function habitCfg() { const p = safeParse(localStorage.getItem('dp.habitcfg'), null); return Array.isArray(p) ? p : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
-function saveHabitCfg(cfg) { localStorage.setItem('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); }
+function saveHabitCfg(cfg) { const ok = safeSet('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
   HABITS = habitCfg().filter(h => !h.hidden);
@@ -242,6 +242,14 @@ function safeSet(key, value) {
   }
 }
 
+/* A save that failed must never be reported as done. safeSet() does warn about a full phone,
+   but only once an hour — so a second failure inside that window would otherwise be silent
+   AND crowned with a "Saved ✅". Route every success toast that follows a write through here. */
+function savedToast(ok, msg) {
+  if (ok === false) { toast('Could not save — your phone storage is full', true); return false; }
+  toast(msg); return true;
+}
+
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
@@ -252,29 +260,29 @@ const DB = {
   putEntry(date, data) { const e = this.entries(); e[date] = data; return this.saveEntries(e); },
 
   tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
-  saveTasks(t) { safeSet('dp.tasks', JSON.stringify(t)); pushState(); },
+  saveTasks(t) { const ok = safeSet('dp.tasks', JSON.stringify(t)); pushState(); return ok; },
 
   exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
-  saveExercises(x) { localStorage.setItem('dp.exercises', JSON.stringify(x)); pushState(); },
+  saveExercises(x) { const ok = safeSet('dp.exercises', JSON.stringify(x)); pushState(); return ok; },
   gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
-  saveGym(g) { safeSet('dp.gym', JSON.stringify(g)); pushState(); },
+  saveGym(g) { const ok = safeSet('dp.gym', JSON.stringify(g)); pushState(); return ok; },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
-  putGymDay(date, d) { const g = this.gym(); g[date] = d; this.saveGym(g); },
+  putGymDay(date, d) { const g = this.gym(); g[date] = d; return this.saveGym(g); },
 
   reminders() { return safeParse(localStorage.getItem('dp.reminders'), []); },
   saveReminders(r) { localStorage.setItem('dp.reminders', JSON.stringify(r)); pushState(); },
 
   notes() { return safeParse(localStorage.getItem('dp.notes'), []); },
-  saveNotes(n) { safeSet('dp.notes', JSON.stringify(n)); pushState(); },
+  saveNotes(n) { const ok = safeSet('dp.notes', JSON.stringify(n)); pushState(); return ok; },
 
   plans() { return safeParse(localStorage.getItem('dp.plans'), []); },
-  savePlans(p) { safeSet('dp.plans', JSON.stringify(p)); pushState(); },
+  savePlans(p) { const ok = safeSet('dp.plans', JSON.stringify(p)); pushState(); return ok; },
 
   projects() { return safeParse(localStorage.getItem('dp.projects'), []); },
-  saveProjects(p) { safeSet('dp.projects', JSON.stringify(p)); pushState(); },
+  saveProjects(p) { const ok = safeSet('dp.projects', JSON.stringify(p)); pushState(); return ok; },
 
   docs() { return safeParse(localStorage.getItem('dp.docs'), []); },
-  saveDocs(d) { safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); },
+  saveDocs(d) { const ok = safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); return ok; },
 
   events() { return safeParse(localStorage.getItem('dp.events'), []); },
   saveEvents(x) { localStorage.setItem('dp.events', JSON.stringify(x)); pushState(); syncEvents(); },
@@ -285,7 +293,7 @@ const DB = {
   saveTimebox(t) { localStorage.setItem('dp.timebox', JSON.stringify(t)); pushState(); },
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
-  saveTimelog(t) { safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); },
+  saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
   saveTimeacts(a) { localStorage.setItem('dp.timeacts', JSON.stringify(a)); pushState(); },
 
@@ -1395,7 +1403,7 @@ document.addEventListener('click', (ev) => {
     const n = Math.max(0, Math.min(999, parseInt(document.getElementById('ge-n').value, 10) || 0));
     h.goal = { n, cmp: document.getElementById('ge-cmp').value === 'atmost' ? 'atmost' : 'atleast',
                unit: (document.getElementById('ge-unit').value || '').trim() };
-    saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); toast('Goal saved 🎯'); return;
+    const gok = saveHabitCfg(cfg); m.style.display = 'none'; renderCustom(); savedToast(gok, 'Goal saved 🎯'); return;
   }
   if (ev.target.id === 'ge-remove') {
     const cfg = habitCfg(); const h = cfg.find(x => x.key === m.dataset.key); if (!h) return;
@@ -1916,9 +1924,9 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'log-task-add') {
     const inp = document.getElementById('log-task-input'); const text = (inp && inp.value || '').trim(); if (!text) return;
     const tasks = DB.tasks(); tasks.unshift({ id: 't' + Date.now(), text, done: false, created: todayStr(), color: '' });
-    DB.saveTasks(tasks); renderToday();
+    const tok = DB.saveTasks(tasks); renderToday();
     document.body.classList.remove('kbd-open');   // re-render removed the focused input → no focusout ever fires
-    toast('Task added ✅'); return;
+    savedToast(tok, 'Task added ✅'); return;
   }
   if (ev.target.id === 'log-habit-add') {
     const inp = document.getElementById('log-habit-input'); const raw = (inp && inp.value || '').trim(); if (!raw) return;
@@ -2917,7 +2925,7 @@ document.addEventListener('click', (ev) => {
     if (act.indexOf(PJ_ACT) === 0) mblk.pid = act.slice(PJ_ACT.length);
     log.push(mblk);
     log.sort((x, y) => x.start - y.start);
-    DB.saveTimelog(log); ttShowManual = false; renderTime(); toast('Block added ✅'); return;
+    const bok = DB.saveTimelog(log); ttShowManual = false; renderTime(); savedToast(bok, 'Block added ✅'); return;
   }
   if (ev.target.id === 'tt-newact-add') {
     const inp = document.getElementById('tt-newact'); const name = inp.value.trim(); if (!name) return;
@@ -2938,7 +2946,7 @@ document.addEventListener('change', (ev) => {
     if (te.dataset.segt === 'start' && seg.end != null && v >= seg.end) { toast('Start must be before end', true); renderTime(); return; }
     if (te.dataset.segt === 'end' && v <= seg.start) { toast('End must be after start', true); renderTime(); return; }
     seg[te.dataset.segt] = v; seg.upd = Date.now();
-    DB.saveTimelog(log); renderTime(); toast('Time fixed ✅');
+    const fok = DB.saveTimelog(log); renderTime(); savedToast(fok, 'Time fixed ✅');
   }
 });
 
@@ -9379,11 +9387,11 @@ function finCat(id) {
 
 /* ---- stores ---- */
 function finAccts() { const v = safeParse(localStorage.getItem('dp.finaccts'), []); return Array.isArray(v) ? v : []; }
-function finSaveAccts(a) { safeSet('dp.finaccts', JSON.stringify(a)); pushState(); }
+function finSaveAccts(a) { const ok = safeSet('dp.finaccts', JSON.stringify(a)); pushState(); return ok; }
 function finTx() { const v = safeParse(localStorage.getItem('dp.fintx'), []); return Array.isArray(v) ? v : []; }
-function finSaveTx(t) { safeSet('dp.fintx', JSON.stringify(t)); pushState(); }
+function finSaveTx(t) { const ok = safeSet('dp.fintx', JSON.stringify(t)); pushState(); return ok; }
 function finMarks() { const v = safeParse(localStorage.getItem('dp.finmarks'), []); return Array.isArray(v) ? v : []; }
-function finSaveMarks(m) { safeSet('dp.finmarks', JSON.stringify(m)); pushState(); }
+function finSaveMarks(m) { const ok = safeSet('dp.finmarks', JSON.stringify(m)); pushState(); return ok; }
 function finBudgets() { return safeParse(localStorage.getItem('dp.finbudget'), {}) || {}; }
 function finSaveBudgets(b) { localStorage.setItem('dp.finbudget', JSON.stringify(b)); pushState(); }
 function finSet() {
