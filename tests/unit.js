@@ -1321,6 +1321,64 @@
     if (sE != null) localStorage.setItem('dp.entries', sE); else localStorage.removeItem('dp.entries');
   })();
 
+  /* ---- BACKUP EXPORT / IMPORT ---- */
+  (function () {
+    const eSnap = localStorage.getItem('dp.entries'), fSnap = localStorage.getItem('dp.fintx');
+    const aSnap = localStorage.getItem('dp.finaccts'), pSnap = localStorage.getItem('dp.projects');
+    const T = todayStr();
+
+    // --- a backup must actually contain the data ---
+    DB.putEntry(T, { mood: 8, journal: 'must survive', habits: { workout: true }, updatedAt: new Date().toISOString() });
+    localStorage.setItem('dp.finaccts', JSON.stringify([{ id: 'b', name: 'Bank', kind: 'bank', opening: parseAmt('1000'), since: T }]));
+    localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'f', d: T, a: parseAmt('50'), dir: 'out', ac: 'b', c: 'food', n: 'x' }]));
+    const blob = backupBlob();
+    ok('the backup carries entries', !!blob.entries && !!blob.entries[T]);
+    ok('the backup carries money', Array.isArray(blob.fintx) && blob.fintx.length === 1);
+    ok('the backup carries settings', !!blob.settings);
+    ok('every backup key is a real store',
+      Object.keys(blob).every(k => k === 'settings' || BACKUP_KEYS.includes(k)),
+      Object.keys(blob).filter(k => k !== 'settings' && !BACKUP_KEYS.includes(k)).join(','));
+    /* exportData is async — stringifying its return value gives "{}" , which is how I briefly
+       convinced myself the backup was empty. backupBlob is the synchronous data function. */
+    ok('exportData is async and backupBlob is the data function',
+      exportData.constructor.name === 'AsyncFunction' && typeof backupBlob() === 'object');
+
+    // --- restoring a backup brings everything back ---
+    const saved = JSON.stringify(blob);
+    localStorage.clear();
+    ok('a wipe really empties it', Object.keys(DB.entries()).length === 0);
+    const d = JSON.parse(saved);
+    BACKUP_KEYS.forEach(k => { if (d[k] !== undefined) localStorage.setItem('dp.' + k, JSON.stringify(d[k])); });
+    ok('the journal comes back', (DB.entry(T) || {}).journal === 'must survive');
+    ok('the balance comes back', finBal('b') === parseAmt('950'), finBal('b'));
+
+    // --- a PARTIAL file touches only the stores it names ---
+    /* This is what a statement import hands back: money only. Anything not in the file must
+       be left exactly as it was, so a bad money file can never cost someone their journal. */
+    DB.putEntry(T, { mood: 8, journal: 'personal', habits: {}, updatedAt: new Date().toISOString() });
+    localStorage.setItem('dp.projects', JSON.stringify([{ id: 'p', name: 'proj' }]));
+    const partial = { fintx: [{ id: 'n1', d: T, a: parseAmt('77'), dir: 'out', ac: 'b', c: 'food', n: 'new' }] };
+    BACKUP_KEYS.forEach(k => { if (partial[k] !== undefined) localStorage.setItem('dp.' + k, JSON.stringify(partial[k])); });
+    ok('a partial file leaves the journal alone', (DB.entry(T) || {}).journal === 'personal');
+    ok('a partial file leaves projects alone',
+      (safeParse(localStorage.getItem('dp.projects'), []) || []).length === 1);
+    ok('and it does replace the store it names', finTx().length === 1 && finTx()[0].id === 'n1');
+
+    // --- the import picker must not filter its own files out ---
+    renderSettings();
+    const inp = document.getElementById('import-file');
+    ok('the import picker exists', !!inp);
+    /* A bare accept="application/json" makes some Android pickers grey out every file, which
+       reads as "no backups found". */
+    ok('the import picker accepts .json by extension too',
+      !!inp && /\.json/.test(inp.getAttribute('accept') || ''), inp && inp.getAttribute('accept'));
+
+    if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+    if (fSnap != null) localStorage.setItem('dp.fintx', fSnap); else localStorage.removeItem('dp.fintx');
+    if (aSnap != null) localStorage.setItem('dp.finaccts', aSnap); else localStorage.removeItem('dp.finaccts');
+    if (pSnap != null) localStorage.setItem('dp.projects', pSnap); else localStorage.removeItem('dp.projects');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v220';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v221';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -873,8 +873,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w19',
+  v: 'w20',
   items: [
+    '\ud83d\udcbe <b>Export a backup as a real file again</b> \u2014 please update in the Play Store. Inside the app, exporting could only ever offer \u201ccopy to clipboard\u201d, and the Share button next to it did nothing at all: Android\u2019s WebView has no share API and blocks ordinary downloads, and the failure was being swallowed silently. The new build writes the file straight to your <b>Downloads</b> folder, so Import can pick it like any other file. Until you update, the copy box now says why and the Share button tells you instead of failing quietly.',
     '\ud83d\udcca <b>Money now has a Charts tab</b> \u2014 net worth over 12 months, your spending so far this month drawn against the same point last month, income vs spending by month, a ranked category breakdown, a typical-spend-by-weekday profile, a calendar of every day\u2019s spending, and 12-month trends per category that only say \u201crising\u201d or \u201cfalling\u201d past a 15% change rather than dressing up noise as a trend.<br><br>Three things were wrong and are fixed: net worth used to show an account opened today as already holding its balance a year ago \u2014 accounts now have a start date and count for nothing before it. The weekday chart used the average, which one monthly rent payment could turn into \u201cFriday is your most expensive day\u201d; it now uses the middle day instead. And the spending calendar was washed out by a single big bill setting the scale, so it now scales to your ordinary days and marks where it clips.',
     '\ud83d\udcb0 <b>Money</b> \u2014 a new screen in the \u2630 menu. Accounts, cash, credit cards, investments, property and loans in one place, with net worth worked out from them. Record money in, out and transfers; set optional caps per category; import a bank CSV and it works out which column is which (importing the same statement twice adds nothing). Balances are <b>derived from your own records</b>, so they can never disagree with your ledger, and amounts are held as whole paise rather than decimals \u2014 a hundred 10-paise entries come to exactly \u20b910, not \u20b99.99999999999998.<br><br>The part a finance app cannot do: your spending sits next to your mood, sleep and screen time in the same app, so <b>Patterns</b> can tell you things like \u201cyou spend \u20b9900 more a day on lower-mood days\u201d \u2014 split on your own median, with the sample size shown, and never reported below 6 days on either side. Nothing is uploaded, and there is no bank login.',
     '\u2601\ufe0f <b>Google Sheet sync is back on</b> \u2014 Settings \u25b8 Sync &amp; login. Off until you connect it. There is no Daylog server: you deploy a small script into <b>your own</b> Google account, so your log goes to a spreadsheet in your Drive and nowhere else. Paste the same link on a second phone and they stay in step \u2014 that link is your login, so treat it like a password. <b>Health Connect readings are never sent</b>, sync on or off: steps, sleep, heart rate, distance, calories and workouts stay on the phone. There is a five-minute setup guide linked from the Settings card.',
@@ -3321,6 +3322,24 @@ function coachReview() {
    user can reach; only those two mean nothing was saved. */
 async function saveFile(filename, content, mime) {
   const inApp = !!window.Capacitor;
+  /* In the installed app this ladder used to fall all the way to a textarea: WebView has no
+     navigator.share, and a Capacitor WebView sets no DownloadListener so <a download> does
+     nothing at all. Export could therefore only ever offer "copy" — and a backup you have to
+     paste out of a textarea cannot be handed back to the app's own file-picker import.
+     The native plugin writes a real file to Downloads, where the import picker can see it. */
+  if (typeof content === 'string') {
+    const p = nativeSharePlugin();
+    if (p && p.saveTextFile) {
+      try {
+        const r = await p.saveTextFile({ filename, text: content, mime: mime || 'text/plain' });
+        if (r && r.saved) { toast('Saved to your Downloads folder 📁'); return 'download'; }
+        if (p.shareTextFile) {
+          await p.shareTextFile({ filename, text: content, mime: mime || 'text/plain' });
+          toast('Choose where to save 📤'); return 'shared';
+        }
+      } catch (e) { /* fall through to the rungs below and say what happened */ }
+    }
+  }
   if (navigator.canShare) {
     try {
       const file = new File([content], filename, { type: mime });
@@ -3350,7 +3369,7 @@ function showCopyModal(filename, content) {
   if (!m) { m = document.createElement('div'); m.id = 'copy-modal'; m.className = 'copy-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="copy-box">
     <div class="copy-head"><b>${escapeHtml(filename)}</b><button class="drawer-x" data-copy-close>✕</button></div>
-    <p class="hint">Here's your data. Tap <b>Copy</b> and paste it into Files, Drive, Notes or an email — or <b>Share</b> it straight to another app.</p>
+    <p class="hint">This build could not write a file, so here is the data itself. Tap <b>Copy</b> and paste it into Files, Drive, Notes or an email — or <b>Share</b> it straight to another app. <b>Update Daylog in the Play Store</b> to get a proper "save to Downloads" instead.</p>
     <textarea class="copy-ta" readonly>${escapeHtml(content)}</textarea>
     <div class="copy-actions">
       <button class="btn btn-primary btn-sm" data-copy-do>📋 Copy</button>
@@ -3367,7 +3386,23 @@ document.addEventListener('click', async (ev) => {
     catch (e) { const ta = m.querySelector('.copy-ta'); ta.focus(); ta.select(); try { document.execCommand('copy'); toast('Copied ✓'); } catch (_) { toast('Select all and copy', true); } }
     return;
   }
-  if (ev.target.closest('[data-copy-share]')) { try { await navigator.share({ text: m._content, title: m._filename }); } catch (e) {} return; }
+  if (ev.target.closest('[data-copy-share]')) {
+    /* This was `catch (e) {}` around a navigator.share that does not exist in an Android
+       WebView — so the button did nothing, said nothing, and looked broken. Try the native
+       plugin first, and if there is genuinely no way to share, SAY so. */
+    const p = nativeSharePlugin();
+    if (p && p.shareTextFile) {
+      try { await p.shareTextFile({ filename: m._filename, text: m._content, mime: 'application/json' }); return; }
+      catch (e) { toast('Could not open the share sheet — use Copy instead', true); return; }
+    }
+    if (navigator.share) {
+      try { await navigator.share({ text: m._content, title: m._filename }); }
+      catch (e) { if (!e || e.name !== 'AbortError') toast('Sharing is not available here — use Copy', true); }
+      return;
+    }
+    toast('This app version cannot share files — tap Copy, or update Daylog', true);
+    return;
+  }
 });
 function exportCSV() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
@@ -5352,7 +5387,9 @@ function renderSettings() {
       <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-ghost btn-sm" id="export-csv">⬇ Export CSV (for Excel/AI)</button>
       </div>
-      <input type="file" id="import-file" accept="application/json" style="display:none">
+      ${/* Both the extension AND the mime: some Android pickers match only on extension and
+       show a greyed-out list for a bare mime type, which looks like "no backups found". */''}
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none">
     </div>
     ${/* An app that holds a private journal has to let you destroy it without uninstalling —
          but two taps was far too little friction for something with no undo. This is a
