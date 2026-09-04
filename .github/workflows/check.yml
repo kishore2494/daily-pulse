@@ -42,5 +42,8 @@ jobs:
       - name: overlapping time blocks are detected
         run: node tools/check-overlap.mjs
 
+      - name: amounts parse to whole paise
+        run: node tools/check-money.mjs
+
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs

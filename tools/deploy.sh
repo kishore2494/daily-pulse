@@ -57,6 +57,7 @@ node tools/check-import.mjs || { echo "!! the backup-import validator does not r
 node tools/gen-sitemap.mjs --check || { echo "!! sitemap.xml does not match the pages on disk — refusing to deploy"; exit 1; }
 node tools/check-links.mjs || { echo "!! a page links somewhere that does not exist — refusing to deploy"; exit 1; }
 node tools/check-overlap.mjs || { echo "!! overlap detection is broken — refusing to deploy"; exit 1; }
+node tools/check-money.mjs || { echo "!! amount parsing is wrong — refusing to deploy"; exit 1; }
 node tools/check-export.mjs || { echo "!! the CSV escaper is broken — refusing to deploy"; exit 1; }
 
 for R in origin prod; do

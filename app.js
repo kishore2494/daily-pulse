@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v238';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v239';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -9585,7 +9585,13 @@ function finAcct(id) { return finAccts().find(a => a.id === id) || null; }
    Returns integer minor units, or null when there is no number in there at all — null is a
    parse FAILURE and callers must treat it as one, never as zero. */
 function parseAmt(str) {
-  if (typeof str === 'number') return Math.round(str * 100);
+  // A number goes through the SAME parser as typed text, rather than Math.round(n * 100).
+  // Two reasons. It is one rule instead of two, which is what you want for money; and the
+  // arithmetic version is quietly wrong at the boundary — 1.005 * 100 is 100.49999999999999 in
+  // binary floating point, so Math.round returned 100 while the obvious reading says 101. No
+  // caller passes a number today (all nine pass a DOM value), so this changes nothing that runs;
+  // it removes a trap for whoever first does.
+  if (typeof str === 'number') return Number.isFinite(str) ? parseAmt(str.toFixed(2)) : null;
   let s = String(str == null ? '' : str).trim();
   if (!s) return null;
   let mult = 1;
