@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v229';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v230';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5834,7 +5834,16 @@ function sendFeedback(text, contact) {
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
 const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'cardratio',
-  'finaccts', 'fintx', 'finmarks', 'finbudget', 'fincats', 'finset', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen'];
+  'finaccts', 'fintx', 'finmarks', 'finbudget', 'fincats', 'finset', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen',
+  /* Added v230. These are the user's own CHOICES and earned state, and leaving them out meant
+     a wipe-then-restore silently reset them while the app said "Backup restored" — the export
+     is offered inside the wipe flow precisely so nothing is lost. Internal flags stay out on
+     purpose (errlog, onboarded, toured, whatsnew, lastBackup, quotaWarn, sampleMeta, touched,
+     pausedAct, rateAsk, backupNudge, awardsInit, and the one-shot *Migrated markers): those
+     are about THIS install, not about the user, and restoring them would be wrong. */
+  'milestones', 'alarmSound', 'alarmHealth', 'waves',
+  'hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff',
+  'usageDisclosure', 'exactAsked'];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -5941,10 +5950,17 @@ function importData(file) {
   const r = new FileReader();
   r.onload = () => {
     try { const d = JSON.parse(r.result);
-      BACKUP_KEYS.forEach(k => { if (d[k] !== undefined) localStorage.setItem('dp.' + k, JSON.stringify(d[k])); });
+      // safeSet, not setItem: on a full phone a raw write throws per key and the restore
+      // would still have said "Backup restored" over a half-loaded backup — the same
+      // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
+      // RESTORE path, where it matters more.
+      let failed = 0;
+      BACKUP_KEYS.forEach(k => { if (d[k] !== undefined && safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; });
       if (d.settings) DB.saveSettings(Object.assign(DB.settings(), d.settings));
       reloadCfg();
-      toast('Backup restored'); refreshStreak(); setupReminders(); pushState(true); show('dash');
+      refreshStreak(); setupReminders(); pushState(true); show('dash');
+      if (failed) toast(`Restored, but ${failed} section(s) could not be written — free up storage and import again`, true);
+      else toast('Backup restored');
     } catch (e) { toast('Bad backup file', true); }
   };
   r.readAsText(file);
