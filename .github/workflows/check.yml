@@ -24,3 +24,6 @@ jobs:
       # asset creeping back in against the "private & offline" claim.
       - name: release consistency
         run: node tools/check-release.mjs
+
+      - name: Every stored key is backed up or deliberately excluded
+        run: node tools/check-backup-keys.mjs

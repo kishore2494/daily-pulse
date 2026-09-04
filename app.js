@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v230';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v231';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5843,7 +5843,29 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
      are about THIS install, not about the user, and restoring them would be wrong. */
   'milestones', 'alarmSound', 'alarmHealth', 'waves',
   'hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff',
-  'usageDisclosure', 'exactAsked'];
+  'usageDisclosure', 'exactAsked',
+  /* Added v231. dp.settings is the user's name, reminder time and sync URL — their own
+     choices, not install state — and it was the last one still missing. Found by
+     tools/check-backup-keys.mjs, which now enforces the rule below instead of describing it. */
+  'settings'];
+
+/* Keys the app writes that are DELIBERATELY not backed up, because they describe this install
+   rather than the person using it: restoring them onto a fresh device would be wrong.
+   This used to be prose in the comment above, which meant nothing could check it. It is a list
+   now, so tools/check-backup-keys.mjs can hold the pair to account — every key the app writes
+   must appear in exactly one of BACKUP_KEYS or this one. A key in neither fails the release,
+   which is what would have caught the eleven missing in v230, and 'settings' here. */
+const BACKUP_EXCLUDED = [
+  'errlog',                            // crash log for the feedback mail, not user data
+  'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
+  'lastBackup',                        // when this device last exported; restoring it misreports
+  'quotaWarn',                         // storage-pressure warning state
+  'sampleMeta',                        // marks which rows are seeded demo data on this install
+  'touched', 'pausedAct',
+  'rateAsk', 'backupNudge', 'awardsInit',
+  'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
+  'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
+];
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
