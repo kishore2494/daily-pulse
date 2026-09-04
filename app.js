@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v226';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v227';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -4103,7 +4103,7 @@ let searchQ = '';
 function renderSearch() {
   document.getElementById('screen-title').textContent = 'Search';
   document.getElementById('screen-sub').textContent = 'find anything you wrote';
-  document.getElementById('s-search').innerHTML = `
+  document.getElementById('s-search').innerHTML = sampleBannerHTML('these results') + `
     <div class="card">
       <div class="task-add">
         <input type="text" id="search-q" placeholder="Search journals, tasks, notes… or #tag" autocomplete="off" value="${escapeHtml(searchQ)}">
@@ -4197,7 +4197,7 @@ function renderHistory() {
       <div class="hist-moods"><span class="pill">😊 ${en.mood||'–'}</span><span class="pill">⚡ ${en.energy||'–'}</span><span class="pill">✅ ${hc}/${HABITS.length}</span></div>
     </div>`;
   }).join('');
-  document.getElementById('s-history').innerHTML = `<div class="card">${items}</div>`;
+  document.getElementById('s-history').innerHTML = sampleBannerHTML('these days') + `<div class="card">${items}</div>`;
 }
 document.addEventListener('click', (ev) => {
   const it = ev.target.closest('[data-open]');
@@ -5232,7 +5232,7 @@ function renderCal() {
       ${en.journal ? `<div class="hint" style="margin-bottom:6px">📓 ${escapeHtml(en.journal.slice(0, 80))}${en.journal.length > 80 ? '…' : ''}</div>` : ''}`
     : `<div class="hint" style="margin:8px 0">${calSel > today ? 'Future day — plan something below 👇' : 'Nothing logged this day.'}</div>`;
 
-  document.getElementById('s-cal').innerHTML = `
+  document.getElementById('s-cal').innerHTML = sampleBannerHTML('the marked days') + `
     <div class="card">
       <div class="cal-nav">
         <button class="btn btn-ghost btn-sm" id="cal-prev">‹</button>
