@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v231';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v232';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5844,9 +5844,12 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
   'milestones', 'alarmSound', 'alarmHealth', 'waves',
   'hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff',
   'usageDisclosure', 'exactAsked',
-  /* Added v231. dp.settings is the user's name, reminder time and sync URL — their own
-     choices, not install state — and it was the last one still missing. Found by
-     tools/check-backup-keys.mjs, which now enforces the rule below instead of describing it. */
+  /* Added v231, and the v231 note about it was WRONG. dp.settings — name, reminder time, sync
+     URL — was never actually being lost: backupBlob() special-cased it as `{ settings:
+     DB.settings() }` and importData had a matching `d.settings` branch, both there since the
+     first commit. It round-tripped fine; it was just invisible to a check that reads this list.
+     v232 removed both special cases so this list is the single mechanism, which is what makes
+     tools/check-backup-keys.mjs mean what it says. */
   'settings'];
 
 /* Keys the app writes that are DELIBERATELY not backed up, because they describe this install
@@ -5964,7 +5967,10 @@ async function exportData() {
   return r;
 }
 function backupBlob() {
-  const out = { settings: DB.settings() };
+  // Everything goes through BACKUP_KEYS. `settings` used to be special-cased here and matched
+  // by a `d.settings` branch in importData, which meant it round-tripped correctly while being
+  // invisible to any check that reads the list — see tools/check-backup-keys.mjs.
+  const out = {};
   BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
   return out;
 }
@@ -5978,7 +5984,6 @@ function importData(file) {
       // RESTORE path, where it matters more.
       let failed = 0;
       BACKUP_KEYS.forEach(k => { if (d[k] !== undefined && safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; });
-      if (d.settings) DB.saveSettings(Object.assign(DB.settings(), d.settings));
       reloadCfg();
       refreshStreak(); setupReminders(); pushState(true); show('dash');
       if (failed) toast(`Restored, but ${failed} section(s) could not be written — free up storage and import again`, true);

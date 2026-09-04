@@ -62,6 +62,47 @@ if (unaccounted.length) {
   );
 }
 
+// Keys handled OUTSIDE the BACKUP_KEYS loop, in backupBlob() or importData().
+//
+// This is the blind spot that made v231's finding wrong. `settings` was special-cased on both
+// sides — `{ settings: DB.settings() }` on export, a `d.settings` branch on import — since the
+// first commit. It round-tripped perfectly and was invisible to a check that only reads the
+// list, so the list said "missing" and I read that as "being lost". It was neither.
+//
+// A key handled by hand is not necessarily wrong, but it must be deliberate: it bypasses
+// everything this script checks, so it has to be in BACKUP_KEYS anyway or declared excluded.
+function bodyOf(fnName) {
+  const at = src.indexOf(`function ${fnName}`);
+  if (at === -1) throw new Error(`${fnName} not found in app.js — this check has gone stale`);
+  const open = src.indexOf("{", at);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
+  }
+  throw new Error(`unterminated ${fnName}`);
+}
+
+const specialCased = new Set();
+// export side: `out.foo = ...` or an object literal `{ foo: ... }` seeding the blob
+for (const m of bodyOf("backupBlob").matchAll(/\bout\.([A-Za-z_]\w*)\s*=|const out = \{\s*([A-Za-z_]\w*):/g)) {
+  specialCased.add(m[1] ?? m[2]);
+}
+// import side: any `d.foo` read that is not the loop's own `d[k]`
+for (const m of bodyOf("importData").matchAll(/\bd\.([A-Za-z_]\w*)/g)) specialCased.add(m[1]);
+
+const undeclared = [...specialCased]
+  .filter((k) => !backed.includes(k) && !excluded.includes(k))
+  .sort();
+if (undeclared.length) {
+  problems.push(
+    `handled by hand in backupBlob()/importData() but in neither list: ${undeclared.join(", ")}\n` +
+    `     A key restored outside the BACKUP_KEYS loop bypasses every check here. Add it to\n` +
+    `     BACKUP_KEYS (and let the loop carry it) or to BACKUP_EXCLUDED, so this script's\n` +
+    `     answer matches what the code actually does.`
+  );
+}
+
 // Entries that no literal write matches — either dead, or written through a helper.
 const unmatched = [...backed, ...excluded].filter((k) => !written.has(k)).sort();
 
@@ -73,6 +114,6 @@ if (problems.length) {
 }
 
 console.log(
-  `backup keys: ${written.size} written, ${backed.length} backed up, ${excluded.length} excluded by design` +
+  `backup keys: ${written.size} written, ${backed.length} backed up, ${excluded.length} excluded by design, ${specialCased.size} hand-handled` +
   (unmatched.length ? ` (${unmatched.length} written via helpers, not literals: ${unmatched.join(", ")})` : "")
 );
