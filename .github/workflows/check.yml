@@ -14,9 +14,19 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
 
-      # This app is vanilla JS with no build and no unit tests, so a syntax error would ship.
+      # This app is vanilla JS with no build step, so a syntax error would ship.
       - name: syntax
         run: for f in app.js sw.js workout-anims.js workout-plan.js; do node --check "$f"; done
+
+      # tests/unit.js holds 439 assertions against the real app functions and was browser-only, so
+      # nothing ran it — this workflow used to say the app had "no unit tests", which was written in
+      # good faith and was wrong. The first headless run found seven failures, six of them the same
+      # rot: backupBlob() started returning { data, skipped } in v230 and the assertions still
+      # expected the old flat shape. A suite nobody runs does not stay correct.
+      - name: install test deps
+        run: npm ci
+      - name: unit tests
+        run: node tools/run-unit-tests.mjs
 
       # Structural checks for the bugs that have actually bitten this app: sw.js cache-name
       # drift (offline users stranded on v214 for 13 releases), a missing precache entry

@@ -1,3 +1,4 @@
 .DS_Store
 store/assets/*.aab
 store/assets/*.apk
+node_modules/

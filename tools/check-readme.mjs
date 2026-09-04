@@ -31,11 +31,15 @@ const present = new Set(readdirSync(join(root, "tools")));
 // to catch, in the check itself. It went unnoticed until check-import.mjs was added and this
 // still reported "5 release tools, all documented".
 //
-// Every check-*/verify-* is a release tool by construction, plus the two release scripts. The
-// one-off helpers the note above protects (screenshots, rename, alarm probe) are untouched:
-// they match neither prefix.
+// Every check-*/verify-* is a release tool by construction, plus the two release scripts and the
+// unit-test harness. The one-off helpers the note above protects (screenshots, rename, alarm
+// probe) are untouched: they match neither prefix and are not named here.
+//
+// run-unit-tests.mjs is listed explicitly because it matches neither prefix, and a release tool
+// that falls outside this pattern is one the "is it documented" check silently does not cover —
+// which is how it would end up in deploy.sh and in no documentation at all.
 const RELEASE_TOOLS = [
-  ...["bump.sh", "deploy.sh"].filter((t) => present.has(t)),
+  ...["bump.sh", "deploy.sh", "run-unit-tests.mjs"].filter((t) => present.has(t)),
   ...[...present].filter((t) => /^(check|verify)-.*\.(mjs|sh)$/.test(t)),
 ].sort();
 if (RELEASE_TOOLS.length < 5) {

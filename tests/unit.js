@@ -315,10 +315,15 @@
      /saveOk\(r\)/.test(exportData.toString()) && /await saveFile/.test(exportData.toString()));
   // a failed write must be reportable to the caller
   const hSnapE = localStorage.getItem('dp.entries');
-  const realSet = localStorage.setItem.bind(localStorage);
-  localStorage.setItem = function (k, v) { if (k === 'dp.entries') throw new Error('QuotaExceeded'); return realSet(k, v); };
+  /* Override on Storage.PROTOTYPE, not on the instance. Assigning localStorage.setItem = fn
+     works in a browser but is a no-op under a spec-compliant Storage proxy, which treats every
+     property write as storing an ITEM called "setItem" — so the throw never fires, saveEntries
+     succeeds, and the test reports a pass it did not earn. The prototype route works in both. */
+  const storageProto = Object.getPrototypeOf(localStorage);
+  const realSet = storageProto.setItem;
+  storageProto.setItem = function (k, v) { if (k === 'dp.entries') throw new Error('QuotaExceeded'); return realSet.call(this, k, v); };
   const wrote = DB.saveEntries({ x: 1 });
-  localStorage.setItem = realSet;
+  storageProto.setItem = realSet;
   ok('saveEntries reports a failed write', wrote === false, String(wrote));
   ok('the autosave dot is gated on the write', /wrote !== false/.test(saveDraftNow.toString()));
   if (hSnapE != null) localStorage.setItem('dp.entries', hSnapE); else localStorage.removeItem('dp.entries');
@@ -1338,7 +1343,13 @@
     DB.putEntry(T, { mood: 8, journal: 'must survive', habits: { workout: true }, updatedAt: new Date().toISOString() });
     localStorage.setItem('dp.finaccts', JSON.stringify([{ id: 'b', name: 'Bank', kind: 'bank', opening: parseAmt('1000'), since: T }]));
     localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'f', d: T, a: parseAmt('50'), dir: 'out', ac: 'b', c: 'food', n: 'x' }]));
-    const blob = backupBlob();
+    /* backupBlob() returns { data, skipped } since v230: a section that cannot be parsed is
+       REPORTED rather than silently dropped, because a backup quietly missing a section is the
+       same lie as a save that reports success it did not earn. The payload is `data`. */
+    const full = backupBlob();
+    const blob = full.data;
+    ok('a healthy backup skips nothing', Array.isArray(full.skipped) && full.skipped.length === 0,
+      (full.skipped || []).join(','));
     ok('the backup carries entries', !!blob.entries && !!blob.entries[T]);
     ok('the backup carries money', Array.isArray(blob.fintx) && blob.fintx.length === 1);
     ok('the backup carries settings', !!blob.settings);

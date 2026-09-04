@@ -1,0 +1,12 @@
+{
+  "name": "daylog",
+  "private": true,
+  "type": "module",
+  "description": "Daylog is a vanilla-JS PWA with no build step and no runtime dependencies. This file exists only so CI can install jsdom and run tests/unit.js headlessly — nothing here is served to a browser.",
+  "scripts": {
+    "test": "node tools/run-unit-tests.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

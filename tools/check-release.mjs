@@ -1,7 +1,9 @@
 // Pre-release consistency checks for Daylog.
 //
-// The app has no unit tests — it is one large vanilla-JS file — but the bugs that have
-// actually bitten it are structural and cheap to catch:
+// The app DOES have unit tests — tests/unit.js, 439 assertions against the real functions, run
+// headlessly by tools/run-unit-tests.mjs. This comment used to say it had none, which was true
+// when it was written and then quietly stopped being true. The bugs below are the ones unit
+// tests cannot catch, because they are structural rather than behavioural:
 //
 //   * sw.js's CACHE name drifting from APP_VERSION. When that happened the service worker
 //     stopped re-installing, so OFFLINE users sat on a v214 shell for THIRTEEN releases while
