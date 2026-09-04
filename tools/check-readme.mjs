@@ -24,9 +24,24 @@ import { dirname, join } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readme = readFileSync(join(root, "README.md"), "utf8");
 
-const RELEASE_TOOLS = ["bump.sh", "deploy.sh", "check-release.mjs", "check-backup-keys.mjs", "verify-live.sh"];
-
 const present = new Set(readdirSync(join(root, "tools")));
+
+// DERIVED, not listed. This was a hand-written array, which meant a new guard was exempt from
+// being documented until somebody remembered to add it here — the same drift this check exists
+// to catch, in the check itself. It went unnoticed until check-import.mjs was added and this
+// still reported "5 release tools, all documented".
+//
+// Every check-*/verify-* is a release tool by construction, plus the two release scripts. The
+// one-off helpers the note above protects (screenshots, rename, alarm probe) are untouched:
+// they match neither prefix.
+const RELEASE_TOOLS = [
+  ...["bump.sh", "deploy.sh"].filter((t) => present.has(t)),
+  ...[...present].filter((t) => /^(check|verify)-.*\.(mjs|sh)$/.test(t)),
+].sort();
+if (RELEASE_TOOLS.length < 5) {
+  console.error(`!! only ${RELEASE_TOOLS.length} release tools found — this check has gone stale`);
+  process.exit(1);
+}
 const problems = [];
 
 const vanished = RELEASE_TOOLS.filter((t) => !present.has(t));

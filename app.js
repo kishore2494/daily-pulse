@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v236';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v237';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -6010,19 +6010,67 @@ function backupBlob() {
   });
   return { data: out, skipped };
 }
+/* Is this actually a Daylog backup?
+ *
+ * importData used to accept anything that was valid JSON. JSON.parse succeeding says nothing
+ * about the file being ours — a package.json, another app's export, a half-written file that
+ * happens to close its braces all parse fine. Three things followed, on a restore path, which
+ * is the one place the user has no second copy:
+ *
+ *   picking the wrong .json OVERWROTE every colliding key and there was no undo
+ *   a file with none of our keys wrote nothing and still said "Backup restored"
+ *   a file with the right key holding the wrong type wrote it anyway
+ *
+ * The second is the worst: the user reads "Backup restored", believes their data is back, and
+ * finds out otherwise later. This app has had to unlearn report-success-on-failure in the SAVE
+ * paths twice (v223, v224) and once already in this very function for quota failures. Same bug,
+ * still here, on the path that matters most.
+ *
+ * Pure so tools/check-import.mjs can run it directly against known-bad payloads rather than
+ * grepping for its existence. */
+function validateBackup(d) {
+  if (d === null || typeof d !== 'object' || Array.isArray(d)) {
+    return { ok: false, reason: 'That file is not a Daylog backup — it does not contain a backup object.', keys: [] };
+  }
+  const keys = BACKUP_KEYS.filter(k => d[k] !== undefined);
+  if (!keys.length) {
+    return { ok: false, reason: 'That file is valid JSON but contains no Daylog data. Nothing was changed.', keys: [] };
+  }
+  // Reject a section whose value is a primitive: every backed-up section is an object, an array
+  // or a boolean/string flag, and a number or a stray string where a collection belongs breaks
+  // rendering rather than restoring anything.
+  const bad = keys.filter(k => {
+    const v = d[k];
+    return typeof v === 'number' || (typeof v === 'string' && v.length > 512);
+  });
+  // `keys.length > 0` matters: without it, zero recognised keys makes this 0 === 0 and the file
+  // is rejected here with the wrong explanation. Two branches were covering the empty case with
+  // different messages, and the check above happened to run first. Mutation-testing found it by
+  // disabling that check and watching this one reject by accident.
+  if (keys.length > 0 && bad.length === keys.length) {
+    return { ok: false, reason: 'That file has Daylog section names but the wrong contents. Nothing was changed.', keys: [] };
+  }
+  return { ok: true, reason: '', keys: keys.filter(k => !bad.includes(k)) };
+}
 function importData(file) {
   const r = new FileReader();
   r.onload = () => {
     try { const d = JSON.parse(r.result);
+      const check = validateBackup(d);
+      if (!check.ok) { toast(check.reason, true); return; }
+      // Restoring REPLACES what is on this device. Ask first — this is destructive, it is not
+      // undoable, and the file picker cannot tell a backup from any other .json.
+      if (!confirm(`Restore ${check.keys.length} section(s) from this backup?\n\nThis replaces the matching data on this device and cannot be undone.`)) return;
       // safeSet, not setItem: on a full phone a raw write throws per key and the restore
       // would still have said "Backup restored" over a half-loaded backup — the same
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
       // RESTORE path, where it matters more.
-      let failed = 0;
-      BACKUP_KEYS.forEach(k => { if (d[k] !== undefined && safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; });
+      let failed = 0, wrote = 0;
+      check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
       reloadCfg();
       refreshStreak(); setupReminders(); pushState(true); show('dash');
-      if (failed) toast(`Restored, but ${failed} section(s) could not be written — free up storage and import again`, true);
+      if (!wrote) toast(`Nothing was restored — all ${failed} section(s) failed to write. Free up storage and try again.`, true);
+      else if (failed) toast(`Restored ${wrote} section(s); ${failed} could not be written — free up storage and import again`, true);
       else toast('Backup restored');
     } catch (e) { toast('Bad backup file', true); }
   };

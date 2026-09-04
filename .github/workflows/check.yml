@@ -30,3 +30,5 @@ jobs:
 
       - name: README names the release tools that exist
         run: node tools/check-readme.mjs
+      - name: backup import validator rejects bad files
+        run: node tools/check-import.mjs
