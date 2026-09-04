@@ -42,6 +42,27 @@ for (const a of assets) {
   if (!existsSync(a.replace(/^\.\//, ""))) fail.push(`precache entry missing on disk: ${a} — cache.addAll would reject and offline mode would break`);
 }
 
+// 2b. and every script/stylesheet the page loads IS precached.
+//
+// Check 2 runs one way only: everything in ASSETS exists on disk. The mirror case breaks
+// offline mode just as completely and is easier to cause — add a <script> to index.html,
+// forget sw.js, and the app keeps working perfectly for you because the network serves it.
+// Offline, that file is simply not in the cache and the app is broken for exactly the users
+// the cache exists for. Same shape as the frozen CACHE name: invisible from online.
+//
+// Scoped to .js and .css — the files whose absence stops the app running. Images and fonts
+// degrade rather than break, and listing every one here would make this a nuisance that gets
+// switched off.
+const loaded = [...new Set(
+  [...html.matchAll(/(?:src|href)="\.?\/?([A-Za-z0-9._\/-]+\.(?:js|css))(?:\?[^"]*)?"/g)].map((m) => m[1]),
+)];
+const precached = new Set(assets.map((a) => a.replace(/^\.\//, "")));
+for (const f of loaded) {
+  if (!precached.has(f)) {
+    fail.push(`index.html loads ${f} but sw.js does not precache it — the app would break offline while looking fine online`);
+  }
+}
+
 // 3. no third-party runtime assets — the app claims "private & offline"
 const ext = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
   .filter((u) => !/^https?:\/\/(www\.)?(w3\.org)/.test(u));
