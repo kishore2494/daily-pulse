@@ -13,7 +13,7 @@
 //
 // Runs in CI and from tools/deploy.sh. Exits non-zero on any failure.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 
 const fail = [];
 const app = readFileSync("app.js", "utf8");
@@ -100,6 +100,36 @@ const orphans = [...precached].filter(
 if (orphans.length) {
   console.warn(`\n\u26a0 precached but referenced nowhere: ${orphans.join(", ")}`);
   console.warn("   Either something stopped using them, or this check cannot see how they are used.\n");
+}
+
+// 2d. every guard in tools/ actually runs.
+//
+// A guard nobody runs is a comment with a shebang, and this is not hypothetical: on another repo
+// the same week I wrote a check, mutation-tested it, and only found out it had never been added
+// to the build when the mutation "escaped" — it was not in the pipeline at all.
+//
+// This lives inside check-release rather than in its own file for a specific reason. A separate
+// tools/check-guards.mjs would have to be wired itself, and unwiring THAT would silence
+// everything below it without a sound. This repo has no test runner to hide it in, so it goes in
+// the one check that cannot be dropped from deploy.sh without the release check obviously
+// disappearing with it.
+//
+// check-*.mjs must run in BOTH deploy.sh (before the push) and CI. verify-*.sh needs a live
+// site, so it belongs in deploy.sh only.
+const deploySh = readFileSync("tools/deploy.sh", "utf8");
+const ciYml = readFileSync(".github/workflows/check.yml", "utf8");
+const toolFiles = readdirSync("tools");
+
+const checks = toolFiles.filter((f) => /^check-.*\.mjs$/.test(f));
+const verifiers = toolFiles.filter((f) => /^verify-.*\.sh$/.test(f));
+if (checks.length < 3) fail.push(`only found ${checks.length} check-*.mjs in tools/ — this check has gone stale`);
+
+for (const f of checks) {
+  if (!deploySh.includes(f)) fail.push(`tools/${f} is never run by deploy.sh — a release could ship without it`);
+  if (!ciYml.includes(f)) fail.push(`tools/${f} is never run in CI — it only guards your own machine`);
+}
+for (const f of verifiers) {
+  if (!deploySh.includes(f)) fail.push(`tools/${f} is never run by deploy.sh — nothing confirms the release landed`);
 }
 
 // 3. no third-party runtime assets — the app claims "private & offline"
