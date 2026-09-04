@@ -80,6 +80,24 @@ for i in $(seq 1 24); do
   esac
 done
 
+# Every file in sw.js's ASSETS list must exist, because cache.addAll() is ATOMIC: one 404
+# rejects the whole precache, the service worker never finishes installing, and OFFLINE mode
+# silently stops working while the online site looks perfect. Nothing would surface that —
+# so check the list against the files on disk BEFORE shipping.
+echo "==> checking the service-worker precache list"
+missing=0
+for a in $(node -e "
+  const fs=require('fs');
+  const m=fs.readFileSync('sw.js','utf8').match(/const ASSETS = \\[([\\s\\S]*?)\\]/)[1];
+  console.log([...m.matchAll(/'([^']+)'/g)].map(x=>x[1]).join('\\n'));
+"); do
+  case "$a" in "./") continue ;; esac
+  f="${a#./}"
+  [ -f "$f" ] || { echo "   !! precache entry missing on disk: $a"; missing=$((missing+1)); }
+done
+[ "$missing" = 0 ] || { echo "!! $missing precache file(s) missing — cache.addAll would reject and offline mode would break. Refusing to deploy."; exit 1; }
+echo "   all precache entries present"
+
 echo "==> confirming the LIVE url actually serves $VER"
 for i in $(seq 1 20); do
   GOT=$(curl -s --max-time 25 "$LIVE/app.js?cb=$RANDOM$RANDOM" \
