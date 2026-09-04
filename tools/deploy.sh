@@ -54,6 +54,7 @@ node tools/check-release.mjs || { echo "!! release check failed — refusing to 
 node tools/check-backup-keys.mjs || { echo "!! a stored key is neither backed up nor excluded — refusing to deploy"; exit 1; }
 node tools/check-readme.mjs || { echo "!! README and tools/ disagree — refusing to deploy"; exit 1; }
 node tools/check-import.mjs || { echo "!! the backup-import validator does not reject bad files — refusing to deploy"; exit 1; }
+node tools/gen-sitemap.mjs --check || { echo "!! sitemap.xml does not match the pages on disk — refusing to deploy"; exit 1; }
 node tools/check-export.mjs || { echo "!! the CSV escaper is broken — refusing to deploy"; exit 1; }
 
 for R in origin prod; do

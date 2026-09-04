@@ -120,7 +120,10 @@ const deploySh = readFileSync("tools/deploy.sh", "utf8");
 const ciYml = readFileSync(".github/workflows/check.yml", "utf8");
 const toolFiles = readdirSync("tools");
 
-const checks = toolFiles.filter((f) => /^check-.*\.mjs$/.test(f));
+// gen-sitemap.mjs is named for what it mostly does, but `--check` makes it a guard, and a guard
+// nobody runs is a comment with a shebang. Including it here means the same wiring rule covers
+// it: run by deploy.sh AND by CI, or the release fails.
+const checks = toolFiles.filter((f) => /^check-.*\.mjs$/.test(f) || f === "gen-sitemap.mjs");
 const verifiers = toolFiles.filter((f) => /^verify-.*\.sh$/.test(f));
 if (checks.length < 3) fail.push(`only found ${checks.length} check-*.mjs in tools/ — this check has gone stale`);
 
