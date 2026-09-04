@@ -195,6 +195,37 @@ if (!existsSync(CARD)) {
   if (cw < 1200 || ch < 630) fail.push(`${CARD} is ${cw}x${ch}; summary_large_image wants at least 1200x630`);
 }
 
+// 5. the Play Data safety declaration must stay true
+//
+// The live listing declares "No data collected" and "No data shared with third parties". Both
+// are currently accurate, and one constant is all that stands behind the first:
+//
+//     const FEEDBACK_URL = '';   // paste the Feedback.gs web-app URL after deploying
+//
+// Fill that in and the app silently POSTs the user's free-text feedback plus their userAgent to
+// an endpoint the developer owns. That is collection by Play's definition, and it would make the
+// store declaration and privacy.html both false — on a published app, with no other signal that
+// anything changed. The comment next to it literally reads "(silent collection)".
+//
+// ntfy is a different case and is fine: the user has to enable it and choose a topic, which is
+// Play's user-initiated transfer exemption ("data transferred to a third party based on a
+// specific action that you initiate"). It stays undeclared legitimately.
+//
+// This does not forbid the endpoint. It requires that turning it on is a deliberate act that
+// also updates what the app tells people.
+const feedbackUrl = app.match(/const FEEDBACK_URL = '([^']*)'/)?.[1];
+if (feedbackUrl === undefined) {
+  fail.push("FEEDBACK_URL is gone from app.js — this check can no longer tell whether the app collects feedback");
+} else if (feedbackUrl !== "") {
+  const privacy = existsSync("privacy.html") ? readFileSync("privacy.html", "utf8") : "";
+  if (!/feedback/i.test(privacy) || !/collect|send|transmit/i.test(privacy)) {
+    fail.push(
+      "FEEDBACK_URL is set, so feedback is sent to a developer endpoint, but privacy.html does not say so.\n" +
+      "    The Play listing also declares \"No data collected\" — update BOTH before shipping this."
+    );
+  }
+}
+
 if (fail.length) {
   console.error("release check FAILED:");
   for (const f of fail) console.error(`  - ${f}`);
