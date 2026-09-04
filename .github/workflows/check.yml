@@ -1,0 +1,26 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      # This app is vanilla JS with no build and no unit tests, so a syntax error would ship.
+      - name: syntax
+        run: for f in app.js sw.js workout-anims.js workout-plan.js; do node --check "$f"; done
+
+      # Structural checks for the bugs that have actually bitten this app: sw.js cache-name
+      # drift (offline users stranded on v214 for 13 releases), a missing precache entry
+      # (cache.addAll is atomic, so one 404 kills offline mode silently), and a third-party
+      # asset creeping back in against the "private & offline" claim.
+      - name: release consistency
+        run: node tools/check-release.mjs

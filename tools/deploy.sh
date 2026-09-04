@@ -45,23 +45,12 @@ export GHT
 HELPER='!f(){ test "$1" = get && printf "username=kishore2494\npassword=%s\n" "$GHT"; }; f'
 gitp() { git -c credential.helper= -c credential.helper="$HELPER" "$@"; }
 
-# Every file in sw.js's ASSETS list must exist, because cache.addAll() is ATOMIC: one 404
-# rejects the whole precache, the service worker never finishes installing, and OFFLINE mode
-# silently stops working while the online site looks perfect. Nothing would surface that —
-# so check the list against the files on disk BEFORE shipping.
-echo "==> checking the service-worker precache list"
-missing=0
-for a in $(node -e "
-  const fs=require('fs');
-  const m=fs.readFileSync('sw.js','utf8').match(/const ASSETS = \\[([\\s\\S]*?)\\]/)[1];
-  console.log([...m.matchAll(/'([^']+)'/g)].map(x=>x[1]).join('\\n'));
-"); do
-  case "$a" in "./") continue ;; esac
-  f="${a#./}"
-  [ -f "$f" ] || { echo "   !! precache entry missing on disk: $a"; missing=$((missing+1)); }
-done
-[ "$missing" = 0 ] || { echo "!! $missing precache file(s) missing — cache.addAll would reject and offline mode would break. Refusing to deploy."; exit 1; }
-echo "   all precache entries present"
+# One shared checker (also run in CI): version consistency across app.js / sw.js /
+# index.html, every precache entry present, and no third-party runtime assets. Runs BEFORE
+# the push — a guard placed after it cannot stop anything, which is a mistake this script
+# has already made once.
+echo "==> release consistency check"
+node tools/check-release.mjs || { echo "!! release check failed — refusing to deploy"; exit 1; }
 
 for R in origin prod; do
   echo "==> push $R"
