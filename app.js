@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v234';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v235';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5455,6 +5455,12 @@ function renderSettings() {
     ${nativeShell() ? '' : `<div class="card">
       <h2>🔔 Background alarms · ntfy <span class="hint">${s.ntfyOn ? 'ON ●' : 'off'}</span></h2>
       <div class="hint">Rings even when this app is <b>closed & your phone is locked</b>. One-time setup with the free <b>ntfy</b> app.</div>
+      <div class="hint" style="margin-top:6px; border-left:3px solid var(--accent); padding-left:8px">
+        <b>This one sends data off your phone.</b> While it is ON, each reminder's <b>name and time</b>
+        are sent to <b>ntfy.sh</b>, a free service run by someone else, so their app can ring on
+        schedule. Your topic is the only thing keeping those private — anyone who knows it can read
+        them, so do not share it. Nothing else in Daylog leaves your phone, and this is off until you
+        turn it on.</div>
       <div class="task-add" style="margin-top:8px">
         <input type="text" id="ntfy-topic" value="${escapeHtml(s.ntfyTopic || '')}" placeholder="your-secret-topic" style="flex:1" spellcheck="false" autocapitalize="off">
         <button class="btn btn-ghost btn-sm" id="ntfy-copy">Copy</button>

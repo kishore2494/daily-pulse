@@ -17,7 +17,7 @@
   <p><i>Effective date: 18 July 2026</i></p>
 
   <div class="card">
-    <p><b>The short version: your data never leaves your device unless you explicitly set up your own sync. We run no servers, collect nothing, and can't see your data even if we wanted to.</b></p>
+    <p><b>The short version: your data never leaves your device unless you explicitly turn on one of two things: your own Google-Sheet sync, or ntfy background reminders. We run no servers, collect nothing, and can't see your data even if we wanted to.</b></p>
   </div>
 
   <h2>What data the app stores</h2>
@@ -33,7 +33,10 @@
       sleep sessions, calories and workouts are stored in a separate place on your phone that the sync
       deliberately does not read, whether sync is on or off.</li>
     <li><b>Background reminders via ntfy (optional, off by default):</b> if you enable this, reminder titles/labels you write (e.g. "Log my day") are sent to the public push service <a href="https://ntfy.sh">ntfy.sh</a> on a random secret topic so your phone can ring. Only reminder labels are sent — never your journal or tracked data.</li>
-    <li><b>Fonts:</b> the app loads its typefaces from Google Fonts.</li>
+    <li><b>Fonts:</b> none. The typefaces ship inside the app and are loaded from your own
+      device. They used to come from Google Fonts on every launch, which told Google your IP
+      address each time you opened Daylog; that stopped in v229 and this line was left behind
+      saying otherwise until v235.</li>
   </ul>
 
   <h2>Device permissions and what they're used for</h2>
