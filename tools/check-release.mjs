@@ -63,6 +63,45 @@ for (const f of loaded) {
   }
 }
 
+// 2c. and every asset referenced from CSS is precached too.
+//
+// Check 2b covers what index.html LOADS via src/href — the scripts and the stylesheet. It does
+// not see url(...) references, which is where the fonts live: v229 self-hosted them, and
+// dm-sans and sora are declared in an inline @font-face inside index.html while twemoji comes
+// from styles.css. All three are precached today, and nothing was checking that.
+//
+// The failure is quiet rather than dramatic: a font added and not precached still loads online,
+// so it looks fine everywhere except offline, where the app falls back to a system face. Same
+// shape as every other offline bug this file exists for — invisible from the place you test.
+const cssSources = [html, readFileSync("styles.css", "utf8")].join("\n");
+const urlRefs = [...new Set(
+  [...cssSources.matchAll(/url\(\s*['"]?(?!data:|https?:)([^)'"]+)['"]?\s*\)/g)]
+    .map((m) => m[1].trim().replace(/^\.\//, "").split("?")[0])
+    // Fragment references — url(#n), and the %23-encoded form used inside inline SVG — point at
+    // a filter or gradient in the same document, not at a file. The first version of this check
+    // reported "%23n" as a missing precache entry.
+    .filter((u) => u && !u.startsWith("#") && !u.startsWith("%23")),
+)];
+for (const f of urlRefs) {
+  if (!precached.has(f)) {
+    fail.push(`CSS references ${f} but sw.js does not precache it — it would fall back offline while looking fine online`);
+  }
+}
+
+// The other direction, reported rather than enforced: a precached asset nothing references is
+// dead weight in an ATOMIC cache.addAll, and a hint that something was removed by halves.
+const referenced = new Set([...loaded, ...urlRefs, "index.html", "manifest.webmanifest"]);
+const orphans = [...precached].filter(
+  (f) =>
+    f &&                          // './' normalises to "" — the app root, not a file
+    !referenced.has(f) &&
+    !/^icons\//.test(f),          // icons are named by the manifest, which this does not parse
+);
+if (orphans.length) {
+  console.warn(`\n\u26a0 precached but referenced nowhere: ${orphans.join(", ")}`);
+  console.warn("   Either something stopped using them, or this check cannot see how they are used.\n");
+}
+
 // 3. no third-party runtime assets — the app claims "private & offline"
 const ext = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
   .filter((u) => !/^https?:\/\/(www\.)?(w3\.org)/.test(u));
