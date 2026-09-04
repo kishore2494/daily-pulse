@@ -89,11 +89,19 @@ for i in $(seq 1 24); do
 done
 
 echo "==> confirming the LIVE url actually serves $VER"
+# Poll until app.js turns over, then hand off to tools/verify-live.sh, which checks sw.js and
+# index.html as well. app.js alone is not a release: sw.js drifted for thirteen versions once
+# and every one of those deploys would have looked fine here.
 for i in $(seq 1 20); do
   GOT=$(curl -s --max-time 25 "$LIVE/app.js?cb=$RANDOM$RANDOM" \
         | grep -m1 -oE "APP_VERSION = 'v[0-9]+'" | grep -oE 'v[0-9]+')
   echo "   live poll $i: ${GOT:-no response}"
-  [ "$GOT" = "$VER" ] && { echo "==> LIVE: $LIVE is serving $VER"; exit 0; }
+  if [ "$GOT" = "$VER" ]; then
+    # ./tools/... and not $(dirname "$0"), because line 23 already cd'd to the repo root —
+    # a relative $0 would then resolve against the wrong directory when this script is invoked
+    # by a relative path from somewhere else.
+    exec ./tools/verify-live.sh "$VER"
+  fi
   sleep 15
 done
 
