@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v232';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v233';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5337,15 +5337,16 @@ function renderSettings() {
         <span class="menu-txt"><span class="menu-lbl">How to use Daylog</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
     </div>
     <div class="card">
-      <h2>💬 Feedback <span class="hint">private · no sign-in</span></h2>
+      <h2>💬 Feedback <span class="hint">no account · goes to one person</span></h2>
       <div class="hint" style="margin-bottom:9px">Daylog is built by <b>one person</b>, in their
         own time, with no company and no funding behind it. There is no support team reading
         this — it comes straight to me, and it is genuinely how the app gets better. If
         something is confusing, broken, or missing, please tell me. Even one line helps.</div>
       <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What would make this actually useful for you?" style="min-height:80px"></textarea></div>
       <div class="btn-row"><button class="btn btn-primary btn-sm" id="fb-send">Send feedback</button></div>
-      <div class="hint" style="margin-top:8px">No email, no account, no sign-in. If you would
-        like a reply, leave a way to reach you in the message.</div>
+      <div class="hint" style="margin-top:8px">No account and no sign-in. This opens your mail
+        app with the message ready to send — so it does need a mail app, and I will see the
+        address you send from. If you would rather stay anonymous, say so and I will not reply.</div>
     </div>
     ${SHOW_SYNC ? `<div class="card">
       <h2>☁️ Sync &amp; login <span class="hint">${s.syncUrl ? 'connected ●' : 'not connected'}</span></h2>
@@ -5816,20 +5817,35 @@ document.addEventListener('click', (ev) => {
 });
 window.addEventListener('afterprint', () => { /* keep overlay open so they can re-print or close */ });
 
-function sendFeedback(text, contact) {
+async function sendFeedback(text, contact) {
   if (FEEDBACK_URL) {
-    fetch(FEEDBACK_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ text, contact, version: APP_VERSION, ua: navigator.userAgent.slice(0, 120) }) }).catch(() => {});
+    // mode:'no-cors' means the RESPONSE is opaque — a 500 from the Apps Script is
+    // indistinguishable from a 200, and that limit cannot be removed without CORS on the
+    // endpoint. But a genuine network failure (offline, DNS, blocked) still REJECTS, and the
+    // old code swallowed that in `.catch(() => {})`, cleared the box and said "Feedback sent 💛"
+    // to someone on a train with no signal. Await it: keep their words and say what happened.
+    try {
+      await fetch(FEEDBACK_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ text, contact, version: APP_VERSION, ua: navigator.userAgent.slice(0, 120) }) });
+    } catch {
+      toast('Could not send — check your connection. Your text is still here.', true);
+      return;
+    }
     const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
     toast('Thank you! Feedback sent 💛');
     return;
   }
-  // No silent endpoint set → open the mail app to the developer (no GitHub login, no account).
+  // No silent endpoint set → hand off to the mail app.
+  //
+  // The textarea is deliberately NOT cleared here. A mailto: handoff cannot be confirmed: if the
+  // phone has no mail client configured — ordinary on Android without Gmail set up — nothing
+  // happens at all, and clearing first meant the user watched their feedback vanish while the app
+  // said "Opening your mail app…". Same shape as every save that reported success it had not
+  // earned, except this one costs someone the paragraph they just wrote.
   const subject = encodeURIComponent('Daylog feedback (' + APP_VERSION + ')');
   const body = encodeURIComponent(text + '\n\n— sent from Daylog ' + APP_VERSION);
   location.href = 'mailto:' + FEEDBACK_EMAIL + '?subject=' + subject + '&body=' + body;
-  const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
-  toast('Opening your mail app…');
+  toast('Opening your mail app — your text stays here until you send it');
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
