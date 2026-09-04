@@ -133,13 +133,71 @@ for (const f of verifiers) {
 }
 
 // 3. no third-party runtime assets — the app claims "private & offline"
-const ext = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
-  .filter((u) => !/^https?:\/\/(www\.)?(w3\.org)/.test(u));
-if (ext.length) fail.push(`index.html loads third-party assets at runtime, which contradicts "private & offline": ${ext.join(", ")}`);
+//
+// "Loads at runtime" has to mean actually loads. This used to match any src= or href= holding
+// an absolute URL, which caught <link rel="canonical"> — a tag the browser never fetches — and
+// reported it as a third-party asset contradicting the privacy claim. The message was wrong on
+// both counts: nothing was loaded, and the URL was this site's own origin.
+//
+// So: only the tags that cause a fetch, and only origins that are not ours.
+const SELF = "https://kishore2494.github.io/daily-pulse";
+const FETCHING_REL = /^(stylesheet|preload|prefetch|modulepreload|manifest|icon|apple-touch-icon)$/i;
+const ext = [];
+for (const m of html.matchAll(/<(?:script|img|iframe|source|video|audio|embed)\b[^>]*\bsrc="(https?:\/\/[^"]+)"/gi)) {
+  ext.push(m[1]);
+}
+for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+  const rel = m[0].match(/\brel="([^"]+)"/i)?.[1] ?? "";
+  const href = m[0].match(/\bhref="(https?:\/\/[^"]+)"/i)?.[1];
+  if (href && rel.split(/\s+/).some((r) => FETCHING_REL.test(r))) ext.push(href);
+}
+const external = ext
+  .filter((u) => !/^https?:\/\/(www\.)?(w3\.org)/.test(u))
+  .filter((u) => !u.startsWith(SELF));
+if (external.length) fail.push(`index.html loads third-party assets at runtime, which contradicts "private & offline": ${external.join(", ")}`);
+
+// 4. a card type is a promise; keep it one the page can pay
+//
+// 128 landing pages declared twitter:card = summary_large_image and shipped no image at all.
+// Every share of every one of them rendered blank where the picture goes, and nothing noticed,
+// because the pages themselves were otherwise perfect. A declaration the page cannot back is
+// worse than none: "summary" with no image degrades, "summary_large_image" with no image just
+// fails. The app root was worse still — no description and no OG tags at all, on the single
+// URL most likely to be shared.
+const CARD = "og-card.png";
+const socialPages = readdirSync(".").filter((f) => f.endsWith(".html"));
+const noImage = [];
+const relativeImg = [];
+for (const f of socialPages) {
+  const page = readFileSync(f, "utf8");
+  const og = page.match(/<meta[^>]*property="og:image"[^>]*content="([^"]*)"/i)?.[1];
+  const tw = page.match(/<meta[^>]*name="twitter:image"[^>]*content="([^"]*)"/i)?.[1];
+  const large = /name="twitter:card"[^>]*content="summary_large_image"/i.test(page);
+  if (large && !og && !tw) noImage.push(f);
+  for (const u of [og, tw]) if (u && !/^https?:\/\//i.test(u)) relativeImg.push(`${f} -> ${u}`);
+}
+if (noImage.length) {
+  fail.push(`${noImage.length} page(s) declare twitter:card=summary_large_image with no image: ` +
+            `${noImage.slice(0, 4).join(", ")}${noImage.length > 4 ? ", …" : ""}`);
+}
+if (relativeImg.length) {
+  // Social crawlers fetch these with no page context, so a relative path is a 404 to every one.
+  fail.push(`${relativeImg.length} social image(s) are relative and will not resolve for crawlers: ` +
+            `${relativeImg.slice(0, 3).join(", ")}`);
+}
+if (!existsSync(CARD)) {
+  fail.push(`${CARD} is missing, and pages point at it. Run: python3 tools/make-og-card.py`);
+} else {
+  // Read the size out of the PNG's IHDR rather than trusting the generator: the dimensions are
+  // the entire content of the summary_large_image promise, so they are what is worth checking.
+  const buf = readFileSync(CARD);
+  const cw = buf.readUInt32BE(16), ch = buf.readUInt32BE(20);
+  if (cw < 1200 || ch < 630) fail.push(`${CARD} is ${cw}x${ch}; summary_large_image wants at least 1200x630`);
+}
 
 if (fail.length) {
   console.error("release check FAILED:");
   for (const f of fail) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`release check ok: ${ver}, ${assets.length} precache entries, no third-party assets`);
+console.log(`release check ok: ${ver}, ${assets.length} precache entries, no third-party assets, ${socialPages.length} pages carry a social card`);
