@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v233';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v234';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -744,7 +744,7 @@ function applyRemoteState(remote) {
      ['fincats', 'dp.fincats'], ['finset', 'dp.finset']].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
-        localStorage.setItem(store, JSON.stringify(remote[key])); changed = true;
+        safeSet(store, JSON.stringify(remote[key])); changed = true;
       }
     });
   }
@@ -757,7 +757,7 @@ function applyRemoteState(remote) {
     const local = safeParse(localStorage.getItem(store), {}) || {};
     let hit = false;
     Object.keys(remote[key]).forEach(k => { if (!(k in local)) { local[k] = remote[key][k]; hit = true; } });
-    if (hit) { localStorage.setItem(store, JSON.stringify(local)); changed = true; }
+    if (hit) { safeSet(store, JSON.stringify(local)); changed = true; }
   });
   if (remoteNewer) {
     // Pomodoro: adopt remote SETTINGS + higher done-count, but NEVER the live `run`
@@ -766,7 +766,7 @@ function applyRemoteState(remote) {
       const lp = DB.pomo() || { cfg: {}, run: null, done: { d: todayStr(), n: 0 } };
       const merged = { cfg: remote.pomo.cfg, run: lp.run, done: lp.done };
       if (remote.pomo.done && remote.pomo.done.d === todayStr() && (!lp.done || lp.done.d !== todayStr() || (remote.pomo.done.n || 0) > (lp.done.n || 0))) merged.done = remote.pomo.done;
-      if (JSON.stringify(merged) !== JSON.stringify(lp)) { localStorage.setItem('dp.pomo', JSON.stringify(merged)); changed = true; }
+      if (JSON.stringify(merged) !== JSON.stringify(lp)) { safeSet('dp.pomo', JSON.stringify(merged)); changed = true; }
     }
   }
 
@@ -1143,7 +1143,7 @@ function logSecCfg() {
   return out;
 }
 function saveLogSec(list) {
-  localStorage.setItem('dp.logsec', JSON.stringify(list.map(x => ({ id: x.id, hidden: !!x.hidden }))));
+  safeSet('dp.logsec', JSON.stringify(list.map(x => ({ id: x.id, hidden: !!x.hidden }))));
   pushState();
 }
 function logSecHidden(id) {
@@ -1775,7 +1775,7 @@ function checkStreakMilestone() {
   const key = st + ':' + runStart;
   let shown; try { shown = safeParse(localStorage.getItem('dp.milestones'), {}); } catch (e) { shown = {}; }
   if (shown[key]) return;
-  shown[key] = 1; localStorage.setItem('dp.milestones', JSON.stringify(shown));
+  shown[key] = 1; safeSet('dp.milestones', JSON.stringify(shown));
   showMilestone(st);
   if (st >= 7) _rateArm = true;   // ask when the celebration is dismissed, not over it
 }
@@ -4869,7 +4869,7 @@ function pomoAdvance(silent) {
   if (wasFocus) {
     p.done = { d: todayStr(), n: pomoDoneToday(p) + 1 };
     // keep a per-day history (p.done only remembers today) so Stats can chart focus sessions
-    try { const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); ph[todayStr()] = p.done.n; localStorage.setItem('dp.pomohist', JSON.stringify(ph)); } catch (_) {}
+    try { const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); ph[todayStr()] = p.done.n; safeSet('dp.pomohist', JSON.stringify(ph)); } catch (_) {}
     const next = (round >= p.cfg.rounds) ? 'long' : 'short';
     if (next === 'long') round = 1; else round = round + 1;
     p.run = { phase: next, endsAt: Date.now() + phaseMin(p.cfg, next) * 60000, round };
@@ -5625,7 +5625,7 @@ document.addEventListener('click', async (ev) => {
   const wt = ev.target.closest('[data-widget-toggle]');
   if (wt) { const flag = wt.dataset.widgetToggle;
     const wasOn = localStorage.getItem(flag) !== '1';
-    if (wasOn) localStorage.setItem(flag, '1'); else localStorage.removeItem(flag);
+    if (wasOn) safeSet(flag, '1'); else localStorage.removeItem(flag);
     wt.classList.toggle('on', !wasOn);
     if (flag === 'dp.hapticsOff' && wasOn === false) buzz(18);
     if (flag === 'dp.nudgeOff') {
@@ -6037,7 +6037,7 @@ function checkReminders(catchUp) {
     // when open: fire at the exact minute. on reopen: fire anything due earlier today (still unacknowledged).
     const due = catchUp ? (curMin >= remMin) : (curMin === remMin);
     if (!due) return;
-    localStorage.setItem(flag, '1');
+    safeSet(flag, '1');
     if ('Notification' in window && Notification.permission === 'granted')
       new Notification('⏰ ' + (r.label || 'Daylog'), { body: r.label ? 'Reminder: ' + r.label : 'Time for your daily log 🔥', tag: r.id });
     if ((r.mode || 'alarm') === 'alarm') fireAlarm(r.label || 'Reminder', r.time, catchUp && curMin !== remMin);
@@ -6052,7 +6052,7 @@ function checkReminders(catchUp) {
     if (localStorage.getItem(flag)) return;
     const due = catchUp ? (curMin >= evMin) : (curMin === evMin);
     if (!due) return;
-    localStorage.setItem(flag, '1');
+    safeSet(flag, '1');
     if ('Notification' in window && Notification.permission === 'granted')
       new Notification('📌 ' + x.label, { body: x.time + ' · ' + x.label, tag: x.id });
     if (x.alarm) fireAlarm(x.label, x.time, catchUp && curMin !== evMin);
@@ -6200,7 +6200,7 @@ document.addEventListener('click', (ev) => {
   const m = document.getElementById('usage-disc');
   if (ev.target.closest('#usage-no')) { if (m) m.remove(); toast('Screen-time tracking stays off'); return; }
   if (ev.target.closest('#usage-yes')) {
-    localStorage.setItem('dp.usageDisclosure', '1');
+    safeSet('dp.usageDisclosure', '1');
     const cb = m && m._onAccept; if (m) m.remove();
     if (cb) cb();
     return;
@@ -6363,7 +6363,7 @@ function seedSampleData() {
   safeSet('dp.timelog', JSON.stringify(tl));
   safeSet('dp.entries', JSON.stringify(es));   // direct write — sample must not trigger sync/pushState
   saveHealthStore(hs);
-  localStorage.setItem('dp.pomohist', JSON.stringify(ph));
+  safeSet('dp.pomohist', JSON.stringify(ph));
   localStorage.setItem('dp.sampleMeta', JSON.stringify(meta));
 }
 function clearSampleData() {
@@ -6372,7 +6372,7 @@ function clearSampleData() {
   const es = DB.entries(); (meta.entries || []).forEach(d => { if (es[d] && es[d].sample) delete es[d]; });
   safeSet('dp.entries', JSON.stringify(es));
   const ph = safeParse(localStorage.getItem('dp.pomohist'), {}); (meta.pomo || []).forEach(d => { delete ph[d]; });
-  localStorage.setItem('dp.pomohist', JSON.stringify(ph));
+  safeSet('dp.pomohist', JSON.stringify(ph));
   if (meta.timelog && meta.timelog.length) {
     const ids = new Set(meta.timelog);
     safeSet('dp.timelog', JSON.stringify(safeParse(localStorage.getItem('dp.timelog'), []).filter(s => !ids.has(s.id))));
@@ -6472,7 +6472,7 @@ async function scheduleNativeAlarms() {
    and show it wherever reminders are managed. */
 function alarmHealth(patch) {
   const cur = safeParse(localStorage.getItem('dp.alarmHealth'), {}) || {};
-  if (patch) { localStorage.setItem('dp.alarmHealth', JSON.stringify(Object.assign(cur, patch))); return Object.assign(cur, patch); }
+  if (patch) { safeSet('dp.alarmHealth', JSON.stringify(Object.assign(cur, patch))); return Object.assign(cur, patch); }
   return cur;
 }
 async function refreshAlarmHealth() {
@@ -6494,7 +6494,7 @@ async function maybeAskExactAlarm() {
   const h = await refreshAlarmHealth();
   if (h.exactAllowed !== false) return;                    // already allowed, or unknown
   if (localStorage.getItem('dp.exactAsked') === '1') { renderSettings(); return; }
-  localStorage.setItem('dp.exactAsked', '1');
+  safeSet('dp.exactAsked', '1');
   let m = document.getElementById('exact-ask');
   if (!m) { m = document.createElement('div'); m.id = 'exact-ask'; m.className = 'copy-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="copy-box">
@@ -6532,7 +6532,7 @@ async function refreshAlarmSound() {
   const FS = fullScreenPlugin(); if (!FS || !FS.getAlarmSound) return null;
   try {
     const r = await FS.getAlarmSound();
-    localStorage.setItem('dp.alarmSound', JSON.stringify(r));
+    safeSet('dp.alarmSound', JSON.stringify(r));
     const el = document.getElementById('snd-name');
     if (el) el.textContent = r.name || 'Phone default alarm';
     return r;
@@ -6543,7 +6543,7 @@ document.addEventListener('click', async (ev) => {
   if (ev.target && ev.target.id === 'snd-pick') {
     if (!FS || !FS.pickAlarmSound) { toast('Needs the app update', true); return; }
     try { const r = await FS.pickAlarmSound();
-      localStorage.setItem('dp.alarmSound', JSON.stringify(r));
+      safeSet('dp.alarmSound', JSON.stringify(r));
       renderCustom(); toast('Alarm sound: ' + (r.name || 'default'));
     } catch (e) { toast("Couldn't open the sound picker", true); }
     return;
@@ -6558,7 +6558,7 @@ document.addEventListener('click', async (ev) => {
   if (ev.target && ev.target.id === 'snd-reset') {
     if (!FS || !FS.setAlarmSound) return;
     try { const r = await FS.setAlarmSound({ uri: '', name: '' });
-      localStorage.setItem('dp.alarmSound', JSON.stringify(r));
+      safeSet('dp.alarmSound', JSON.stringify(r));
       renderCustom(); toast('Back to your phone default');
     } catch (e) {}
     return;
@@ -6569,7 +6569,7 @@ document.addEventListener('click', async (ev) => {
     const cur = safeParse(localStorage.getItem('dp.alarmSound'), null) || {};
     const next = cur.vibrate === false;               // toggle
     try { const r = await FS.setAlarmSound({ uri: cur.uri || '', name: cur.name || '', vibrate: next });
-      localStorage.setItem('dp.alarmSound', JSON.stringify(r));
+      safeSet('dp.alarmSound', JSON.stringify(r));
       vb.classList.toggle('on', next);
       if (next) buzz(22);
       toast(next ? 'Vibration on' : 'Vibration off');
@@ -6713,7 +6713,7 @@ document.addEventListener('click', (ev) => {
   // Keep only the last 24 keys — this is a dismissal log, not history.
   const keys = Object.keys(seen).sort();
   while (keys.length > 24) delete seen[keys.shift()];
-  try { localStorage.setItem('dp.freshSeen', JSON.stringify(seen)); } catch (e) {}
+  try { safeSet('dp.freshSeen', JSON.stringify(seen)); } catch (e) {}
   const card = b.closest('.fresh-card');
   if (card) card.remove();
   buzz(6);
@@ -7635,7 +7635,7 @@ function syncAwards(savedDate) {
     if (!firstRun) fresh.push(a);
   });
   try {
-    localStorage.setItem('dp.awards', JSON.stringify(seen));
+    safeSet('dp.awards', JSON.stringify(seen));
     if (firstRun) localStorage.setItem('dp.awardsInit', '1');
   } catch (e) {}
   return fresh;
@@ -8347,7 +8347,7 @@ document.addEventListener('click', async (ev) => {
   if (kb) { cardState.kind = kb.dataset.cardKind; shareSheetRender(); cardPreview(); return; }
 
   const rb = t.closest('[data-card-ratio]');
-  if (rb) { cardState.ratio = rb.dataset.cardRatio; localStorage.setItem('dp.cardratio', JSON.stringify(cardState.ratio)); shareSheetRender(); cardPreview(); return; }
+  if (rb) { cardState.ratio = rb.dataset.cardRatio; safeSet('dp.cardratio', JSON.stringify(cardState.ratio)); shareSheetRender(); cardPreview(); return; }
 
   if (t.id === 'ss-send') {
     // Re-entrancy guard: deliverCard awaits, and a second tap during that await fired a
@@ -9120,7 +9120,7 @@ document.addEventListener('click', (ev) => {
     if (log.some(s => s.act === PJ_ACT + pjOpen)) {
       const names = safeParse(localStorage.getItem('dp.pjnames'), {});
       names[pjOpen] = { name: p.name, color: p.color };
-      localStorage.setItem('dp.pjnames', JSON.stringify(names));
+      safeSet('dp.pjnames', JSON.stringify(names));
     }
     pjOpen = null; renderProjects(); toast('Project deleted');
     return;
@@ -9181,7 +9181,7 @@ let gapOpen = null;                 // start-ms (as a string) of the row whose p
 function gapSkips() { return safeParse(localStorage.getItem('dp.gapskip'), {}); }
 function gapSkip(dateStr, a) {
   const m = gapSkips(); m[dateStr + '|' + a] = 1;
-  localStorage.setItem('dp.gapskip', JSON.stringify(m));
+  safeSet('dp.gapskip', JSON.stringify(m));
 }
 function gapSkipped(dateStr, a) { return !!gapSkips()[dateStr + '|' + a]; }
 function gapIsWeekend(ds) { const d = new Date(ds + 'T00:00:00').getDay(); return d === 0 || d === 6; }

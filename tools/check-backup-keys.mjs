@@ -62,6 +62,35 @@ if (unaccounted.length) {
   );
 }
 
+// User data must be written through safeSet(), not raw localStorage.setItem().
+//
+// localStorage throws QuotaExceededError on a full phone — years of entries, images in notes.
+// safeSet() catches that, warns once an hour, and returns false so the caller can decline to
+// claim success. A raw setItem() throws instead: the handler dies part-way and the user's edit
+// is gone with no toast, or with a crash toast that says nothing useful.
+//
+// v223/v224 swept the app onto safeSet and the queue recorded that as complete. It was not:
+// eighteen literal writes to BACKUP_KEYS keys were still raw, plus the sync path and the
+// preference toggles — dp.logsec, dp.pomohist, dp.alarmSound, dp.awards, dp.pjnames,
+// dp.gapskip among them. A sweep with nothing enforcing it erodes, and there was no way to
+// notice. Fixed in v234; this keeps it fixed.
+//
+// Install-state flags (BACKUP_EXCLUDED) may stay raw: losing "you have seen the tour" to a full
+// disk costs nobody anything, and safeSet's own implementation obviously cannot use itself.
+const rawUserWrites = [];
+src.split("\n").forEach((line, i) => {
+  const m = line.match(/localStorage\.setItem\(\s*['"]dp\.([^'"]+)['"]/);
+  if (m && backed.includes(m[1])) rawUserWrites.push(`app.js:${i + 1}  dp.${m[1]}`);
+});
+if (rawUserWrites.length) {
+  problems.push(
+    `user data written with raw localStorage.setItem instead of safeSet:\n     ` +
+    rawUserWrites.join("\n     ") +
+    `\n     On a full phone setItem THROWS: the save is lost and the user is told nothing.` +
+    `\n     Use safeSet(), which warns and returns false so the caller can be honest.`
+  );
+}
+
 // Keys handled OUTSIDE the BACKUP_KEYS loop, in backupBlob() or importData().
 //
 // This is the blind spot that made v231's finding wrong. `settings` was special-cased on both
