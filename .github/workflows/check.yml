@@ -45,5 +45,8 @@ jobs:
       - name: amounts parse to whole paise
         run: node tools/check-money.mjs
 
+      - name: the sync path rejects malformed sections
+        run: node tools/check-sync.mjs
+
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs

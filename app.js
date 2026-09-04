@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v239';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v240';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -671,17 +671,44 @@ function pullState(done) {
 //  entries  -> by date, newest updatedAt wins
 //  gym      -> by date, union of done/log
 //  tasks/notes/reminders -> union by id (adds anything this device is missing)
+/* Is a section from the sync endpoint safe to merge or adopt?
+ *
+ * applyRemoteState is the SECOND way foreign data enters this store. The first — importData —
+ * was hardened in v237 to refuse anything that is not a Daylog backup. This path checked
+ * `remote.touched` and nothing else, then trusted every section.
+ *
+ * Not theoretical. `remote.entries = "oops"` makes Object.keys() iterate the STRING's indices and
+ * writes 13 junk day-keys into the journal, persisted. `remote.tasks = "garbage"` is adopted
+ * wholesale, so DB.tasks() returns a string and the next .filter() throws — the app broken by a
+ * sync, with the bad value already saved. The sync URL is the user's own Apps Script, so this is
+ * a misconfigured or half-working endpoint rather than an attacker, which makes it more likely
+ * rather than less.
+ *
+ * Shape is compared against what is ALREADY STORED rather than a hand-written map of which key
+ * holds what. Such a map drifts the moment a section is added — the failure check-readme.mjs
+ * had — while the local value is always current. With nothing stored yet (a fresh device) the
+ * primitive rule still applies, and that is the case that actually breaks things.
+ */
+function remoteSectionOk(store, value) {
+  if (value === null || typeof value !== 'object') return false;   // never adopt a primitive
+  const cur = safeParse(localStorage.getItem(store), null);
+  if (cur === null || typeof cur !== 'object') return true;        // nothing local to compare with
+  return Array.isArray(cur) === Array.isArray(value);              // a list must stay a list
+}
+
 function applyRemoteState(remote) {
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
   const localTouched = +(localStorage.getItem('dp.touched') || 0);
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
   let changed = false;
+  const skippedSections = [];
 
   // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields,
   // but fields present on only one side are always kept — so a machine-generated
   // partial write (timeSummary, gym workoutsDone) on a stale device can NEVER
   // clobber another device's journal/mood/habits for that day. habits merge deeply.
-  if (remote.entries) {
+  if (remote.entries && !(typeof remote.entries === 'object' && !Array.isArray(remote.entries))) skippedSections.push('entries');
+  else if (remote.entries) {
     const local = DB.entries();
     Object.keys(remote.entries).forEach(d => {
       const r = remote.entries[d], l = local[d];
@@ -695,7 +722,8 @@ function applyRemoteState(remote) {
     safeSet('dp.entries', JSON.stringify(local));
   }
   // Gym: merge by date, union of done/log — never lose a workout.
-  if (remote.gym) {
+  if (remote.gym && !(typeof remote.gym === 'object' && !Array.isArray(remote.gym))) skippedSections.push('gym');
+  else if (remote.gym) {
     const local = DB.gym();
     Object.keys(remote.gym).forEach(d => {
       if (!local[d]) { local[d] = remote.gym[d]; changed = true; return; }
@@ -708,7 +736,8 @@ function applyRemoteState(remote) {
   // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
   // Deletions: when the other device saved more recently, drop local segments it no longer has
   // (unless ours is newer than its save — that's a fresh local segment it hasn't seen yet).
-  if (remote.timelog) {
+  if (remote.timelog && !(Array.isArray(remote.timelog))) skippedSections.push('timelog');
+  else if (remote.timelog) {
     const local = DB.timelog();
     const byId = {}; local.forEach(s => byId[s.id] = s);
     const remoteIds = new Set();
@@ -743,6 +772,7 @@ function applyRemoteState(remote) {
      ['finaccts', 'dp.finaccts'], ['fintx', 'dp.fintx'], ['finmarks', 'dp.finmarks'], ['finbudget', 'dp.finbudget'],
      ['fincats', 'dp.fincats'], ['finset', 'dp.finset']].forEach(([key, store]) => {
       if (!remote[key]) return;
+      if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         safeSet(store, JSON.stringify(remote[key])); changed = true;
       }
@@ -762,13 +792,20 @@ function applyRemoteState(remote) {
   if (remoteNewer) {
     // Pomodoro: adopt remote SETTINGS + higher done-count, but NEVER the live `run`
     // countdown (that's device-local — a timer must not "run" on two phones).
-    if (remote.pomo && remote.pomo.cfg) {
+    if (remote.pomo && (typeof remote.pomo !== 'object' || Array.isArray(remote.pomo))) skippedSections.push('pomo');
+    else if (remote.pomo && remote.pomo.cfg) {
       const lp = DB.pomo() || { cfg: {}, run: null, done: { d: todayStr(), n: 0 } };
       const merged = { cfg: remote.pomo.cfg, run: lp.run, done: lp.done };
       if (remote.pomo.done && remote.pomo.done.d === todayStr() && (!lp.done || lp.done.d !== todayStr() || (remote.pomo.done.n || 0) > (lp.done.n || 0))) merged.done = remote.pomo.done;
       if (JSON.stringify(merged) !== JSON.stringify(lp)) { safeSet('dp.pomo', JSON.stringify(merged)); changed = true; }
     }
   }
+  // Say what was ignored. A section dropped in silence looks exactly like a section that
+  // synced — the same lie the backup path was fixed for.
+  if (skippedSections.length) {
+    toast(`Synced, but ${skippedSections.length} section(s) came back in the wrong shape and were ignored: ${skippedSections.join(', ')}`, true);
+  }
+
 
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
