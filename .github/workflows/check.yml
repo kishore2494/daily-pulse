@@ -36,5 +36,8 @@ jobs:
       - name: sitemap lists every page on disk
         run: node tools/gen-sitemap.mjs --check
 
+      - name: no dead internal links, no unexpected orphans
+        run: node tools/check-links.mjs
+
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs
