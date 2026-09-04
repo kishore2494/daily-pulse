@@ -52,6 +52,7 @@ gitp() { git -c credential.helper= -c credential.helper="$HELPER" "$@"; }
 echo "==> release consistency check"
 node tools/check-release.mjs || { echo "!! release check failed — refusing to deploy"; exit 1; }
 node tools/check-backup-keys.mjs || { echo "!! a stored key is neither backed up nor excluded — refusing to deploy"; exit 1; }
+node tools/check-readme.mjs || { echo "!! README and tools/ disagree — refusing to deploy"; exit 1; }
 
 for R in origin prod; do
   echo "==> push $R"

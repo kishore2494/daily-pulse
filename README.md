@@ -63,8 +63,38 @@ Sheet** to back-fill everything you've logged so far.
 ## Notes
 - Data is stored locally in your browser (localStorage). **Export a backup** from
   *More* periodically, or connect the Sheet so you always have a cloud copy.
-- Reminders fire while the app is open/installed. For guaranteed background push,
-  we'd add a small notification server later.
+- Reminders fire while the app is open/installed. For alarms that ring with the app
+  **closed and the phone locked**, turn on *ntfy* in More → Background alarms — that has
+  shipped, and no notification server of our own was needed. Note what it costs: while it
+  is on, each reminder's name and time go to ntfy.sh, a third party. The switch says so,
+  and so does `privacy.html`. It is off until you turn it on.
 - The **Deep log** fields are the bridge to your full *Life Intelligence Tracker*
   (255-field spec). Add more fields in `DEEP_*` arrays in `app.js` and the matching
   `COLUMNS` in `Code.gs` — the form and Sheet pick them up automatically.
+
+
+## Releasing a version
+
+Never edit the version by hand — three files carry it and they went out of step once, leaving
+offline users on a v214 shell for thirteen releases while the site looked fine.
+
+```
+bash tools/bump.sh 236     # app.js APP_VERSION + sw.js CACHE + every index.html ?v=
+bash tools/deploy.sh --tag # checks, pushes both remotes, tags, waits, then PROVES it is live
+```
+
+`deploy.sh` refuses to run on a dirty tree and runs these first, so a bad release cannot reach
+the remotes:
+
+| check | what it stops |
+|---|---|
+| `tools/check-release.mjs` | the three version stamps disagreeing; a precache entry missing from disk (`cache.addAll` is atomic — one 404 kills offline mode); a script or font the page loads that `sw.js` does not precache; any third-party asset |
+| `tools/check-backup-keys.mjs` | a stored key that is in neither `BACKUP_KEYS` nor `BACKUP_EXCLUDED`, and user data written with raw `localStorage.setItem` instead of `safeSet` |
+
+Afterwards `tools/verify-live.sh` confirms `app.js`, `sw.js` and `index.html` all serve the same
+version. Run it any time:
+
+```
+bash tools/verify-live.sh        # checks the version in app.js
+bash tools/verify-live.sh v234   # or a specific one
+```

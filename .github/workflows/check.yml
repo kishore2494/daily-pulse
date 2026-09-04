@@ -27,3 +27,6 @@ jobs:
 
       - name: Every stored key is backed up or deliberately excluded
         run: node tools/check-backup-keys.mjs
+
+      - name: README names the release tools that exist
+        run: node tools/check-readme.mjs
