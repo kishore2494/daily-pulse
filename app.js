@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v237';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v238';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2553,6 +2553,32 @@ function startAct(actId, pid) {
 }
 
 /* Segments overlapping the viewed day, clipped to it (handles cross-midnight). */
+/* Which existing blocks does a proposed one overlap?
+ *
+ * Every automatic path keeps the timelog non-overlapping: startAct() closes the running block
+ * before opening the next, so at most one is ever open. Manual entry did not — it validated that
+ * both times were picked and that they differed, and nothing else. Adding 09:00-17:00 to a day
+ * that already had 09:00-17:00 gave a sixteen-hour eight-hour day, and every total downstream
+ * inherited it: the day summary written into the entry, the string that syncs, and trackedMs in
+ * the stats windows.
+ *
+ * It does NOT refuse the block. Overlap is sometimes what someone means — correcting a
+ * mis-tracked morning by laying the right block over it, then deleting the wrong one — and a
+ * tracker that argues with you about your own day is worse than one that double-counts. It says
+ * what it found, names the block, and saves. Same rule as every other report in this app: do not
+ * claim a clean result you have not earned.
+ *
+ * Pure, so tools/check-overlap.mjs can run it directly.
+ */
+function overlappingBlocks(block, log) {
+  const a = block.start, b = block.end == null ? Infinity : block.end;
+  return (Array.isArray(log) ? log : []).filter(x => {
+    if (!x || x.id === block.id || x.start == null) return false;
+    const xa = x.start, xb = x.end == null ? Infinity : x.end;
+    return xa < b && a < xb;          // touching end-to-start is not an overlap
+  });
+}
+
 function segsForDay(dateStr) {
   const d0 = new Date(dateStr + 'T00:00:00').getTime(), d1 = d0 + 86400000;
   const now = Date.now();
@@ -2933,9 +2959,16 @@ document.addEventListener('click', (ev) => {
     const mblk = { id: mid, act, start: a, end: b, upd: now };
     // A manual block picked as a project must count toward it, not just look like it.
     if (act.indexOf(PJ_ACT) === 0) mblk.pid = act.slice(PJ_ACT.length);
+    const clash = overlappingBlocks(mblk, log);
     log.push(mblk);
     log.sort((x, y) => x.start - y.start);
-    const bok = DB.saveTimelog(log); ttShowManual = false; renderTime(); savedToast(bok, 'Block added ✅'); return;
+    const bok = DB.saveTimelog(log); ttShowManual = false; renderTime();
+    if (bok && clash.length) {
+      const c = clash[0];
+      toast(`Added, but it overlaps ${actById(c.act).name} ${fmtClock(c.start)}–${c.end == null ? 'now' : fmtClock(c.end)}` +
+            (clash.length > 1 ? ` and ${clash.length - 1} more` : '') + ' — those hours are counted twice.', true);
+    } else savedToast(bok, 'Block added ✅');
+    return;
   }
   if (ev.target.id === 'tt-newact-add') {
     const inp = document.getElementById('tt-newact'); const name = inp.value.trim(); if (!name) return;

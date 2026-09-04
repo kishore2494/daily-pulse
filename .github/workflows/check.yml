@@ -39,5 +39,8 @@ jobs:
       - name: no dead internal links, no unexpected orphans
         run: node tools/check-links.mjs
 
+      - name: overlapping time blocks are detected
+        run: node tools/check-overlap.mjs
+
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs
