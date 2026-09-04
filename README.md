@@ -91,6 +91,7 @@ the remotes:
 | `tools/check-release.mjs` | the three version stamps disagreeing; a precache entry missing from disk (`cache.addAll` is atomic — one 404 kills offline mode); a script or font the page loads that `sw.js` does not precache; any third-party asset |
 | `tools/check-backup-keys.mjs` | a stored key that is in neither `BACKUP_KEYS` nor `BACKUP_EXCLUDED`, and user data written with raw `localStorage.setItem` instead of `safeSet` |
 | `tools/check-import.mjs` | a backup-restore that accepts a file which is not a Daylog backup. Runs `validateBackup()` from `app.js` for real against nine payloads — an array, `{}`, another app's JSON — because the dangerous case is not a crash but a file with none of our keys writing nothing while the app says "Backup restored". |
+| `tools/check-export.mjs` | the hand-rolled CSV escaper in `exportCSV()` breaking. Runs it for real on nine cases plus four properties — a journal entry containing a comma, a quote or a newline must not shift columns. It also *reports* (without failing) that free-text columns export unprefixed, so a line starting `= + - @` is read as a formula by Excel/Sheets. |
 | `tools/check-readme.mjs` | this table drifting from `tools/`: a release tool nobody documents, or a documented one that no longer exists. The tool list is derived from the directory, so a new guard is covered the day it is written. |
 
 Afterwards `tools/verify-live.sh` confirms `app.js`, `sw.js` and `index.html` all serve the same

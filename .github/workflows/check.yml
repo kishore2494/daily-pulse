@@ -32,3 +32,6 @@ jobs:
         run: node tools/check-readme.mjs
       - name: backup import validator rejects bad files
         run: node tools/check-import.mjs
+
+      - name: CSV export escaping is correct
+        run: node tools/check-export.mjs
