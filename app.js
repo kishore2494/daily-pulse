@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v235';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v236';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -605,7 +605,7 @@ async function pisPush() {
   const res = document.getElementById('pis-result');
   if (res) res.textContent = 'Pushing to PIS…';
   try {
-    const blob = backupBlob();
+    const blob = backupBlob().data;
     const r = await fetch(pisUrl() + '/api/integrations/daily-pulse/import', {
       method: 'POST',
       mode: 'cors',
@@ -2278,7 +2278,7 @@ let openExr = new Set();
 /* Gym customization: dp.gymcfg = { ex: {exId: {name?, sets?, tip?, hidden?}},
    custom: {groupId: [{id:'cx…', name, sets, tip}]} }. The cooked* helpers apply
    overrides + customs on top of WORKOUT_PLAN, so the plan file stays pristine. */
-function gymCfg() { const s = localStorage.getItem('dp.gymcfg'); return s ? JSON.parse(s) : { ex: {}, custom: {} }; }
+function gymCfg() { return safeParse(localStorage.getItem('dp.gymcfg'), { ex: {}, custom: {} }); }
 function saveGymCfg(c) { const ok = safeSet('dp.gymcfg', JSON.stringify(c)); pushState(); return ok; }
 /* Custom muscle groups (dp.gymgroups) — brand-new groups whose exercises all
    live in gymCfg().custom[groupId]. */
@@ -2292,8 +2292,7 @@ function allGroups() { return WORKOUT_PLAN.concat(gymGroups()); }
 /* The 6-day split is editable (dp.daycfg): rename days, pick each day's
    muscle group + core/abs rotation. */
 function gymDays() {
-  const s = localStorage.getItem('dp.daycfg');
-  return s ? JSON.parse(s) : WORKOUT_DAYS.map(d => Object.assign({}, d));
+  return safeParse(localStorage.getItem('dp.daycfg'), WORKOUT_DAYS.map(d => Object.assign({}, d)));
 }
 function saveGymDays(d) { const ok = safeSet('dp.daycfg', JSON.stringify(d)); pushState(); return ok; }
 function cookedGroupById(id) {
@@ -5980,21 +5979,36 @@ function wipeEverything() {
 }
 
 async function exportData() {
-  const out = backupBlob();
+  const { data: out, skipped } = backupBlob();
   // Await it, and only stamp the date if the file actually reached the user. Stamping
   // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
   // sheet — the single most dangerous lie this app could tell.
   const r = await saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
   if (saveOk(r)) localStorage.setItem('dp.lastBackup', String(Date.now()));
+  // Say so if the file is incomplete. A partial backup presented as a whole one is the failure
+  // this app keeps having to unlearn — and here it would not be noticed until a restore.
+  if (saveOk(r) && skipped.length) {
+    toast(`Backed up, but ${skipped.length} section(s) were unreadable and left out: ${skipped.join(', ')}`, true);
+  }
   return r;
 }
 function backupBlob() {
   // Everything goes through BACKUP_KEYS. `settings` used to be special-cased here and matched
   // by a `d.settings` branch in importData, which meant it round-tripped correctly while being
   // invisible to any check that reads the list — see tools/check-backup-keys.mjs.
+  // A raw JSON.parse here meant ONE unreadable key threw and the whole export failed — for the
+  // user most likely to need it, since corruption and a full disk travel together. Skip what
+  // cannot be read, and RETURN the list rather than swallowing it: a backup quietly missing a
+  // section is the same lie as a save that reports success it did not earn.
   const out = {};
-  BACKUP_KEYS.forEach(k => { const raw = localStorage.getItem('dp.' + k); if (raw) out[k] = JSON.parse(raw); });
-  return out;
+  const skipped = [];
+  BACKUP_KEYS.forEach(k => {
+    const raw = localStorage.getItem('dp.' + k);
+    if (!raw) return;
+    try { out[k] = JSON.parse(raw); }
+    catch (e) { skipped.push(k); }
+  });
+  return { data: out, skipped };
 }
 function importData(file) {
   const r = new FileReader();
