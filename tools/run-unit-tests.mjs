@@ -29,10 +29,43 @@
 // would let a test pass on something that never happened.
 
 import { readFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// ---- timezone sweep -------------------------------------------------------
+//
+// The suite exercises DIFFERENT CODE in different timezones, which is not obvious until it bites.
+// The weekday-vs-weekend spending pattern only appears when the seeded dates land on enough of
+// both, so whether that branch runs at all depends on the offset. The first CI run of this
+// harness failed on exactly that: green in IST on my machine, red in UTC on GitHub, for a real
+// difference in which assertions executed.
+//
+// Pinning one timezone would make that reproducible and permanently invisible. Running several is
+// cheap — the whole suite takes about two seconds — so the sweep is the default and covers the
+// date line in both directions.
+const ZONES = ["UTC", "Asia/Kolkata", "America/Los_Angeles", "Pacific/Kiritimati"];
+
+if (!process.env.DAYLOG_TZ) {
+  let failed = 0;
+  for (const tz of ZONES) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+      env: { ...process.env, TZ: tz, DAYLOG_TZ: tz },
+      encoding: "utf8",
+    });
+    const line = (r.stdout || "").trim().split("\n").filter(Boolean).pop() || "";
+    if (r.status === 0) {
+      console.log(`unit tests [${tz}]: ${line.replace(/^unit tests: /, "")}`);
+    } else {
+      failed++;
+      console.error(`\n\x1b[31m✗ unit tests failed under TZ=${tz}\x1b[0m`);
+      console.error((r.stdout || "") + (r.stderr || ""));
+    }
+  }
+  process.exit(failed > 0 ? 1 : 0);
+}
 const ORIGIN = "https://daylog.test/";
 const MIN_ASSERTIONS = 400;   // it was 439 when this was written; a collapse means it went blind
 

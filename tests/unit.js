@@ -1128,7 +1128,18 @@
     const pm2 = finPatterns().find(p => /mood/.test(p.body));
     ok('reversing the data reverses the finding',
       !!pm2 && /more a day on better-mood days/.test(pm2.head), pm2 && pm2.head);
-    ok('every pattern states its sample size', finPatterns().every(p => /over \d+ days/.test(p.body)));
+    /* Name the offender. A bare boolean here said only "something has no sample size", which
+       cost a round-trip through CI to identify — this failed under UTC and passed under IST. */
+    /* The weekday/weekend pattern states its sample size in a richer form — "over 12 weekend and
+       20 weekday days with spending" — which /over \d+ days/ does not match. The app was right and
+       this assertion was too narrow; it only ever surfaced under UTC, because whether the seeded
+       dates produce a weekday pattern at all depends on the timezone.
+       Still requires a COUNT after "over" and the word "days": a body with no sample size, or one
+       that says "over several days", fails. */
+    const SAMPLE_SIZE = /\bover \d+\b[^.]*\bdays\b/;
+    const noSize = finPatterns().filter(p => !SAMPLE_SIZE.test(p.body));
+    ok('every pattern states its sample size', noSize.length === 0,
+      noSize.map(p => p.head + ' :: ' + p.body).join(' | '));
     seed(8, 2000, 100, 3, 9);
     ok('too few days yields no pattern at all', finPatterns().length === 0);
     seed(40, 510, 500, 3, 9);
