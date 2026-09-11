@@ -1,3 +1,20 @@
+## 2026-09-11 — v241: ghost days and celebration fatigue (behaviour-audit items closed)
+
+The two integrity items open since the audit. An entry with no content — reachable by
+tapping a habit and untapping it — counted as a logged day (streak, milestones, days-logged
+awards). `entryHasContent()`/`contentDates()` now define a logged day everywhere: daily
+streak, weekly cadence, days-logged family, Stats hero, review-ask gate. Skip (0) counts;
+all-false habits / whitespace / mirrored zeros don't; a ghost mid-run breaks the chain.
+Existing streaks may drop — that's the fix working.
+
+Celebrations budgeted: one full-screen per day (dp.celeb, BACKUP_EXCLUDED — the new
+check-backup-keys guard from the parallel sessions caught it unregistered); overflow becomes
+a toast, awards still land in the case, budgeted-out milestones still marked shown.
+
+Note for future sessions: this repo advanced v223→v240 in parallel sessions (CI harness in
+.github/workflows/check.yml, tools/run-unit-tests.mjs runs the suite in 4 timezones,
+tools/bump.sh is now the ONLY sanctioned version bump). Fetch before assuming the version.
+
 ## 2026-09-02 — data model section rewritten for v220
 
 Ingested the current storage reality into `architecture.md`. The old section predated
