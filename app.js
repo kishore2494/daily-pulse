@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v240';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v241';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -411,11 +411,42 @@ function toast(msg, isErr) {
 }
 
 /* ---------- Streaks ---------- */
+/* A day counts as LOGGED only if something was actually recorded on it. An entry object can
+   exist with no content at all — tap a habit, change your mind, untap it, and the autosave
+   leaves {habits:{workout:false}, updatedAt, tasks:''} behind. Before this test, that ghost
+   counted toward the streak, the milestones and the days-logged awards, which made the
+   trophy case's own promise ("worked out from your log, so nothing can be faked") false.
+
+   Deliberately conservative: a lone zero on an auto-mirrored counter is not content, and an
+   all-false habits map is not content — but a SKIP (0) is, because choosing to skip is a
+   choice you tapped. */
+const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample'];
+function entryHasContent(en) {
+  if (!en) return false;
+  for (const k of Object.keys(en)) {
+    if (ENTRY_META.includes(k)) continue;
+    const v = en[k];
+    if (v == null || v === '' || v === false) continue;
+    if (k === 'habits') {
+      if (Object.values(v).some(x => x === true || typeof x === 'number')) return true;
+      continue;
+    }
+    if (typeof v === 'string') { if (v.trim()) return true; continue; }
+    if (typeof v === 'number') { if (v !== 0) return true; continue; }   // a mirrored 0 is not a log
+    if (v === true) return true;
+    if (typeof v === 'object') { if (Object.keys(v).length) return true; continue; }
+  }
+  return false;
+}
+function contentDates(ents) {
+  const e = ents || DB.entries();
+  return Object.keys(e).filter(d => entryHasContent(e[d])).sort();
+}
 function loggedStreak() {
   const e = DB.entries(); let n = 0; let cur = todayStr();
   // allow today to be unlogged without breaking the streak (count from yesterday)
-  if (!e[cur]) cur = addDays(cur, -1);
-  while (e[cur]) { n++; cur = addDays(cur, -1); }
+  if (!entryHasContent(e[cur])) cur = addDays(cur, -1);
+  while (entryHasContent(e[cur])) { n++; cur = addDays(cur, -1); }
   return n;
 }
 /* ---------- Weekly cadence ----------
@@ -446,6 +477,7 @@ function weekBuckets(ents) {
   const by = {};
   Object.keys(e).forEach(d => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;      // an empty key would bucket as NaN
+    if (!entryHasContent(e[d])) return;               // a ghost entry is not a logged day
     const w = weekStart(d);
     by[w] = (by[w] || 0) + 1;
   });
@@ -1766,7 +1798,7 @@ function maybeAskForReview() {
     const st = rateState();
     if (st.done || st.asks >= 2) return;
     if (st.asks === 1 && Date.now() - st.last < 14 * 86400000) return;
-    if (Object.keys(DB.entries()).length < 7) return;            // real use, not day one
+    if (contentDates().length < 7) return;                      // 7 REAL days, not ghost entries
     const el = document.getElementById('rate-ask') || (() => {
       const d = document.createElement('div'); d.id = 'rate-ask'; d.className = 'sharesheet';
       document.body.appendChild(d); return d; })();
@@ -1813,8 +1845,25 @@ function checkStreakMilestone() {
   let shown; try { shown = safeParse(localStorage.getItem('dp.milestones'), {}); } catch (e) { shown = {}; }
   if (shown[key]) return;
   shown[key] = 1; safeSet('dp.milestones', JSON.stringify(shown));
+  if (celebSpent()) { toast('🔥 ' + st + ' days in a row!'); buzz(18); return; }
+  celebSpend();
   showMilestone(st);
   if (st >= 7) _rateArm = true;   // ask when the celebration is dismissed, not over it
+}
+
+/* At most ONE full-screen celebration per day. The behaviour audit measured ~25 full-screen
+   popups in a heavy first month — a milestone and two awards could stack on a single save.
+   A reward that interrupts three times in a row is not a reward, it is training the user to
+   dismiss celebrations unread. The first qualifying moment of the day keeps the confetti;
+   everything after becomes a toast, and awards land in the trophy case either way, so
+   nothing is lost — only the interruption. */
+function celebSpent() {
+  const c = safeParse(localStorage.getItem('dp.celeb'), {}) || {};
+  return c.d === todayStr() && (c.n || 0) >= 1;
+}
+function celebSpend() {
+  const c = safeParse(localStorage.getItem('dp.celeb'), {}) || {};
+  localStorage.setItem('dp.celeb', JSON.stringify({ d: todayStr(), n: (c.d === todayStr() ? (c.n || 0) : 0) + 1 }));
 }
 /* Awards can be earned by editing ANY past day, not just today, so this runs on every
    save. Only genuinely new awards are announced, and at most one at a time — a batch of
@@ -1846,6 +1895,14 @@ function checkNewAwards(savedDate) {
   const depth = a => { const f = AWARD_FAMILIES.find(x => x.grp === a.grp);
     return f ? (f.tiers.indexOf(a.tier) + 1) / f.tiers.length : 0; };
   fresh.sort((a, b) => depth(b) - depth(a));
+  if (celebSpent()) {
+    // Already celebrated something today. The award is permanent in the trophy case — a
+    // toast says it landed without stealing the screen a second time.
+    toast('🏆 New award: ' + awardName(fresh[0]) + (fresh.length > 1 ? ' +' + (fresh.length - 1) + ' more' : '') + ' — in your trophy case');
+    buzz(18);
+    return;
+  }
+  celebSpend();
   _rateArm = true;                       // an award is a high point; ask on dismissal
   showAward(fresh[0], fresh.length - 1);
 }
@@ -3748,7 +3805,7 @@ function timeStatsHTML(days) {
 }
 
 function longestLoggedStreak() {
-  const ds = Object.keys(DB.entries()).sort();
+  const ds = contentDates();
   let best = 0, cur = 0, prev = null;
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
   return best;
@@ -3990,7 +4047,7 @@ function renderDash() {
             <div class="ov-lab">${st === 1 ? 'day logged' : 'day streak'}</div>
           </div>
         </div>
-        <div class="ov-ctx">Best <b>${longestLoggedStreak()}</b> · <b>${allDates.length}</b> days logged all time</div>
+        <div class="ov-ctx">Best <b>${longestLoggedStreak()}</b> · <b>${contentDates(e).length}</b> days logged all time</div>
         <div class="st-row">
           ${statTile({ cls: 'mood',  label: 'Mood',     value: avg('mood'),   spark: mS, delta: deltaOf(mS), upGood: true, eps: 0.15 })}
           ${statTile({ cls: 'nrg',   label: 'Energy',   value: avg('energy'), spark: eS, delta: deltaOf(eS), upGood: true, eps: 0.15 })}
@@ -5949,7 +6006,7 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
    now, so tools/check-backup-keys.mjs can hold the pair to account — every key the app writes
    must appear in exactly one of BACKUP_KEYS or this one. A key in neither fails the release,
    which is what would have caught the eleven missing in v230, and 'settings' here. */
-const BACKUP_EXCLUDED = [
+const BACKUP_EXCLUDED = ['celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'lastBackup',                        // when this device last exported; restoring it misreports
@@ -7616,7 +7673,7 @@ const AWARD_FAMILIES = [
 function awardSeries(grp, ents, health) {
   const e = ents || DB.entries(), dates = Object.keys(e).sort();
   const out = []; let acc = 0;
-  if (grp === 'days')    { dates.forEach(d => out.push([d, ++acc])); return out; }
+  if (grp === 'days')    { dates.forEach(d => { if (entryHasContent(e[d])) out.push([d, ++acc]); }); return out; }
   if (grp === 'journal') { dates.forEach(d => { if ((e[d].journal || '').trim()) acc++; out.push([d, acc]); }); return out; }
   if (grp === 'habits')  { dates.forEach(d => { const h = e[d].habits || {};
       acc += Object.keys(h).filter(k => hVal(e[d], k) === H_DONE).length; out.push([d, acc]); }); return out; }

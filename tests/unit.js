@@ -1455,6 +1455,67 @@
     if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
   })();
 
+  /* ---- HONEST DAYS: ghost entries do not count, celebrations are budgeted ---- */
+  (function () {
+    const eS = localStorage.getItem('dp.entries'), cS = localStorage.getItem('dp.celeb');
+    const mS = localStorage.getItem('dp.milestones');
+    const T = todayStr();
+
+    // --- what counts as content ---
+    ok('an empty entry is not content', !entryHasContent({ updatedAt: 'x', tasks: '' }));
+    /* The reachable ghost: tap a habit on, untap it — {habits:{x:false}} is left behind. */
+    ok('an all-false habits map is not content', !entryHasContent({ habits: { workout: false }, updatedAt: 'x' }));
+    ok('a done habit is content', entryHasContent({ habits: { workout: true } }));
+    ok('a SKIP is content — skipping is a choice you tapped', entryHasContent({ habits: { workout: 0 } }));
+    ok('mood is content', entryHasContent({ mood: 7 }));
+    ok('whitespace journal is not content', !entryHasContent({ journal: '   ' }));
+    ok('real journal is content', entryHasContent({ journal: 'a day' }));
+    ok('a mirrored zero counter is not content', !entryHasContent({ tasksDone: 0, workoutsDone: 0 }));
+    ok('completed tasks are content', entryHasContent({ tasksDone: 2 }));
+    ok('tracked time is content', entryHasContent({ timeSummary: 'work 2h' }));
+
+    // --- ghost days no longer feed streaks, weeks or the days-logged award ---
+    const ents = {};
+    for (let i = 1; i <= 3; i++) ents[addDays(T, -i)] = { mood: 7, updatedAt: 'x' };
+    ents[T] = { habits: { workout: false }, updatedAt: 'x', tasks: '' };   // today = ghost
+    localStorage.setItem('dp.entries', JSON.stringify(ents));
+    ok('a ghost today does not extend the streak', loggedStreak() === 3, loggedStreak());
+    ok('the longest streak ignores ghosts too', longestLoggedStreak() === 3);
+    ok('contentDates excludes the ghost', contentDates().length === 3);
+    const days = awardSeries('days', DB.entries());
+    ok('the days-logged award counts only real days',
+      days.length === 3 && days[days.length - 1][1] === 3, JSON.stringify(days.slice(-1)));
+    /* A ghost mid-run BREAKS the chain — an entry with nothing in it is a day you did not
+       log, and a streak that survives unlogged days is not a streak. */
+    ents[addDays(T, -2)] = { updatedAt: 'x', tasks: '' };
+    localStorage.setItem('dp.entries', JSON.stringify(ents));
+    ok('a ghost in the middle breaks the chain', loggedStreak() === 1, loggedStreak());
+    ok('weekly cadence counts only real days',
+      weekBuckets().reduce((a, w) => a + w.days, 0) === 2);
+
+    // --- the celebration budget ---
+    localStorage.removeItem('dp.celeb');
+    ok('a fresh day has budget', !celebSpent());
+    celebSpend();
+    ok('one celebration spends it', celebSpent());
+    localStorage.setItem('dp.celeb', JSON.stringify({ d: addDays(T, -1), n: 3 }));
+    ok('yesterday\'s spend does not carry over', !celebSpent());
+    /* Integration: with the budget spent, a milestone must NOT open the full-screen. */
+    const good = {}; for (let i = 0; i < 3; i++) good[addDays(T, -i)] = { mood: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(good));
+    localStorage.removeItem('dp.milestones');
+    localStorage.setItem('dp.celeb', JSON.stringify({ d: T, n: 1 }));
+    checkStreakMilestone();   // streak is 3, a milestone — but the budget is spent
+    const msEl = document.getElementById('milestone');
+    ok('a budgeted-out milestone stays off the screen', !msEl || !msEl.classList.contains('on'));
+    ok('but it is still recorded as shown, so it never re-fires',
+      Object.keys(safeParse(localStorage.getItem('dp.milestones'), {})).length === 1);
+
+    if (eS != null) localStorage.setItem('dp.entries', eS); else localStorage.removeItem('dp.entries');
+    if (cS != null) localStorage.setItem('dp.celeb', cS); else localStorage.removeItem('dp.celeb');
+    if (mS != null) localStorage.setItem('dp.milestones', mS); else localStorage.removeItem('dp.milestones');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
