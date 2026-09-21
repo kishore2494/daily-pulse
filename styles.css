@@ -2073,3 +2073,9 @@ input[type="range"] { height: 30px; }
 .rate-p { font-size: 14px; line-height: 1.6; color: var(--text-dim); margin: 0 0 10px; }
 .rate-dim { font-size: 12px; color: var(--text-faint); }
 #rate-go, #rate-later { min-height: 48px; }
+
+/* ---------- v242: the restore door in onboarding ---------- */
+.ob-restore-link { display: block; margin: 14px auto 0; background: none; border: none;
+  color: var(--text-dim); font: 500 13.5px/1.4 inherit; cursor: pointer; min-height: 44px; }
+.ob-restore-link b { color: var(--accent-ink); }
+#ob-restore-url { width: 100%; }

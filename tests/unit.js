@@ -1516,6 +1516,55 @@
     if (mS != null) localStorage.setItem('dp.milestones', mS); else localStorage.removeItem('dp.milestones');
   })();
 
+  /* ---- THE RESTORE DOOR ---- */
+  (function () {
+    const oS = localStorage.getItem('dp.onboarded'), sS = localStorage.getItem('dp.settings');
+    const eS = localStorage.getItem('dp.entries');
+
+    // --- onboarding offers the way back in ---
+    localStorage.removeItem('dp.onboarded');
+    const prevStep = obStep, prevR = obRestore;
+    obStep = 0; obRestore = false;
+    const ob = document.getElementById('onboard');
+    if (ob) { ob.classList.add('on'); renderOnboard();
+      ok('step 0 offers a restore door', !!ob.querySelector('[data-ob-restore]'));
+      obRestore = true; renderOnboard();
+      ok('the panel offers a backup file', !!document.getElementById('ob-restore-file'));
+      ok('and a sync link', !!document.getElementById('ob-restore-url'));
+      ok('the file input takes .json by extension',
+        /\.json/.test(document.getElementById('ob-restore-file').getAttribute('accept') || ''));
+      ok('and a way to start fresh instead', !!ob.querySelector('[data-ob-restore-back]'));
+      ob.classList.remove('on');
+    }
+    obStep = prevStep; obRestore = prevR;
+
+    // --- a garbage link never becomes the configured endpoint ---
+    const st0 = DB.settings(); st0.syncUrl = ''; DB.saveSettings(st0);
+    let out = null;
+    syncLinkRestore('http://evil.example/exec', (status) => { out = status; });
+    ok('a non-script link is rejected outright', out === 'bad-url');
+    ok('and nothing was configured', !DB.settings().syncUrl);
+    syncLinkRestore('https://script.google.com/macros/s/ABC', (status) => { out = status; });
+    ok('a link without /exec is rejected', out === 'bad-url');
+    ok('still nothing configured', !DB.settings().syncUrl);
+
+    /* importData's outcome hook is exercised through its SYNCHRONOUS failure path: a refused
+       validateBackup. (The FileReader paths are async, and this suite's summary snapshots
+       synchronously — a promise-returning block would assert into the void.) */
+    ok('importData exposes an outcome hook', importData.length >= 2);
+    ok('validateBackup still rejects junk — the hook rides on it',
+      !validateBackup({ nonsense: 1 }).ok);
+
+    // finishing a restore ends onboarding for good
+    obFinishRestore('');
+    ok('a finished restore marks onboarding done', localStorage.getItem('dp.onboarded') === '1');
+    ok('and the tour as seen — the person is returning, not new',
+      localStorage.getItem('dp.toured') === '1');
+    if (oS != null) localStorage.setItem('dp.onboarded', oS); else localStorage.removeItem('dp.onboarded');
+    if (sS != null) localStorage.setItem('dp.settings', sS); else localStorage.removeItem('dp.settings');
+    if (eS != null) localStorage.setItem('dp.entries', eS); else localStorage.removeItem('dp.entries');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

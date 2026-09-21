@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v241';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v242';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -5611,6 +5611,17 @@ function renderSettings() {
       ${/* Both the extension AND the mime: some Android pickers match only on extension and
        show a greyed-out list for a bare mime type, which looks like "no backups found". */''}
       <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+      ${s.syncUrl ? '' : `
+      ${/* Reconnect for someone who skipped the onboarding restore door. Framed strictly for
+             returning sync users; the sync OFFER stays withheld until the Data Safety form
+             matches it (see SHOW_SYNC above). */''}
+      <details class="sync-what"><summary>Used Google Sheet sync on an old phone? Reconnect</summary>
+        <div class="hint">
+          <p>Paste the same script link you used before. It pulls your data back onto this phone and keeps syncing to your own sheet.</p>
+          <input type="url" id="set-restore-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+          <button class="btn btn-primary btn-sm" id="set-restore-pull" style="margin-top:8px;min-height:44px">Restore from the link</button>
+        </div>
+      </details>`}
     </div>
     ${/* An app that holds a private journal has to let you destroy it without uninstalling —
          but two taps was far too little friction for something with no undo. This is a
@@ -5805,6 +5816,17 @@ document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'export') exportData();
   if (ev.target.id === 'export-csv') exportCSV();
   if (ev.target.id === 'import') document.getElementById('import-file').click();
+  if (ev.target.id === 'set-restore-pull') {
+    const raw = (document.getElementById('set-restore-url').value || '').trim();
+    toast('Connecting…');
+    syncLinkRestore(raw, (status, days) => {
+      if (status === 'restored') { renderSettings(); refreshStreak(); toast(`Restored ${days} day${days === 1 ? '' : 's'} ✅`); }
+      else if (status === 'empty') { renderSettings(); toast('Connected, but the sheet has no data to restore yet', true); }
+      else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
+      else toast('Could not reach that link — check it and try again', true);
+    });
+    return;
+  }
 });
 // Edit a reminder's time/label inline
 document.addEventListener('input', (ev) => {
@@ -6179,15 +6201,19 @@ function validateBackup(d) {
   }
   return { ok: true, reason: '', keys: keys.filter(k => !bad.includes(k)) };
 }
-function importData(file) {
+/* `after(restoredAnything)` lets a caller react to the OUTCOME — onboarding uses it to skip
+   itself only when a restore really happened. It fires false on a bad file, a refused
+   confirm, or an all-keys-failed write, so a caller can never mistake a no-op for success. */
+function importData(file, after) {
+  const done = ok => { try { after && after(!!ok); } catch (e) {} };
   const r = new FileReader();
   r.onload = () => {
     try { const d = JSON.parse(r.result);
       const check = validateBackup(d);
-      if (!check.ok) { toast(check.reason, true); return; }
+      if (!check.ok) { toast(check.reason, true); done(false); return; }
       // Restoring REPLACES what is on this device. Ask first — this is destructive, it is not
       // undoable, and the file picker cannot tell a backup from any other .json.
-      if (!confirm(`Restore ${check.keys.length} section(s) from this backup?\n\nThis replaces the matching data on this device and cannot be undone.`)) return;
+      if (!confirm(`Restore ${check.keys.length} section(s) from this backup?\n\nThis replaces the matching data on this device and cannot be undone.`)) { done(false); return; }
       // safeSet, not setItem: on a full phone a raw write throws per key and the restore
       // would still have said "Backup restored" over a half-loaded backup — the same
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
@@ -6199,8 +6225,10 @@ function importData(file) {
       if (!wrote) toast(`Nothing was restored — all ${failed} section(s) failed to write. Free up storage and try again.`, true);
       else if (failed) toast(`Restored ${wrote} section(s); ${failed} could not be written — free up storage and import again`, true);
       else toast('Backup restored');
-    } catch (e) { toast('Bad backup file', true); }
+      done(wrote > 0);
+    } catch (e) { toast('Bad backup file', true); done(false); }
   };
+  r.onerror = () => done(false);
   r.readAsText(file);
 }
 /* Janitor: drop notified-flags from past days so localStorage doesn't grow forever. */
@@ -11255,6 +11283,43 @@ try {
    everything remains changeable later in More ▸ Customize.
    ============================================================ */
 let obStep = 0;
+let obRestore = false;   // the welcome-back panel is open instead of the step
+/* Reconnecting an EXISTING sync link. Not a sync offer — the person owns this link already;
+   the offer itself stays withheld until the Data Safety form matches it. Outcomes are told
+   apart honestly: a dead link is unconfigured again (a silently-swallowing endpoint is worse
+   than none), and an empty sheet is reported as empty, never as a restore. */
+function syncLinkRestore(raw, onOutcome) {
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(raw || '')) { onOutcome('bad-url', 0); return; }
+  const st = DB.settings(); st.syncUrl = raw; DB.saveSettings(st);
+  pullState(ok => {
+    const days = ok ? contentDates().length : 0;
+    if (ok && days) return onOutcome('restored', days);
+    if (ok) return onOutcome('empty', 0);
+    const s2 = DB.settings(); s2.syncUrl = ''; DB.saveSettings(s2);
+    onOutcome('unreachable', 0);
+  });
+}
+
+/* A successful restore ends onboarding — the person is returning, not new. The tour and the
+   what's-new are marked seen for the same reason. */
+function obFinishRestore(msg) {
+  localStorage.setItem('dp.onboarded', '1');
+  localStorage.setItem('dp.toured', '1');
+  localStorage.setItem('dp.whatsnew', WHATS_NEW.v);
+  obRestore = false;
+  const el = document.getElementById('onboard');
+  if (el) el.classList.remove('on');
+  show('today');
+  if (msg) toast(msg);
+}
+document.addEventListener('change', (ev) => {
+  if (ev.target.id === 'ob-restore-file' && ev.target.files && ev.target.files[0]) {
+    importData(ev.target.files[0], ok => {
+      if (ok) obFinishRestore(`Welcome back — ${contentDates().length} day${contentDates().length === 1 ? '' : 's'} restored ✅`);
+      // on failure importData already said exactly why; stay on the panel for another try
+    });
+  }
+});
 const obHideH = new Set(), obHideA = new Set();
 // Deep-log sections: start light — only the core four preselected; the rest are
 // opt-in here (and re-enableable anytime in Customize ▸ Deep log).
@@ -11278,7 +11343,30 @@ function renderOnboard() {
       <div>🎨 <b>Make it yours</b> — every habit, field, workout and tab is customizable.</div>
       <div>📦 <b>One thing to know</b> — because it's fully private, your data lives ONLY on this phone. Export a backup now and then (More ▸ Your data) — uninstalling the app erases everything.</div>
     </div>
-    <button class="btn btn-primary" data-ob-next>Get started</button>`;
+    <button class="btn btn-primary" data-ob-next>Get started</button>
+    <button class="ob-restore-link" data-ob-restore>Already used Daylog? <b>Restore your data</b> →</button>`;
+  /* The restore door. A local-first app's worst moment is a new phone: before this existed
+     there was NO way in — not a backup file, not a sync link — and the first person stranded
+     was the developer, with a dead phone and a sheet full of data the app refused to take
+     back. Restoring is framed for RETURNING users only; it is not a sync offer (that stays
+     withheld until the Data Safety form matches it). */
+  if (obRestore) body = `
+    <div class="ob-emoji">📦</div>
+    <h1>Welcome back</h1>
+    <p class="ob-lead">Two ways to bring your data onto this phone.</p>
+    <div class="card" style="text-align:left">
+      <b>From a backup file</b>
+      <p class="hint" style="margin:4px 0 10px">The <code>daily-pulse-backup-….json</code> you exported — Downloads, Drive, wherever you kept it.</p>
+      <button class="btn btn-primary" id="ob-restore-file-btn" style="width:100%">Choose the backup file</button>
+      <input type="file" id="ob-restore-file" accept=".json,application/json" style="display:none">
+    </div>
+    <div class="card" style="text-align:left">
+      <b>From your sync link</b>
+      <p class="hint" style="margin:4px 0 10px">Only if you set up Google Sheet sync on your old phone. Paste the same script link — it pulls everything back and keeps this phone in step.</p>
+      <input type="url" id="ob-restore-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      <button class="btn btn-primary" id="ob-restore-pull" style="width:100%;margin-top:9px">Restore from the link</button>
+    </div>
+    <button class="ob-restore-link" data-ob-restore-back>← Start fresh instead</button>`;
   if (obStep === 1) body = `
     <h1>Pick your daily habits</h1>
     <p class="ob-lead">Tap to keep or drop, or add your own.</p>
@@ -11353,6 +11441,22 @@ document.addEventListener('click', (ev) => {
     const acts = DB.timeacts();
     const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
     DB.saveTimeacts(acts); renderOnboard(); return;
+  }
+  if (ev.target.closest('[data-ob-restore]')) { obRestore = true; renderOnboard(); return; }
+  if (ev.target.closest('[data-ob-restore-back]')) { obRestore = false; renderOnboard(); return; }
+  if (ev.target.id === 'ob-restore-file-btn') { const f = document.getElementById('ob-restore-file'); if (f) f.click(); return; }
+  if (ev.target.id === 'ob-restore-pull') {
+    const raw = (document.getElementById('ob-restore-url').value || '').trim();
+    /* Loose on purpose — deployment URLs vary — but it must at least be an Apps Script
+       /exec URL, or a typo becomes a silent endpoint that never answers. */
+    toast('Connecting…');
+    syncLinkRestore(raw, (status, days) => {
+      if (status === 'restored') obFinishRestore(`Welcome back — ${days} day${days === 1 ? '' : 's'} restored ✅`);
+      else if (status === 'empty') toast('Connected, but the sheet has no data to restore yet', true);
+      else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
+      else toast('Could not reach that link — check it and try again', true);
+    });
+    return;
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
