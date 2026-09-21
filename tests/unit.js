@@ -1565,6 +1565,100 @@
     if (eS != null) localStorage.setItem('dp.entries', eS); else localStorage.removeItem('dp.entries');
   })();
 
+  /* ---- ASK (deterministic router, no model) ---- */
+  (function () {
+    const eS = localStorage.getItem('dp.entries'), fS = localStorage.getItem('dp.fintx');
+    const aS = localStorage.getItem('dp.finaccts');
+    const T = todayStr();
+    const prevLog = askLog.slice();
+
+    // --- routing ---
+    ok('a streak question routes to streak', askRoute('what is my streak?').id === 'streak');
+    ok('a spending question routes to money', askRoute('where did my money go').id === 'money-month');
+    ok('a sleep question routes to sleep', askRoute('how is my sleep').id === 'sleep');
+    ok('a mood question routes to mood', askRoute('how has my mood been').id === 'mood');
+    ok('a subscriptions question routes to subs', askRoute('what subscriptions am i paying for').id === 'subs');
+    ok('a net worth question routes to networth', askRoute('what is my net worth').id === 'networth');
+    ok('a time question routes to time', askRoute('where does my time go').id === 'time');
+    ok('every skill example routes to its own skill',
+      ASK_SKILLS.every(sk => { const r = askRoute(sk.ex); return r && r.id === sk.id; }),
+      ASK_SKILLS.filter(sk => { const r = askRoute(sk.ex); return !r || r.id !== sk.id; }).map(s => s.id).join(','));
+    ok('gibberish routes nowhere', askRoute('zxqwv plork') === null);
+    ok('an empty question routes nowhere', askRoute('   ') === null);
+
+    /* THE POINT OF THE WHOLE DESIGN: an unrecognised question must say so, never guess. */
+    const unk = askRun('what will the stock market do tomorrow');
+    ok('an unknown question is answered honestly, not guessed', unk.unknown === true);
+    ok('and it says the answers come from the log', /own log/i.test(unk.lines.join(' ')));
+
+    // --- empty states are honest, never zeros presented as facts ---
+    localStorage.setItem('dp.entries', '{}');
+    localStorage.setItem('dp.finaccts', '[]'); localStorage.setItem('dp.fintx', '[]');
+    const eStreak = askRun('my streak');
+    ok('no data gives a "nothing yet" answer, not a fake zero', /not logged a day/i.test(eStreak.lines.join(' ')));
+    const eMoney = askRun('where did my money go');
+    ok('no accounts says so', /No accounts/i.test(eMoney.lines.join(' ')));
+
+    // --- real data produces numbers that match the engine exactly ---
+    const ents = {};
+    for (let i = 0; i < 5; i++) ents[addDays(T, -i)] = { mood: 8, energy: 6, sleepHours: 7.5 };
+    localStorage.setItem('dp.entries', JSON.stringify(ents));
+    const r = askRun('what is my streak');
+    ok('the streak answer states the real streak',
+      r.lines.join(' ').includes('<b>' + loggedStreak() + '</b>'), 'engine says ' + loggedStreak());
+    ok('and the real all-time total',
+      r.lines.join(' ').includes('<b>' + contentDates().length + '</b>'));
+
+    localStorage.setItem('dp.finaccts', JSON.stringify(
+      [{ id: 'b', name: 'Bank', kind: 'bank', opening: parseAmt('10000'), since: addDays(T, -60) }]));
+    localStorage.setItem('dp.fintx', JSON.stringify([
+      { id: 'a', d: finYm(T) + '-02', a: parseAmt('50000'), dir: 'in', ac: 'b', c: 'salary', n: 'Salary' },
+      { id: 'c', d: finYm(T) + '-03', a: parseAmt('1200'), dir: 'out', ac: 'b', c: 'food', n: 'x' },
+    ]));
+    const m = askRun('where did my money go');
+    const eng = finMonth(finYm(T));
+    ok('the money answer uses the engine figure verbatim',
+      m.lines.join(' ').includes(finFmt(eng.out, { compact: true, noPaise: true })),
+      'engine out = ' + finFmt(eng.out, { compact: true, noPaise: true }));
+    ok('and the engine savings rate', m.lines.join(' ').includes('<b>' + eng.rate + '%</b>'));
+
+    /* Nothing in an answer may be a number the engine did not produce — the fabrication
+       guard this whole feature exists to preserve. Every skill must survive being run. */
+    ok('every skill runs without throwing on real data',
+      ASK_SKILLS.every(sk => { const out = askRun(sk.ex); return out && !out.failed; }),
+      ASK_SKILLS.filter(sk => (askRun(sk.ex) || {}).failed).map(s => s.id).join(','));
+    ok('every skill runs without throwing on an EMPTY store', (() => {
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.fintx', '[]');
+      localStorage.setItem('dp.finaccts', '[]'); localStorage.setItem('dp.timelog', '[]');
+      return ASK_SKILLS.every(sk => { const out = askRun(sk.ex); return out && !out.failed; });
+    })(), ASK_SKILLS.filter(sk => (askRun(sk.ex) || {}).failed).map(s => s.id).join(','));
+
+    // --- the screen ---
+    askLog = [];
+    renderAsk();
+    const el = document.getElementById('s-ask');
+    ok('the ask screen renders', !!el && el.innerHTML.length > 400);
+    ok('it has a question box', !!document.getElementById('ask-q'));
+    ok('it offers an example per skill',
+      el.querySelectorAll('[data-ask-ex]').length === ASK_SKILLS.length);
+    ok('it states there is no model', /no ai model/i.test(el.textContent));
+    askSubmit('what is my streak');
+    ok('asking adds a turn', askLog.length === 1);
+    ok('and the answer is rendered', !!document.getElementById('s-ask').querySelector('.ask-a'));
+    ok('ask is a nav destination', !!navCfg().find(n => n.k === 'ask'));
+    ok('ask has a render function', typeof RENDER.ask === 'function');
+    /* The session log is memory-only — a question you typed is not written to storage. */
+    /* Memory only. (dp.rateAsk is the review-prompt counter, a different thing — match the
+       thread's own would-be key, not any key containing "ask".) */
+    ok('the thread is never persisted',
+      !localStorage.getItem('dp.ask') && !localStorage.getItem('dp.asklog'));
+    askLog = prevLog;
+
+    if (eS != null) localStorage.setItem('dp.entries', eS); else localStorage.removeItem('dp.entries');
+    if (fS != null) localStorage.setItem('dp.fintx', fS); else localStorage.removeItem('dp.fintx');
+    if (aS != null) localStorage.setItem('dp.finaccts', aS); else localStorage.removeItem('dp.finaccts');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

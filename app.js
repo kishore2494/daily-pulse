@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v242';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v243';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -10911,6 +10911,417 @@ function mnChartsHTML() {
 }
 
 
+/* ============================================================
+   ASK — a question box over the analysis this app already does.
+   ------------------------------------------------------------
+   NO MODEL. Deliberately. Daylog's insights are trusted because they are COMPUTED: real
+   medians, stated sample sizes, "not enough data" when that is the truth. A small language
+   model cannot do arithmetic reliably, so pointing one at the ledger would eventually
+   produce a confident number that does not exist — the exact fabricated-statistic failure
+   this app has spent months removing, and the one a finance feature cannot survive.
+
+   So every answer here is produced by calling the SAME functions the screens call
+   (finMonth, loggedStreak, computePatterns, …) and formatting what comes back. A number can
+   only appear in an answer if a computation returned it. The intent router is regex over a
+   fixed list of skills; anything it does not recognise gets an honest "I can't answer that
+   yet" plus what it CAN do — never a guess.
+
+   Phase 2 (a local model that phrases these results) would slot in behind askRun(): the
+   skills below are already the tool surface it would call, and the rule would stay that the
+   model may never emit a digit the tools did not hand it. Nothing here assumes it.
+   ============================================================ */
+
+const ASK_MAX_HISTORY = 40;          // a session log, not an archive
+let askLog = [];                     // [{ q, a, at }] — in memory only, never persisted
+
+/* Every skill: an id, the patterns that select it, an example for the suggestion chips, and
+   run() returning { title, lines[], empty? }. `lines` are pre-escaped HTML fragments built
+   from computed values. */
+const ASK_SKILLS = [
+  {
+    id: 'streak',
+    pats: [/\bstreak\b/i, /\bin a row\b/i, /how many days.*(logged|straight)/i],
+    ex: 'What is my streak?',
+    run() {
+      const cur = loggedStreak(), best = longestLoggedStreak(), total = contentDates().length;
+      if (!total) return { empty: 'You have not logged a day yet — log today and this starts working.' };
+      const wk = (typeof weekStreak === 'function') ? weekStreak() : null;
+      const lines = [
+        `Your current streak is <b>${cur}</b> day${cur === 1 ? '' : 's'}.`,
+        `Your longest ever is <b>${best}</b>, and you have logged <b>${total}</b> day${total === 1 ? '' : 's'} in total.`,
+      ];
+      if (wk && wk.cur != null) lines.push(`Weekly: <b>${wk.cur}</b> week${wk.cur === 1 ? '' : 's'} in a row counted (a week counts at ${WEEK_MIN} logged days).`);
+      if (cur === 0) lines.push(`Nothing logged today yet — logging anything starts it again.`);
+      return { title: 'Streak', lines };
+    },
+  },
+  {
+    id: 'money-month',
+    pats: [/(where|what).*(money|spend|spent|go)/i, /how much.*(spend|spent)/i, /\b(spending|expenses|outgoings)\b/i],
+    ex: 'Where did my money go?',
+    run() {
+      if (!finAccts().length) return { empty: 'No accounts set up yet — add one on the Money screen and this starts working.' };
+      const ym = finYm(todayStr()), m = finMonth(ym);
+      if (!m.in && !m.out) return { empty: `Nothing recorded for ${mnMonthLabel(ym)} yet.` };
+      const cats = Object.keys(m.byCat).sort((a, b) => m.byCat[b] - m.byCat[a]);
+      const lines = [
+        `In ${escapeHtml(mnMonthLabel(ym))}: <b>${finFmt(m.in, { compact: true, noPaise: true })}</b> in, <b>${finFmt(m.out, { compact: true, noPaise: true })}</b> out, <b>${finFmt(m.net, { compact: true, noPaise: true })}</b> kept.`,
+      ];
+      if (m.rate != null) lines.push(`That is <b>${m.rate}%</b> of what came in.`);
+      else lines.push(`No income recorded this month, so there is no savings rate to work out.`);
+      cats.slice(0, 5).forEach(c => {
+        lines.push(`${finCat(c).ico} ${escapeHtml(finCat(c).name)} — <b>${finFmt(m.byCat[c], { noPaise: true })}</b>`);
+      });
+      if (cats.length > 5) lines.push(`<span class="ask-dim">+${cats.length - 5} smaller categories on the Money screen.</span>`);
+      return { title: 'This month', lines };
+    },
+  },
+  {
+    id: 'money-compare',
+    pats: [/(ahead|behind|compared?).*(last month|previous month)/i, /(more|less).*than last month/i, /\bvs last month\b/i],
+    ex: 'Am I spending more than last month?',
+    run() {
+      if (!finTx().length) return { empty: 'No transactions recorded yet.' };
+      const ym = finYm(todayStr());
+      const cum = finCumulative(ym);
+      const now = cum.now.filter(v => v != null);
+      const day = now.length;
+      if (!day || !cum.was.length) return { empty: 'Not enough of this month recorded yet to compare.' };
+      const wasAt = cum.was[Math.min(day, cum.was.length) - 1];
+      if (wasAt == null) return { empty: 'Last month has nothing to compare against.' };
+      const diff = now[day - 1] - wasAt;
+      const lines = [
+        `By day ${day}: <b>${finFmt(now[day - 1], { noPaise: true })}</b> this month vs <b>${finFmt(wasAt, { noPaise: true })}</b> by the same day last month.`,
+        Math.abs(diff) < 100
+          ? `You are <b>level</b> with last month.`
+          : `That is <b>${finFmt(Math.abs(diff), { noPaise: true })} ${diff > 0 ? 'more' : 'less'}</b>.`,
+      ];
+      const mv = finMovers(ym).slice(0, 3);
+      mv.forEach(x => {
+        lines.push(`${finCat(x.cat).ico} ${escapeHtml(finCat(x.cat).name)} ${x.delta > 0 ? 'up' : 'down'} <b>${finFmt(Math.abs(x.delta), { compact: true, noPaise: true })}</b>${x.pct != null ? ` (${x.pct > 0 ? '+' : ''}${x.pct}%)` : ' (new)'}`);
+      });
+      return { title: 'This month vs last', lines };
+    },
+  },
+  {
+    id: 'networth',
+    pats: [/net worth/i, /how much.*(do i have|am i worth|saved up)/i, /\b(assets?|owe|debt)\b/i],
+    ex: 'What is my net worth?',
+    run() {
+      if (!finAccts().length) return { empty: 'No accounts set up yet — add one on the Money screen.' };
+      const w = finSplitWorth();
+      const lines = [
+        `You own <b>${finFmt(w.assets, { compact: true, noPaise: true })}</b> and owe <b>${finFmt(w.debts, { compact: true, noPaise: true })}</b>.`,
+        `Net worth: <b>${finFmt(w.net, { compact: true, noPaise: true })}</b>.`,
+      ];
+      finAccts().filter(a => !a.archived).forEach(a => {
+        const b = finBal(a.id);
+        lines.push(`${finKind(a.kind).ico} ${escapeHtml(a.name)} — <b>${b == null ? 'no value recorded' : finFmt(Math.abs(b), { noPaise: true })}</b>${b != null && b < 0 ? ' owed' : ''}`);
+      });
+      return { title: 'Net worth', lines };
+    },
+  },
+  {
+    id: 'subs',
+    pats: [/subscription/i, /recurring/i, /\bpaying for\b/i],
+    ex: 'What subscriptions am I paying for?',
+    run() {
+      const rec = finRecurring();
+      if (!rec.length) return { empty: 'Nothing repeating across 3+ months yet. Add a note like “Netflix” when you record a charge and repeats get easier to spot.' };
+      const lines = rec.slice(0, 8).map(r =>
+        `${finCat(r.cat).ico} ${escapeHtml(r.label)} — <b>${finFmt(r.avg, { noPaise: true })}</b> <span class="ask-dim">× ${r.months} months</span>`);
+      lines.push(`<span class="ask-dim">A guess from your own records, not a bank feed — check before cancelling anything.</span>`);
+      return { title: 'Looks like subscriptions', lines };
+    },
+  },
+  {
+    id: 'sleep',
+    pats: [/\bsleep\b/i, /\bslept\b/i, /\bbed ?time\b/i, /how.*rest/i],
+    ex: 'How is my sleep?',
+    run() {
+      const e = DB.entries(), hs = (typeof healthStore === 'function' ? healthStore() : {}) || {};
+      const vals = [];
+      Object.keys(e).forEach(d => {
+        const h = hs[d] && hs[d].sleepMin != null ? hs[d].sleepMin / 60
+          : (e[d].sleepHours != null && e[d].sleepHours !== '' ? +e[d].sleepHours : null);
+        if (h != null && !isNaN(h)) vals.push([d, h]);
+      });
+      if (vals.length < 3) return { empty: `Only ${vals.length} night${vals.length === 1 ? '' : 's'} of sleep recorded — a few more and this gets useful.` };
+      const nums = vals.map(v => v[1]);
+      const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+      const med = dpMedian(nums);
+      const last7 = vals.slice(-7).map(v => v[1]);
+      const lines = [
+        `Across <b>${vals.length}</b> nights you average <b>${avg.toFixed(1)}h</b> (middle night: <b>${med.toFixed(1)}h</b>).`,
+      ];
+      if (last7.length >= 3) {
+        const a7 = last7.reduce((a, b) => a + b, 0) / last7.length;
+        const d = a7 - avg;
+        lines.push(`Last ${last7.length} nights: <b>${a7.toFixed(1)}h</b>${Math.abs(d) >= 0.3 ? ` — <b>${Math.abs(d).toFixed(1)}h ${d > 0 ? 'more' : 'less'}</b> than your usual` : ' — in line with your usual'}.`);
+      }
+      // Fold in the computed sleep pattern if one exists, verbatim.
+      (computePatterns() || []).filter(p => /sleep/i.test(p.head)).slice(0, 1)
+        .forEach(p => lines.push(`${p.head}. ${p.sub}`));
+      return { title: 'Sleep', lines };
+    },
+  },
+  {
+    id: 'mood',
+    pats: [/\bmood\b/i, /how.*(feel|felt)/i, /\bhappy|happier|sad\b/i, /\benergy\b/i],
+    ex: 'How has my mood been?',
+    run() {
+      const e = DB.entries();
+      const pick = k => Object.keys(e).filter(d => e[d][k] != null && e[d][k] !== '').map(d => [d, +e[d][k]]);
+      const mood = pick('mood'), energy = pick('energy');
+      if (mood.length < 3) return { empty: `Only ${mood.length} day${mood.length === 1 ? '' : 's'} with a mood recorded — a few more and this gets useful.` };
+      const av = a => a.reduce((x, y) => x + y[1], 0) / a.length;
+      const lines = [`Mood averages <b>${av(mood).toFixed(1)}/10</b> across <b>${mood.length}</b> days.`];
+      if (energy.length >= 3) lines.push(`Energy averages <b>${av(energy).toFixed(1)}/10</b> across <b>${energy.length}</b> days.`);
+      const recent = mood.slice(-7);
+      if (recent.length >= 3) {
+        const d = av(recent) - av(mood);
+        lines.push(`Last ${recent.length} days: <b>${av(recent).toFixed(1)}</b>${Math.abs(d) >= 0.3 ? ` — <b>${Math.abs(d).toFixed(1)} ${d > 0 ? 'above' : 'below'}</b> your average` : ' — in line with your average'}.`);
+      }
+      (computePatterns() || []).filter(p => /mood/i.test(p.head)).slice(0, 2)
+        .forEach(p => lines.push(`${p.head}. ${p.sub}`));
+      return { title: 'Mood & energy', lines };
+    },
+  },
+  {
+    id: 'habits',
+    pats: [/\bhabits?\b/i, /how.*consistent/i, /\bchecklist\b/i],
+    ex: 'How are my habits doing?',
+    run() {
+      const cfg = (typeof habitCfg === 'function' ? habitCfg() : []).filter(h => !h.hidden);
+      if (!cfg.length) return { empty: 'No habits set up — add some in Customize ▸ Checklist habits.' };
+      const rows = cfg.map(h => ({
+        label: h.label || h.key,
+        strength: (typeof habitStrength === 'function' ? habitStrength(h.key) : null),
+        streak: (typeof habitStreak === 'function' ? habitStreak(h.key) : null),
+      })).filter(r => r.strength != null);
+      if (!rows.length) return { empty: 'Not enough logged days to score your habits yet.' };
+      rows.sort((a, b) => b.strength - a.strength);
+      const lines = rows.slice(0, 8).map(r =>
+        `${escapeHtml(r.label)} — <b>${Math.round(r.strength)}%</b> strength${r.streak ? `, <b>${r.streak}</b> day streak` : ''}`);
+      const weak = rows[rows.length - 1];
+      if (rows.length > 1) lines.push(`<span class="ask-dim">Weakest right now: ${escapeHtml(weak.label)} at ${Math.round(weak.strength)}%.</span>`);
+      return { title: 'Habits', lines };
+    },
+  },
+  {
+    id: 'time',
+    pats: [/\btime\b.*(go|spent|spend)/i, /where.*(my )?(day|hours|time)/i, /how (long|much time)/i],
+    ex: 'Where does my time go?',
+    run() {
+      const log = DB.timelog().filter(s => s.end != null);
+      if (!log.length) return { empty: 'No time blocks tracked yet — start a timer on the Time screen.' };
+      const from = new Date(); from.setDate(from.getDate() - 28);
+      const cut = todayStr(from);
+      const by = {};
+      let total = 0;
+      log.forEach(s => {
+        if (todayStr(new Date(s.start)) < cut) return;
+        const ms = s.end - s.start;
+        by[s.act] = (by[s.act] || 0) + ms; total += ms;
+      });
+      if (!total) return { empty: 'Nothing tracked in the last 28 days.' };
+      const keys = Object.keys(by).sort((a, b) => by[b] - by[a]);
+      const lines = [`Over the last 28 days you tracked <b>${fmtDur(total)}</b> across <b>${keys.length}</b> activities.`];
+      keys.slice(0, 6).forEach(k => {
+        const a = actById(k);
+        lines.push(`${a.emoji || ''} ${escapeHtml(a.name)} — <b>${fmtDur(by[k])}</b> <span class="ask-dim">${Math.round(by[k] / total * 100)}%</span>`);
+      });
+      return { title: 'Where your time went', lines };
+    },
+  },
+  {
+    id: 'patterns',
+    pats: [/\bpattern/i, /what.*(affects?|impacts?|makes? me)/i, /\binsight/i, /tell me something/i, /what have you (noticed|learned|found)/i],
+    ex: 'What patterns have you found?',
+    run() {
+      const p = computePatterns() || [];
+      const fin = (typeof finPatterns === 'function' ? finPatterns() : []) || [];
+      if (!p.length && !fin.length) {
+        return { empty: 'No patterns solid enough to report yet. These need both sides recorded on enough days, and nothing is reported below that — a pattern that is not really there is worse than none.' };
+      }
+      const lines = [];
+      p.slice(0, 4).forEach(x => lines.push(`${x.head}. ${x.sub}`));
+      fin.slice(0, 2).forEach(x => lines.push(`${escapeHtml(x.head)}. ${escapeHtml(x.body)}`));
+      lines.push(`<span class="ask-dim">Every split is on your own median, with its sample size stated.</span>`);
+      return { title: 'What your data shows', lines };
+    },
+  },
+  {
+    id: 'best',
+    pats: [/\bbest\b/i, /\brecord/i, /personal best/i, /\bmost\b.*(ever|steps|i)/i],
+    ex: 'What are my records?',
+    run() {
+      /* Computed here rather than reused from bestEfforts(), which returns rendered HTML
+         rather than data — the same floor (3+ days of a measure) so the two never disagree. */
+      const e = DB.entries(), hs = (typeof healthStore === 'function' ? healthStore() : {}) || {};
+      const lines = [];
+      const best = (label, pairs, fmt, lowest) => {
+        const all = pairs.filter(p => p[1] != null && p[1] !== '' && !isNaN(+p[1])).map(p => [p[0], +p[1]]);
+        if (all.length < 3) return;
+        const t = all.slice().sort((a, b) => lowest ? a[1] - b[1] : b[1] - a[1])[0];
+        lines.push(`${escapeHtml(label)} — <b>${fmt(t[1])}</b> <span class="ask-dim">on ${shortDate(t[0])}, across ${all.length} days</span>`);
+      };
+      const num = v => Math.round(v).toLocaleString();
+      best('Most steps', Object.keys(hs).map(d => [d, hs[d].steps]), num);
+      best('Longest sleep', Object.keys(hs).map(d => [d, hs[d].sleepMin]), v => (v / 60).toFixed(1) + 'h');
+      best('Most active minutes', Object.keys(hs).map(d => [d, hs[d].exerciseMin]), v => num(v) + ' min');
+      best('Least screen time', Object.keys(hs).filter(d => hs[d].screenMin != null).map(d => [d, hs[d].screenMin]), v => (v / 60).toFixed(1) + 'h', true);
+      best('Deepest focus day', Object.keys(e).map(d => [d, e[d].deepWorkHours]), v => v.toFixed(1) + 'h');
+      best('Best mood', Object.keys(e).map(d => [d, e[d].mood]), v => String(v) + '/10');
+      best('Most habits done', Object.keys(e).map(d => [d,
+        Object.keys((e[d] || {}).habits || {}).filter(k => hVal(e[d], k) === H_DONE).length]), num);
+      if (!lines.length) return { empty: 'Not enough history for personal records yet — each needs at least 3 days of that measure.' };
+      return { title: 'Your records', lines };
+    },
+  },
+  {
+    id: 'week',
+    pats: [/this week/i, /how.*(week|going)/i, /\bweekly\b/i, /how am i doing/i],
+    ex: 'How is this week going?',
+    run() {
+      const r = (typeof coachReview === 'function' ? coachReview() : null);
+      const e = DB.entries();
+      const days = []; for (let i = 0; i < 7; i++) days.push(addDays(todayStr(), -i));
+      const logged = days.filter(d => entryHasContent(e[d])).length;
+      const lines = [`You have logged <b>${logged}</b> of the last 7 days.`];
+      if (r && r.lines && r.lines.length) r.lines.slice(0, 4).forEach(l => lines.push(l));
+      else if (r && r.head) lines.push(String(r.head));
+      const m = finAccts().length ? finMonth(finYm(todayStr())) : null;
+      if (m && m.out) lines.push(`Spending so far this month: <b>${finFmt(m.out, { compact: true, noPaise: true })}</b>.`);
+      return { title: 'This week', lines };
+    },
+  },
+  {
+    id: 'awards',
+    pats: [/\bawards?\b/i, /\btroph/i, /\bbadges?\b/i, /what.*unlock/i],
+    ex: 'What awards am I close to?',
+    run() {
+      const list = (typeof awardList === 'function' ? awardList() : []) || [];
+      if (!list.length) return { empty: 'Nothing in the trophy case yet.' };
+      const earned = list.filter(a => a.earned).length;
+      const next = [];
+      (typeof AWARD_FAMILIES !== 'undefined' ? AWARD_FAMILIES : []).forEach(f => {
+        const t = list.filter(a => a.grp === f.grp && !a.earned).sort((a, b) => a.tier - b.tier)[0];
+        if (t) next.push(t);
+      });
+      next.sort((a, b) => (b.hi / b.tier) - (a.hi / a.tier));
+      const lines = [`You have unlocked <b>${earned}</b> of <b>${list.length}</b>.`];
+      next.slice(0, 5).forEach(a => {
+        const left = Math.max(0, a.tier - a.hi);
+        lines.push(`${a.ico} ${escapeHtml(awardName(a))} — <b>${left.toLocaleString()}</b> to go`);
+      });
+      return { title: 'Awards', lines };
+    },
+  },
+];
+
+/* The router. Scores each skill by how many of its patterns match, longest-match wins ties.
+   Deliberately dumb and inspectable — a wrong answer confidently given is the failure mode
+   worth engineering against, so no fuzzy matching and no fallback guessing. */
+function askRoute(q) {
+  const text = String(q || '').trim();
+  if (!text) return null;
+  let best = null, bestScore = 0;
+  ASK_SKILLS.forEach(sk => {
+    let score = 0;
+    sk.pats.forEach(p => { const m = text.match(p); if (m) score += 1 + (m[0].length / 100); });
+    if (score > bestScore) { bestScore = score; best = sk; }
+  });
+  return best;
+}
+
+function askRun(q) {
+  const sk = askRoute(q);
+  if (!sk) {
+    return {
+      unknown: true,
+      title: "I can't answer that one yet",
+      lines: [
+        `Everything here is worked out from your own log — there is no model guessing, so I only answer what I can actually compute.`,
+        `<span class="ask-dim">Try one of the questions below.</span>`,
+      ],
+    };
+  }
+  try {
+    const r = sk.run();
+    if (r.empty) return { title: 'Nothing to show yet', lines: [r.empty], skill: sk.id };
+    return Object.assign({ skill: sk.id }, r);
+  } catch (e) {
+    /* A broken skill must say so rather than render half an answer as if it were complete. */
+    return { title: 'Something went wrong', lines: [`I could not work that out — this is a bug, not your data.`], skill: sk.id, failed: true };
+  }
+}
+
+/* ---- screen ---- */
+function renderAsk() {
+  const el = document.getElementById('s-ask');
+  if (!el) return;
+  document.getElementById('screen-title').textContent = 'Ask';
+  document.getElementById('screen-sub').textContent = 'answers from your own data';
+
+  const chips = ASK_SKILLS.map(s => `<button class="ask-chip" data-ask-ex="${escapeHtml(s.ex)}">${escapeHtml(s.ex)}</button>`).join('');
+  const thread = askLog.length ? askLog.map(t => `
+    <div class="ask-turn">
+      <div class="ask-q">${escapeHtml(t.q)}</div>
+      <div class="ask-a ${t.a.unknown ? 'unknown' : ''}">
+        <div class="ask-a-h">${escapeHtml(t.a.title)}</div>
+        ${t.a.lines.map(l => `<div class="ask-l">${l}</div>`).join('')}
+      </div>
+    </div>`).join('') : '';
+
+  el.innerHTML = `
+    <div class="card ask-intro">
+      <h2 class="h2-icon">${hicon('sparkle')}<span>Ask your data</span></h2>
+      <div class="hint">Worked out from your own log, on this phone. <b>No AI model, nothing uploaded</b> — so every number here is one the app actually computed, never one that was guessed. Works offline.</div>
+    </div>
+
+    <div class="card">
+      <div class="task-add">
+        <input type="text" id="ask-q" placeholder="Ask about your data…" autocomplete="off" enterkeyhint="send">
+        <button class="btn btn-primary btn-sm" id="ask-go">Ask</button>
+      </div>
+    </div>
+
+    ${thread ? `<div class="ask-thread">${thread}</div>
+      <div class="card"><button class="btn btn-ghost btn-sm" id="ask-clear" style="width:100%">Clear</button></div>` : ''}
+
+    <div class="card">
+      <div class="ask-sug-h">${askLog.length ? 'Ask something else' : 'Try one of these'}</div>
+      <div class="ask-chips">${chips}</div>
+    </div>`;
+
+  const box = document.getElementById('ask-q');
+  if (box && askLog.length === 0) setTimeout(() => { try { box.focus({ preventScroll: true }); } catch (e) {} }, 40);
+}
+
+function askSubmit(q) {
+  const text = String(q || '').trim().slice(0, 200);
+  if (!text) return;
+  askLog.unshift({ q: text, a: askRun(text), at: Date.now() });
+  if (askLog.length > ASK_MAX_HISTORY) askLog.length = ASK_MAX_HISTORY;
+  renderAsk();
+  window.scrollTo(0, 0);
+}
+
+document.addEventListener('click', (ev) => {
+  const ex = ev.target.closest('[data-ask-ex]');
+  if (ex) { askSubmit(ex.dataset.askEx); return; }
+  if (ev.target.id === 'ask-go') { const b = document.getElementById('ask-q'); if (b) { askSubmit(b.value); b.value = ''; } return; }
+  if (ev.target.id === 'ask-clear') { askLog = []; renderAsk(); return; }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.target && ev.target.id === 'ask-q' && ev.key === 'Enter') {
+    ev.preventDefault();
+    askSubmit(ev.target.value); ev.target.value = '';
+  }
+});
+
+
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
 // Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
 const NAV_DEF = [
@@ -10921,6 +11332,7 @@ const NAV_DEF = [
   { k: 'plans',    ico: 'list',     label: 'Plans' },
   { k: 'projects', ico: 'layers',   label: 'Projects' },
   { k: 'money',    ico: 'wallet',   label: 'Money' },
+  { k: 'ask',      ico: 'sparkle',  label: 'Ask' },
   { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
   { k: 'waves',    ico: 'radio',    label: 'Waves' },
   { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
@@ -11133,7 +11545,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
