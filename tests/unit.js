@@ -1659,6 +1659,60 @@
     if (aS != null) localStorage.setItem('dp.finaccts', aS); else localStorage.removeItem('dp.finaccts');
   })();
 
+  /* ---- MENU: Settings is named Settings, and sits last ---- */
+  (function () {
+    const nS = localStorage.getItem('dp.navcfg');
+    /* An old saved config keeps its old label, because labels are user data and are not
+       force-synced from NAV_DEF the way icons are. The exact old default is renamed; a
+       label the user typed is left alone. */
+    localStorage.setItem('dp.navcfg', JSON.stringify(
+      [{ k: 'settings', ico: 'settings', label: 'More', primary: false }]));
+    ok('a stored "More" becomes Settings', navCfg().find(n => n.k === 'settings').label === 'Settings');
+    localStorage.setItem('dp.navcfg', JSON.stringify(
+      [{ k: 'settings', ico: 'settings', label: 'My stuff', primary: false }]));
+    ok('a label the user chose is never overwritten',
+      navCfg().find(n => n.k === 'settings').label === 'My stuff');
+    localStorage.removeItem('dp.navcfg');
+    ok('the default label is Settings', navCfg().find(n => n.k === 'settings').label === 'Settings');
+
+    /* Ordering is enforced at render time: a saved config appends new tabs after settings,
+       which is exactly how Projects, Money and Ask ended up below it. */
+    localStorage.setItem('dp.navcfg', JSON.stringify([
+      { k: 'settings', ico: 'settings', label: 'More', primary: false },
+      { k: 'tasks', ico: 'check', label: 'Tasks', primary: false },
+      { k: 'money', ico: 'wallet', label: 'Money', primary: false },
+    ]));
+    renderDrawer();
+    const keys = [...document.querySelectorAll('#drawer-list [data-screen]')].map(b => b.dataset.screen);
+    ok('settings renders last in the menu', keys[keys.length - 1] === 'settings', keys.join(','));
+    ok('and the edit-tabs row is still below it', !!document.getElementById('drawer-edit-tabs'));
+    ok('it reads Settings in the menu',
+      /Settings/.test([...document.querySelectorAll('#drawer-list [data-screen="settings"]')][0].textContent));
+    if (nS != null) localStorage.setItem('dp.navcfg', nS); else localStorage.removeItem('dp.navcfg');
+  })();
+
+  /* ---- ALARM HEALTH: the card must not report a permission you already granted ---- */
+  (function () {
+    const aS = localStorage.getItem('dp.alarmHealth');
+    /* The Fix button opens a SYSTEM settings page, so the only moment the app can learn the
+       permission was granted is when it regains focus. Nothing re-checked, so the warning
+       survived the fix — and re-opening Settings did not help because the card renders from
+       the cache. */
+    alarmHealth({ exactAllowed: false, notifOk: true, fullScreenAllowed: true, checked: Date.now() });
+    ok('a denied permission is in the keys', alarmHealthKeys().e === false);
+    alarmHealth({ exactAllowed: true });
+    ok('granting it changes the keys', alarmHealthKeys().e === true);
+    /* `checked` is a timestamp — if it fed the comparison every refresh would look like a
+       change and redraw Settings underneath the user. */
+    const before = JSON.stringify(alarmHealthKeys());
+    alarmHealth({ checked: Date.now() + 10000 });
+    ok('a new timestamp alone is not a change', JSON.stringify(alarmHealthKeys()) === before);
+    ok('there is a re-check on returning to the app', typeof recheckAlarmHealth === 'function');
+    ok('and it is safe to call outside the native shell',
+      (() => { try { recheckAlarmHealth(); return true; } catch (e) { return false; } })());
+    if (aS != null) localStorage.setItem('dp.alarmHealth', aS); else localStorage.removeItem('dp.alarmHealth');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

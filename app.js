@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v243';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v244';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -6707,6 +6707,34 @@ async function refreshAlarmHealth() {
       sdk: st.sdk, manufacturer: st.manufacturer, checked: Date.now() });
   } catch (e) { return alarmHealth(); }
 }
+/* Re-check whenever the app returns to the foreground, and redraw Settings if the answer
+   changed. The "Fix" button sends you to a SYSTEM settings page — so the only moment the
+   app can learn that you granted the permission is when it gets focus back. Nothing did
+   that, so the warning sat there saying "needs a fix" over a permission already granted,
+   and re-opening Settings did not help either: the card renders from the cached value.
+   Guarded against re-entrancy because visibilitychange can fire twice on some OEM shells. */
+let _ahBusy = false;
+async function recheckAlarmHealth() {
+  if (_ahBusy || !nativeShell()) return;
+  _ahBusy = true;
+  try {
+    const before = JSON.stringify(alarmHealthKeys());
+    await refreshAlarmHealth();
+    if (JSON.stringify(alarmHealthKeys()) !== before &&
+        document.getElementById('s-settings') &&
+        document.getElementById('s-settings').classList.contains('on')) {
+      renderSettings();
+    }
+  } finally { _ahBusy = false; }
+}
+/* Only the fields the card actually branches on — `checked` is a timestamp and would make
+   every refresh look like a change. */
+function alarmHealthKeys() {
+  const h = alarmHealth();
+  return { n: h.notifOk, e: h.exactAllowed, f: h.fullScreenAllowed };
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) recheckAlarmHealth(); });
+
 /* The banner shown on the Reminders card in Settings. Only appears when something is
    actually wrong, and every line is one tap from being fixed. */
 /* Ask for the exact-alarm permission at the moment it matters. Without it Android only
@@ -8598,6 +8626,10 @@ document.addEventListener('click', async (ev) => {
 function alarmHealthHTML() {
   if (!nativeShell()) return '';
   const h = alarmHealth();
+  /* Verify in the background every time this renders: the cached value can be minutes or
+     days old, and showing a warning for something already fixed is worse than showing
+     nothing. recheckAlarmHealth() redraws only if the answer actually changed. */
+  setTimeout(() => { try { recheckAlarmHealth(); } catch (e) {} }, 0);
   if (!h.checked) return '';
   const bad = [];
   if (h.notifOk === false)
@@ -8624,7 +8656,10 @@ document.addEventListener('click', async (ev) => {
   try {
     if (b.dataset.alarmFix === 'exact' && FS.openExactAlarmSettings) await FS.openExactAlarmSettings();
     else if (FS.openNotificationSettings) await FS.openNotificationSettings();
-    toast('Turn it on, then come back');
+    toast('Turn it on, then come back — this updates itself');
+    /* Belt and braces for shells where visibilitychange does not fire on return from a
+       system settings page. Cheap, and the alternative is a stale warning. */
+    [1200, 3000, 6000].forEach(ms => setTimeout(() => { try { recheckAlarmHealth(); } catch (e) {} }, ms));
   } catch (e) { toast('Open Settings ▸ Apps ▸ Daylog', true); }
 });
 
@@ -11358,6 +11393,11 @@ function navCfg() {
   // Icons are not user data — always take them from NAV_DEF, so stored configs from the
   // emoji era (pre-v82) render the professional line icons too.
   cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); if (d) n.ico = d.ico; });
+  /* The settings tab shipped as "More" for a long time. Labels ARE user data (tabs can be
+     renamed), so they are not force-synced from NAV_DEF like icons — which left every
+     existing install stuck on the old word. Rename only the exact old default; anything the
+     user typed themselves is left alone. */
+  cfg.forEach(n => { if (n.k === 'settings' && (n.label === 'More' || n.label === 'More ⚙' || !n.label)) n.label = 'Settings'; });
   return cfg;
 }
 function saveNavCfg(cfg) { const ok = safeSet('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); return ok; }
@@ -11388,7 +11428,13 @@ function renderDrawer() {
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
   // Menu lists only what's NOT already in the fixed bottom bar (#menu-3).
   const bottom = new Set(navCfg().filter(n => !n.hidden && n.primary).map(n => n.k));
-  const items = navCfg().filter(n => !n.hidden && !bottom.has(n.k));
+  /* Settings sits last, directly above "Edit tabs & this menu…" — the two configuration
+     rows belong together at the bottom. Enforced at RENDER time rather than by reordering
+     the stored config, because new tabs are appended to a saved config and would otherwise
+     keep landing after Settings on every future release (which is exactly how Projects,
+     Money and Ask ended up below it). */
+  const items = navCfg().filter(n => !n.hidden && !bottom.has(n.k))
+    .sort((a, b) => (a.k === 'settings' ? 1 : 0) - (b.k === 'settings' ? 1 : 0));
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
     <span class="drawer-ico">${icon(n.ico, 22)}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
