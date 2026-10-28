@@ -1713,6 +1713,72 @@
     if (aS != null) localStorage.setItem('dp.alarmHealth', aS); else localStorage.removeItem('dp.alarmHealth');
   })();
 
+  /* ---- FIRST RUN: start small, reveal on request ---- */
+  (function () {
+    const nS = localStorage.getItem('dp.navcfg'), lS = localStorage.getItem('dp.logsec');
+
+    // --- a fresh install is calm ---
+    localStorage.removeItem('dp.navcfg');
+    const fresh = navCfg();
+    const visible = fresh.filter(n => !n.hidden).map(n => n.k);
+    ok('a fresh install shows a handful of destinations, not nineteen',
+      visible.length <= 7, visible.join(','));
+    ok('the Log is always there', visible.includes('today'));
+    ok('and Settings', visible.includes('settings'));
+    ok('every hidden one is an advanced one, never a core screen',
+      fresh.filter(n => n.hidden).every(n => NAV_DEF.find(d => d.k === n.k).adv));
+    ok('nothing is deleted — all 19 still exist', fresh.length === NAV_DEF.length);
+    ok('every advanced feature explains what it does',
+      NAV_DEF.filter(d => d.adv).every(d => d.blurb && d.blurb.length > 15),
+      NAV_DEF.filter(d => d.adv && !d.blurb).map(d => d.k).join(','));
+
+    /* THE RULE THAT MATTERS: this must never take a screen away from someone who already
+       uses it. A saved config wins outright. */
+    localStorage.setItem('dp.navcfg', JSON.stringify(
+      [{ k: 'money', ico: 'wallet', label: 'Money', hidden: false, primary: false }]));
+    ok('an existing user keeps a screen the new defaults would hide',
+      navCfg().find(n => n.k === 'money').hidden === false);
+    /* ...but a tab added in a LATER release should not be handed to them unannounced. */
+    ok('a newly-added advanced tab arrives hidden for existing users',
+      navCfg().find(n => n.k === 'awards').hidden === true);
+    ok('a newly-added CORE tab still appears',
+      navCfg().find(n => n.k === 'today').hidden !== true);
+
+    // --- the reveal ---
+    localStorage.removeItem('dp.navcfg');
+    renderDrawer();
+    ok('the drawer offers More features', !!document.getElementById('drawer-more-toggle'));
+    const prevOpen = drawerMoreOpen;
+    drawerMoreOpen = true; renderDrawer();
+    const adds = document.querySelectorAll('[data-nav-on]');
+    ok('it lists every hidden feature', adds.length === NAV_DEF.filter(d => d.adv).length,
+      adds.length + ' of ' + NAV_DEF.filter(d => d.adv).length);
+    ok('each one is described, not just named',
+      [...adds].every(a => (a.textContent || '').length > 25));
+    drawerMoreOpen = prevOpen;
+
+    // --- the Deep log: 38 scales are not a day-one decision ---
+    localStorage.removeItem('dp.logsec');
+    const sec = logSecCfg();
+    ok('the Deep log starts switched off', sec.find(x => x.id === 'deep').hidden === true);
+    ok('but the core fields do not', sec.find(x => x.id === 'core').hidden === false);
+    ok('and neither does the checklist', sec.find(x => x.id === 'checklist').hidden === false);
+    /* Someone who already turned it on keeps it on. */
+    localStorage.setItem('dp.logsec', JSON.stringify([{ id: 'deep', hidden: false }]));
+    ok('an existing user keeps the Deep log visible',
+      logSecCfg().find(x => x.id === 'deep').hidden === false);
+
+    // --- onboarding is three steps, not five ---
+    const src = renderOnboard.toString();
+    ok('onboarding no longer asks you to configure activities', !/data-ob-act/.test(src));
+    ok('onboarding no longer asks you to configure the deep log', !/data-ob-deep/.test(src));
+    ok('it still asks for habits', /data-ob-habit/.test(src));
+    ok('and still offers the reminder', /ob-rem-on/.test(src));
+
+    if (nS != null) localStorage.setItem('dp.navcfg', nS); else localStorage.removeItem('dp.navcfg');
+    if (lS != null) localStorage.setItem('dp.logsec', lS); else localStorage.removeItem('dp.logsec');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

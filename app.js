@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v244';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v245';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -963,6 +963,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w20',
   items: [
+    '\ud83e\udeb6 <b>A calmer start</b> \u2014 Daylog had grown to nineteen screens and a Log page that opened with <b>38 deep-log rating scales</b> switched on, before you had written a single thing. New installs now begin with the Log, Time, Focus, Stats and Habits; the other thirteen sit behind <b>More features</b> in the menu, each described by what it does, one tap to add. Setup went from five steps to three. <b>Nothing changed for you</b> \u2014 your menu, your Deep log and your layout are exactly as you left them; this only affects a fresh install.',
     '\ud83d\udcbe <b>Export a backup as a real file again</b> \u2014 please update in the Play Store. Inside the app, exporting could only ever offer \u201ccopy to clipboard\u201d, and the Share button next to it did nothing at all: Android\u2019s WebView has no share API and blocks ordinary downloads, and the failure was being swallowed silently. The new build writes the file straight to your <b>Downloads</b> folder, so Import can pick it like any other file. Until you update, the copy box now says why and the Share button tells you instead of failing quietly.',
     '\ud83d\udcca <b>Money now has a Charts tab</b> \u2014 net worth over 12 months, your spending so far this month drawn against the same point last month, income vs spending by month, a ranked category breakdown, a typical-spend-by-weekday profile, a calendar of every day\u2019s spending, and 12-month trends per category that only say \u201crising\u201d or \u201cfalling\u201d past a 15% change rather than dressing up noise as a trend.<br><br>Three things were wrong and are fixed: net worth used to show an account opened today as already holding its balance a year ago \u2014 accounts now have a start date and count for nothing before it. The weekday chart used the average, which one monthly rent payment could turn into \u201cFriday is your most expensive day\u201d; it now uses the middle day instead. And the spending calendar was washed out by a single big bill setting the scale, so it now scales to your ordinary days and marks where it clips.',
     '\ud83d\udcb0 <b>Money</b> \u2014 a new screen in the \u2630 menu. Accounts, cash, credit cards, investments, property and loans in one place, with net worth worked out from them. Record money in, out and transfers; set optional caps per category; import a bank CSV and it works out which column is which (importing the same statement twice adds nothing). Balances are <b>derived from your own records</b>, so they can never disagree with your ledger, and amounts are held as whole paise rather than decimals \u2014 a hundred 10-paise entries come to exactly \u20b910, not \u20b99.99999999999998.<br><br>The part a finance app cannot do: your spending sits next to your mood, sleep and screen time in the same app, so <b>Patterns</b> can tell you things like \u201cyou spend \u20b9900 more a day on lower-mood days\u201d \u2014 split on your own median, with the sample size shown, and never reported below 6 days on either side. Nothing is uploaded, and there is no bank login.',
@@ -1195,7 +1196,12 @@ const LOG_SECTIONS_DEF = [
   { id: 'workout',   label: 'Workout',          sub: "link to today's gym log" },
   { id: 'health',    label: 'Health',           sub: 'auto-tracked steps, sleep, screen time' },
   { id: 'reflection',label: 'Reflection',       sub: 'wins, improvements, journal' },
-  { id: 'deep',      label: 'Deep log',         sub: 'the optional polymath metrics' },
+  /* `off` = hidden on a FRESH install only. A saved dp.logsec always wins, so nobody who
+     already uses these loses anything. The Deep log is 10 sections and 38 rating scales, and
+     every one of them rendered on the Log screen on day one — the onboarding step even said
+     "pick only what you'll actually use" and then pre-ticked all ten. It is the single
+     biggest reason the app feels like work before you have logged anything. */
+  { id: 'deep',      label: 'Deep log',         sub: 'the optional polymath metrics', off: true },
   { id: 'weekly',    label: 'Sunday weekly review', sub: 'only appears on Sundays' },
 ];
 function logSecCfg() {
@@ -1208,7 +1214,9 @@ function logSecCfg() {
     const def = LOG_SECTIONS_DEF.find(d => d.id === (x || {}).id);
     if (def) out.push(Object.assign({}, def, { hidden: !!x.hidden }));
   });
-  LOG_SECTIONS_DEF.forEach(d => { if (!out.some(o => o.id === d.id)) out.push(Object.assign({}, d, { hidden: false })); });
+  /* A section added in a later release appears for everyone (hidden:false) EXCEPT ones
+     marked `off`, which stay out of the way until switched on in Customize. */
+  LOG_SECTIONS_DEF.forEach(d => { if (!out.some(o => o.id === d.id)) out.push(Object.assign({}, d, { hidden: !!d.off })); });
   return out;
 }
 function saveLogSec(list) {
@@ -11359,33 +11367,44 @@ document.addEventListener('keydown', (ev) => {
 
 /* ---------- Nav tabs: reorder / hide / rename (dp.navcfg) ---------- */
 // Bottom bar shows up to NAV_PRIMARY_MAX (4) pinned tabs + a "Menu" button that opens the side drawer with everything.
+/* `adv` = not shown on a FRESH install. Nineteen destinations is a wall on day one, and
+   most of them are empty until there is data to put in them — an empty trophy case and a
+   Money screen with no accounts teach nothing and cost attention. A saved dp.navcfg always
+   wins, so this changes nothing for anyone already using the app, and the drawer carries a
+   "More features" row that turns any of them on in one tap. Nothing is removed, ever. */
 const NAV_DEF = [
   { k: 'today',    ico: 'pencil',   label: 'Log',     primary: true, noHide: true },
   { k: 'time',     ico: 'clock',    label: 'Time',    primary: true },
-  { k: 'tasks',    ico: 'check',    label: 'Tasks' },
-  { k: 'notes',    ico: 'note',     label: 'Notes' },
-  { k: 'plans',    ico: 'list',     label: 'Plans' },
-  { k: 'projects', ico: 'layers',   label: 'Projects' },
-  { k: 'money',    ico: 'wallet',   label: 'Money' },
-  { k: 'ask',      ico: 'sparkle',  label: 'Ask' },
+  { k: 'tasks',    ico: 'check',    label: 'Tasks',   adv: true, blurb: 'A to-do list that rolls over and feeds your daily log.' },
+  { k: 'notes',    ico: 'note',     label: 'Notes',   adv: true, blurb: 'Quick notes, kept on this phone.' },
+  { k: 'plans',    ico: 'list',     label: 'Plans',   adv: true, blurb: 'Checklists for anything with steps.' },
+  { k: 'projects', ico: 'layers',   label: 'Projects', adv: true, blurb: 'Bigger efforts with milestones — and the hours you actually logged against them.' },
+  { k: 'money',    ico: 'wallet',   label: 'Money',   adv: true, blurb: 'Accounts, spending and net worth, with patterns against your mood and sleep.' },
+  { k: 'ask',      ico: 'sparkle',  label: 'Ask',     adv: true, blurb: 'Ask questions about your own data. No AI model, works offline.' },
   { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
-  { k: 'waves',    ico: 'radio',    label: 'Waves' },
-  { k: 'gym',      ico: 'dumbbell', label: 'Gym' },
+  { k: 'waves',    ico: 'radio',    label: 'Waves', adv: true, blurb: 'Ambient sounds for focus.' },
+  { k: 'gym',      ico: 'dumbbell', label: 'Gym', adv: true, blurb: 'Workout logging, sets and reps.' },
   { k: 'habits',   ico: 'flame',    label: 'Habits' },
   { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
-  { k: 'cal',      ico: 'calendar', label: 'Cal' },
+  { k: 'cal',      ico: 'calendar', label: 'Cal', adv: true, blurb: 'Your entries on a calendar.' },
   // Awards moved OUT of Stats: a fifth tab pushed Health off the edge of a 360px row, and a
   // lifetime trophy case has nothing to do with the Range picker the other tabs share.
-  { k: 'awards',   ico: 'star',     label: 'Awards' },
-  { k: 'write',    ico: 'pencil',   label: 'Write' },
-  { k: 'search',   ico: 'search',   label: 'Search' },
-  { k: 'history',  ico: 'history',  label: 'History' },
+  { k: 'awards',   ico: 'star',     label: 'Awards', adv: true, blurb: 'A trophy case worked out from your own log.' },
+  { k: 'write',    ico: 'pencil',   label: 'Write', adv: true, blurb: 'A distraction-free writing space.' },
+  { k: 'search',   ico: 'search',   label: 'Search', adv: true, blurb: 'Search everything you have written.' },
+  { k: 'history',  ico: 'history',  label: 'History', adv: true, blurb: 'Every day you have logged, in one list.' },
   { k: 'settings', ico: 'settings', label: 'Settings' },
 ];
 function navCfg() {
   const v0 = safeParse(localStorage.getItem('dp.navcfg'), null);
-  let cfg = Array.isArray(v0) ? v0 : NAV_DEF.map(n => Object.assign({}, n));
-  NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.push(Object.assign({}, d)); });   // future tabs append
+  /* Fresh install: advanced destinations start hidden. Saved config: left exactly alone —
+     this must never take a screen away from someone already using it. */
+  let cfg = Array.isArray(v0) ? v0
+    : NAV_DEF.map(n => Object.assign({}, n, n.adv ? { hidden: true } : {}));
+  /* A tab added in a LATER release appears for everyone, except advanced ones, which wait
+     to be asked for. Without this an existing user would be handed every new screen
+     unannounced — which is how the menu got to nineteen items. */
+  NAV_DEF.forEach(d => { if (!cfg.find(n => n.k === d.k)) cfg.push(Object.assign({}, d, d.adv ? { hidden: true } : {})); });
   // Migrate legacy configs (pre-v56 had no `primary`): seed pins from NAV_DEF defaults once.
   if (cfg.every(n => n.primary === undefined)) {
     cfg.forEach(n => { const d = NAV_DEF.find(x => x.k === n.k); n.primary = !!(d && d.primary) && !n.hidden; n.hidden = n.k === 'history' ? false : n.hidden; });
@@ -11438,9 +11457,44 @@ function renderDrawer() {
   const rows = items.map(n => `<button class="drawer-row ${n.k === cur ? 'on' : ''}" data-screen="${n.k}">
     <span class="drawer-ico">${icon(n.ico, 22)}</span><span class="drawer-lbl">${escapeHtml(n.label)}</span>
     ${n.primary ? '<span class="drawer-pin">pinned</span>' : ''}</button>`).join('');
-  document.getElementById('drawer-list').innerHTML = rows +
+  /* Everything switched off that could be switched on, described by what it DOES rather
+     than named — a list of nouns is what made the full menu unreadable in the first place. */
+  const off = navCfg().filter(n => n.hidden && NAV_DEF.some(d => d.k === n.k && d.adv));
+  const more = off.length ? `
+    <div class="drawer-more">
+      <button class="drawer-row drawer-more-h" id="drawer-more-toggle">
+        <span class="drawer-ico">${icon('plus', 22)}</span>
+        <span class="drawer-lbl">More features</span>
+        <span class="drawer-pin">${off.length}</span>
+      </button>
+      ${drawerMoreOpen ? `<div class="drawer-more-list">${off.map(n => {
+        const d = NAV_DEF.find(x => x.k === n.k) || {};
+        return `<button class="drawer-add" data-nav-on="${n.k}">
+          <span class="drawer-ico">${icon(n.ico, 20)}</span>
+          <span class="drawer-add-t"><b>${escapeHtml(n.label)}</b><span>${escapeHtml(d.blurb || '')}</span></span>
+          <span class="drawer-add-go">Add</span></button>`;
+      }).join('')}</div>` : ''}
+    </div>` : '';
+  document.getElementById('drawer-list').innerHTML = rows + more +
     `<button class="drawer-row drawer-edit" id="drawer-edit-tabs">${icon('pencil', 20)}<span class="drawer-lbl" style="margin-left:12px">Edit tabs &amp; this menu…</span></button>`;
 }
+let drawerMoreOpen = false;
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest && ev.target.closest('#drawer-more-toggle')) {
+    drawerMoreOpen = !drawerMoreOpen; renderDrawer(); return;
+  }
+  const add = ev.target.closest && ev.target.closest('[data-nav-on]');
+  if (add) {
+    const k = add.dataset.navOn;
+    const cfg = navCfg();
+    const row = cfg.find(n => n.k === k);
+    if (row) { row.hidden = false; saveNavCfg(cfg); }
+    renderDrawer();
+    navigateTo(k);          // take them straight there — adding it IS the intent to use it
+    closeDrawer();
+    toast(`${row ? row.label : 'Feature'} added to your menu`);
+  }
+});
 document.addEventListener('click', (ev) => {
   if (ev.target.closest && ev.target.closest('#drawer-edit-tabs')) { closeDrawer(); customPage = 'tabs'; navigateTo('custom'); }
 });
@@ -11778,7 +11832,7 @@ document.addEventListener('change', (ev) => {
     });
   }
 });
-const obHideH = new Set(), obHideA = new Set();
+const obHideH = new Set(), obHideA = new Set();   // obHideA is now always empty: the activity picker step was removed in v245
 // Deep-log sections: start light — only the core four preselected; the rest are
 // opt-in here (and re-enableable anytime in Customize ▸ Deep log).
 const obHideD = new Set(['health', 'finance', 'digital', 'growth', 'haircare', 'skincare']);
@@ -11839,28 +11893,6 @@ function renderOnboard() {
     <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>More ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Next</button>`;
   if (obStep === 2) body = `
-    <h1>What do you spend time on?</h1>
-    <p class="ob-lead">These become your one-tap stopwatch activities.</p>
-    <div class="habits ob-grid">${actCfg().concat(DB.timeacts()).map(a => `
-      <div class="habit ${obHideA.has(a.id) ? '' : 'on'}" data-ob-act="${a.id}">
-        <span class="check">✓</span><span class="emoji">${a.emoji}</span><span>${escapeHtml(a.name)}</span>
-      </div>`).join('')}</div>
-    <div class="task-add ob-add">
-      <input type="text" id="ob-new-act" placeholder="Add your own… (e.g. Cooking)" autocomplete="off">
-      <button class="btn btn-primary btn-sm" id="ob-add-act">Add</button>
-    </div>
-    <p class="ob-note">Everything here is editable later in <b>More ▸ Customize</b>.</p>
-    <button class="btn btn-primary" data-ob-next>Next</button>`;
-  if (obStep === 3) body = `
-    <h1>How deep do you want to go?</h1>
-    <p class="ob-lead">The optional Deep log adds richer daily metrics. Pick only what you'll actually use.</p>
-    <div class="habits ob-grid">${deepCfg().map(s => `
-      <div class="habit ${obHideD.has(s.id) ? '' : 'on'}" data-ob-deep="${s.id}">
-        <span class="check">✓</span><span class="emoji">${icon(SECTION_ICON[s.id] || 'layers', 16)}</span><span>${escapeHtml(stripLeadEmoji(s.title))}</span>
-      </div>`).join('')}</div>
-    <p class="ob-note">Skipped sections stay hidden — turn them on anytime in <b>Customize ▸ Deep log</b>.</p>
-    <button class="btn btn-primary" data-ob-next>Next</button>`;
-  if (obStep === 4) body = `
     <div class="ob-emoji">⏰</div>
     <h1>Never miss a day</h1>
     ${/* This used to read "People who set a daily reminder keep their streak 3x longer."
@@ -11876,17 +11908,13 @@ function renderOnboard() {
     <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
   el.innerHTML = `<div class="ob-inner">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
-    <div class="ob-dots">${[0, 1, 2, 3, 4].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+    <div class="ob-dots">${[0, 1, 2].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
 }
 document.addEventListener('click', (ev) => {
   const el = document.getElementById('onboard');
   if (!el || !el.classList.contains('on')) return;
   const hb = ev.target.closest('[data-ob-habit]');
   if (hb) { const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard(); return; }
-  const ac = ev.target.closest('[data-ob-act]');
-  if (ac) { const k = ac.dataset.obAct; obHideA.has(k) ? obHideA.delete(k) : obHideA.add(k); renderOnboard(); return; }
-  const dp = ev.target.closest('[data-ob-deep]');
-  if (dp) { const k = dp.dataset.obDeep; obHideD.has(k) ? obHideD.delete(k) : obHideD.add(k); renderOnboard(); return; }
   if (ev.target.id === 'ob-add-habit') {
     const inp = document.getElementById('ob-new-habit'); const raw = (inp.value || '').trim(); if (!raw) return;
     const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
@@ -11918,7 +11946,7 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
-    if (obStep < 4) { obStep++; renderOnboard(); return; }
+    if (obStep < 2) { obStep++; renderOnboard(); return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
     if (obHideA.size) {
