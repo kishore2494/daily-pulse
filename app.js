@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v245';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v246';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1785,6 +1785,95 @@ function autosaveDraft() {
   const targetDate = logDate, targetDraft = draft;
   _autosaveTimer = setTimeout(() => { _autosaveTimer = null; saveDraftNow(targetDate, targetDraft); }, 700);
 }
+/* ---------- Support Daylog ----------
+   A tip jar, through Google Play Billing, because that is the only rail Play's anti-steering
+   rule allows inside the app (the policy's single mention of donations exempts TAX EXEMPT
+   ones, which an individual developer's are not). A zero-cut UPI link belongs on the
+   website, which is outside the app and outside the rule.
+
+   A donation buys NOTHING. No feature, no badge, no stored supporter flag — deliberately, so
+   it stays an honest thank-you rather than a purchase, and so no part of the app can ever
+   behave differently for someone who paid.
+
+   The prices shown are the ones Play returns, never typed here: with no products configured
+   the plugin reports available:false and this whole feature renders nothing. A donate card
+   with invented amounts in it would be worse than no donate card.
+
+   Asked at most twice ever, on the dismissal of a celebration, sharing the same restraint as
+   the review ask — and never in the same session as one, because back-to-back asking is how
+   goodwill is spent. */
+const TIP_MAX_ASKS = 2;
+function tipPlugin() {
+  const p = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.DaylogBilling;
+  return (p && typeof p.products === 'function') ? p : null;
+}
+function tipState() { return safeParse(localStorage.getItem('dp.tip'), { asks: 0, last: 0, gave: false }) || { asks: 0, last: 0, gave: false }; }
+function tipSave(st) { localStorage.setItem('dp.tip', JSON.stringify(st)); }
+
+async function maybeAskForTip() {
+  try {
+    const pl = tipPlugin(); if (!pl) return;
+    const st = tipState();
+    if (st.gave || st.asks >= TIP_MAX_ASKS) return;
+    if (st.asks >= 1 && Date.now() - st.last < 30 * 86400000) return;   // a month between asks
+    if (contentDates().length < 14) return;      // two weeks of real use before asking for money
+    const res = await pl.products();
+    if (!res || !res.available || !(res.products || []).length) return;  // nothing configured: say nothing
+    tipShow(res.products);
+    tipSave({ asks: st.asks + 1, last: Date.now(), gave: false });
+  } catch (e) { /* a tip ask must never be the thing that breaks a celebration */ }
+}
+
+function tipShow(products) {
+  const once = products.filter(p => p.type === 'once').sort((a, b) => (a.micros || 0) - (b.micros || 0));
+  const month = products.find(p => p.type === 'monthly');
+  /* Middle option pre-selected: a blank "choose an amount" converts far worse than three
+     anchors, and the middle of three is where most people land. */
+  const mid = once.length === 3 ? 1 : Math.max(0, once.length - 1);
+  let el = document.getElementById('tip-ask');
+  if (!el) { el = document.createElement('div'); el.id = 'tip-ask'; el.className = 'sharesheet'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="ss-inner tip-card">
+    <div class="tip-emoji">\u2615</div>
+    <h2>Daylog is free, and stays free</h2>
+    <p class="tip-p">No ads, no account, no paid tier — and nothing here is locked. It is made
+      by one person in their own time. If it has been useful, you can buy that person a coffee.</p>
+    <p class="tip-p tip-dim">This changes nothing in the app. There is no supporter badge and no
+      extra feature — you would be saying thanks, that is all.</p>
+    <div class="tip-opts">${once.map((p, i) => `
+      <button class="tip-opt ${i === mid ? 'on' : ''}" data-tip-buy="${escapeHtml(p.id)}">
+        <b>${escapeHtml(p.price || '')}</b><span>${i === 0 ? 'a little' : i === mid ? 'a coffee' : 'generous'}</span>
+      </button>`).join('')}</div>
+    ${month ? `<button class="tip-month" data-tip-buy="${escapeHtml(month.id)}">
+      or <b>${escapeHtml(month.price || '')} a month</b> — cancel any time in Play Store</button>` : ''}
+    <div class="pj-btns" style="justify-content:center;margin-top:4px">
+      <button class="btn btn-ghost" id="tip-no">Not now</button>
+    </div>
+    <p class="tip-p tip-dim" style="margin-top:10px">Asked at most twice, ever.</p>
+  </div>`;
+  el.classList.add('on');
+}
+
+document.addEventListener('click', async (ev) => {
+  const el = document.getElementById('tip-ask');
+  if (!el || !el.classList.contains('on')) return;
+  if (ev.target.id === 'tip-no' || ev.target === el) { el.classList.remove('on'); return; }
+  const b = ev.target.closest('[data-tip-buy]');
+  if (!b) return;
+  const pl = tipPlugin(); if (!pl) { el.classList.remove('on'); return; }
+  el.classList.remove('on');
+  try {
+    const r = await pl.buy({ id: b.dataset.tipBuy });
+    if (r && r.status === 'thanks') {
+      const st = tipState(); st.gave = true; tipSave(st);   // never ask this person again
+      toast('Thank you \u2014 genuinely \ud83d\ude4f');
+      buzz(20);
+    } else if (r && r.status === 'failed') {
+      toast('That did not go through' + (r.reason ? ' \u2014 ' + r.reason : ''), true);
+    }
+    /* cancelled: say nothing at all. Nobody needs a notification that they changed their mind. */
+  } catch (e) { toast('Could not open Google Play', true); }
+});
+
 /* ---------- The one review ask ----------
    Reviews gate every distribution channel, and this app never asks for one. The rules that
    keep this from becoming the nagging every store app does:
@@ -1964,7 +2053,15 @@ document.addEventListener('click', (ev) => {
     const m = document.getElementById('milestone'); if (m) m.classList.remove('on');
     /* The ask rides on the dismissal of a celebration — the user just chose to end a good
        moment, so nothing is being interrupted. */
-    if (_rateArm) { _rateArm = false; setTimeout(maybeAskForReview, 450); }
+    if (_rateArm) {
+      _rateArm = false;
+      /* One ask per celebration, never both. The review ask comes first — it costs the user
+         nothing and is worth more to the app than a few rupees. The tip is only offered on a
+         celebration where the review ask has already been settled. */
+      const rs = rateState();
+      if (!rs.done && rs.asks < 2) setTimeout(maybeAskForReview, 450);
+      else setTimeout(maybeAskForTip, 450);
+    }
   }
 });
 function saveDraftNow(date, d) {
@@ -6036,7 +6133,9 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
    now, so tools/check-backup-keys.mjs can hold the pair to account — every key the app writes
    must appear in exactly one of BACKUP_KEYS or this one. A key in neither fails the release,
    which is what would have caught the eleven missing in v230, and 'settings' here. */
-const BACKUP_EXCLUDED = ['celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
+const BACKUP_EXCLUDED = [
+  'tip',     // how many times the support ask has been shown here — not data, and a donation
+             // buys nothing, so there is deliberately nothing about a donor worth restoring'celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'lastBackup',                        // when this device last exported; restoring it misreports

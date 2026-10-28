@@ -1779,6 +1779,72 @@
     if (lS != null) localStorage.setItem('dp.logsec', lS); else localStorage.removeItem('dp.logsec');
   })();
 
+  /* ---- SUPPORT ASK (Play Billing tip jar) ---- */
+  (function () {
+    const tS = localStorage.getItem('dp.tip'), eS = localStorage.getItem('dp.entries');
+    const rS = localStorage.getItem('dp.rateAsk');
+    const capSnap = window.Capacitor;
+    const shown = () => { const e = document.getElementById('tip-ask'); return !!e && e.classList.contains('on'); };
+    const hide = () => { const e = document.getElementById('tip-ask'); if (e) e.classList.remove('on'); };
+
+    /* THE RULE THE WHOLE FEATURE RESTS ON: Play's anti-steering policy allows exactly one
+       in-app payment rail. With no products configured the plugin reports available:false
+       and this must render NOTHING — a donate card with invented amounts would be worse
+       than no donate card at all. */
+    localStorage.removeItem('dp.tip');
+    const many = {}; for (let i = 0; i < 20; i++) many[addDays(todayStr(), -i)] = { mood: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(many));
+    window.Capacitor = undefined;
+    ok('no plugin, no ask', (maybeAskForTip(), !shown()));
+    ok('and no ask is spent', tipState().asks === 0);
+
+    // --- the card renders only from prices Play returned ---
+    tipShow([
+      { id: 'daylog_tip_small', type: 'once', price: '₹99', micros: 99000000 },
+      { id: 'daylog_tip_medium', type: 'once', price: '₹249', micros: 249000000 },
+      { id: 'daylog_tip_large', type: 'once', price: '₹499', micros: 499000000 },
+      { id: 'daylog_support_monthly', type: 'monthly', price: '₹149' },
+    ]);
+    const el = document.getElementById('tip-ask');
+    ok('the card shows three amounts', el.querySelectorAll('.tip-opt').length === 3);
+    ok('the middle one is pre-selected', el.querySelectorAll('.tip-opt')[1].classList.contains('on'));
+    ok('amounts come from Play, not from here', /₹249/.test(el.textContent));
+    ok('a monthly option is offered', !!el.querySelector('.tip-month'));
+    /* A donation must buy nothing — if this copy ever stops being true the feature has
+       quietly become a digital purchase, with everything that implies. */
+    ok('it says plainly that nothing is unlocked', /nothing in the app|changes nothing in the app/i.test(el.textContent));
+    ok('it says it is free and stays free', /free, and stays free/i.test(el.textContent));
+    ok('and that the cap is two asks', /twice, ever/i.test(el.textContent));
+    hide();
+
+    // --- restraint ---
+    ok('nothing about a donor is stored beyond "do not ask again"',
+      Object.keys(tipState()).sort().join(',') === 'asks,gave,last');
+    tipSave({ asks: 0, last: 0, gave: true });
+    window.Capacitor = { Plugins: { DaylogBilling: { products: () => Promise.resolve(
+      { available: true, products: [{ id: 'x', type: 'once', price: '₹99' }] }) } } };
+    maybeAskForTip();
+    ok('someone who already gave is never asked again', !shown());
+    tipSave({ asks: 2, last: 0, gave: false });
+    maybeAskForTip();
+    ok('two asks is the hard cap', !shown());
+
+    /* Two weeks of REAL days before money is mentioned — ghost entries do not count. */
+    tipSave({ asks: 0, last: 0, gave: false });
+    const few = {}; for (let i = 0; i < 5; i++) few[addDays(todayStr(), -i)] = { mood: 7 };
+    localStorage.setItem('dp.entries', JSON.stringify(few));
+    maybeAskForTip();
+    ok('not asked before two weeks of real use', !shown() && tipState().asks === 0);
+
+    ok('the tip key is install-local, not backed up',
+      BACKUP_EXCLUDED.includes('tip') || !BACKUP_KEYS.includes('tip'));
+
+    window.Capacitor = capSnap;
+    if (tS != null) localStorage.setItem('dp.tip', tS); else localStorage.removeItem('dp.tip');
+    if (rS != null) localStorage.setItem('dp.rateAsk', rS); else localStorage.removeItem('dp.rateAsk');
+    if (eS != null) localStorage.setItem('dp.entries', eS); else localStorage.removeItem('dp.entries');
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
