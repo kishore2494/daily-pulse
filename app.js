@@ -6134,8 +6134,10 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
    must appear in exactly one of BACKUP_KEYS or this one. A key in neither fails the release,
    which is what would have caught the eleven missing in v230, and 'settings' here. */
 const BACKUP_EXCLUDED = [
-  'tip',     // how many times the support ask has been shown here — not data, and a donation
-             // buys nothing, so there is deliberately nothing about a donor worth restoring'celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
+  // how many times the support ask has been shown here — not data, and a donation buys
+  // nothing, so there is deliberately nothing about a donor worth restoring
+  'tip',
+  'celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'lastBackup',                        // when this device last exported; restoring it misreports
