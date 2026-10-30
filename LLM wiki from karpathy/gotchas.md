@@ -19,6 +19,12 @@
 - Prod emulator images can't `adb root`, and shell can't trigger a non-exported `AlarmReceiver` — so native alarms can't be fire-tested from shell. Cold-booted emulator on software GPU throws "System UI isn't responding" ANRs — that's the emulator, not the app.
 - **Real-phone testing is authoritative** for alarms (emulator can't mimic MIUI, can't fast-forward days). Plain notification WAS proven firing with app dead (id 424242).
 - Release WebView has no devtools socket → can't inject JS to drive it. Drive via `input tap` or test the web build in the `browse` headless Chromium instead.
+  **Better (2026-10-30): drive the web layer on the REAL phone through phone Chrome**, which does
+  have a devtools socket: `adb reverse tcp:8471 tcp:8471`, open `http://localhost:8471/index.html`
+  in the phone's Chrome, then `adb forward tcp:9222 localabstract:chrome_devtools_remote` and speak
+  CDP (`Runtime.evaluate`, `Page.captureScreenshot` — the latter excludes Chrome's own UI and banners).
+  Same engine family as the WebView, real width/DPR/fonts, and no native shell to rebuild. Only touch
+  the localhost tab — the user's own tabs are in the same browser.
 
 ## MIUI / Redmi (the user's phone)
 - Blocks `adb install` (INSTALL_FAILED_USER_RESTRICTED) → push the APK to `/sdcard/Download/` and install from the file manager's **Internal storage ▸ Download** (the category tab may not show it until media-scanned).
@@ -304,3 +310,37 @@ persists in `dumpsys notification`. So:
 finding the channel — with the exact name/importance/sound config from the source — proves
 that code path executed, even when the notification itself is no longer live. That is often
 the only evidence available on a shared device.
+
+
+## A CSS change doesn't reach a browser until `?v=` changes (2026-10-30)
+
+`index.html` loads `styles.css?v=NNN`. Edit the CSS without bumping and any browser that already
+has that URL keeps the old file — the change looks like it "didn't work". Run `tools/bump.sh`, or
+reload with the cache bypassed (CDP `Page.reload {ignoreCache:true}`) while iterating.
+
+## Off-canvas elements keep painting their shadows
+
+The menu drawer was parked at `translateX(100%)` with `box-shadow: -12px 0 40px`, so its shadow
+bled ~50px into the right edge of every screen — and made the clean left gutter look like a
+stripe. Closed drawers get `visibility: hidden` (delayed by the slide duration on close), which
+also takes their buttons out of the tab order. Measure edges with pixels, not eyes: the "left
+stripe" was an illusion caused by the right-hand shadow.
+
+## A sticky glass header must be full-bleed
+
+`.topbar` sat inside the 16px gutter with a gradient fading to transparent under a blur: hard
+seams at both sides, a hard blur line at its bottom, and scrolled content smeared into blobs under
+the title. It now spans edge to edge (`margin: 0 -16px`) on `color-mix(var(--bg) 90%)` with a
+hairline that appears only once scrolled (`.topbar.scrolled`).
+
+## The guided tour fails silently — probe it, don't eyeball it
+
+A step whose selector matches nothing renders a full-screen dim with no highlight; nothing errors.
+v246 had: step 1 aimed at `.scale` (the legacy 1–10 row, replaced by the `.mm-card` mood grid);
+step 5's spotlight 389px off because `html { scroll-behavior: smooth }` animates `scrollIntoView`
+and the old fixed 260ms wait measured mid-scroll; step 7's primary row absent from the default
+drawer so it highlighted the whole panel and overflowed the edge; Stats steps landing on whatever
+sub-tab the user last viewed. Fixes: retargeted selectors, an instant scroll + rAF poll until the
+rect (top AND left — the drawer slides sideways) stops moving, viewport-clamped spotlight,
+`dashTab = 'overview'` for Stats steps. Verify by comparing each step's spotlight rect with its
+target's rect, started from a non-default state.

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v246';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v247';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -917,7 +917,7 @@ function bedwakeField(f) {
       <span class="bw-cell ${draft.bedTime ? '' : 'bw-empty'}"><span class="bw-lab">Bed</span><input type="time" data-bed="${f.key}" value="${draft.bedTime || ''}"></span>
       <span class="bw-arrow">→</span>
       <span class="bw-cell ${draft.wakeTime ? '' : 'bw-empty'}"><span class="bw-lab">Wake</span><input type="time" data-wake="${f.key}" value="${draft.wakeTime || ''}"></span>
-      <span class="bw-dur" data-bw-dur="${f.key}">${h || '—'}</span>
+      <span class="bw-dur${h ? '' : ' bw-dur-empty'}" data-bw-dur="${f.key}">${h || '—'}</span>
     </div>${f.key === 'sleepHours' ? trackedChip('sleepHours', trackedInfo.sleep) : ''}</div>`;
 }
 // Deep work (or any duration field): hours + minutes selectors → decimal hours (#log-2)
@@ -1635,7 +1635,7 @@ function renderToday() {
   let numRows = wideNums.map(f => `<div class="row-wide">${numCell(f)}</div>`).join('');
   for (let i = 0; i < simpleNums.length; i += 2) numRows += `<div class="row2">${numCell(simpleNums[i])}${numCell(simpleNums[i + 1])}</div>`;
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
-      <textarea data-txt="${f.key}" placeholder="...">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
+      <textarea data-txt="${f.key}" placeholder="Write a line or two…">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
   const journalF = core.find(f => f.type === 'journal');
   const journalHtml = journalF ? `<div class="field"><label>${escapeHtml(journalF.label)} <span class="hint">type or speak · use #tags to link</span></label>
       <div class="jt-row">
@@ -1674,7 +1674,7 @@ function renderToday() {
       <h2>Daily checklist <span class="hint">tap what you did</span></h2>
       <div class="habits">${habitChips}</div>
       <div class="task-add" style="margin-top:10px">
-        <input type="text" id="log-habit-input" placeholder="New checklist item… (e.g. 🌅 Wake at 6)" autocomplete="off">
+        <input type="text" id="log-habit-input" placeholder="Add a checklist item…" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="log-habit-add">Add</button>
       </div>
       <button class="btn btn-ghost btn-sm" id="log-habit-ideas" style="margin-top:8px">✨ Browse habit ideas</button>
@@ -1692,8 +1692,8 @@ function renderToday() {
     deep: () => `<h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
       ${renderDeepSections()}`,
     weekly: () => (isSunday(logDate) ? `<div class="card"><h2>📅 Sunday weekly review</h2>
-      <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="...">${escapeHtml(draft.weekWins||'')}</textarea></div>
-      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="...">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''),
+      <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="Write a line or two…">${escapeHtml(draft.weekWins||'')}</textarea></div>
+      <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="Write a line or two…">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''),
   };
   const secHTML = logSecCfg()
     .filter(sec => !sec.hidden && SEC[sec.id])
@@ -2103,7 +2103,7 @@ document.addEventListener('change', (ev) => {
     const cell = bw.closest('.bw-cell'); if (cell) cell.classList.toggle('bw-empty', !bw.value);
     draft[key] = bedwakeHours(draft.bedTime, draft.wakeTime);
     const disp = document.querySelector(`[data-bw-dur="${key}"]`);
-    if (disp) { const d = draft[key]; disp.textContent = (d !== '' && d != null) ? (Math.floor(d) + 'h ' + Math.round((d - Math.floor(d)) * 60) + 'm') : '—'; }
+    if (disp) { const d = draft[key], has = d !== '' && d != null; disp.textContent = has ? (Math.floor(d) + 'h ' + Math.round((d - Math.floor(d)) * 60) + 'm') : '—'; disp.classList.toggle('bw-dur-empty', !has); }
     autosaveDraft(); return;
   }
   const dur = ev.target.closest('[data-dur-h], [data-dur-m]');
@@ -2898,11 +2898,11 @@ function renderTime() {
   document.getElementById('s-time').innerHTML = `
     ${nowCard}
     <div class="card">
-      <h2>Switch to <span class="hint">tapping switches instantly — the old timer stops itself</span></h2>
+      <h2>Activities <span class="hint">tap to start · tap another to switch</span></h2>
       <div class="act-grid">${chips}</div>
       ${projectRow}
       <div class="task-add" style="margin-top:10px">
-        <input type="text" id="tt-newact" placeholder="Add your own activity… (e.g. Cooking)" autocomplete="off">
+        <input type="text" id="tt-newact" placeholder="Add an activity…" autocomplete="off">
         <button class="btn btn-ghost btn-sm" id="tt-newact-add">Add</button>
       </div>
     </div>
@@ -4206,7 +4206,7 @@ function renderDash() {
   const timeHTML = `
     <div class="card"><div class="stat-grid">
       <div class="stat"><div class="v">${avg('sleepHours')}</div><div class="l">avg sleep h</div></div>
-      <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep wk</div></div>
+      <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep work h</div></div>
       <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
       <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">workouts</div></div>
     </div></div>
@@ -11577,7 +11577,7 @@ function renderDrawer() {
       }).join('')}</div>` : ''}
     </div>` : '';
   document.getElementById('drawer-list').innerHTML = rows + more +
-    `<button class="drawer-row drawer-edit" id="drawer-edit-tabs">${icon('pencil', 20)}<span class="drawer-lbl" style="margin-left:12px">Edit tabs &amp; this menu…</span></button>`;
+    `<button class="drawer-row drawer-edit" id="drawer-edit-tabs"><span class="drawer-ico">${icon('pencil', 22)}</span><span class="drawer-lbl">Edit tabs &amp; this menu…</span></button>`;
 }
 let drawerMoreOpen = false;
 document.addEventListener('click', (ev) => {
@@ -11809,6 +11809,7 @@ function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<
    user-chosen content (custom habits/activities). icon() falls back to the raw string
    (e.g. an emoji) if the name isn't in the set. */
 const ICONS = {
+  play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/>',
@@ -11856,7 +11857,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;
@@ -12078,14 +12079,14 @@ document.addEventListener('click', (ev) => {
    Each step navigates to the right screen, highlights the real
    element (spotlight cutout) and explains it. ============================================================ */
 const TOUR = [
-  { s: 'today', t: '.scale', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
+  { s: 'today', t: '.mm-card', alt: '.mm-cell', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
   { s: 'today', t: '#log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
   { s: 'today', t: '#health-sync', alt: '.h2-icon', h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
   { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
   { s: 'dash', t: '.pat-row', alt: '.pm-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
   { s: 'dash', t: '[data-dashtab="health"]', h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
-  { s: '__menu', t: '.drawer-row[data-screen="search"]', alt: '.drawer-list', h: 'Everything else lives in Menu', b: 'Search your entire life, History, Gym, Calendar, Focus timers… and pin ANY of these to the bottom bar with “Edit tabs”.' },
-  { s: null, t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
+  { s: '__menu', t: '#drawer-more-toggle', alt: '.drawer-row', h: 'Everything else lives in Menu', b: 'Search your entire life, History, Gym, Calendar, Focus timers… and pin ANY of these to the bottom bar with “Edit tabs”.' },
+  { s: 'today', t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
 ];
 let tourIdx = -1;
 function startTour() { tourIdx = 0; showTourStep(); }
@@ -12098,12 +12099,28 @@ function showTourStep() {
   const st = TOUR[tourIdx];
   if (!st) { endTour(); toast('Enjoy Daylog 🔥'); return; }
   if (st.s === '__menu') { try { openDrawer(); } catch (_) {} }
-  else { try { closeDrawer(); } catch (_) {} if (st.s) navigateTo(st.s); }
+  else {
+    try { closeDrawer(); } catch (_) {}
+    // Stats remembers its last sub-tab; the tour's Stats steps live on Overview.
+    if (st.s === 'dash') dashTab = 'overview';
+    if (st.s) navigateTo(st.s);
+  }
   setTimeout(() => {
     let el = st.t ? document.querySelector(st.t) : null;
     if (!el && st.alt) el = document.querySelector(st.alt);
-    if (el) { try { el.scrollIntoView({ block: 'center' }); } catch (_) {} }
-    setTimeout(() => renderTourOverlay(st, el), el ? 260 : 30);
+    if (!el) { setTimeout(() => renderTourOverlay(st, null), 30); return; }
+    try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+    catch (_) { try { el.scrollIntoView({ block: 'center' }); } catch (_) {} }
+    // html{scroll-behavior:smooth} animates the scroll, so a fixed wait can measure
+    // the element mid-flight and strand the spotlight. Poll until the rect stops moving.
+    let last = null, stable = 0, tries = 0;
+    (function settle() {
+      const b = el.getBoundingClientRect(), t = Math.round(b.top) + ',' + Math.round(b.left);
+      stable = (t === last) ? stable + 1 : 0;
+      last = t;
+      if (stable >= 2 || ++tries > 40) { renderTourOverlay(st, el); return; }
+      requestAnimationFrame(settle);
+    })();
   }, 380);
 }
 function renderTourOverlay(st, el) {
@@ -12111,15 +12128,20 @@ function renderTourOverlay(st, el) {
   if (!o) { o = document.createElement('div'); o.id = 'tour'; document.body.appendChild(o); }
   const r = el ? el.getBoundingClientRect() : null;
   const pad = 8;
-  const spot = r
-    ? `<div class="tour-spot" style="top:${Math.max(2, r.top - pad)}px;left:${Math.max(4, r.left - pad)}px;width:${Math.min(window.innerWidth - 8, r.width + pad * 2)}px;height:${r.height + pad * 2}px"></div>`
-    : '<div class="tour-spot tour-none"></div>';
+  let spot = '<div class="tour-spot tour-none"></div>';
+  if (r) {
+    const left = Math.max(4, r.left - pad);
+    const top = Math.max(2, r.top - pad);
+    const width = Math.min(r.width + pad * 2, window.innerWidth - 4 - left);
+    const height = Math.min(r.height + pad * 2, window.innerHeight - 2 - top);
+    spot = `<div class="tour-spot" style="top:${top}px;left:${left}px;width:${width}px;height:${height}px"></div>`;
+  }
   o.innerHTML = `${spot}<div class="tour-card tour-card-bottom">
     <div class="tour-step">${tourIdx + 1} / ${TOUR.length}</div>
     <div class="tour-h">${st.h}</div>
     <div class="tour-b">${st.b}</div>
     <div class="tour-btns">
-      <button class="btn btn-ghost btn-sm" id="tour-skip">Skip</button>
+      ${tourIdx === TOUR.length - 1 ? '' : '<button class="btn btn-ghost btn-sm" id="tour-skip">Skip</button>'}
       ${tourIdx > 0 ? '<button class="btn btn-ghost btn-sm" id="tour-back">‹ Back</button>' : ''}
       <button class="btn btn-primary btn-sm" id="tour-next">${tourIdx === TOUR.length - 1 ? 'Done 🔥' : 'Next ›'}</button>
     </div></div>`;
@@ -12146,6 +12168,9 @@ cleanNotifiedFlags();
 applyTheme();
 renderNav();
 document.getElementById('nav').classList.add('ready');   // reveal the bar now that the correct tabs are rendered (no flash)
+// Hairline under the header only once content is actually scrolling beneath it.
+const _topbar = document.querySelector('.topbar');
+addEventListener('scroll', () => { if (_topbar) _topbar.classList.toggle('scrolled', scrollY > 4); }, { passive: true });
 refreshStreak();
 // Returning from the standalone How-to guide (index.html?go=settings) lands on Settings, not home.
 const _go = new URLSearchParams(location.search).get('go');

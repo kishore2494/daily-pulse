@@ -2137,3 +2137,35 @@ input[type="range"] { height: 30px; }
   font: 400 13px/1.5 inherit; color: var(--text-dim); min-height: 44px; padding: 4px; }
 .tip-month b { color: var(--accent-ink); }
 #tip-no { min-height: 48px; }
+
+/* ---------- v247: polish pass (real-device audit, RMX3231 @ 360px) ---------- */
+/* Header spans the full width. Inset by the 16px gutter, its blur ended in a hard seam on each
+   side, and the fade-to-transparent tail smeared scrolled content into blobs under the title. */
+.topbar { margin: 0 -16px; padding-left: 16px; padding-right: 16px;
+  background: rgba(7, 11, 20, .9); background: color-mix(in srgb, var(--bg) 90%, transparent);
+  border-bottom: 1px solid transparent; transition: border-color .2s; }
+:root[data-mode="light"] .topbar { background: rgba(244, 246, 251, .9); background: color-mix(in srgb, var(--bg) 90%, transparent); }
+.topbar.scrolled { border-bottom-color: var(--border); }
+
+/* Closed, the drawer sat just off-screen with its shadow still on: a grey smear down the right
+   edge of every screen. Hidden when closed also takes its buttons out of the tab order. */
+.drawer { visibility: hidden; transition: transform .24s cubic-bezier(.4,0,.2,1), visibility 0s linear .24s; }
+.drawer.on { visibility: visible; transition: transform .24s cubic-bezier(.4,0,.2,1), visibility 0s; }
+/* A border-top on a 12px-radius row followed the curve; draw a straight divider instead. */
+.drawer-edit { border-top: none; position: relative; margin-top: 13px; }
+.drawer-edit::before { content: ''; position: absolute; left: 12px; right: 12px; top: -7px; height: 1px; background: var(--border); }
+
+/* Stats tabs: 350px of tabs in a 326px row cut "Health" mid-word with no hint it scrolled.
+   Tighter spacing fits all four at 360px; narrower than that, the icons go instead. */
+#s-dash .seg-row { container-type: inline-size; gap: 2px; }
+#s-dash .seg-btn { padding-left: 8px; padding-right: 8px; gap: 4px; }
+@container (max-width: 312px) {
+  #s-dash .seg-btn .ic { display: none; }
+  #s-dash .seg-btn { padding-left: 10px; padding-right: 10px; }   /* text-only "Time" stays a 44px target */
+}
+
+/* An empty sleep readout is a placeholder, not a value. */
+.bw-dur-empty { color: var(--text-faint); font-weight: 500; }
+
+/* Four tiles in a three-column grid left one orphan on its own row. */
+.stat-grid:has(> :nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }

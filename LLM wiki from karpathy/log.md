@@ -1,3 +1,25 @@
+## 2026-10-30 — v247: tour fixes + real-device polish pass
+
+Kishore called the tour "messy and amateur, lots of bugs" and asked to refine the app. Audited on
+a Realme RMX3231 (Android 11, 360px) via phone Chrome + CDP (see gotchas).
+
+Tour (all 8 steps measured — spotlight vs target rect, delta now 0 on every step, including when
+started from a non-default Stats sub-tab): step 1 retargeted from the dead `.scale` to `.mm-card`;
+scroll settle polls the rect instead of a fixed 260ms; spotlight clamped to the viewport; step 7
+points at "More features"; Stats steps force the Overview sub-tab; tour ends back on Log; no
+"Skip" beside "Done" on the last step.
+
+Polish: full-bleed header with scroll hairline; drawer shadow no longer bleeds when closed (right
+edge brightness 177 -> 246); Stats tabs fit at 360px (were cut at "Heal"), icons drop below that;
+straight menu divider + aligned "Edit tabs" label; placeholders no longer cut mid-word; Time
+"Activities" header no longer reads as one garbled sentence; empty sleep readout muted; 4-tile stat
+grids go 2x2; "avg deep work h"; tour row gets a line icon (new `play` icon, 🎓 mapped).
+
+Gates: 547 unit tests x4 timezones, all 9 tools/check-*.mjs, layout eval 1008 -> 1029 — the delta
+is sub-pixel `< 44` noise on 44.00px tabs (measured on device), not new small targets.
+Flagged, not changed (judgment calls): What's-new popup reads as a developer changelog; the 🔥
+pill shows the day streak while Today shows a week streak; app-wide 36px chips under 44px.
+
 ## 2026-09-11 — v241: ghost days and celebration fatigue (behaviour-audit items closed)
 
 The two integrity items open since the audit. An entry with no content — reachable by
