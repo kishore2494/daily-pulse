@@ -130,3 +130,21 @@ reads Health Connect, so the declaration is mandatory. This blocked 112 too.
 The listing copy deliberately does not mention sharing. Generation ships over the web and is
 already live at v190; delivery needs THIS build. Do not promise a share sheet the installed
 app cannot open. Add that paragraph once 113 is live and tested.
+
+## Build 117 / versionName 77 — built and device-tested, NOT uploaded (2026-10-30)
+First build carrying `BillingPlugin` (`DaylogBilling`), the native half of the v246 tip jar.
+Confirmed in the dex: 117 has it, 116 (live on Play) does not — so **no donation can happen for
+anyone until 117 is live**. The manifest gains `com.android.vending.BILLING` (billing 7.1.1).
+- Staged: `~/Documents/p/Daylog-117.aab` (4.72 MB, for Play) and `Daylog-117.apk` (4.91 MB).
+- Upload key `144d1f76…d728` = 116's upload key, so Play will accept it. The copy installed on
+  the user's phone is **Play-signed** (`9feb77ab…`), so a local build can never `install -r` over
+  it — testing was done side-by-side with a temporary `.sidetest` applicationId (reverted).
+- Device-tested on Realme RMX3231 (Android 11): launches, renders, no plugin errors, entries
+  survive force-stop. Billing itself was NOT testable: it needs a Play-distributed build and
+  live products.
+- **Donations stay invisible (by design) until, in Play Console:** a payments profile is linked;
+  one-time products `daylog_tip_small`, `daylog_tip_medium`, `daylog_tip_large` and subscription
+  `daylog_support_monthly` exist with those exact IDs and are **active**; 117 is live on a track.
+- Only entry point is `maybeAskForTip()` after a celebration is dismissed: ≥14 logged days, max 2
+  asks a month apart, never after giving. There is no permanent Support row in Settings.
+- Uploads have always been manual in Play Console; there is no API publishing pipeline.
