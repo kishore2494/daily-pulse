@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v247';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v248';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1824,7 +1824,19 @@ async function maybeAskForTip() {
   } catch (e) { /* a tip ask must never be the thing that breaks a celebration */ }
 }
 
-function tipShow(products) {
+/* The Settings row: the person went looking, so none of the asking limits apply and it does
+   not count as an ask. Shown only inside the Play app (no plugin, no row) — in a browser there
+   is no Play Billing, and pointing anywhere else would break the anti-steering rule. */
+async function tipOpen() {
+  const pl = tipPlugin(); if (!pl) return;
+  try {
+    const res = await pl.products();
+    if (!res || !res.available || !(res.products || []).length) { toast('Tips are not available right now \u2014 try again later'); return; }
+    tipShow(res.products, false);
+  } catch (e) { toast('Could not reach Google Play', true); }
+}
+
+function tipShow(products, asked = true) {
   const once = products.filter(p => p.type === 'once').sort((a, b) => (a.micros || 0) - (b.micros || 0));
   const month = products.find(p => p.type === 'monthly');
   /* Middle option pre-selected: a blank "choose an amount" converts far worse than three
@@ -1848,7 +1860,7 @@ function tipShow(products) {
     <div class="pj-btns" style="justify-content:center;margin-top:4px">
       <button class="btn btn-ghost" id="tip-no">Not now</button>
     </div>
-    <p class="tip-p tip-dim" style="margin-top:10px">Asked at most twice, ever.</p>
+    ${asked ? '<p class="tip-p tip-dim" style="margin-top:10px">Asked at most twice, ever.</p>' : ''}
   </div>`;
   el.classList.add('on');
 }
@@ -5566,6 +5578,8 @@ function renderSettings() {
         <span class="menu-txt"><span class="menu-lbl">Take the app tour</span><span class="menu-sub">60-second guided walkthrough</span></span><span class="menu-go">›</span></button>
       <a class="menu-row" href="guide.html"><span class="menu-ico">📖</span>
         <span class="menu-txt"><span class="menu-lbl">How to use Daylog</span><span class="menu-sub">a quick illustrated tour</span></span><span class="menu-go">›</span></a>
+      ${tipPlugin() ? `<button class="menu-row" id="open-tip"><span class="menu-ico">💛</span>
+        <span class="menu-txt"><span class="menu-lbl">Support Daylog</span><span class="menu-sub">an optional tip · unlocks nothing</span></span><span class="menu-go">›</span></button>` : ''}
     </div>
     <div class="card">
       <h2>💬 Feedback <span class="hint">no account · goes to one person</span></h2>
@@ -11857,7 +11871,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;
@@ -12151,6 +12165,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'tour-back') { tourIdx = Math.max(0, tourIdx - 1); showTourStep(); return; }
   if (ev.target.id === 'tour-skip') { endTour(); return; }
   if (ev.target.closest && ev.target.closest('#open-tour')) { show('today'); startTour(); return; }
+  if (ev.target.closest && ev.target.closest('#open-tip')) { tipOpen(); return; }
 });
 
 /* ---------- Init ---------- */

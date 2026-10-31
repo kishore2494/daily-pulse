@@ -1,3 +1,12 @@
+## 2026-10-31 — v248: Support Daylog row in Settings
+
+Kishore couldn't find a donate button anywhere — by design the only entry was the post-celebration
+ask. Added a Settings row (Play app only) that opens the same tip card without the "asked at most
+twice" line and without counting as an ask. Tested with a stubbed DaylogBilling plugin: row hidden
+without the plugin, card opens, buy marks `gave`, empty product list toasts. Also fixed two Money
+chart unit tests that failed on the 1st of every month (fixture stops at yesterday) — they now
+check last month.
+
 ## 2026-10-31 — Play merchant setup + web v247 live
 
 v247 (tour + polish) deployed and verified live (tag web-v247). Kishore linked the Play payments

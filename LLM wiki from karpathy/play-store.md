@@ -145,8 +145,10 @@ anyone until 117 is live**. The manifest gains `com.android.vending.BILLING` (bi
 - **Donations stay invisible (by design) until, in Play Console:** a payments profile is linked;
   one-time products `daylog_tip_small`, `daylog_tip_medium`, `daylog_tip_large` and subscription
   `daylog_support_monthly` exist with those exact IDs and are **active**; 117 is live on a track.
-- Only entry point is `maybeAskForTip()` after a celebration is dismissed: ≥14 logged days, max 2
-  asks a month apart, never after giving. There is no permanent Support row in Settings.
+- Two entry points: `maybeAskForTip()` after a celebration is dismissed (≥14 logged days, max 2
+  asks a month apart, never after giving), and since v248 a **Support Daylog** row in Settings
+  (`tipOpen()`, Play app only — no plugin, no row; doesn't count as an ask; toasts if Play
+  returns no products).
 - Uploads have always been manual in Play Console; there is no API publishing pipeline.
 
 ## Build 118 / versionName 78 — supersedes 117 (2026-10-31)

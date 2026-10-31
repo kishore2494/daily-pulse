@@ -1300,7 +1300,10 @@
     // --- the calendar heatmap must not collapse to one shade ---
     /* Scaling to the maximum let one rent payment push every ordinary day into the lightest
        step, leaving the grid monochrome — the opposite of what a heatmap is for. */
-    const cal = chCalendar(ym);
+    /* Last month, not this one: the fixture stops at yesterday, so on the 1st this month is
+       empty and the heatmap has nothing to shade (failed every 1st, first seen in UTC+14). */
+    const lastYm = finYm(addDays(T, -+T.slice(8, 10)));
+    const cal = chCalendar(lastYm);
     const steps = (cal.match(/ch-cal-c s(\d)/g) || []).map(x => x.slice(-1));
     const used = [...new Set(steps.filter(x => x !== '0'))];
     ok('the heatmap uses more than one intensity', used.length >= 3, used.join(','));
@@ -1330,7 +1333,7 @@
 
     // --- the tab renders ---
     const prevTab = mnTab, prevYm = mnYm;
-    mnTab = 'charts'; renderMoney();
+    mnTab = 'charts'; mnYm = lastYm; renderMoney();
     const html = document.getElementById('s-money').innerHTML || '';
     ok('the charts tab renders', html.length > 1000, html.length);
     ok('it draws at least four figures', (html.match(/<svg/g) || []).length >= 4,
