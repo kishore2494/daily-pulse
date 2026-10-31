@@ -1,3 +1,13 @@
+## 2026-10-31 — v249: the tip card is a real bottom sheet
+
+Kishore: "the page was not good". The v246 card floated text on a full-screen blur with the lower
+half empty, showed Play's "₹49.00", and pre-highlighted an amount that meant nothing because the
+first tap bought immediately. Now a bottom sheet: heart badge, short copy (keeps "free and stays
+free" and "changes nothing in the app", both unit-tested), pick an amount → one "Tip ₹99" button
+pays it, monthly as a quiet link, "Not now", fine print. `tipPrice()` drops only a trailing zero
+fraction. Checked at 360 and 320px in navy, light and black with a stubbed DaylogBilling plugin
+(headless Chrome + CDP, phone not connected).
+
 ## 2026-10-31 — v248: Support Daylog row in Settings
 
 Kishore couldn't find a donate button anywhere — by design the only entry was the post-celebration

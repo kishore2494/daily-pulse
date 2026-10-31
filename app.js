@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v248';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v249';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1836,31 +1836,38 @@ async function tipOpen() {
   } catch (e) { toast('Could not reach Google Play', true); }
 }
 
+/* Play hands back "₹49.00"; whole amounts read as prices, not invoices. Only a trailing
+   zero fraction goes — "₹1,00,000" and "€1,50" are left alone. */
+function tipPrice(p) { return String(p || '').replace(/[.,]00(?=\D*$)/, ''); }
+
+/* A bottom sheet: pick an amount, then one clear button pays it. The old card bought on the
+   first tap while also showing a "selected" amount, so the highlight meant nothing. */
 function tipShow(products, asked = true) {
   const once = products.filter(p => p.type === 'once').sort((a, b) => (a.micros || 0) - (b.micros || 0));
   const month = products.find(p => p.type === 'monthly');
   /* Middle option pre-selected: a blank "choose an amount" converts far worse than three
      anchors, and the middle of three is where most people land. */
   const mid = once.length === 3 ? 1 : Math.max(0, once.length - 1);
+  const words = i => i === 0 ? 'a little' : i === mid ? 'a coffee' : 'generous';
   let el = document.getElementById('tip-ask');
   if (!el) { el = document.createElement('div'); el.id = 'tip-ask'; el.className = 'sharesheet'; document.body.appendChild(el); }
-  el.innerHTML = `<div class="ss-inner tip-card">
-    <div class="tip-emoji">\u2615</div>
-    <h2>Daylog is free, and stays free</h2>
-    <p class="tip-p">No ads, no account, no paid tier — and nothing here is locked. It is made
-      by one person in their own time. If it has been useful, you can buy that person a coffee.</p>
-    <p class="tip-p tip-dim">This changes nothing in the app. There is no supporter badge and no
-      extra feature — you would be saying thanks, that is all.</p>
-    <div class="tip-opts">${once.map((p, i) => `
-      <button class="tip-opt ${i === mid ? 'on' : ''}" data-tip-buy="${escapeHtml(p.id)}">
-        <b>${escapeHtml(p.price || '')}</b><span>${i === 0 ? 'a little' : i === mid ? 'a coffee' : 'generous'}</span>
+  const pick = once[mid];
+  el.innerHTML = `<div class="tip-card" role="dialog" aria-modal="true" aria-labelledby="tip-h">
+    <div class="tip-grip" aria-hidden="true"></div>
+    <div class="tip-badge" aria-hidden="true">${icon('heart', 24)}</div>
+    <h2 id="tip-h">Enjoying Daylog?</h2>
+    <p class="tip-p">Daylog is free and stays free, with no ads and nothing locked. It's made
+      by one person, so if it helps you, you can say thanks with a tip.</p>
+    ${once.length ? `<div class="tip-opts" role="radiogroup" aria-label="Tip amount">${once.map((p, i) => `
+      <button class="tip-opt ${i === mid ? 'on' : ''}" role="radio" aria-checked="${i === mid}"
+        data-tip-pick="${escapeHtml(p.id)}" data-price="${escapeHtml(tipPrice(p.price))}">
+        <b>${escapeHtml(tipPrice(p.price))}</b><span>${words(i)}</span>
       </button>`).join('')}</div>
+    <button class="btn btn-primary tip-go" data-tip-buy="${escapeHtml(pick.id)}">Tip ${escapeHtml(tipPrice(pick.price))}</button>` : ''}
     ${month ? `<button class="tip-month" data-tip-buy="${escapeHtml(month.id)}">
-      or <b>${escapeHtml(month.price || '')} a month</b> — cancel any time in Play Store</button>` : ''}
-    <div class="pj-btns" style="justify-content:center;margin-top:4px">
-      <button class="btn btn-ghost" id="tip-no">Not now</button>
-    </div>
-    ${asked ? '<p class="tip-p tip-dim" style="margin-top:10px">Asked at most twice, ever.</p>' : ''}
+      ${once.length ? 'Or support' : 'Support'} monthly · <b>${escapeHtml(tipPrice(month.price))}/month</b></button>` : ''}
+    <button class="tip-no" id="tip-no">Not now</button>
+    <p class="tip-fine">Paid through Google Play. A tip changes nothing in the app.${month ? ' Cancel monthly any time in Play Store.' : ''}${asked ? ' We only ask twice, ever.' : ''}</p>
   </div>`;
   el.classList.add('on');
 }
@@ -1868,7 +1875,16 @@ function tipShow(products, asked = true) {
 document.addEventListener('click', async (ev) => {
   const el = document.getElementById('tip-ask');
   if (!el || !el.classList.contains('on')) return;
-  if (ev.target.id === 'tip-no' || ev.target === el) { el.classList.remove('on'); return; }
+  // Not now, or a tap on the dimmed area above the sheet.
+  if (ev.target.closest('#tip-no') || !ev.target.closest('.tip-card')) { el.classList.remove('on'); return; }
+  const o = ev.target.closest('[data-tip-pick]');
+  if (o) {
+    el.querySelectorAll('.tip-opt').forEach(x => { const on = x === o; x.classList.toggle('on', on); x.setAttribute('aria-checked', on); });
+    const go = el.querySelector('.tip-go');
+    if (go) { go.dataset.tipBuy = o.dataset.tipPick; go.textContent = 'Tip ' + o.dataset.price; }
+    buzz(8);
+    return;
+  }
   const b = ev.target.closest('[data-tip-buy]');
   if (!b) return;
   const pl = tipPlugin(); if (!pl) { el.classList.remove('on'); return; }
@@ -1877,10 +1893,10 @@ document.addEventListener('click', async (ev) => {
     const r = await pl.buy({ id: b.dataset.tipBuy });
     if (r && r.status === 'thanks') {
       const st = tipState(); st.gave = true; tipSave(st);   // never ask this person again
-      toast('Thank you \u2014 genuinely \ud83d\ude4f');
+      toast('Thank you — genuinely 🙏');
       buzz(20);
     } else if (r && r.status === 'failed') {
-      toast('That did not go through' + (r.reason ? ' \u2014 ' + r.reason : ''), true);
+      toast('That did not go through' + (r.reason ? ' — ' + r.reason : ''), true);
     }
     /* cancelled: say nothing at all. Nobody needs a notification that they changed their mind. */
   } catch (e) { toast('Could not open Google Play', true); }

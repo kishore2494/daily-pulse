@@ -1816,7 +1816,7 @@
     /* A donation must buy nothing — if this copy ever stops being true the feature has
        quietly become a digital purchase, with everything that implies. */
     ok('it says plainly that nothing is unlocked', /nothing in the app|changes nothing in the app/i.test(el.textContent));
-    ok('it says it is free and stays free', /free, and stays free/i.test(el.textContent));
+    ok('it says it is free and stays free', /free,? and stays free/i.test(el.textContent));
     ok('and that the cap is two asks', /twice, ever/i.test(el.textContent));
     hide();
 
