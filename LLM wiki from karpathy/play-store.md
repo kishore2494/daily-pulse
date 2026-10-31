@@ -159,3 +159,15 @@ Staged `~/Documents/p/Daylog-118.aab` (4.75 MB); dex contains `QueryProductDetai
 `DaylogBilling`; upload key `144d1f76…d728`. Not device-tested (phone was disconnected).
 The "no deobfuscation file" warning is expected — R8 is off (see app/build.gradle).
 An uploaded versionCode can never be reused, so a rejected build always means a bump.
+
+## Merchant setup (2026-10-31)
+- Developer account: personal, ID `5724262917689037597`, owner/developer email
+  `akishorekumar2494@gmail.com` (use it as the support email). Console:
+  `https://play.google.com/console/u/0/developers/5724262917689037597`.
+- Payments profile linked: "Individual profile for Play" (8366-7427-2294), not the Cloud one.
+  Public merchant name **Daylog**, category Computer Software, statement name DAYLOG.
+- Account group created (no other accounts) for the **15% service fee**; terms still to accept.
+- BillDesk PA-CB KYC **not started** — until done, only India can pay.
+- Earning money makes the legal address public on Play. A personal account's legal address is
+  ID-verified, so it is not a free-text field to swap.
+- Products still to create (Monetize with Play ▸ Products): tips ₹49/₹99/₹299, monthly ₹49.

@@ -1,3 +1,9 @@
+## 2026-10-31 — Play merchant setup + web v247 live
+
+v247 (tour + polish) deployed and verified live (tag web-v247). Kishore linked the Play payments
+profile and created the account group; recorded the IDs and what is still open (15% terms,
+products, BillDesk KYC) in play-store.md ▸ Merchant setup.
+
 ## 2026-10-30 — v247: tour fixes + real-device polish pass
 
 Kishore called the tour "messy and amateur, lots of bugs" and asked to refine the app. Audited on
