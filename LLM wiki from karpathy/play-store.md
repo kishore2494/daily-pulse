@@ -148,3 +148,14 @@ anyone until 117 is live**. The manifest gains `com.android.vending.BILLING` (bi
 - Only entry point is `maybeAskForTip()` after a celebration is dismissed: ≥14 logged days, max 2
   asks a month apart, never after giving. There is no permanent Support row in Settings.
 - Uploads have always been manual in Play Console; there is no API publishing pipeline.
+
+## Build 118 / versionName 78 — supersedes 117 (2026-10-31)
+Play Console **refused 117**: "uses Play Billing Library 7.1.1 and must update to at least 8.0.0".
+118 moves to `billing:8.3.0` (newest 8.x; 9.x exists but is not required). Billing-8 changes made
+in `BillingPlugin.java`: `enablePendingPurchases(PendingPurchasesParams…enableOneTimeProducts())`
+replaces the removed no-arg form; `queryProductDetailsAsync` now yields a
+`QueryProductDetailsResult` (`.getProductDetailsList()`); added `enableAutoServiceReconnection()`.
+Staged `~/Documents/p/Daylog-118.aab` (4.75 MB); dex contains `QueryProductDetailsResult` and
+`DaylogBilling`; upload key `144d1f76…d728`. Not device-tested (phone was disconnected).
+The "no deobfuscation file" warning is expected — R8 is off (see app/build.gradle).
+An uploaded versionCode can never be reused, so a rejected build always means a bump.
