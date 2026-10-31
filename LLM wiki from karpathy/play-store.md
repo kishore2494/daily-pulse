@@ -170,4 +170,7 @@ An uploaded versionCode can never be reused, so a rejected build always means a 
 - BillDesk PA-CB KYC **not started** — until done, only India can pay.
 - Earning money makes the legal address public on Play. A personal account's legal address is
   ID-verified, so it is not a free-text field to swap.
-- Products still to create (Monetize with Play ▸ Products): tips ₹49/₹99/₹299, monthly ₹49.
+- Products CREATED and active (Kishore, 2026-10-31): one-time `daylog_tip_small` ₹49,
+  `daylog_tip_medium` ₹99, `daylog_tip_large` ₹299 (purchase option ID `buy`, backwards
+  compatible), subscription `daylog_support_monthly` base plan `monthly` ₹49, no offers.
+  Donations go live for Play installs once build 118 is published.
