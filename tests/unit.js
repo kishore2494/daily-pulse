@@ -2734,6 +2734,80 @@
     }
   })();
 
+  // ---- v254: a failed pull says why, once, and never hangs or raises the crash sheet ----
+  (function () {
+    const keys = ['dp.sheetScript', 'dp.settings', 'dp.errlog', 'dp.onboarded'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast, toasts = []; window.toast = (m, err) => toasts.push((err ? 'ERR ' : '') + m);
+    const fSnap = window.fetch, sent = []; window.fetch = (u, o) => { sent.push(o && o.body); return Promise.resolve({ ok: true }); };
+    const stSnap = window.setTimeout, pspSnap = settingsPage;
+    const lastCb = () => Object.keys(window).filter(k => /^dpcb\d+$/.test(k)).pop();
+    const lastScript = () => [...document.querySelectorAll('script[src*="type=pull"]')].pop();
+    // start a pull and hand back its script element, with jsdom's own late 404 detached
+    const start = () => { const calls = []; pullState((ok, why) => calls.push([ok, why])); const el = lastScript(); const on = { error: el.onerror, load: el.onload }; el.onerror = el.onload = null; return { calls, el, on, cb: lastCb() }; };
+    try {
+      const st = DB.settings(); st.syncUrl = 'https://script.google.com/macros/s/FAIL/exec'; DB.saveSettings(st);
+      const open0 = _pullsOpen;
+      let p = start(); p.on.error();
+      ok('a link that does not load: done(false, "unreachable")', JSON.stringify(p.calls) === '[[false,"unreachable"]]', p.calls);
+      ok('…the script is gone and the pull no longer counted as open', !p.el.isConnected && _pullsOpen === open0);
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      p = start(); p.on.error();
+      delete navigator.onLine;
+      ok('no connection: done(false, "offline")', JSON.stringify(p.calls) === '[[false,"offline"]]', p.calls);
+      p = start(); p.on.load(); p.on.error();
+      ok('a reply that loads but never calls back: done(false, "unreadable"), once', JSON.stringify(p.calls) === '[[false,"unreadable"]]', p.calls);
+      ok('…and an answer that turns up later finds a harmless callback', typeof window[p.cb] === 'function' && (window[p.cb]({ touched: 1 }), true));
+      let fired = null; window.setTimeout = (fn, ms) => { if (ms === PULL_WAIT) { fired = fn; return 0; } return stSnap(fn, ms); };
+      p = start(); window.setTimeout = stSnap;
+      ok('a pull waits PULL_WAIT for its answer', typeof fired === 'function' && PULL_WAIT >= 15000);
+      fired && fired(); p.on.load();
+      ok('no answer in time: done(false, "timeout"), once', JSON.stringify(p.calls) === '[[false,"timeout"]]', p.calls);
+      const shown0 = _crashShown;
+      p = start(); window[p.cb]({ get touched() { throw new Error('boom'); } });
+      ok('a state the merge throws on: done(false, "unreadable"), and logged', JSON.stringify(p.calls) === '[[false,"unreadable"]]' && /sync pull: boom/.test(localStorage.getItem('dp.errlog') || ''), p.calls);
+      document.querySelectorAll('#crash-sheet').forEach(x => x.remove()); _crashShown = shown0;
+      p = start(); window[p.cb]({}, { script: SHEET_SCRIPT }); p.on.load();
+      ok('a good answer: done(true) once, even though load fires after it', JSON.stringify(p.calls) === '[[true,null]]' || JSON.stringify(p.calls) === '[[true,undefined]]' || (p.calls.length === 1 && p.calls[0][0] === true), p.calls);
+      ok('…and its callback is removed', !(p.cb in window));
+      // "Script error." from a pull's reply is the pull's to report, not the crash sheet's
+      p = start();
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
+      ok('a reply that does not parse does not raise the crash sheet', !_crashShown && !document.getElementById('crash-sheet'));
+      p.on.load();
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
+      ok('…but with no pull open, "Script error." still does', _crashShown && !!document.getElementById('crash-sheet'));
+      document.querySelectorAll('#crash-sheet').forEach(x => x.remove()); _crashShown = shown0;
+      // what the buttons say
+      settingsPage = 'data'; renderSettings(); toasts.length = 0; sent.length = 0;
+      document.getElementById('sync-now').click(); lastScript().onerror();
+      ok('Sync now that reaches nothing says so, not "Synced ✅"', toasts.length === 2 && toasts[1].startsWith('ERR Could not reach your Sheet') && !toasts.some(t => /Synced/.test(t)), toasts);
+      ok('…and does not push', sent.length === 0, sent.length);
+      toasts.length = 0; document.getElementById('sync-now').click(); lastScript().onload();
+      ok('Sync now with an unreadable copy points at the script', /could not be read/.test(toasts[1] || ''), toasts);
+      toasts.length = 0; document.getElementById('sync-now').click(); window[lastCb()]({}, { script: SHEET_SCRIPT });
+      ok('Sync now that works still says "Synced ✅"', toasts[1] === 'Synced ✅', toasts);
+      renderSettings(); toasts.length = 0;
+      document.getElementById('sync-url').value = 'https://script.google.com/macros/s/FAIL2/exec';
+      document.getElementById('save-sync').click(); lastScript().onerror();
+      ok('Connect to a link that does not load says so, not "Connected (nothing to pull yet)"', toasts.some(t => t.startsWith('ERR Could not reach')) && !toasts.some(t => /nothing to pull/.test(t)), toasts);
+      let out = null;
+      syncLinkRestore('https://script.google.com/macros/s/R/exec', (status) => { out = status; }); lastScript().onload();
+      ok('restoring from a sheet whose copy cannot be read ends, as "unreadable"', out === 'unreadable', out);
+      out = null; syncLinkRestore('https://script.google.com/macros/s/R/exec', (status) => { out = status; }); lastScript().onerror();
+      ok('…and from one that does not load, as "unreachable"', out === 'unreachable', out);
+      ok('every failure has its own words', new Set(['offline', 'timeout', 'unreadable', 'unreachable'].map(syncFailMsg)).size === 4);
+      ok('no pull is left open', _pullsOpen === open0, _pullsOpen);
+    } finally {
+      window.toast = tSnap; window.fetch = fSnap; window.setTimeout = stSnap; settingsPage = pspSnap; try { delete navigator.onLine; } catch (e) {}
+      clearTimeout(pushTimer); _pushPending = null;
+      Object.keys(window).filter(k => /^dpcb\d+$/.test(k)).forEach(k => { delete window[k]; });
+      document.querySelectorAll('script[src*="type=pull"]').forEach(x => { x.onerror = x.onload = null; x.remove(); });
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      renderSettings();
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

@@ -233,7 +233,17 @@ function reportCrash(msg, src) {
     document.body.appendChild(el);
   } catch (_) {}
 }
-window.addEventListener('error', (e) => { if (e && e.message) reportCrash(e.message, e.filename + ':' + e.lineno); });
+/* JSONP pulls waiting for their answer (pullState). The answer is a script from Google, so if it
+   does not parse — a _State the Sheet broke, a very old script — the browser reports only
+   "Script error." here, with no file. That was raising the crash sheet on every open of an app
+   that was fine; the pull itself now reports the failure. Declared here, above its first use,
+   so an error during startup still reaches the handler. */
+let _pullsOpen = 0;
+window.addEventListener('error', (e) => {
+  if (!e || !e.message) return;
+  if (_pullsOpen && !e.filename && /^Script error\.?$/.test(e.message)) return;
+  reportCrash(e.message, e.filename + ':' + e.lineno);
+});
 window.addEventListener('unhandledrejection', (e) => { reportCrash('promise: ' + (e && e.reason), 'async'); });
 document.addEventListener('click', (ev) => {
   if (!ev.target.closest) return;
@@ -547,7 +557,7 @@ function toast(msg, isErr) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show' + (isErr ? ' err' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.className = 'toast', 2200);
+  toastTimer = setTimeout(() => t.className = 'toast', Math.min(7000, Math.max(2200, String(msg).length * 60)));   // long enough to read
 }
 
 /* ---------- Streaks ---------- */
@@ -854,15 +864,45 @@ function sheetScriptOld(url) {
   const seen = safeParse(localStorage.getItem('dp.sheetScript'), null);
   return !!(url && seen && seen.url === url && seen.v < SHEET_SCRIPT);
 }
+/* done(ok, why) runs exactly once. A failed pull says why, so nobody is told "Synced ✅" when
+   nothing was reached:
+     offline     the phone has no connection
+     unreachable the link did not load: wrong link, deleted script, access not "Anyone"
+     unreadable  it loaded but never called back: a reply that does not parse (a _State the
+                 Sheet broke, a very old script), or a state the merge could not take
+     timeout     no answer in PULL_WAIT; Apps Script can take seconds to wake, not this long
+   Before, the last two never called done at all, so the restore screens sat on "Connecting…". */
+const PULL_WAIT = 30000;
 function pullState(done) {
-  const url = DB.settings().syncUrl; if (!url) { done && done(false); return; }
+  const url = DB.settings().syncUrl; if (!url) { done && done(false, 'no-link'); return; }
   const cb = 'dpcb' + Date.now();
   const script = document.createElement('script');
-  const cleanup = () => { delete window[cb]; script.remove(); };
-  window[cb] = (remote, meta) => { cleanup(); sheetScriptSeen(url, meta); applyRemoteState(remote); done && done(true); };
-  script.onerror = () => { cleanup(); done && done(false); };
+  let settled = false;
+  const finish = (ok, why) => {
+    if (settled) return; settled = true; _pullsOpen--;
+    clearTimeout(timer); script.remove();
+    // an answer that turns up after a failure must find something to call, or it is an error
+    if (ok) delete window[cb]; else window[cb] = () => {};
+    done && done(ok, why);
+  };
+  window[cb] = (remote, meta) => {   // finish() swaps this out, so it never runs after settling
+    sheetScriptSeen(url, meta);
+    try { applyRemoteState(remote); }
+    catch (e) { reportCrash('sync pull: ' + (e && e.message || e), 'applyRemoteState'); finish(false, 'unreadable'); return; }
+    finish(true);
+  };
+  script.onerror = () => finish(false, navigator.onLine === false ? 'offline' : 'unreachable');
+  script.onload = () => finish(false, 'unreadable');   // it ran, and the callback above did not
+  const timer = setTimeout(() => finish(false, 'timeout'), PULL_WAIT);
+  _pullsOpen++;
   script.src = url + (url.includes('?') ? '&' : '?') + 'type=pull&callback=' + cb + '&t=' + Date.now();
   document.body.appendChild(script);
+}
+function syncFailMsg(why) {
+  return why === 'offline' ? 'You are offline, so nothing synced. It will when you open Daylog online.'
+    : why === 'timeout' ? 'Your Sheet did not answer in time. Try Sync now again in a minute.'
+    : why === 'unreadable' ? 'Your Sheet answered, but its copy could not be read. Update the Sheet script (see the setup page).'
+    : 'Could not reach your Sheet. Check the link ends in /exec and the script is deployed for Anyone.';
 }
 // Merge remote into local so NOTHING is lost on either device:
 //  entries  -> by date, newest updatedAt wins
@@ -6743,10 +6783,12 @@ document.addEventListener('click', async (ev) => {
   const s = DB.settings();
   if (ev.target.id === 'save-sync') {
     s.syncUrl = document.getElementById('sync-url').value.trim(); DB.saveSettings(s);
-    if (s.syncUrl) { toast('Connected — loading your data…'); pullState(ok => { renderSettings(); toast(ok ? 'Logged in & synced ✅' : 'Connected (nothing to pull yet)'); }); }
+    if (s.syncUrl) { toast('Connected — loading your data…'); pullState((ok, why) => { renderSettings(); toast(ok ? 'Logged in & synced ✅' : syncFailMsg(why), !ok); }); }
     else { renderSettings(); toast('Link cleared'); }
   }
-  if (ev.target.id === 'sync-now') { toast('Syncing…'); pullState(ok => { if (!ok) pushState(true); toast('Synced ✅'); if (!!document.getElementById('sync-old') !== sheetScriptOld(DB.settings().syncUrl)) renderSettings(); }); }
+  /* A failed pull used to push and say "Synced ✅" anyway, offline included. It says what went
+     wrong now. It does not push either: every save already pushes the whole state. */
+  if (ev.target.id === 'sync-now') { toast('Syncing…'); pullState((ok, why) => { toast(ok ? 'Synced ✅' : syncFailMsg(why), !ok); if (!!document.getElementById('sync-old') !== sheetScriptOld(DB.settings().syncUrl)) renderSettings(); }); }
   if (ev.target.id === 'resync') { toast('Pushing all…'); resyncAll(); }
   if (ev.target.id === 'pis-save') {
     const s2 = DB.settings();
@@ -6918,6 +6960,7 @@ document.addEventListener('click', async (ev) => {
       if (status === 'restored') { renderSettingsIfShown(); refreshStreak(); toast(`Restored ${days} day${days === 1 ? '' : 's'} ✅`); }
       else if (status === 'empty') { renderSettingsIfShown(); toast('Connected, but the sheet has no data to restore yet', true); }
       else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
+      else if (status === 'unreadable') toast('That sheet answered, but its copy could not be read. Update the script in it (see the setup page) and try again.', true);
       else toast('Could not reach that link — check it and try again', true);
     });
     return;
@@ -14015,12 +14058,12 @@ let obRestore = false;   // the welcome-back panel is open instead of the step
 function syncLinkRestore(raw, onOutcome) {
   if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(raw || '')) { onOutcome('bad-url', 0); return; }
   const st = DB.settings(); st.syncUrl = raw; DB.saveSettings(st);
-  pullState(ok => {
+  pullState((ok, why) => {
     const days = ok ? contentDates().length : 0;
     if (ok && days) return onOutcome('restored', days);
     if (ok) return onOutcome('empty', 0);
     const s2 = DB.settings(); s2.syncUrl = ''; DB.saveSettings(s2);
-    onOutcome('unreachable', 0);
+    onOutcome(why === 'unreadable' ? 'unreadable' : 'unreachable', 0);
   });
 }
 
@@ -14152,6 +14195,7 @@ document.addEventListener('click', (ev) => {
       if (status === 'restored') obFinishRestore(`Welcome back — ${days} day${days === 1 ? '' : 's'} restored ✅`);
       else if (status === 'empty') toast('Connected, but the sheet has no data to restore yet', true);
       else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
+      else if (status === 'unreadable') toast('That sheet answered, but its copy could not be read. Update the script in it (see the setup page) and try again.', true);
       else toast('Could not reach that link — check it and try again', true);
     });
     return;
