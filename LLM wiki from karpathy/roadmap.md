@@ -48,8 +48,9 @@
 - Finish Google Play identity verification (blocking everything).
 - Deploy `Code.gs` (latest) + redeploy new version → unlocks Time Log / Events / Articles Sheet tabs,
   and (v253) stops `_State` pieces and "- …" journal lines coming back as #ERROR!.
-  - The app cannot tell that a user's sheet runs an old script. Idea: `doGet` returns a
-    script version, and Settings ▸ Sync says "update your Sheet script" when it is old.
+  - (DONE 2026-11-02, v254 not deployed: `doGet` passes `SCRIPT_VERSION` as a second JSONP
+    argument; the app keeps it per link in `dp.sheetScript` and says "update your Sheet
+    script" in Settings ▸ Backup & restore when it is older than `SHEET_SCRIPT`.)
 - Deploy `Feedback.gs` → paste URL into `FEEDBACK_URL` in app.js.
 - Back up `daily-pulse-android/android.keystore` + `keystore-password.txt` off-machine.
 - Test full-screen alarm + timer notification on the real phone (emulator can't).

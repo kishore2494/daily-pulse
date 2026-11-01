@@ -158,6 +158,18 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   newer edit on the other phone still wins.
 - `dp.listAt` / `dp.listDel` are install state: in `BACKUP_EXCLUDED`, sent with every push.
 
+### The pull itself (v254, not deployed)
+- **Script version.** Code.gs answers a pull with `callback(state, {script: SCRIPT_VERSION})`.
+  The app records `{url, v}` in `dp.sheetScript` (v1 when the second argument is missing, i.e.
+  a copy pasted before versions) and compares with `SHEET_SCRIPT` in app.js. Raise BOTH when
+  Code.gs changes; `tools/check-sheet-script.mjs` fails if they differ. Old copy → one toast,
+  a marked Backup & restore row, and the update steps in the sync card (`sheetScriptOld`).
+- **Failure reasons.** `pullState(done)` → `done(ok, why)` exactly once; `why` is `offline`,
+  `unreachable` (script did not load), `unreadable` (loaded but never called back, or the
+  merge threw — logged to `dp.errlog`) or `timeout` (`PULL_WAIT`, 30 s). `syncFailMsg(why)`
+  is the user wording. While a pull is open (`_pullsOpen`), a bare "Script error." does not
+  raise the crash sheet — it is the pull's failure. A failed Sync now does not push.
+
 ## Native shell (Android)
 Two wrappers exist; **Capacitor is current**:
 - `daily-pulse-native/` (Capacitor) — loads the live site remotely (`server.url`), so web pushes update the app instantly. Adds native plugins: `@capacitor/local-notifications` + a custom `FullScreenAlarmPlugin` (Java) for lock-screen alarms. This builds the `.aab` for the Play Store.

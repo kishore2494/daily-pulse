@@ -1,3 +1,26 @@
+## 2026-11-02 (early) — the app says when a Sheet script is old; a failed pull says why
+
+Kishore: "you have to use more... broo". Two sync gaps, committed on origin (20c0ae3,
+1bfbc6b), NOT deployed; no version bump yet.
+- **Old Sheet script detected.** Code.gs `SCRIPT_VERSION = 2`, passed as a second JSONP
+  argument on every pull (a copy from before passes none, read as v1). The app keeps which
+  version answered per link and per device (`dp.sheetScript`, excluded from backups) and,
+  when it is below `SHEET_SCRIPT`, toasts once, marks the Backup & restore row, and shows
+  the four update steps in the sync card. The setup page has a new "Updating the script you
+  already have" section (`#update`): Manage deployments, not New deployment, or the link
+  changes. `check-sheet-script` holds the two version constants together and runs the pull
+  end to end. 12 tests, 10/10 mutations caught.
+- **A failed pull says why.** `pullState(done)` now calls `done(ok, why)` exactly once:
+  offline / unreachable / unreadable / timeout (30 s). Before, a reply that loaded but did
+  not parse, or a merge that threw, never called done — the restore screens sat on
+  "Connecting…" — and Sync now said "Synced ✅" after any failure, offline included, and
+  pushed anyway. "Script error." from a pull no longer raises the crash sheet. 21 tests,
+  13/13 mutations caught.
+- Stale wording fixed: the sync card and setup page no longer say "newest edit wins; nothing
+  is deleted" (untrue since v253); step 7 names the real Settings path.
+- Two agents in flight: an adversarial review of the v253 sync code, and a worktree build of
+  plans-items and gym per-key merges (both lost once when the session died; resumed).
+
 ## 2026-11-01 (late night) — v253 DEPLOYED
 
 Kishore said "deplye". `tools/deploy.sh --tag`: all checks and 888 tests × 4 timezones
