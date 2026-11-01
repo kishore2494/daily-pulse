@@ -1,3 +1,11 @@
+## 2026-11-01 (late night) — v253 DEPLOYED
+
+Kishore said "deplye". `tools/deploy.sh --tag`: all checks and 888 tests × 4 timezones
+passed; prod 3664df2..370ec07; tag `web-v253` on both remotes; the Pages build succeeded and
+the live app.js, sw.js and index.html all serve v253. The live setup page carries the new
+Code.gs (`cut_`, `text_`). Kishore still has to re-paste and redeploy his own Sheet script.
+Native build 119 is still not uploaded.
+
 ## 2026-11-01 (late night) — lists sync item by item; the Sheet script stops mangling text
 
 Kishore: "still the tokens are left". Took the biggest open roadmap item.
