@@ -67,7 +67,8 @@ an eval suite that now measures every Stats sub-tab and all four overlays.
 
 **Storage:** IndexedDB `daylog-media`, object store `media` (keyPath `id`, indexes `day` and `ctx`).
 A record looks like this:
-`{ id, kind:'photo'|'voice', mime, blob, thumb?, day, ctx:'log'|'note:<noteId>', ts, w?, h?, dur?, size, caption? }`.
+`{ id, kind:'photo'|'voice', mime, blob, thumb?, day, ctx:'log'|'note:<noteId>', ts, w?, h?, dur?, size, caption?, enc? }`.
+`enc` is the encoder generation (`MEDIA_ENC`, 2 since v252). A photo without it was saved by v251.
 At boot `mediaLoad()` reads every record into the in-memory map `_media`. IDB blobs are
 disk-backed handles, so this is cheap. After that, rendering is synchronous.
 
@@ -80,12 +81,27 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
   - History row pills (📷 n 🎙 n), History ▸ Photos (by month), "On this day" (photo-only days
     count), and the `photos` share card.
 - **Photos:**
-  - `mediaPhotoRecord()` decodes with `createImageBitmap(..., {imageOrientation:'from-image'})`
-    and re-encodes on a canvas to JPEG at q0.82 with a 1600px long edge, plus a 360px thumbnail.
-  - Typical size is 80–300 KB. Re-encoding also strips EXIF, so no GPS data is kept.
+  - `mediaPhotoBlobs()` decodes with `createImageBitmap(..., {imageOrientation:'from-image'})`
+    and re-encodes on a canvas. Since v252 that is **WebP q0.70 with a 1280px long edge**, plus a
+    320px WebP q0.6 thumbnail. `mediaEncode` checks the type that comes back, because Safari
+    returns a PNG when asked for WebP, and anything that is not WebP is redone as JPEG.
+  - Measured in Chrome on six real 12 MP photos: 181 KB on average with the thumbnail
+    (113–282). v251's 1600px JPEG q0.82 averaged 407 KB for the same six; 1440px WebP q0.74
+    averaged 223 KB. Lower quality at 1440 saved little. Re-encoding also strips EXIF, so no GPS
+    data is kept.
+  - **Shrink older photos** (Settings ▸ Storage, `mediaShrinkAll`): re-encodes each photo with
+    `enc < MEDIA_ENC` and replaces it only when the result is at least 10% smaller. It always
+    stamps `enc`, so a photo is never re-compressed twice. It stops at the first quota abort and
+    re-reads IDB afterwards, so the blobs are disk-backed again. On the six test photos the v251
+    copies went from 2.4 MB to 901 KB.
+  - Sharing converts to JPEG at full size (`mediaShareBlob`), because some apps take a shared
+    .webp as a sticker. The backup stores `enc`. On restore, `b64ImageMime` sniffs the
+    thumbnail's type from its first bytes (`UklGR` = WebP, `/9j/` = JPEG).
   - Camera = `<input capture=environment>`; gallery = `multiple`.
 - **Voice:**
-  - MediaRecorder, preferring `audio/webm;codecs=opus` at 32 kbps (about 4 KB/s).
+  - MediaRecorder, preferring `audio/webm;codecs=opus` at 24 kbps **mono** since v252
+    (`VOICE_BPS`, `channelCount: 1`, AGC on). Measured at 22 kbps, about 180 KB a minute. v251
+    used 32 kbps.
   - An AnalyserNode drives a level meter. If the peak stayed below 0.02, the save toast says
     the clip sounds silent.
   - Notes under 0.7 s are dropped; recording stops at 10 minutes.
@@ -95,6 +111,9 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
   - Swipe left/right to page, swipe down to close.
   - Caption (debounced put), "Open day", Share (native `DaylogShare.shareImage`, else Web Share,
     else a download) and Delete.
+  - "Open day" opens the **read-only day page** (History), not the Log editor. It is hidden
+    when that day's page or Log is already showing. Closing the viewer, or any
+    `refreshMediaSlots()`, redraws an open day page in place (`histDayRefresh`).
   - Android back closes it first. From History ▸ Photos it pages through the whole gallery
     (`data-mset`).
 - **Writes:** `mediaWrite()` resolves on transaction **complete**, not on the request. A quota
@@ -112,6 +131,46 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
 - **Not done yet:**
   - adding media to an existing note
   - a Write/article image block
-  - search over captions
-  - a size cap or cleanup tool beyond the Backup card's MB count
   - sharing voice notes in the native app (`shareImage` sets an image MIME type)
+
+
+## History ▸ one day, read-only (v252, 2026-11-01)
+
+A History row used to open the Log editor for that day. It now opens `historyDayHTML(d)`, a
+read-only page, as a sub-view of History (`histDay`, like `curDoc` in Write).
+- **What it shows**, only where the day has something:
+  - Hero: the mood-tinted header (hue from mood, red→green), the weekday, full date and
+    relative date (`relDay`), mood and energy bars, the mood-grid quadrant, and any mood words
+    tagged in the journal. Edit sits top right.
+  - Tiles: sleep with bed–wake, deep work, tasks done, checklist x/y, steps, screen time,
+    exercises and money spent. 2 or 4 tiles use two columns, so none is left on a row alone.
+  - Reflection: the core text fields with the user's own labels and trailing emoji removed, the
+    journal with line breaks and #tags, and the Sunday review.
+  - Photos (full images, captions overlaid, the first one wide when the count is odd) and
+    playable voice notes. They cannot be deleted here (`voiceRowHTML(r, false)`).
+  - Checklist (done, then skipped, then missed), a 24-hour time bar with the top 6 activities,
+    workout, tasks done and events, money, notes created that day, and the deep log (only the
+    fields that hold something).
+- **Navigation:**
+  - The ‹ › arrows step through the days History lists.
+  - Back (on screen or Android) returns to the list at the same scroll position.
+  - Edit sets `_editFromHist`. Back or Done on that Log flushes the debounced autosave and
+    returns to the day page, which shows the edit. Leaving the Log any other way (`show()` to
+    another screen, or `navigateTo`, including the Log tab) forgets the way back.
+  - The History tab always opens on the list.
+- Money rows use `hd-in`, not `.in`/`.out`. The Money screen's global `.in`/`.out` rules colour
+  whole rows.
+
+## Settings ▸ Storage (v252, 2026-11-01)
+
+`storagePageHTML()`, on the "Your data" group's Storage row (whose subtitle is the total).
+- One card shows the total, a stacked bar and rows biggest first: localStorage grouped by
+  `STORE_GROUPS` (logs, health, time, money `dp.fin*`, notes/tasks/plans, workouts, other),
+  plus Photos, Voice notes and App files.
+  - App files is the service worker cache, summed once per session by `storageMeasure()`. It is
+    left out if it cannot be measured.
+- **Text space** is the localStorage characters against Chrome/WebView's 10 MiB of UTF-16
+  (5 Mi characters). It turns red at 70% and says to export a backup.
+- The page says Android's App info shows more, because it also counts the app and its
+  temporary files, and that **Clear storage** there deletes everything.
+- The Shrink older photos card shows only while `mediaShrinkCount() > 0`.

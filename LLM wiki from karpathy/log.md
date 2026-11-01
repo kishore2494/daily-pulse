@@ -1,3 +1,26 @@
+## 2026-11-01 — v252: read-only day page in History, Settings ▸ Storage, smaller photos and voice
+
+Kishore asked for three things: compress the photos and audio, show how much storage the app
+takes, and make tapping a History day open a proper detail view, with Edit as the way into the
+editor.
+- **Day page:** see features.md, "History ▸ one day". "Open day" in the photo viewer now opens
+  it too.
+- **Storage page:** see features.md, "Settings ▸ Storage".
+- **Compression:**
+  - Photos went from 1600px JPEG q0.82 to 1280px WebP q0.70 (a 320px thumbnail): 44% of the
+    old size on real 12 MP photos. Shrink older photos re-encodes v251 photos; the test set went
+    from 2.4 MB to 901 KB.
+  - Voice went from 32 kbps to 24 kbps mono.
+  - Shared photos leave as JPEG.
+- **Tests:** 718 unit tests in 4 timezones, including a new async shrink suite (quota, decode
+  failure, idempotence, backup `enc`, WebP thumbnail sniffing). Every new behaviour was
+  mutation-checked. Clicks in the sync suite go through `tap()`, so a missing button is a
+  failed check, not a crash that silently skips everything after it. A crash had hidden four
+  mutations on the first pass.
+- **Verified in real Chrome at 360 and 320 px, dark and light:** the day page, Edit → Back
+  showing the edit, voice playback, the viewer, Storage before and after Shrink, a reload, and
+  all 21 screens.
+
 ## 2026-11-01 — v250 + v251 deployed (live)
 
 Kishore said "deploy". `tools/deploy.sh --tag` pushed 17 commits (3432f0d..8ce2df9) to prod, tagged

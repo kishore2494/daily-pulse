@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v251';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v252';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -961,8 +961,10 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w21',
+  v: 'w22',
   items: [
+    '📖 <b>Look back at a day</b> — tapping a day in History now opens a page that shows the whole day: how it felt, your journal, photos and voice notes, your checklist, where the time went, workouts, money and notes. The <b>Edit</b> button takes you to the Log for that day, and Back brings you here again.',
+    '💾 <b>Settings ▸ Storage</b> — see how much space Daylog takes on your phone, and what takes it. New photos now take less than half the space they did, and voice notes are smaller too. If you added photos before this update, <b>Shrink older photos</b> there frees more than half their space.',
     '📷 <b>Photos &amp; voice notes</b> — the Log has a new <b>Photos &amp; voice</b> card, under Reflection. Take a photo, add some from your gallery, or record a voice note while the day is still fresh, and tap any photo to see it full-screen, caption it or share it. On the Notes screen, <b>Photo</b> and <b>Voice</b> each save a new note. Everything stays on your phone. Photos are shrunk to a few hundred KB, still sharp full-screen, and their location data is removed. They go into your backup file, so a new phone gets them back. They are not sent to the Google Sheet. <b>On this day</b> now shows the photos you took a week, a month or a year ago; <b>History ▸ Photos</b> shows them all by month; and there is a <b>month-in-photos</b> share card.',
     '💌 <b>Tell a friend</b> — Settings ▸ Support. Send an invite card or a link on WhatsApp. Daylog has no marketing budget, so people mostly find it this way. Story-shaped share cards now carry a small QR code to the Play Store too.',
     '\ud83e\udeb6 <b>A calmer start</b> \u2014 Daylog had grown to nineteen screens and a Log page that opened with <b>38 deep-log rating scales</b> switched on, before you had written a single thing. New installs now begin with the Log, Time, Focus, Stats and Habits; the other thirteen sit behind <b>More features</b> in the menu, each described by what it does, one tap to add. Setup went from five steps to three. <b>Nothing changed for you</b> \u2014 your menu, your Deep log and your layout are exactly as you left them; this only affects a fresh install.',
@@ -2203,7 +2205,9 @@ document.addEventListener('click', async (ev) => {
   // that never landed, and even overwrote the quota warning in the same tick.
   if (ok === false) return;
   toast('Saved 🎉');
-  const sent = await syncEntry(logDate, draft);
+  const savedDate = logDate, savedDraft = draft;
+  if (_editFromHist === logDate) histReturnFromEdit();
+  const sent = await syncEntry(savedDate, savedDraft);
   // The Sheet POST is no-cors, so the response is opaque and we cannot read its status.
   // "Sent to your Sheet" is what we actually know; "synced ✓" was a claim we could not make.
   if (sent) toast('Sent to your Sheet 📤');
@@ -4550,6 +4554,7 @@ function historyPhotosHTML() {
   <div class="ss-acts"><button class="btn btn-ghost" data-share-card="photos">${icon('share', 18)} Share a month as a card</button></div>`;
 }
 function renderHistory() {
+  if (histDay) { renderHistoryDay(histDay); return; }
   document.getElementById('screen-title').textContent = 'History';
   const e = DB.entries();
   const dates = Object.keys(e).sort().reverse();
@@ -4567,10 +4572,11 @@ function renderHistory() {
   const items = dates.map(d => {
     const en = e[d];
     const hc = en.habits ? Object.values(en.habits).filter(Boolean).length : 0;
-    return `<div class="hist-item" data-open="${d}">
+    return `<div class="hist-item" data-hday="${d}" role="button" tabindex="0">
       <div><div class="hist-date">${prettyDate(d)}</div>
         <div class="hist-meta">${en.journal ? escapeHtml(en.journal.slice(0,46)) + (en.journal.length>46?'…':'') : '—'}</div></div>
       <div class="hist-moods"><span class="pill">😊 ${en.mood||'–'}</span><span class="pill">⚡ ${en.energy||'–'}</span><span class="pill">✅ ${hc}/${HABITS.length}</span>${(() => { const c = mediaDayCount(d); return c.p + c.v ? `<span class="pill">${c.p ? '📷 ' + c.p : ''}${c.p && c.v ? ' ' : ''}${c.v ? '🎙 ' + c.v : ''}</span>` : ''; })()}</div>
+      <span class="hist-go" aria-hidden="true">›</span>
     </div>`;
   }).join('');
   document.getElementById('s-history').innerHTML = tabs + sampleBannerHTML('these days') + `<div class="card">${items}</div>`;
@@ -4579,9 +4585,214 @@ document.addEventListener('click', (ev) => {
   const ht = ev.target.closest && ev.target.closest('[data-hist-tab]');
   if (ht) { histTab = ht.dataset.histTab; renderHistory(); window.scrollTo(0, 0); }
 });
+/* ---------- History ▸ one day, read-only ----------
+   A History row used to drop you straight into the Log editor for that day: a form, with
+   every empty field showing, when what you wanted was to look back at the day. This page
+   shows what the day holds and nothing it does not. "Edit" opens the Log for that day, and
+   Back or Done there brings you back here. */
+let histDay = null, _histScroll = 0, _editFromHist = null;
+function longDate(d) {
+  try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return d; }
+}
+function weekdayLong(d) {
+  try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' }); } catch (e) { return ''; }
+}
+/* "Yesterday", "3 weeks ago". Pure, so it is tested. */
+function relDay(d, today) {
+  const n = Math.round((new Date((today || todayStr()) + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Yesterday';
+  if (n < 0) return n === -1 ? 'Tomorrow' : 'In ' + (-n) + ' days';
+  if (n < 14) return n + ' days ago';
+  if (n < 61) return Math.round(n / 7) + ' weeks ago';
+  if (n < 335) return Math.round(n / 30.44) + ' months ago';
+  const y = Math.round(n / 365.25);
+  return y <= 1 ? 'A year ago' : y + ' years ago';
+}
+function moodFace(m) { m = +m; return !m ? '' : m <= 2 ? '😣' : m <= 4 ? '😕' : m <= 6 ? '😐' : m <= 8 ? '🙂' : '😄'; }
+function fmtHours(h) {
+  h = +h; if (!(h > 0)) return '';
+  const t = Math.round(h * 60), hh = Math.floor(t / 60), mm = t % 60;
+  return hh ? hh + 'h' + (mm ? ' ' + mm + 'm' : '') : mm + 'm';
+}
+/* The days History lists, oldest first — the ‹ › arrows step through these. */
+function histDays() { return Object.keys(DB.entries()).sort(); }
+function histNeighbours(d) {
+  const all = histDays();
+  let older = null, newer = null;
+  for (const x of all) { if (x < d) older = x; else if (x > d && !newer) newer = x; }
+  return { older, newer };
+}
+/* Journal text with its #tags picked out. Escaped first, so a tag can never carry markup. */
+function hdText(s) { return escapeHtml(String(s || '')).replace(/#([a-z0-9_]+)/gi, '<span class="hd-tag">#$1</span>'); }
+function historyDayHTML(d) {
+  const en = DB.entry(d) || null;
+  const has = v => v != null && v !== '' && !(typeof v === 'number' && isNaN(v));
+  const mood = en && has(en.mood) ? +en.mood : null, energy = en && has(en.energy) ? +en.energy : null;
+  const hue = mood != null ? Math.round((mood - 1) / 9 * 120) : 228;
+  const nb = histNeighbours(d);
+  const sec = (ico, title, body, hint) => body ? `<div class="card hd-sec"><h2 class="h2-icon">${hicon(ico)}<span>${title}</span>${hint ? ` <span class="hint">${hint}</span>` : ''}</h2>${body}</div>` : '';
+
+  // ---- hero: the date, how the day felt, and the way into editing it ----
+  const allWords = Object.values(MM_QUAD).reduce((a, q) => a.concat(q.words.map(w => w.toLowerCase())), []);
+  const tags = extractTags(en && en.journal);
+  const words = tags.filter(t => allWords.includes(t.slice(1)));
+  const meter = (lbl, v) => v == null ? '' : `<div class="hd-m"><span class="hd-ml">${lbl}</span><b>${v}</b><span class="hd-mbar"><i style="width:${Math.max(0, Math.min(10, v)) * 10}%"></i></span></div>`;
+  const hero = `<div class="hd-hero" style="--hd-h:${hue}">
+    <div class="hd-top">
+      <div class="hd-face" aria-hidden="true">${mood != null ? moodFace(mood) : `<span class="hd-dnum">${+d.slice(8)}</span>`}</div>
+      <div class="hd-when"><div class="hd-wd">${escapeHtml(weekdayLong(d))}</div><div class="hd-date">${escapeHtml(longDate(d))}</div><div class="hd-rel">${escapeHtml(relDay(d))}</div></div>
+      <button class="hd-edit" data-hday-edit="${d}" aria-label="Edit this day">${icon('pencil', 16)}<span>Edit</span></button>
+    </div>
+    ${mood != null || energy != null ? `<div class="hd-ms">${meter('Mood', mood)}${meter('Energy', energy)}</div>` : ''}
+    ${mood != null && energy != null ? `<div class="hd-quad">${escapeHtml(MM_QUAD[mmQuad(mood, energy)].label)}${words.length ? ' · ' + words.map(w => `<span class="hd-word">${escapeHtml(w.slice(1, 2).toUpperCase() + w.slice(2))}</span>`).join(' ') : ''}</div>` : ''}
+  </div>`;
+
+  // ---- the numbers, as tiles; only the ones this day has ----
+  const tiles = [];
+  const tile = (ico, val, lbl, sub) => tiles.push(`<div class="hd-tile"><span class="hd-ti">${icon(ico, 17)}</span><b>${val}</b><span class="hd-tl2">${lbl}</span>${sub ? `<span class="hd-ts">${sub}</span>` : ''}</div>`);
+  if (en && +en.sleepHours > 0) tile('moon', fmtHours(en.sleepHours), 'sleep', en.bedTime && en.wakeTime ? escapeHtml(en.bedTime + '–' + en.wakeTime) : '');
+  if (en && +en.deepWorkHours > 0) tile('target', fmtHours(en.deepWorkHours), 'deep work');
+  const tc = taskCounts(d);
+  if (tc.done) tile('check', tc.done + (tc.planned ? '/' + tc.planned : ''), 'tasks done');
+  const hb = HABITS.map(h => ({ h, st: hVal(en, h.key) }));
+  const hDone = hb.filter(x => x.st === H_DONE).length;
+  if (en && HABITS.length) tile('star', hDone + '/' + HABITS.length, 'checklist');
+  const hl = healthFor(d) || {};
+  if (+hl.steps > 0) tile('trending', Math.round(hl.steps).toLocaleString(), 'steps', +hl.distanceKm > 0 ? (+hl.distanceKm).toFixed(1) + ' km' : '');
+  if (+hl.screenMin > 0) tile('phone', fmtHours(hl.screenMin / 60), 'screen time');
+  const gd = DB.gym()[d];
+  const exDone = gd && gd.done ? Object.keys(gd.done).filter(k => gd.done[k]) : [];
+  if (exDone.length) tile('dumbbell', exDone.length, exDone.length === 1 ? 'exercise' : 'exercises');
+  const tx = finTx().filter(t => t.d === d && t.dir !== 'xfer');
+  const out = tx.filter(t => t.dir === 'out').reduce((s, t) => s + (+t.a || 0), 0);
+  if (out) tile('wallet', finFmt(out, { noPaise: true }), 'spent');
+  const tilesHTML = tiles.length ? `<div class="hd-tiles${tiles.length === 2 || tiles.length === 4 ? ' c2' : tiles.length === 1 ? ' c1' : ''}">${tiles.join('')}</div>` : '';
+
+  // ---- reflection: wins, the improvement, the journal, the Sunday review ----
+  const qa = (lbl, v, cls) => has(v) && String(v).trim() ? `<div class="hd-qa ${cls || ''}"><div class="hd-ql">${escapeHtml(stripLeadEmoji(lbl).replace(/\s*\p{Extended_Pictographic}\uFE0F?\s*$/u, ''))}</div><div class="hd-q">${hdText(v)}</div></div>` : '';
+  let refl = '';
+  if (en) {
+    coreCfg().filter(f => f.type === 'text').forEach(f => { refl += qa(f.label, en[f.key]); });
+    if (has(en.journal) && String(en.journal).trim()) refl += `<div class="hd-qa hd-journal"><div class="hd-ql">Journal</div><div class="hd-q">${hdText(en.journal)}</div></div>`;
+    refl += qa('Wins this week', en.weekWins) + qa('Focus for next week', en.weekFocus);
+  }
+
+  // ---- photos & voice ----
+  const items = mediaList('log', d);
+  const photos = items.filter(r => r.kind === 'photo'), voices = items.filter(r => r.kind === 'voice');
+  const pics = photos.length ? `<div class="hd-photos" data-mset="day">${photos.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo${r.caption ? ': ' + escapeHtml(r.caption) : ''}">
+      <img src="${mediaUrl(r, 'f')}" alt="" loading="lazy" decoding="async">${r.caption ? `<span class="hd-cap">${escapeHtml(r.caption)}</span>` : ''}</button>`).join('')}</div>` : '';
+  const vl = voices.length ? `<div class="vlist">${voices.map(r => voiceRowHTML(r, false)).join('')}</div>` : '';
+
+  // ---- checklist: done first, then skipped, then missed ----
+  const order = { [H_DONE]: 0, [H_SKIP]: 1, [H_MISS]: 2 };
+  const habs = en && HABITS.length ? `<div class="hd-habs">${hb.slice().sort((a, b) => order[a.st] - order[b.st]).map(({ h, st }) => {
+      const g = goalFor(h.key), raw = en.habits ? en.habits[h.key] : undefined;
+      const qty = g && raw != null ? ` <b>${typeof raw === 'number' ? raw : g.n}${g.unit ? ' ' + escapeHtml(g.unit) : ''}</b>` : '';
+      return `<span class="hd-hab ${st}" style="--hc:${escapeHtml(h.color || 'var(--accent)')}"><span class="hd-hk">${st === H_DONE ? '✓' : st === H_SKIP ? '⤳' : ''}</span>${escapeHtml(h.label)}${qty}</span>`;
+    }).join('')}</div>` : '';
+
+  // ---- where the time went ----
+  const clips = segsForDay(d);
+  let timeHTML = '';
+  if (clips.length) {
+    const d0 = new Date(d + 'T00:00:00').getTime();
+    const by = {};
+    clips.forEach(({ seg, a, b }) => { by[seg.act] = (by[seg.act] || 0) + (b - a); });
+    const acts = Object.keys(by).map(k => ({ act: actById(k), ms: by[k] })).sort((x, y) => y.ms - x.ms);
+    const tot = acts.reduce((s, x) => s + x.ms, 0);
+    timeHTML = `<div class="hd-tlbar">${clips.map(({ seg, a, b }) => `<i style="left:${((a - d0) / 864e5 * 100).toFixed(2)}%;width:${Math.max(0.4, (b - a) / 864e5 * 100).toFixed(2)}%;background:${actById(seg.act).color}"></i>`).join('')}</div>
+      <div class="hd-tlax"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      ${acts.slice(0, 6).map(x => `<div class="hd-act"><span class="hd-adot" style="background:${x.act.color}"></span><span class="hd-an">${escapeHtml(x.act.emoji || '')} ${escapeHtml(x.act.name)}</span><span class="hd-ab"><i style="width:${(x.ms / acts[0].ms * 100).toFixed(1)}%;background:${x.act.color}"></i></span><b>${fmtDur(x.ms, true)}</b></div>`).join('')}
+      ${acts.length > 6 ? `<div class="hint">and ${acts.length - 6} more · ${fmtDur(tot, true)} tracked in all</div>` : ''}`;
+  }
+
+  // ---- workout, done & planned, money, notes ----
+  const gym = exDone.length ? exDone.map(k => { const id = k.split('/').pop(), lg = gd.log && gd.log[k];
+    return `<div class="hd-li">${icon('check', 16)}<span>${escapeHtml(exName(id))}</span>${lg ? `<small>${escapeHtml(lg)}</small>` : ''}</div>`; }).join('') : '';
+  const doneTasks = DB.tasks().filter(t => t.done && t.doneDate === d);
+  const evs = eventsOn(d);
+  const plan = doneTasks.map(t => `<div class="hd-li">${icon('check', 16)}<span>${escapeHtml(t.text)}</span></div>`).join('')
+    + evs.map(x => `<div class="hd-li hd-ev"><span class="hd-evt">${escapeHtml(x.time || 'all day')}</span><span>${escapeHtml(x.label)}</span></div>`).join('');
+  const money = tx.length ? tx.map(t => { const cat = finCat(t.c);
+      return `<div class="hd-li hd-tx${t.dir === 'in' ? ' hd-in' : ''}"><span class="hd-txi">${escapeHtml(cat.ico)}</span><span>${escapeHtml(t.n || cat.name)}</span><b>${t.dir === 'in' ? '+' : '−'}${escapeHtml(finFmt(+t.a || 0, { noPaise: true }).replace('−', ''))}</b></div>`; }).join('') : '';
+  const notes = DB.notes().filter(n => n.created === d);
+  const notesHTML = notes.map(n => { const c = mediaList('note:' + n.id).length;
+    return `<div class="hd-note">${n.text ? hdText(n.text) : '<span class="hint">(no text)</span>'}${c ? `<span class="hd-nm">${icon('camera', 14)} ${c}</span>` : ''}</div>`; }).join('');
+
+  // ---- the optional deep log: only the fields that hold something ----
+  const deep = en ? DEEP_SECTIONS.map(s => {
+    const rows = [];
+    (s.scales || []).forEach(f => { if (has(en[f.key])) rows.push(`<div class="hd-kv"><span>${escapeHtml(f.label)}</span><span class="hd-mbar"><i style="width:${Math.max(0, Math.min(10, +en[f.key])) * 10}%"></i></span><b>${escapeHtml(String(en[f.key]))}</b></div>`); });
+    (s.nums || []).forEach(f => { if (has(en[f.key])) rows.push(`<div class="hd-kv"><span>${escapeHtml(f.label)}</span><span></span><b>${escapeHtml(String(en[f.key]))}</b></div>`); });
+    if (s.checks) { const sel = en[s.checks.key] || {}; const on = Object.keys(sel).filter(k => sel[k]);
+      if (on.length) rows.push(`<div class="hd-chips">${on.map(o => `<span class="hd-chip">${escapeHtml(o)}</span>`).join('')}</div>`); }
+    (s.texts || []).forEach(f => { if (has(en[f.key]) && String(en[f.key]).trim()) rows.push(`<div class="hd-qa"><div class="hd-ql">${escapeHtml(f.label)}</div><div class="hd-q">${hdText(en[f.key])}</div></div>`); });
+    return rows.length ? `<div class="hd-deep"><h3>${escapeHtml(stripLeadEmoji(s.title))}</h3>${rows.join('')}</div>` : '';
+  }).join('') : '';
+
+  const nothing = !en && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML;
+  return `<div class="hd-nav">
+      <button class="back-btn" data-hday-back>← All days</button>
+      <span class="hd-step">
+        <button class="hd-arrow" ${nb.older ? `data-hday-go="${nb.older}"` : 'disabled'} aria-label="Older day">${icon('chevL', 20)}</button>
+        <button class="hd-arrow" ${nb.newer ? `data-hday-go="${nb.newer}"` : 'disabled'} aria-label="Newer day">${icon('chevR', 20)}</button>
+      </span>
+    </div>
+    ${hero}
+    ${nothing ? `<div class="card"><div class="empty">Nothing was logged on this day.</div></div>` : ''}
+    ${tilesHTML}
+    ${sec('book', 'Reflection', refl)}
+    ${sec('camera', 'Photos &amp; voice', pics + vl, mediaCountText({ p: photos.length, v: voices.length }))}
+    ${sec('check', 'Checklist', habs, en && HABITS.length ? hDone + ' of ' + HABITS.length + ' done' : '')}
+    ${sec('clock', 'Where the time went', timeHTML)}
+    ${sec('dumbbell', 'Workout', gym)}
+    ${sec('calendar', 'Done &amp; planned', plan)}
+    ${sec('wallet', 'Money', money, out ? finFmt(out, { noPaise: true }) + ' out' : '')}
+    ${sec('note', 'Notes from this day', notesHTML)}
+    ${sec('layers', 'Deep log', deep)}
+    <div class="hd-foot"><button class="btn btn-primary" data-hday-edit="${d}">${icon('pencil', 18)} ${en ? 'Edit this day' : 'Log this day'}</button></div>`;
+}
+function renderHistoryDay(d) {
+  document.getElementById('screen-title').textContent = prettyDate(d);
+  document.getElementById('screen-sub').textContent = relDay(d) + ' · History';
+  document.getElementById('s-history').innerHTML = historyDayHTML(d);
+  voicePaint();
+}
+/* The day page has no media slot of its own, so a photo deleted or captioned in the viewer
+   redraws the page, in place. */
+function histDayRefresh() {
+  const sc = document.getElementById('s-history');
+  if (!histDay || !sc || !sc.classList.contains('on')) return;
+  const y = window.scrollY; renderHistoryDay(histDay); window.scrollTo(0, y);
+}
+function histDayOpen(d) {
+  if (!histDay) _histScroll = window.scrollY || 0;    // the list's place, for coming back to it
+  histDay = d; histTab = 'days';
+  if (document.getElementById('s-history').classList.contains('on')) renderHistory(); else show('history');
+  window.scrollTo(0, 0);
+}
+function histDayClose() {
+  histDay = null; renderHistory();
+  window.scrollTo(0, _histScroll);
+}
+/* Leaving the Log after "Edit": flush the debounced autosave first, so the day page shows
+   the change that was typed a moment ago rather than the one before it. */
+function histReturnFromEdit() {
+  const d = _editFromHist; _editFromHist = null;
+  if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; saveDraftNow(logDate, draft); }
+  histDay = d; show('history');
+}
 document.addEventListener('click', (ev) => {
-  const it = ev.target.closest('[data-open]');
-  if (it) { logDate = it.dataset.open; show('today'); }
+  if (!ev.target.closest) return;
+  const it = ev.target.closest('[data-hday]');
+  if (it) { histDayOpen(it.dataset.hday); return; }
+  const go = ev.target.closest('[data-hday-go]');
+  if (go) { histDay = go.dataset.hdayGo; renderHistory(); window.scrollTo(0, 0); return; }
+  if (ev.target.closest('[data-hday-back]')) { histDayClose(); return; }
+  const ed = ev.target.closest('[data-hday-edit]');
+  if (ed) { const d = ed.dataset.hdayEdit; logDate = d; show('today'); _editFromHist = d; }
 });
 
 /* ============================================================
@@ -5674,6 +5885,118 @@ document.addEventListener('click', (ev) => {
   if (ed) { const wrote10 = DB.saveEvents(DB.events().filter(x => x.id !== ed.dataset.evDel)); renderCal(); setupReminders(); savedToast(wrote10, 'Event deleted'); return; }
 });
 
+/* ---------- Settings ▸ Storage: what Daylog keeps on this phone ----------
+   Text (localStorage) is counted in characters, which is close to its size on disk. Photos
+   and voice notes are counted by their stored bytes, and "App files" is the offline copy the
+   service worker keeps. Android's App info shows a bigger number than the total, because it
+   also counts the app itself and the WebView's own temporary files. The page says so rather
+   than pretend to match it. */
+const STORE_GROUPS = [
+  { k: 'logs',   l: 'Daily logs',           c: '#fbbf24', keys: ['dp.entries'] },
+  { k: 'health', l: 'Health & screen time', c: '#f87171', keys: ['dp.health'] },
+  { k: 'time',   l: 'Time tracking',        c: '#a78bfa', keys: ['dp.timelog', 'dp.timeacts', 'dp.timebox', 'dp.pomo'] },
+  { k: 'money',  l: 'Money',                c: '#34d399', pre: 'dp.fin' },
+  { k: 'notes',  l: 'Notes, tasks & plans', c: '#f472b6', keys: ['dp.notes', 'dp.tasks', 'dp.plans', 'dp.projects', 'dp.docs', 'dp.events', 'dp.reminders'] },
+  { k: 'gym',    l: 'Workouts',             c: '#fb923c', keys: ['dp.gym', 'dp.exercises'] },
+  { k: 'other',  l: 'Settings & other',     c: '#94a3b8' },
+];
+const TEXT_LIMIT_CHARS = 5 * 1048576;   // Chrome and Android WebView: 10 MiB of UTF-16 per site
+function storageText() {
+  const by = {}; let chars = 0;
+  STORE_GROUPS.forEach(g => { by[g.k] = 0; });
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i); if (k == null) continue;
+    const n = k.length + (localStorage.getItem(k) || '').length;
+    chars += n;
+    const grp = STORE_GROUPS.find(g => (g.keys && g.keys.includes(k)) || (g.pre && k.indexOf(g.pre) === 0)) || STORE_GROUPS[STORE_GROUPS.length - 1];
+    by[grp.k] += n;
+  }
+  return { by, chars };
+}
+let _stCache = null, _stMeasuring = false;   // bytes of the offline copy; null until measured
+async function storageCacheBytes() {
+  if (typeof caches === 'undefined') return null;
+  try {
+    let n = 0;
+    for (const k of await caches.keys()) {
+      const c = await caches.open(k);
+      for (const rq of await c.keys()) { const r = await c.match(rq); if (r) n += (await r.blob()).size; }
+    }
+    return n;
+  } catch (e) { return null; }
+}
+async function storageMeasure() {
+  if (_stCache != null || _stMeasuring) return;
+  _stMeasuring = true;
+  const n = await storageCacheBytes();
+  _stMeasuring = false;
+  _stCache = n == null ? -1 : n;               // -1: cannot be measured here; the row is left out
+  const card = document.getElementById('st-card');
+  if (card) card.outerHTML = storageCardHTML();
+}
+/* Every row, biggest first. Pure apart from what it reads, so the tests drive it. */
+function storageRows() {
+  const t = storageText();
+  const rows = STORE_GROUPS.map(g => ({ k: g.k, l: g.l, c: g.c, bytes: t.by[g.k], sub: '' }));
+  const sub = (k, s) => { const r = rows.find(x => x.k === k); if (r) r.sub = s; };
+  const days = Object.keys(DB.entries()).length; if (days) sub('logs', days + ' day' + (days === 1 ? '' : 's'));
+  const tx = finTx().length; if (tx) sub('money', tx + ' record' + (tx === 1 ? '' : 's'));
+  const tb = DB.timelog().length; if (tb) sub('time', tb + ' block' + (tb === 1 ? '' : 's'));
+  let pb = 0, pn = 0, vb = 0, vn = 0, vms = 0;
+  _media.forEach(r => { if (r.kind === 'photo') { pn++; pb += r.size || 0; } else { vn++; vb += r.size || 0; vms += r.dur || 0; } });
+  rows.push({ k: 'photos', l: 'Photos', c: '#6d8cff', bytes: pb, sub: pn ? pn + ' photo' + (pn === 1 ? '' : 's') : '' });
+  rows.push({ k: 'voice', l: 'Voice notes', c: '#4ad6c0', bytes: vb, sub: vn ? vn + ' note' + (vn === 1 ? '' : 's') + ' · ' + fmtClipLen(vms) : '' });
+  if (_stCache > 0) rows.push({ k: 'app', l: 'App files', c: '#64748b', bytes: _stCache, sub: 'the offline copy of Daylog' });
+  return { rows: rows.filter(r => r.bytes > 0).sort((a, b) => b.bytes - a.bytes), chars: t.chars };
+}
+function storageCardHTML() {
+  const { rows, chars } = storageRows();
+  const total = rows.reduce((s, r) => s + r.bytes, 0) || 1;
+  const pct = Math.min(100, Math.round(chars / TEXT_LIMIT_CHARS * 100));
+  return `<div class="card st-card" id="st-card">
+    <div class="st-total"><b>${fmtBytes(rows.reduce((s, r) => s + r.bytes, 0))}</b><span>Daylog's data on this phone</span></div>
+    <div class="st-bar" role="img" aria-label="${escapeHtml(rows.map(r => r.l + ' ' + fmtBytes(r.bytes)).join(', '))}">${rows.map(r =>
+      `<i style="width:${Math.max(0.8, r.bytes / total * 100).toFixed(2)}%;background:${r.c}"></i>`).join('')}</div>
+    <div class="st-rows">${rows.map(r => `<div class="st-row" data-st="${r.k}">
+      <span class="st-dot" style="background:${r.c}"></span>
+      <span class="st-l">${escapeHtml(r.l)}${r.sub ? `<small>${escapeHtml(r.sub)}</small>` : ''}</span>
+      <span class="st-v">${fmtBytes(r.bytes)}</span></div>`).join('')}</div>
+    ${_stCache == null ? '<div class="hint st-wait">Measuring app files…</div>' : ''}
+    <div class="st-text${pct >= 70 ? ' st-hot' : ''}">
+      <div class="st-text-h"><span>Text space</span><span>${pct || !chars ? pct + '%' : 'under 1%'} of about 5 MB</span></div>
+      <div class="st-meter"><i style="width:${Math.max(1, pct)}%"></i></div>
+      <div class="hint">Logs, notes, money and settings share this browser limit${pct >= 70 ? '. When it is full, new entries cannot be saved. Export a backup now' : ''}. Photos and voice notes are kept separately and do not count toward it.</div>
+    </div>
+  </div>`;
+}
+function storagePageHTML() {
+  const ns = mediaShrinkCount();
+  return storageCardHTML() + (ns ? `<div class="card" id="st-shrink-card">
+      <h2 class="h2-icon">${hicon('image')}<span>Shrink older photos</span></h2>
+      <div class="hint" style="margin-bottom:10px">${ns === 1 ? 'One photo was' : ns + ' photos were'} saved before Daylog compressed photos this well.
+        Shrinking re-saves ${ns === 1 ? 'it' : 'them'} at the size new photos use: they look the same on your phone's screen and usually take less than half the space. It runs on this phone.</div>
+      <button class="btn btn-primary" id="st-shrink">Shrink ${ns} photo${ns === 1 ? '' : 's'}</button>
+    </div>` : '') + `
+    <div class="hint st-note">New photos are saved small (usually 100–300 KB each) and voice notes at about 180 KB a minute.
+      Android's <b>Settings ▸ Apps ▸ Daylog</b> shows a bigger number than this page, because it also counts the app itself and its temporary files.
+      <b>Clear storage</b> there deletes everything listed above, so export a backup first.</div>`;
+}
+function storageHomeSub() {
+  const { rows } = storageRows();
+  const n = rows.filter(r => r.k !== 'app').reduce((s, r) => s + r.bytes, 0);
+  return fmtBytes(n) + ' on this phone' + (mediaShrinkCount() ? ' · photos can be shrunk' : '');
+}
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest && ev.target.closest('#st-shrink'); if (!b || b.disabled) return;
+  b.disabled = true;
+  const n0 = mediaShrinkCount();
+  b.textContent = `Shrinking 0 of ${n0}…`;
+  const res = await mediaShrinkAll(r => { if (b.isConnected) b.textContent = `Shrinking ${r.done} of ${r.total}…`; });
+  if (res.full) toast('Your phone ran out of space part-way. Free some up, then try again', true);
+  else toast(res.changed ? `Saved ${fmtBytes(res.saved)} · ${res.changed} photo${res.changed === 1 ? '' : 's'} shrunk` : 'They were already as small as they can usefully get');
+  if (settingsPage === 'storage') renderSettingsIfShown();
+});
+
 /* ============================================================
    SCREEN: SETTINGS / MORE
    ============================================================ */
@@ -5916,6 +6239,7 @@ function renderSettings() {
     reminders: { t: 'Reminders',         sub: 'Alarms and notifications',            html: C.alarmHealth + C.reminders + C.ntfy },
     tracking:  { t: 'Auto-tracking',     sub: 'Sleep, steps and screen time',        html: C.tracking },
     data:      { t: 'Backup & restore',  sub: 'Keep a copy, move to a new phone',    html: C.backup + C.sync + C.pis },
+    storage:   { t: 'Storage',           sub: 'What Daylog keeps on this phone',     html: settingsPage === 'storage' ? storagePageHTML() : '' },
     wipe:      { t: 'Delete everything', sub: 'Erase all data on this phone',        html: C.wipe },
     feedback:  { t: 'Send feedback',     sub: 'Straight to the person who makes it', html: C.feedback },
   };
@@ -5939,6 +6263,7 @@ function renderSettings() {
       row('data-set-page="tracking"', 'heart', 'Auto-tracking', !hcPlugin() ? 'Needs the Play Store app' : at.on ? 'On · sleep, steps, screen time from your phone' : 'Off · nothing is collected'))}
     ${group('Your data',
       row('data-set-page="data"', 'download', 'Backup &amp; restore', lastD < 0 ? 'No backup yet · do this once' : lastD === 0 ? 'Last backup today' : `Last backup ${lastD} day${lastD === 1 ? '' : 's'} ago`, lastD < 0 || lastD > 7 ? 'set-warn' : '') +
+      row('data-set-page="storage"', 'hardDrive', 'Storage', storageHomeSub()) +
       row('id="open-report"', 'note', 'Download report (PDF)', 'Your stats as a printable report') +
       row('data-set-page="wipe"', 'trash', 'Delete everything', 'Erase all data on this phone', 'set-danger'))}
     ${group('Help',
@@ -5950,6 +6275,7 @@ function renderSettings() {
       row('id="open-invite"', 'share', 'Tell a friend', 'A card or a link · how people find Daylog') +
       (tipPlugin() ? row('id="open-tip"', 'heart', 'Support Daylog', 'An optional tip · unlocks nothing', 'set-tip') : ''))}
     <p class="set-about">Daylog ${APP_VERSION} · Your data stays on this phone${s.syncUrl ? ' and your Google Sheet' : ''} · <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>`;
+  if (settingsPage === 'storage') storageMeasure();
 }
 document.addEventListener('click', async (ev) => {
   const s = DB.settings();
@@ -6321,13 +6647,20 @@ async function sendFeedback(text, contact) {
    A record:  { id, kind: 'photo'|'voice', mime, blob, thumb?, day: 'YYYY-MM-DD',
                 ctx: 'log' | 'note:<noteId>', ts, w?, h?, dur?, size, caption? }
 
-   Photos are re-encoded on the phone (longest edge 1600px, JPEG): a 12 MP camera shot is
-   4-6 MB and would fill a cheap phone in a few hundred days; this is ~300 KB and still sharp
-   full-screen. Re-encoding also drops the EXIF block, so a photo's GPS location never sits
-   in the app or a backup file.
+   Photos are re-encoded on the phone (longest edge 1280px, WebP where the phone can write
+   it): a 12 MP camera shot is 4-6 MB and would fill a cheap phone in a few hundred days. On
+   six real 12 MP photos this averaged 181 KB with its thumbnail (113-282), still sharp
+   full-screen on a 1080p phone. v251 stored 1600px JPEGs averaging 407 KB for the same
+   photos; Settings ▸ Storage can shrink those (mediaShrinkAll). 1440px at q0.74 was also
+   measured, at 223 KB; lower quality at that size bought little. Re-encoding also drops the EXIF block, so a photo's GPS location
+   never sits in the app or a backup file.
    ============================================================ */
 const MEDIA_DB = 'daylog-media';
-const MEDIA_MAX_EDGE = 1600, MEDIA_THUMB_EDGE = 360, MEDIA_JPEG_Q = 0.82;
+const MEDIA_MAX_EDGE = 1280, MEDIA_THUMB_EDGE = 320, MEDIA_Q = 0.7, MEDIA_THUMB_Q = 0.6;
+const MEDIA_ENC = 2;                           // encoder generation stored on each photo (v252)
+/* Opus at 24 kbps mono is clear speech — about 180 KB a minute. v251 used 32 kbps, and a
+   phone's stereo mic doubled it for a second channel that carried the same voice. */
+const VOICE_BPS = 24000;
 const VOICE_MAX_MS = 10 * 60 * 1000;          // a voice NOTE; ten minutes then it saves itself
 const VOICE_MIN_MS = 700;                      // shorter than this is a mis-tap, not a note
 let _mediaDbP = null;
@@ -6503,24 +6836,75 @@ async function mediaDecode(file) {
     im.src = u;
   });
 }
-function mediaEncode(src, w, h, q) {
+/* WebP is about a third smaller than JPEG for the same look, and every Android WebView and
+   Chrome can write it. Safari's canvas cannot: asked for WebP it quietly hands back a PNG
+   several times the size. So the type that came back is checked, never assumed, and anything
+   that is not WebP is redone as JPEG. */
+async function mediaEncode(src, w, h, q) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);     // JPEG has no alpha; a PNG's clear parts would go black
+  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);     // a PNG's clear parts would go black in a JPEG
   x.drawImage(src, 0, 0, w, h);
-  return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', q));
+  const enc = (type, qq) => new Promise(res => c.toBlob(b => res(b), type, qq));
+  const b = await enc('image/webp', q);
+  if (b && b.type === 'image/webp') return b;
+  return enc('image/jpeg', Math.min(0.9, q + 0.08));
+}
+/* Decode → fit → encode the full photo and its thumbnail. Shared by a new photo and by
+   shrinking an old one, so both always come out the same. */
+async function mediaPhotoBlobs(srcBlob) {
+  const src = await mediaDecode(srcBlob);
+  try {
+    const W = src.width || src.naturalWidth, H = src.height || src.naturalHeight;
+    if (!W || !H) throw new Error('decode');
+    const big = mediaFit(W, H, MEDIA_MAX_EDGE), sm = mediaFit(W, H, MEDIA_THUMB_EDGE);
+    const blob = await mediaEncode(src, big.w, big.h, MEDIA_Q);
+    const thumb = await mediaEncode(src, sm.w, sm.h, MEDIA_THUMB_Q);
+    if (!blob) throw new Error('encode');
+    return { blob, thumb, mime: blob.type || 'image/jpeg', w: big.w, h: big.h, size: blob.size + (thumb ? thumb.size : 0) };
+  } finally { if (src.close) src.close(); }
 }
 async function mediaPhotoRecord(file, ctx, day) {
-  const src = await mediaDecode(file);
-  const W = src.width || src.naturalWidth, H = src.height || src.naturalHeight;
-  if (!W || !H) throw new Error('decode');
-  const big = mediaFit(W, H, MEDIA_MAX_EDGE), sm = mediaFit(W, H, MEDIA_THUMB_EDGE);
-  const blob = await mediaEncode(src, big.w, big.h, MEDIA_JPEG_Q);
-  const thumb = await mediaEncode(src, sm.w, sm.h, 0.72);
-  if (src.close) src.close();
-  if (!blob) throw new Error('encode');
-  return { id: mediaId(), kind: 'photo', mime: 'image/jpeg', blob, thumb, day, ctx, ts: Date.now(),
-    w: big.w, h: big.h, size: blob.size + (thumb ? thumb.size : 0) };
+  const p = await mediaPhotoBlobs(file);
+  return Object.assign({ id: mediaId(), kind: 'photo', day, ctx, ts: Date.now(), enc: MEDIA_ENC }, p);
+}
+/* ---------- shrinking photos saved before v252 ----------
+   Those are 1600px JPEGs, about twice what they need to be. Each is re-encoded once with the
+   current settings and replaced only when the result is clearly smaller (by 10% or more), so
+   running it again changes nothing and a photo is never re-compressed over and over. A
+   photo that cannot be decoded is left exactly as it is. */
+function mediaShrinkable(r) { return !!r && r.kind === 'photo' && (r.enc || 0) < MEDIA_ENC; }
+function mediaShrinkCount() { let n = 0; _media.forEach(r => { if (mediaShrinkable(r)) n++; }); return n; }
+let _shrinking = false;
+async function mediaShrinkAll(onStep) {
+  const res = { done: 0, changed: 0, saved: 0, total: 0, full: false };
+  if (_shrinking) return res;
+  const todo = [..._media.values()].filter(mediaShrinkable);
+  res.total = todo.length;
+  if (!todo.length) return res;
+  _shrinking = true; _mediaBusy++;
+  try {
+    for (const r of todo) {
+      if (!_media.has(r.id)) { res.done++; continue; }     // deleted while this ran
+      const old = r.size || ((r.blob ? r.blob.size : 0) + (r.thumb ? r.thumb.size : 0));
+      let p = null;
+      try { p = await mediaPhotoBlobs(r.blob); } catch (e) { p = null; }
+      const better = p && p.size < old * 0.9;
+      const next = Object.assign({}, r, better ? p : {}, { enc: MEDIA_ENC });
+      try { await mediaWrite(s => s.put(next)); }
+      catch (e) { res.full = /quota/i.test(String(e && (e.name || '') + (e.message || ''))); break; }
+      if (better) { mediaRevoke(r.id); res.changed++; res.saved += old - p.size; }
+      if (_media.has(r.id)) _media.set(r.id, next);
+      res.done++;
+      if (onStep) onStep(res);
+    }
+  } finally {
+    _shrinking = false; _mediaBusy--;
+    // New blobs live in memory; re-read so they become disk-backed handles (see mediaRestore).
+    if (res.changed) await mediaLoad();
+    mediaIdleCheck();
+  }
+  return res;
 }
 let _mediaTarget = null;     // { ctx, day } the next picked photo belongs to
 function mediaInputs() {
@@ -6583,7 +6967,7 @@ async function voiceStart(ctx, day) {
   voiceHalt();
   _recStarting = true;
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   catch (e) {
     _recStarting = false; mediaIdleCheck();
     toast(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
@@ -6594,7 +6978,7 @@ async function voiceStart(ctx, day) {
   _recStarting = false;
   const mime = voiceMime();
   let mr;
-  try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 32000 }, mime ? { mimeType: mime } : {})); }
+  try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: VOICE_BPS }, mime ? { mimeType: mime } : {})); }
   catch (e) { stream.getTracks().forEach(t => t.stop()); toast('This phone cannot record audio here', true); mediaIdleCheck(); return; }
   const r = _rec = { mr, chunks: [], t0: Date.now(), ctx, day, stream, mime: mr.mimeType || mime || 'audio/webm', peak: 0 };
   /* A live level meter. A recording of silence — mic muted, another app holding it, a case
@@ -6717,12 +7101,7 @@ function mediaSlotHTML(ctx, day, opts) {
   const photos = items.filter(r => r.kind === 'photo'), voices = items.filter(r => r.kind === 'voice');
   const grid = photos.length ? `<div class="mgrid">${photos.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo from ${escapeHtml(mediaWhen(r.ts))}${r.caption ? ': ' + escapeHtml(r.caption) : ''}">
       <img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : '';
-  const vlist = voices.map(r => `<div class="vrow" data-vrow="${r.id}">
-      <button class="vplay" data-vplay="${r.id}" aria-label="Play voice note">${icon('playFill', 18)}</button>
-      <div class="vmid"><div class="vbar"><span></span></div>
-        <div class="vmeta"><span class="vtime">${fmtClipLen(r.dur)}</span><span>${escapeHtml(mediaWhen(r.ts))}</span></div></div>
-      <button class="vdel" data-mdel="${r.id}" aria-label="Delete voice note">${icon('trash', 17)}</button>
-    </div>`).join('');
+  const vlist = voices.map(r => voiceRowHTML(r, true)).join('');
   const recHere = _rec && _rec.ctx === ctx && _rec.day === day;
   const recBar = recHere ? `<div class="vrec" role="status">
       <span class="vrec-dot" aria-hidden="true"></span><span class="vrec-t" id="vrec-t">${fmtClipLen(Date.now() - _rec.t0)}</span>
@@ -6741,7 +7120,16 @@ function mediaSlotHTML(ctx, day, opts) {
     </div>`;
   return empty + grid + (vlist ? `<div class="vlist">${vlist}</div>` : '') + recBar + acts;
 }
+function voiceRowHTML(r, canDelete) {
+  return `<div class="vrow" data-vrow="${r.id}">
+      <button class="vplay" data-vplay="${r.id}" aria-label="Play voice note">${icon('playFill', 18)}</button>
+      <div class="vmid"><div class="vbar"><span></span></div>
+        <div class="vmeta"><span class="vtime">${fmtClipLen(r.dur)}</span><span>${escapeHtml(mediaWhen(r.ts))}</span></div></div>
+      ${canDelete ? `<button class="vdel" data-mdel="${r.id}" aria-label="Delete voice note">${icon('trash', 17)}</button>` : ''}
+    </div>`;
+}
 function refreshMediaSlots() {
+  histDayRefresh();
   document.querySelectorAll('.media-slot').forEach(s => {
     s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact });
   });
@@ -6793,6 +7181,7 @@ function mediaViewPaint() {
       <input class="mview-cap" type="text" maxlength="200" data-mcap="${rec.id}" placeholder="Add a caption…" value="${escapeHtml(rec.caption || '')}" aria-label="Caption">
       <div class="mview-acts">
         ${rec.ctx === 'log' && !(logDate === rec.day && document.getElementById('s-today').classList.contains('on'))
+            && !(histDay === rec.day && document.getElementById('s-history').classList.contains('on'))
           ? `<button class="mview-btn" data-mview-day="${rec.day}">${icon('calendar', 18)}<span>Open day</span></button>` : ''}
         ${canShare ? `<button class="mview-btn" data-mshare="${rec.id}">${icon('share', 18)}<span>Share</span></button>` : ''}
         <button class="mview-btn danger" data-mdel="${rec.id}">${icon('trash', 18)}<span>Delete</span></button>
@@ -6805,8 +7194,11 @@ function mediaViewStep(d) {
   _mview.i = j; mediaViewPaint();
 }
 function mediaViewClose() {
-  const el = document.getElementById('media-view'); if (el) { el.classList.remove('on'); el.innerHTML = ''; }
+  const el = document.getElementById('media-view');
+  const was = !!(el && el.classList.contains('on'));
+  if (el) { el.classList.remove('on'); el.innerHTML = ''; }
   _mview = null;
+  if (was) histDayRefresh();      // a caption typed in the viewer shows on the day page
 }
 function mediaViewIsOpen() { const el = document.getElementById('media-view'); return !!(el && el.classList.contains('on')); }
 function mediaSwipe(el) {
@@ -6831,26 +7223,48 @@ function mediaSaveCaption(id, text) {
     mediaWrite(s => s.put(rec)).catch(e => toast(mediaQuotaMsg(e) + ' — caption not saved', true));
   }, 400));
 }
+/* A thumbnail's type is not in the backup file, and since v252 it can be WebP. The first
+   bytes say which: RIFF (WebP) is "UklGR" in base64, a JPEG's FF D8 FF is "/9j/". */
+function b64ImageMime(b64) {
+  const s = String(b64 || '');
+  return s.indexOf('UklGR') === 0 ? 'image/webp' : s.indexOf('iVBOR') === 0 ? 'image/png' : 'image/jpeg';
+}
 function b64ToBlob(b64, mime) {
   const bin = atob(b64), u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
   return new Blob([u], { type: mime || 'application/octet-stream' });
 }
+/* A photo leaves the app as a JPEG. Since v252 it is stored as WebP, and some apps take a
+   shared .webp as a sticker, or not at all. Converted at its own size, on the way out only. */
+async function mediaShareBlob(rec) {
+  if (rec.mime === 'image/jpeg') return rec.blob;
+  try {
+    const src = await mediaDecode(rec.blob);
+    const W = src.width || src.naturalWidth, H = src.height || src.naturalHeight;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.drawImage(src, 0, 0, W, H);
+    if (src.close) src.close();
+    const b = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
+    return b || rec.blob;
+  } catch (e) { return rec.blob; }
+}
 async function mediaShare(id) {
   const rec = _media.get(id); if (!rec) return;
-  const name = 'daylog-' + rec.day + '-' + rec.id + '.jpg';
+  const blob = await mediaShareBlob(rec);
+  const name = 'daylog-' + rec.day + '-' + rec.id + (blob.type === 'image/webp' ? '.webp' : '.jpg');
   const nat = nativeSharePlugin();
   if (nat) {
-    try { await nat.shareImage({ base64: await blobToB64(rec.blob), filename: name }); }
+    try { await nat.shareImage({ base64: await blobToB64(blob), filename: name }); }
     catch (e) { toast('Could not open the share sheet', true); }
     return;
   }
   try {
-    const f = new File([rec.blob], name, { type: rec.mime });
+    const f = new File([blob], name, { type: blob.type || rec.mime });
     if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   if (!window.Capacitor) {
-    const a = document.createElement('a'); a.href = mediaUrl(rec, 'f'); a.download = name; a.click();
+    const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
     toast('Saved to your downloads'); return;
   }
   toast('Sharing photos needs the latest Daylog from the Play Store', true);
@@ -6885,7 +7299,7 @@ document.addEventListener('click', (ev) => {
     mediaViewOpen(d.mview, set ? [...set.querySelectorAll('[data-mview]')].map(x => x.dataset.mview) : null);
     return;
   }
-  if (d.mviewDay) { logDate = d.mviewDay; show('today'); return; }   // show() closes the viewer
+  if (d.mviewDay) { mediaViewClose(); histDayOpen(d.mviewDay); return; }
   if (d.mdel) { mediaConfirmDelete(d.mdel); return; }
   if (d.mshare) { mediaShare(d.mshare); return; }
   if (d.mviewClose !== undefined) { mediaViewClose(); return; }
@@ -6919,7 +7333,7 @@ async function mediaForBackup() {
     try {
       const it = { id: r.id, kind: r.kind, mime: r.mime, day: r.day, ctx: r.ctx, ts: r.ts, data: await blobToB64(r.blob) };
       if (r.thumb) it.thumb = await blobToB64(r.thumb);
-      ['w', 'h', 'dur', 'caption'].forEach(k => { if (r[k] != null && r[k] !== '') it[k] = r[k]; });
+      ['w', 'h', 'dur', 'caption', 'enc'].forEach(k => { if (r[k] != null && r[k] !== '') it[k] = r[k]; });
       items.push(it); bytes += r.size || 0;
     } catch (e) { skipped++; }
   }
@@ -6970,11 +7384,11 @@ async function mediaRestore(list) {
     if (_media.has(it.id)) { res.had++; continue; }
     let rec;
     try {
-      const mime = it.mime || (it.kind === 'photo' ? 'image/jpeg' : 'audio/webm');
+      const mime = it.mime || (it.kind === 'photo' ? b64ImageMime(it.data) : 'audio/webm');
       const blob = b64ToBlob(it.data, mime);
       rec = { id: it.id, kind: it.kind, mime, blob, day: it.day, ctx: it.ctx, ts: +it.ts || Date.now(), size: blob.size };
-      if (typeof it.thumb === 'string' && it.thumb) { rec.thumb = b64ToBlob(it.thumb, 'image/jpeg'); rec.size += rec.thumb.size; }
-      if (+it.w) rec.w = +it.w; if (+it.h) rec.h = +it.h; if (+it.dur) rec.dur = +it.dur;
+      if (typeof it.thumb === 'string' && it.thumb) { rec.thumb = b64ToBlob(it.thumb, b64ImageMime(it.thumb)); rec.size += rec.thumb.size; }
+      if (+it.w) rec.w = +it.w; if (+it.h) rec.h = +it.h; if (+it.dur) rec.dur = +it.dur; if (+it.enc) rec.enc = +it.enc;
       if (typeof it.caption === 'string') rec.caption = it.caption.slice(0, 200);
     } catch (e) { res.bad++; continue; }
     try { await mediaWrite(s => s.put(rec)); _media.set(rec.id, rec); res.added++; }
@@ -12770,6 +13184,8 @@ function handleBack() {
   if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
   if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   if (cur === 'settings' && settingsPage) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
+  if (cur === 'history' && histDay) { histDayClose(); return; }
+  if (cur === 'today' && _editFromHist) { histReturnFromEdit(); return; }   // came from History ▸ Edit
   // 3) not on the home tab → go back to it
   const home = defaultTab();
   if (cur !== home) { navigateTo(home); return; }
@@ -12842,6 +13258,7 @@ function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
   if (name !== 'settings') { try { wipeReset(); } catch (e) {} settingsPage = null; }
+  if (name !== 'today') _editFromHist = null;          // "back to the day" only from the Log it opened
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
   if (leaving) { voiceSaveIfRecording(); voiceHalt(); }
   mediaViewClose();
@@ -12882,6 +13299,8 @@ function navigateTo(name) {
   if (name === 'plans') curPlan = null;                     // Plans opens the list
   if (name === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }
   if (name === 'write') curDoc = null;                      // Write opens the article list
+  if (name === 'history') histDay = null;                   // History opens the list of days
+  _editFromHist = null;
   /* Picking Settings — from the menu, a pinned tab or More — opens its HOME, not whichever
      sub-page was last open, and disarms a half-started delete. Done here and not in show():
      the sync merge and the theme change re-render through show(), and must not throw someone
@@ -12958,6 +13377,7 @@ const ICONS = {
   x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   chevL:'<path d="m15 18-6-6 6-6"/>',
   chevR:'<path d="m9 18 6-6-6-6"/>',
+  hardDrive:'<path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/><path d="M6 16h.01"/><path d="M10 16h.01"/>',
 };
 // section id → icon, and default-habit key → icon (custom items keep their emoji)
 const SECTION_ICON = { mind:'lightbulb', wellbeing:'smile', health:'heart', work:'briefcase', learning:'book', finance:'wallet', digital:'phone', growth:'trending', haircare:'scissors', skincare:'droplet' };

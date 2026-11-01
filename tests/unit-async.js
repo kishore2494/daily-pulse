@@ -172,12 +172,12 @@
     big.size = sz;
 
     /* ---- the recorder ---- */
-    let gum = 0;
+    let gum = 0, gumArgs = null, mrOpts = null;
     const stopped = [];
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
-      getUserMedia: () => { gum++; return new Promise(r => setTimeout(() => r({ getTracks: () => [{ stop() { stopped.push(1); } }] }), 20)); } } });
+      getUserMedia: (c) => { gum++; gumArgs = c; return new Promise(r => setTimeout(() => r({ getTracks: () => [{ stop() { stopped.push(1); } }] }), 20)); } } });
     class FakeMR {
-      constructor() { this.state = 'inactive'; this.mimeType = 'audio/webm;codecs=opus'; }
+      constructor(stream, opts) { this.state = 'inactive'; this.mimeType = 'audio/webm;codecs=opus'; mrOpts = opts; }
       static isTypeSupported(m) { return m === 'audio/webm;codecs=opus'; }
       start() { this.state = 'recording'; }
       stop() { this.state = 'inactive'; if (this.ondataavailable) this.ondataavailable({ data: new Blob(['x'.repeat(200)]) }); setTimeout(() => this.onstop && this.onstop(), 0); }
@@ -187,6 +187,8 @@
     await sleep(60);
     ok('a double-tap on Record opens the microphone once', gum === 1 && !!_rec, gum);
     ok('…and nothing is busy-reloadable while it records', mediaBusyNow());
+    ok('voice is recorded in mono (v252)', !!gumArgs && gumArgs.audio && gumArgs.audio.channelCount === 1, gumArgs);
+    ok('…at 24 kbps, not 32', !!mrOpts && mrOpts.audioBitsPerSecond === 24000, mrOpts);
     _rec.t0 = Date.now() - 3000;
     voiceStop(false);
     await sleep(40);
@@ -221,6 +223,58 @@
     ok('switching the Log to another day saves the recording to the day it began', !_rec && [..._media.values()].some(r => r.kind === 'voice' && r.day === addDays(T, -1)));
 
     window.MediaRecorder = mrSnap;
+
+    /* ---- v252: shrinking photos saved before the better compression ----
+       jsdom cannot decode an image, so the encoder is replaced; what is under test is which
+       photos are touched, what is kept, and what happens when the phone fills up. */
+    await mediaWipe(); await mediaLoad();
+    const encSnap = window.mediaPhotoBlobs;
+    const webp = n => new Blob(['RIFF' + 'w'.repeat(n - 4)], { type: 'image/webp' });   // RIFF: a WebP's first bytes
+    window.mediaPhotoBlobs = async (b) => {
+      if (b.size === 777) throw new Error('decode');                       // an image that will not decode
+      const n = b.size === 999 ? 900 : 400;                                // 999 → 950 in all: under 10% smaller, so kept
+      return { blob: webp(n), thumb: webp(50), mime: 'image/webp', w: 1440, h: 1080, size: n + 50 };
+    };
+    await mediaAdd(rec('s1', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)], { type: 'image/jpeg' }), size: 1000, caption: 'keep me' }));
+    await mediaAdd(rec('s2', 'log', 'photo', { blob: new Blob(['j'.repeat(999)], { type: 'image/jpeg' }), size: 999 }));
+    await mediaAdd(rec('s3', 'log', 'photo', { blob: new Blob(['j'.repeat(777)], { type: 'image/jpeg' }), size: 777 }));
+    await mediaAdd(rec('s4', 'log', 'photo', { enc: MEDIA_ENC, size: 3 }));
+    await mediaAdd(rec('s5', 'log', 'voice'));
+    ok('only older photos are offered for shrinking', mediaShrinkCount() === 3, mediaShrinkCount());
+    const steps = [];
+    const sr = await mediaShrinkAll(r => steps.push(r.done));
+    ok('shrinking reports what it did', sr.total === 3 && sr.done === 3 && sr.changed === 1 && sr.saved === 550, sr);
+    ok('…and counts up as it goes', steps.join() === '1,2,3', steps);
+    await reread();
+    const s1 = _media.get('s1');
+    ok('a shrunk photo is replaced, keeping its caption', s1.mime === 'image/webp' && s1.size === 450 && s1.w === 1440 && s1.caption === 'keep me', s1);
+    ok('a photo that would barely shrink is left as it was', _media.get('s2').size === 999 && _media.get('s2').mime === 'image/jpeg');
+    ok('a photo that cannot be decoded is left as it was', _media.get('s3').size === 777);
+    ok('…and none of them is offered again', mediaShrinkCount() === 0 && ['s1', 's2', 's3'].every(id => _media.get(id).enc === MEDIA_ENC));
+    ok('newer photos and voice notes are untouched', _media.get('s4').size === 3 && !_media.get('s5').enc);
+    ok('running it again does nothing', (await mediaShrinkAll()).total === 0);
+    ok('nothing is left busy afterwards', !mediaBusyNow());
+
+    await mediaAdd(rec('s6', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)]), size: 1000 }));
+    await mediaAdd(rec('s7', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)]), size: 1000 }));
+    shim.failNext = 'QuotaExceededError';
+    const sf = await mediaShrinkAll();
+    ok('a full phone stops the shrink and says so', sf.full === true && sf.done === 0, sf);
+    await reread();
+    ok('…leaving the photo it was on exactly as it was', _media.get('s6').size === 1000 && _media.get('s7').size === 1000 && mediaShrinkCount() === 2);
+    await mediaShrinkAll();
+    ok('…and it finishes once there is room', mediaShrinkCount() === 0);
+    window.mediaPhotoBlobs = encSnap;
+
+    /* the backup keeps which encoder made a photo, and a WebP thumbnail comes back as WebP */
+    const bk2 = await mediaForBackup();
+    const it1 = bk2.items.find(x => x.id === 's1');
+    ok('the backup records that a photo is already shrunk', it1 && it1.enc === MEDIA_ENC);
+    await mediaWipe();
+    await mediaRestore(bk2.items);
+    ok('…so a restored photo is not shrunk a second time', _media.get('s1').enc === MEDIA_ENC && mediaShrinkCount() === 0);
+    ok('a WebP thumbnail is restored as WebP', _media.get('s1').thumb.type === 'image/webp', _media.get('s1').thumb.type);
+    ok('an old JPEG thumbnail is restored as JPEG', b64ImageMime('/9j/4AAQ') === 'image/jpeg' && b64ImageMime('UklGRiQ') === 'image/webp');
     if (mrSnap === undefined) delete window.MediaRecorder;
     delete navigator.mediaDevices;
   } catch (e) {

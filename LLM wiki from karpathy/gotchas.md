@@ -379,3 +379,19 @@ screen timeout also hides the page, so a recording stopped at whatever the timeo
 `visibilitychange` needs `navigator.wakeLock.request('screen')` while it runs, released when it
 ends. The same applies to the service worker's `controllerchange` → `location.reload()`: defer it
 while anything is only in memory (`mediaBusyNow()`).
+
+## Canvas `toBlob('image/webp')` can hand back a PNG (2026-11-01)
+Safari's canvas cannot encode WebP. Asked for it, it returns a PNG several times the size and
+raises no error. Check the returned `blob.type`, never assume it. `mediaEncode` falls back to
+JPEG when the type is not WebP.
+
+## A test that throws skips every test after it (2026-11-01)
+In tests/unit.js, `document.querySelector(x).click()` on a missing element throws. That aborts
+the whole IIFE, and the harness reports one "suite threw" line, not which checks failed. The
+first mutation pass on v252 counted four real breaks as "missed" for this reason. Click through
+`tap(sel)`, which records a failed check instead. When checking mutations, treat a non-zero
+exit or "threw" as caught, not only lines containing FAIL.
+
+## The Money screen's `.in` / `.out` are global (2026-11-01)
+styles.css has bare `.in` and `.out` rules (green and red text). Any other element with class
+`in` or `out` gets a coloured row. Use prefixed names (`hd-in`).

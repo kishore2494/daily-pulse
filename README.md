@@ -60,10 +60,14 @@ Sheet** to back-fill everything you've logged so far.
 - **Photos & voice** (v251) — a Log card to add photos (camera or gallery) and record voice notes
   for the day; Notes can be a photo or a voice clip too. Kept in IndexedDB (`daylog-media`), never
   in localStorage and never sent to the Sheet; carried in the backup file as `_media`.
-  "On this day" shows old photos, and History has a Photos tab.
-- **History** — every past day, tap to view/edit; a Photos tab shows every Log photo by month.
+  "On this day" shows old photos, and History has a Photos tab. Since v252 photos are saved as
+  1280px WebP (about 44% of v251's size) and voice notes at 24 kbps mono.
+- **History** — every past day; tapping one opens a read-only page for that day (mood, journal,
+  photos and voice, checklist, time, workout, money, notes, deep log), with Edit to open the Log.
+  A Photos tab shows every Log photo by month.
 - **Settings** — grouped pages: Make it yours · Reminders & tracking · Your data (backup includes
-  photos and voice notes) · Help · Support (Tell a friend, optional tips).
+  photos and voice notes; Storage shows what Daylog takes on the phone and can shrink older
+  photos) · Help · Support (Tell a friend, optional tips).
 
 ## Notes
 - Data is stored locally in your browser (localStorage). **Export a backup** from

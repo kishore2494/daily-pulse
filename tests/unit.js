@@ -2030,6 +2030,138 @@
     ok('the userAgent override is gone again', !/Pixel 7/.test(navigator.userAgent));
   })();
 
+  // ---- v252: History ▸ one day (read-only), Settings ▸ Storage ----
+  (function () {
+    const T0 = todayStr();
+    // A missing button is a failed check, not a crash that skips every check after it.
+    const tap = (sel) => { const el = document.querySelector(sel); if (!el) { ok('the page has ' + sel, false); return false; } el.click(); return true; };
+    ok('relDay: today / yesterday', relDay(T0, T0) === 'Today' && relDay(addDays(T0, -1), T0) === 'Yesterday');
+    ok('relDay: days, weeks, months, years', relDay(addDays(T0, -5), T0) === '5 days ago' && relDay(addDays(T0, -21), T0) === '3 weeks ago'
+      && relDay(addDays(T0, -92), T0) === '3 months ago' && relDay(addDays(T0, -365), T0) === 'A year ago' && relDay(addDays(T0, -800), T0) === '2 years ago',
+      [relDay(addDays(T0, -21), T0), relDay(addDays(T0, -92), T0), relDay(addDays(T0, -365), T0), relDay(addDays(T0, -800), T0)]);
+    ok('fmtHours', fmtHours(7.5) === '7h 30m' && fmtHours(8) === '8h' && fmtHours(0.5) === '30m' && fmtHours('') === '', [fmtHours(7.5), fmtHours(8), fmtHours(0.5)]);
+    ok('moodFace spans the scale', moodFace(1) === '😣' && moodFace(10) === '😄' && moodFace(null) === '');
+
+    const eSnap = localStorage.getItem('dp.entries'), nSnap = localStorage.getItem('dp.notes');
+    const d1 = addDays(T0, -3), d0 = addDays(T0, -9), d2 = addDays(T0, -1);
+    const e = DB.entries();
+    const h0 = HABITS[0], h1 = HABITS[1];
+    e[d1] = { mood: 8, energy: 3, sleepHours: 7.5, bedTime: '23:00', wakeTime: '06:30', deepWorkHours: 2,
+      journal: 'Long walk by the lake.\nFelt <b>good</b> #calm #grateful #work', wentWell: 'Finished the draft ✨', improve: '',
+      habits: h0 && h1 ? { [h0.key]: true, [h1.key]: 0 } : {}, focus: 7, topics: { 'AI/ML': true, Physics: false }, keyInsight: 'Rest is work' };
+    e[d0] = { mood: 4, energy: 4, journal: 'older' };
+    e[d2] = { mood: 6, energy: 6, journal: 'newer' };
+    localStorage.setItem('dp.entries', JSON.stringify(e));
+    const ns = DB.notes(); ns.unshift({ id: 'nHD1', text: 'A note from that day', color: '', created: d1 });
+    localStorage.setItem('dp.notes', JSON.stringify(ns));
+
+    const html = historyDayHTML(d1);
+    ok('the day page leads with how the day felt', /class="hd-hero"/.test(html) && /🙂/.test(html) && /Low energy, pleasant/.test(html));
+    ok('…names the mood words it was tagged with', /hd-word">Calm</.test(html) && /hd-word">Grateful</.test(html) && !/hd-word">Work</.test(html));
+    ok('…shows the journal with its line break and tags', /Long walk by the lake\.\nFelt/.test(html) && /<span class="hd-tag">#work<\/span>/.test(html));
+    ok('…and escapes what was typed', /&lt;b&gt;good&lt;\/b&gt;/.test(html) && !/<b>good<\/b>/.test(html));
+    ok('…the core text fields, without their emoji', /One thing that went well<\/div>/.test(html) && /Finished the draft/.test(html));
+    ok('…an empty field is left out, not shown blank', !/One thing to improve tomorrow/.test(html));
+    ok('…sleep and deep work as tiles', /7h 30m/.test(html) && /23:00–06:30/.test(html) && />2h</.test(html));
+    ok('…the deep log, only what holds something', /Focus quality/.test(html) && /AI\/ML/.test(html) && !/Physics/.test(html) && /Rest is work/.test(html) && !/Anxiety/.test(html));
+    ok('…a note written that day', /A note from that day/.test(html));
+    if (h0 && h1) ok('…the checklist: done, skipped and missed', new RegExp('hd-hab done[^>]*><span class="hd-hk">✓</span>' + h0.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(html) && /hd-hab skip/.test(html));
+    ok('…with Edit at the top and at the bottom', (html.match(/data-hday-edit="/g) || []).length === 2);
+    ok('…and arrows to the days either side', html.includes(`data-hday-go="${d0}"`) && html.includes(`data-hday-go="${d2}"`));
+    const empty = historyDayHTML(addDays(T0, -400));
+    ok('a day with nothing logged says so, and offers to log it', /Nothing was logged on this day/.test(empty) && /Log this day/.test(empty));
+
+    // navigation: list → day → Edit → back → day → back → list
+    const ldSnap = logDate;
+    navigateTo('history');
+    ok('History rows open the day page, not the editor', !!document.querySelector(`#s-history [data-hday="${d1}"]`));
+    tap(`#s-history [data-hday="${d1}"]`);
+    ok('tapping a day opens its read-only page', document.getElementById('s-history').classList.contains('on') && histDay === d1 && !!document.querySelector('#s-history .hd-hero'));
+    ok('…titled with that day', document.getElementById('screen-title').textContent === prettyDate(d1));
+    tap(`#s-history [data-hday-go="${d0}"]`);
+    ok('the ‹ arrow steps to the older day', histDay === d0 && /older/.test(document.getElementById('s-history').textContent));
+    tap(`#s-history [data-hday-go="${d1}"]`);
+    tap('#s-history .hd-hero [data-hday-edit]');
+    ok('Edit opens the Log for that day', document.getElementById('s-today').classList.contains('on') && logDate === d1 && _editFromHist === d1);
+    handleBack();
+    ok('Back from that Log returns to the day page', document.getElementById('s-history').classList.contains('on') && histDay === d1);
+    handleBack();
+    ok('Back from the day page returns to the list', document.getElementById('s-history').classList.contains('on') && histDay === null && !!document.querySelector('#s-history .hist-item'));
+    tap(`#s-history [data-hday="${d1}"]`);
+    tap('#s-history .hd-foot [data-hday-edit]');
+    tap('#save-entry');
+    ok('Done on that Log saves and returns to the day page', document.getElementById('s-history').classList.contains('on') && histDay === d1);
+    tap('#s-history .hd-hero [data-hday-edit]');
+    show('cal');
+    ok('leaving the Log another way forgets the way back', _editFromHist === null);
+    histDayOpen(d1); tap('#s-history .hd-hero [data-hday-edit]');
+    navigateTo('today');
+    ok('…including tapping the Log tab, which opens today', _editFromHist === null && logDate === todayStr());
+    navigateTo('history');
+    ok('the History tab always opens on the list', histDay === null && !!document.querySelector('#s-history .hist-item'));
+    logDate = ldSnap;
+
+    // photos on the day page, and the viewer's "Open day"
+    const readySnap = _mediaReady, supSnap = window.mediaSupported, urlSnap = URL.createObjectURL;
+    URL.createObjectURL = () => 'blob:test'; window.mediaSupported = () => true; _mediaReady = true;
+    _media.set('hd1', { id: 'hd1', kind: 'photo', mime: 'image/webp', blob: new Blob(['x']), thumb: new Blob(['y']), day: d1, ctx: 'log', ts: 1, size: 2, caption: 'The lake' });
+    _media.set('hd2', { id: 'hd2', kind: 'voice', mime: 'audio/webm', blob: new Blob(['z']), day: d1, ctx: 'log', ts: 2, dur: 5000, size: 1 });
+    const hp = historyDayHTML(d1);
+    ok('the day page shows its photos with captions', /data-mview="hd1"/.test(hp) && /hd-cap">The lake</.test(hp) && /data-mset="day"/.test(hp));
+    ok('…and its voice notes, playable but not deletable here', /data-vplay="hd2"/.test(hp) && !/data-mdel="hd2"/.test(hp));
+    ok('voiceRowHTML still offers delete where asked', /data-mdel="hd2"/.test(voiceRowHTML(_media.get('hd2'), true)));
+    histTab = 'photos'; navigateTo('history');
+    mediaViewOpen('hd1', ['hd1']);
+    tap('#media-view [data-mview-day]');
+    ok('"Open day" in the viewer opens the read-only day', !mediaViewIsOpen() && histDay === d1 && histTab === 'days' && !!document.querySelector('#s-history .hd-hero'));
+    mediaViewOpen('hd1');
+    ok('…and is not offered for the day already open', !document.querySelector('#media-view [data-mview-day]'));
+    _media.get('hd1').caption = 'Renamed in the viewer';
+    mediaViewClose();
+    ok('a caption typed in the viewer shows on the day page', /Renamed in the viewer/.test(document.getElementById('s-history').innerHTML));
+    _media.delete('hd2'); refreshMediaSlots();
+    ok('a voice note deleted elsewhere leaves the day page at once', !document.querySelector('#s-history [data-vplay="hd2"]') && !!document.querySelector('#s-history [data-mview="hd1"]'));
+    _media.set('hd2', { id: 'hd2', kind: 'voice', mime: 'audio/webm', blob: new Blob(['z']), day: d1, ctx: 'log', ts: 2, dur: 5000, size: 1 });
+    navigateTo('history');
+
+    // Settings ▸ Storage
+    _media.set('hd3', { id: 'hd3', kind: 'photo', mime: 'image/jpeg', blob: new Blob(['x']), day: d1, ctx: 'log', ts: 3, size: 300000 });
+    ok('mediaShrinkable: an old photo yes; a new one, a voice note no', mediaShrinkable(_media.get('hd3')) && !mediaShrinkable({ kind: 'photo', enc: MEDIA_ENC }) && !mediaShrinkable(_media.get('hd2')));
+    const fx = localStorage.getItem('dp.fintx');
+    localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'tx1', d: d1, dir: 'out', a: 45000, ac: 'x', c: 'food', n: 'Lunch' }]));
+    localStorage.setItem('zz.someone-else', 'abc');
+    const st = storageText();
+    ok('storage groups money keys under Money', st.by.money >= ('dp.fintx' + localStorage.getItem('dp.fintx')).length);
+    ok('…and an unknown key under Settings & other', st.by.other >= 'zz.someone-elseabc'.length);
+    ok('…and the parts add up to the whole', Object.values(st.by).reduce((a, b) => a + b, 0) === st.chars);
+    const sr = storageRows().rows;
+    ok('storage rows are biggest first', sr.every((r, i) => !i || sr[i - 1].bytes >= r.bytes));
+    ok('…photos and voice notes have their own rows', sr.some(r => r.k === 'photos' && r.sub === '2 photos' && r.bytes === 300002) && sr.some(r => r.k === 'voice' && /1 note · 0:05/.test(r.sub)));
+    ok('…daily logs count their days', sr.some(r => r.k === 'logs' && /\d+ days?/.test(r.sub)));
+    const dayMoney = historyDayHTML(d1);
+    ok('the day page shows that day’s spending', /Lunch/.test(dayMoney) && /450/.test(dayMoney) && /spent/.test(dayMoney));
+    settingsPage = null; navigateTo('settings');
+    ok('Settings ▸ Your data has a Storage row with the total', /Storage/.test(document.getElementById('s-settings').textContent) && /on this phone · photos can be shrunk/.test(document.getElementById('s-settings').textContent));
+    tap('#s-settings [data-set-page="storage"]');
+    ok('the Storage page shows the total, a bar and every row', !!document.querySelector('#st-card .st-total b') && document.querySelectorAll('#st-card .st-bar i').length === document.querySelectorAll('#st-card .st-row').length);
+    ok('…offers to shrink the older photos', /Shrink 2 photos/.test((document.getElementById('st-shrink') || {}).textContent || ''));
+    ok('…and how full the text space is', /% of about 5 MB/.test(document.getElementById('st-card').textContent));
+    _media.get('hd3').enc = MEDIA_ENC; _media.get('hd1').enc = MEDIA_ENC;
+    renderSettings();
+    ok('…and stops offering once every photo is current', !document.getElementById('st-shrink'));
+    handleBack();
+    ok('Back leaves the Storage page for Settings', settingsPage === null);
+    ok('a WebP item is a valid backup item', mediaItemValid({ id: 'w1', kind: 'photo', mime: 'image/webp', day: d1, ctx: 'log', data: 'UklGR' }));
+
+    localStorage.removeItem('zz.someone-else');
+    if (fx != null) localStorage.setItem('dp.fintx', fx); else localStorage.removeItem('dp.fintx');
+    ['hd1', 'hd2', 'hd3'].forEach(id => _media.delete(id)); _mediaUrls.clear();
+    _mediaReady = readySnap; window.mediaSupported = supSnap; URL.createObjectURL = urlSnap;
+    if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+    if (nSnap != null) localStorage.setItem('dp.notes', nSnap); else localStorage.removeItem('dp.notes');
+    histDay = null; settingsPage = null;
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
