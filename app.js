@@ -239,10 +239,11 @@ function reportCrash(msg, src) {
    the real SyntaxError named after the pull's URL. Either way it was raising the crash sheet on
    every open of an app that was fine; the pull itself reports the failure. Declared here,
    above its first use, so an error during startup still reaches the handler. */
-let _pullsOpen = 0;
+let _pullsOpen = 0, _pullEnded = 0;   // and when the last one ended: a reply can land after the timeout
 window.addEventListener('error', (e) => {
   if (!e || !e.message) return;
-  if (_pullsOpen && (!e.filename ? /^Script error\.?$/.test(e.message) : /[?&]type=pull&callback=dpcb/.test(e.filename))) return;
+  const pulling = _pullsOpen || Date.now() - _pullEnded < 5 * 60000;
+  if (pulling && (!e.filename ? /^Script error\.?$/.test(e.message) : /[?&]type=pull&callback=dpcb/.test(e.filename))) return;
   reportCrash(e.message, e.filename + ':' + e.lineno);
 });
 window.addEventListener('unhandledrejection', (e) => { reportCrash('promise: ' + (e && e.reason), 'async'); });
@@ -882,7 +883,7 @@ function pullState(done) {
   const script = document.createElement('script');
   let settled = false;
   const finish = (ok, why) => {
-    if (settled) return; settled = true; _pullsOpen--;
+    if (settled) return; settled = true; _pullsOpen--; _pullEnded = Date.now();
     clearTimeout(timer); script.remove();
     // an answer that turns up after a failure must find something to call, or it is an error
     if (ok) delete window[cb]; else window[cb] = () => {};
@@ -1253,8 +1254,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w23',
+  v: 'w24',
   items: [
+    '☁️ <b>Sync that tells you the truth</b> — if your Google Sheet cannot be reached, is offline, or answers with something Daylog cannot read, Sync now says which, instead of “Synced ✅”. If your Sheet still runs an older copy of the script, Settings ▸ Backup &amp; restore now says so and shows the three steps to update it (your link stays the same). And a backup restored on a new phone no longer rolls back edits you made since on your other phone.',
     '🔄 <b>Two phones, one set of lists</b> — notes, tasks, plans, events, articles and money now sync item by item. Something added on one phone is no longer lost when the other phone saves before it has seen it, and something deleted on one phone stays deleted on both. Update both phones to get it. <b>Using the Google Sheet?</b> Paste the script from the Sheet setup page again and redeploy it: a journal or note starting with “- ” showed as #ERROR! in the sheet, and a large sync could come back broken.',
     '🛟 <b>Nothing you type gets lost</b> — the last moment of typing could vanish if the Log redrew itself, a sync landed or the app was closed straight after; and a Log left open overnight kept saving the morning to yesterday. Both are fixed, along with voice typing that kept going after you switched day, and a mood word that could cut text out of a longer #tag.',
     '⏱️ <b>Time tracker fixes</b> — Stop now stops a project timer (it used to start a new one), fixing a time across midnight no longer makes a 30-hour block, the day the clocks change counts every hour once, and a deleted activity keeps its name in your history.',

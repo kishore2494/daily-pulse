@@ -2821,7 +2821,11 @@
       document.querySelectorAll('#crash-sheet').forEach(x => x.remove()); _crashShown = shown0;
       p.on.load();
       window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
-      ok('…but with no pull open, "Script error." still does', _crashShown && !!document.getElementById('crash-sheet'));
+      ok('…and for five minutes after a pull ended (a reply can land after the timeout), it still does not', !_crashShown && !document.getElementById('crash-sheet'));
+      const pe = _pullEnded; _pullEnded = Date.now() - 6 * 60000;
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
+      ok('…but with no pull open or recent, "Script error." still does', _crashShown && !!document.getElementById('crash-sheet'));
+      _pullEnded = pe;
       document.querySelectorAll('#crash-sheet').forEach(x => x.remove()); _crashShown = shown0;
       // what the buttons say
       settingsPage = 'data'; renderSettings(); toasts.length = 0; sent.length = 0;
