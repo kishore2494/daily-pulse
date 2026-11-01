@@ -36,7 +36,7 @@
 - An image block in Write. (Media on an existing note: done in v253.)
 - Optionally export media as a SEPARATE file once libraries get big; the guard asks past ~35 MB.
 
-## Native fixes found 2026-11-01 (need an .aab build)
+## Native fixes found 2026-11-01 — DONE in build 119 (built, not uploaded)
 - **TimerNotifPlugin:** queue `{action, atMillis}` instead of one overwritten tag, so a Stop or
   Pause from the notification applies at the time it was tapped. Today a Stop at 18:00 seen at
   22:00 counts to 22:00, and Pause + Resume collapse to just Resume.
@@ -71,6 +71,8 @@ Android-first confirmed by Kishore. When Android is live:
 ## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
 - **Sync robustness**: list/config stores are last-writer-wins whole-list → concurrent multi-device edits can drop items. Move to id-keyed merge + tombstones + per-item stamps. Gym merge is union-only (uncheck/edit doesn't propagate).
   - Found again 2026-11-01 (review 2), both reproduced in a jsdom harness:
+    - (DONE 2026-11-01, v253: per-habit stamps `habitsAt`; time-log tombstones `dp.timelogDel`;
+      push-after-pull and flush-on-hide. The list-store tombstones below are still open.)
     - **Un-ticked habits come back.** Clearing a habit deletes its key, and the entry merge
       unions `habits`, so an older device's `true` wins over a newer un-tick. Storing `false`
       would fix the merge, but `false` is read as "logged" by goal counters and `entryHasContent`

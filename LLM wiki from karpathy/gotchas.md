@@ -411,3 +411,9 @@ in tests/unit-async.js, which polls for up to 2 s.
 ## A photo block that points at a missing photo is never pruned (2026-11-01)
 Media stay on one phone; articles sync. On another phone the block's photo is "not on this
 phone". Pruning it there would sync back and orphan the photo on the phone that has it.
+
+## The emulator needs free disk (2026-11-01)
+`Medium_Phone_API_36.1` refused to start ("not enough disk space") with 2 GB free on the Mac.
+With no emulator, a native change can be compile-checked (`assembleDebug`) but not run.
+Free space first (ask Kishore before deleting anything), or test on the phone through the
+internal track.

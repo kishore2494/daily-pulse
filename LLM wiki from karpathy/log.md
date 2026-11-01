@@ -1,3 +1,41 @@
+## 2026-11-01 (night) — the four deferred items, fixed: sync merge + native build 119
+
+Kishore asked why four items were left unfixed ("do it then"). All four are done.
+- **Habits merge per habit.** Every habit change stamps `entry.habitsAt[key]`, and
+  `mergeHabits` keeps the newest change, so an un-tick no longer comes back from the other
+  phone. A side that never touched a habit has no say, so a stale machine write still can't
+  drop a tick. Entries from older versions fall back to `updatedAt` and the old union.
+  `habitsAt` is in `ENTRY_META`, and the Sheet ignores it (fixed `COLUMNS`).
+- **Time-log tombstones** (`dp.timelogDel`, id → deletedAt, kept 90 days, sent with every
+  push).
+  - A block missing on the side that saved last is no longer treated as deleted, so an
+    unsynced running timer survives a pull. A deleted block no longer comes back.
+  - A state from an older version (no `timelogDel`) still uses the old rule, so its
+    deletions arrive.
+- **The last save syncs.** A pull that brings nothing down still pushes when local `touched`
+  is newer than the remote's. Hiding or closing the app sends a push that is still in its
+  1.2 s debounce (`flushPush`).
+- **Native build 119 / 79** (daily-pulse-native; backed up as daylog-native `native-119`):
+  - `TimerNotifPlugin` queues every tap with its time (`consumeActions` → `[{action, at}]`).
+    `drainTimerAction` applies them oldest first at their own times, and a tap older than
+    the running block is ignored. `consumeAction` is kept for older web builds and clears the
+    queue too.
+  - `SharePlugin.shareTextFile` waits. The chooser's IntentSender → `ShareChosenReceiver`
+    (not exported) says an app was picked; resuming without one means the sheet was
+    dismissed. It resolves `{ok, chosen, target?}`, and `saveFile` returns 'cancel' on
+    `chosen:false`, so no backup date is stamped.
+  - Both orders are safe: native 119 + web v252 behaves as before, and web v253 + native 118
+    uses the fallbacks (both tested).
+- **Verified:**
+  - 852 tests × 4 timezones; every new rule mutation-checked.
+  - The debug and release builds compile; the release manifest has `ShareChosenReceiver`.
+  - `.aab`/`.apk` copied to `store/assets/`.
+  - **Not run on a device:** the emulator refused to start with only 2 GB free on disk. The
+    first real-phone check is the internal test track.
+- **Not done (needs Kishore):**
+  - Uploading build 119 to Play.
+  - Deploying web v253.
+
 ## 2026-11-01 (evening) — v253 built, not deployed: spare-budget session
 
 Kishore asked me to use the spare weekly budget usefully and log it. This is not deployed;
