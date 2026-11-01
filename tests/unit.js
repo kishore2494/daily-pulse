@@ -2714,7 +2714,7 @@
       ok('switching day mid-typing saves the typing to the day it was typed on', DB.gymDay(Y).log[k2] === 'day Y' && DB.gymDay(T0).log[k2] === '3 x 15' && !_gymPending);
       // pushes: what goes up, and when
       sent.length = 0; pushState(true);
-      ok('every push carries the gym stamps', sent.length && sent[sent.length - 1].gymAt && sent[sent.length - 1].gymAt[T0].done[k1] === tU);
+      ok('every push carries the gym stamps', sent.length && dig(sent[sent.length - 1], 'gymAt', T0, 'done', k1) === tU);
       const mine = JSON.parse(localStorage.getItem('dp.gym')), myAt = GA(), ents = () => JSON.parse(localStorage.getItem('dp.entries'));
       const reorder = o => JSON.parse(JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).reverse().reduce((x, kk) => { x[kk] = v[kk]; return x; }, {}) : v));
       localStorage.setItem('dp.touched', String(Date.now() + 9000)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
@@ -2724,9 +2724,9 @@
       ok('a pull from an older app version (no stamps) sends ours back up', sent.some(x => x.type === 'state' && x.gymAt && x.gymAt[T0]));
       sent.length = 0;
       const theirs = JSON.parse(JSON.stringify(mine)); theirs[T0].done[k1] = true;
-      const theirAt = JSON.parse(JSON.stringify(myAt)); theirAt[T0].done[k1] = tU - 1000;
+      const theirAt = JSON.parse(JSON.stringify(myAt)); theirAt[T0] = Object.assign({}, theirAt[T0]); theirAt[T0].done = Object.assign({}, theirAt[T0].done, { [k1]: tU - 1000 });
       applyRemoteState({ touched: Date.now() + 9000, gym: theirs, gymAt: theirAt, entries: ents(), timelog: [], timelogDel: {} });
-      ok('a pull whose Sheet still has the old tick sends the un-tick back up', DB.gymDay(T0).done[k1] === false && sent.some(x => x.type === 'state' && x.gym[T0].done[k1] === false));
+      ok('a pull whose Sheet still has the old tick sends the un-tick back up', DB.gymDay(T0).done[k1] === false && sent.some(x => x.type === 'state' && dig(x, 'gym', T0, 'done', k1) === false));
       sent.length = 0;
       const extra = JSON.parse(localStorage.getItem('dp.gym')); extra['2025-12-31'] = { done: { 'x/y': true }, log: {} };
       localStorage.setItem('dp.gym', JSON.stringify(extra));
