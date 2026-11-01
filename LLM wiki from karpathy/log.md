@@ -1,3 +1,23 @@
+## 2026-11-02 (01:15) — wiki lint 1/3: contradictions and stale facts
+
+Lint report applied (facts re-checked against app.js, the native project and git tags):
+- features/roadmap: Write image block + note media are done (v253); the three v253 sync
+  bullets (un-tick, dropped block, last-1.2 s save) deleted; one-tap share shipped natively
+  (113+) — strava-build.md too; test count no longer stated (see this log).
+- play-store: header now "LIVE since 2026-08-26, native 118, web v253"; `SHOW_SYNC` is
+  `!!s.syncUrl` (not false); sync plan is Google sign-in + Cloudflare, not Firebase (index too);
+  tip-jar products replace the ₹9/₹99 idea; build 118 published (date: Kishore to confirm).
+- roadmap: tab-count item rewritten (5 pinned + menu since v250); BOOT receiver +
+  POST_NOTIFICATIONS done (build 109); `dp.exercises` is live, not dead; Pixels / mood grid /
+  gallery marked shipped (competitors.md too); "v254" → unreleased (on origin after v253),
+  architecture.md too; build-119 notes in past tense; no `daily-pulse-factory/` folder (gotchas too).
+- architecture: real line counts, 75 `dp.*` keys with the missing 14 in the table, full native
+  plugin list, release = bump.sh + deploy.sh.
+- gotchas: assetlinks is a TWA leftover; `DEFAULT_CORE_FIELDS` (no `FIELDS`). backups: tags
+  web-v30…web-v253 (152), native-112…119. distribution: insight line is app.js:4313.
+  behaviour-audit: attention volume fixed v241. schema: topic-page list complete.
+  index: one link style.
+
 ## 2026-11-02 (01:10) — plans merge step by step, gym per key (merged); the 01:01 sprint
 
 Kishore set a trigger for 01:01 to spend the whole window before the weekly reset at 02:00.

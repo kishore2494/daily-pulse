@@ -47,8 +47,8 @@ each is bound by: `strava-build.md`.
 - **Your best ever** (Stats ▸ Overview) — top-3 lifetime ladder per benchmark plus
   best-this-year; rows open that day.
 - **Share cards** — 5 canvas designs at 4:5 and 9:16, drawn on device. Delivery falls through
-  a 4-rung ladder because Android WebView has no Web Share API; the native rung needs the
-  next store build.
+  a 4-rung ladder because Android WebView has no Web Share API; delivery shipped natively
+  (build 113+, live on Play), so `deliverCard()`'s screenshot rung is now only the PWA fallback.
 - **You vs you** — temporal self-comparison over week / month / year, 10 measures, per-metric
   direction, today excluded, honest degradation.
 - **Habit cues** — an optional when/where plan per habit, shown on the chip while un-ticked.
@@ -62,7 +62,7 @@ each is bound by: `strava-build.md`.
 - **Health Connect insights** — 4 sensor insights and 13 correlations, every split on the
   user's own median.
 
-Supporting: `tools/deploy.sh` (proves the live URL serves the version), 159 unit tests, and
+Supporting: `tools/deploy.sh` (proves the live URL serves the version), unit tests (count: see log.md), and
 an eval suite that now measures every Stats sub-tab and all four overlays.
 
 
@@ -136,8 +136,6 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
     runtime prompt.
   - The FileProvider `external-path "."` covers the capture file.
 - **Not done yet:**
-  - adding media to an existing note
-  - a Write/article image block
   - sharing voice notes in the native app (`shareImage` sets an image MIME type)
 
 

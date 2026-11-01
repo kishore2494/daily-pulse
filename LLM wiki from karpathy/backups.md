@@ -6,9 +6,9 @@
 
 | Asset | Repo | Visibility | Per-version snapshots |
 |---|---|---|---|
-| Web app (source mirror) | `kishore2494/jurnal-app` | public | `web-v30` … `web-v165` |
-| Web app (**production**) | `kishore2494/daily-pulse` | public | same 109 tags |
-| Native shell + plugins | `kishore2494/daylog-native` | **private** | `native-<versionCode>` |
+| Web app (source mirror) | `kishore2494/jurnal-app` | public | `web-v30` … `web-v253` |
+| Web app (**production**) | `kishore2494/daily-pulse` | public | same 152 tags |
+| Native shell + plugins | `kishore2494/daylog-native` | **private** | `native-112` … `native-119` (117/118 untagged) |
 | Upload keystore | **nowhere** | — | **see the risk below** |
 
 The two web repos are independent copies of the same history, so either one alone can
@@ -23,7 +23,7 @@ loads — see the two-remote trap in `gotchas.md`.
   every secret), commits, pushes, and tags `native-<versionCode>`. It **refuses to commit**
   if a keystore-shaped file is present.
 
-The 109 web tags were created retroactively on 2026-08-26 by walking every commit that
+The first 109 web tags (to v165) were created retroactively on 2026-08-26 by walking every commit that
 touched `app.js` and reading its `APP_VERSION`.
 
 ## The one real risk: the upload keystore

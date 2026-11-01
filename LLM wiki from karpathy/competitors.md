@@ -46,14 +46,14 @@ Every paid app here paywalls something we already give away.
 
 ## Next candidates, ranked by value ÷ cost
 
-1. **Mood Meter grid** (How We Feel) — we already collect mood *and* energy 1-10, which are
+1. **Mood Meter grid** (How We Feel) — SHIPPED v121 (`.mm-card`). We already collect mood *and* energy 1-10, which are
    exactly its two axes. One CSS grid, four quadrants, one tap sets both. Then a curated
    ~40-word emotion vocabulary per quadrant appended as tags. The same grid inverts into an
    output: scatter every logged day to show where the year lives. **Highest differentiation
    per hour of work in the whole list.**
-2. **Preset habit/routine gallery** (TickTick 60+, Routinery categories) — static JSON, kills
+2. **Preset habit/routine gallery** (TickTick 60+, Routinery categories) — SHIPPED v129. Static JSON, kills
    the empty state.
-3. **Quantity habits with At least / Exactly / Less than** (HabitNow) — unlocks *negative*
+3. **Quantity habits with At least / Exactly / Less than** (HabitNow) — SHIPPED v129. Unlocks *negative*
    habits ("less than 2 coffees"), which we cannot express at all today.
 4. **Flexible frequency** (HabitNow: every N days, X per week, missed day slides).
 5. **Sequential routine player** (Routinery) — reuses the pomodoro tick loop and habit

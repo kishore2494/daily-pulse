@@ -11,7 +11,7 @@
 ## Android build
 - **Capacitor 7 needs JDK 21** → use Android Studio's JBR: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`. Bubblewrap's bundled JDK 17 fails ("invalid source release: 21").
 - Bubblewrap's `@capacitor/assets` icon generator emitted an adaptive-icon XML referencing a missing `mipmap/ic_launcher_background`; fix by pointing `<background>` at `@color/ic_launcher_background`.
-- The signing keystore + password live in `daily-pulse-android/` (`android.keystore`, `keystore-password.txt`). **Back them up. Lose them = can't update the app ever.** SHA-256 is in the site's `.well-known/assetlinks.json`.
+- The signing keystore + password live in `daily-pulse-android/` (`android.keystore`, `keystore-password.txt`). **Back them up. Lose them = can't update the app ever.** SHA-256 is in the site's `.well-known/assetlinks.json` (TWA leftover; Capacitor does not use it).
 - **`USE_FULL_SCREEN_INTENT`** (full-screen alarm) is a Play-restricted permission on Android 14+ → at submission you must tick the declaration that it's an alarm/reminder app.
 
 ## Emulator testing
@@ -41,7 +41,7 @@
 - Local server for browser testing dies between turns; restart `python3 -m http.server 8471` in the app dir as needed.
 
 ## Not part of the app
-`daily-pulse-factory/` + the `focus-tracker-*.html` / comparison pages / `factory-data.json` inside `daily-pulse-app/` are a **programmatic-SEO landing-page generator** (separate marketing work, ~128 pages, n8n drip). Harmless to the app; don't confuse them with app code.
+The `*-for-*.html` / `daily-pulse-vs-*.html` comparison pages / `factory-data.json` inside `daily-pulse-app/` (there is no `daily-pulse-factory/` folder) are a **programmatic-SEO landing-page generator** (separate marketing work, ~128 pages, n8n drip). Harmless to the app; don't confuse them with app code.
 
 
 ## MIUI / Xiaomi dark mode washes out a light WebView (RESOLVED 2026-08-19)
@@ -149,8 +149,8 @@ wrap it: `bash -c '...'`.
 - **The eval seed itself** wrote `deepWork`, so the fixture agreed with the bug and no test
   or eval run ever noticed. A fixture that shares the code's mistake hides it.
 
-The real keys come from `FIELDS` (~line 90): `mood`, `energy`, `sleepHours`,
-`deepWorkHours`, `tasksDone`, `tasksPlanned`. Grep `FIELDS` before inventing a key.
+The real keys come from `DEFAULT_CORE_FIELDS` (app.js:102): `mood`, `energy`, `sleepHours`,
+`deepWorkHours`, `tasksDone`, `tasksPlanned`. Grep `DEFAULT_CORE_FIELDS` before inventing a key.
 
 ## A flat fixture tests nothing
 

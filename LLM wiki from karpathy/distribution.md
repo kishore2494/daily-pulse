@@ -65,7 +65,7 @@ to "Ads and referrals".
   - "nothing ever leaves the phone": the optional Google Sheet sync and ntfy reminders do send
     data. Use "stays on your phone" or "no account".
 - **Quote insights in the app's actual wording.**
-  - "Your mood is +1.4 higher on workout days" (app.js:3713)
+  - "Your mood is +1.4 higher on workout days" (app.js:4313)
   - "Heavy screen days cost you −1.2 mood"
   - "Walking today → mood +0.7 tomorrow"
   - The drafts once said "workout days lift your mood +1.4", which the app never shows.

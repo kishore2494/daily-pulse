@@ -3,8 +3,8 @@
 ## Stack
 Vanilla HTML/CSS/JS — **no framework, no build step**. Three core files in `daily-pulse-app/`:
 - `index.html` — shell: topbar, one empty `<section class="screen" id="s-*">` per screen, `<nav id="nav">`, alarm overlay, onboarding overlay, toast. Screens are filled by JS.
-- `app.js` (~3455 lines) — everything: storage, screens, sync, native bridges. Single file, section-commented (`SCREEN: …`).
-- `styles.css` (~582 lines) — "dark instrument panel" theme (Sora + DM Sans, glassy nav, gradient accents, glow + grain background). Revert-safe: `git checkout pre-ux-v40 -- styles.css`.
+- `app.js` (~14,600 lines) — everything: storage, screens, sync, native bridges. Single file, section-commented (`SCREEN: …`).
+- `styles.css` (~2,480 lines) — "dark instrument panel" theme (Sora + DM Sans, glassy nav, gradient accents, glow + grain background). Revert-safe: `git checkout pre-ux-v40 -- styles.css`.
 - `sw.js` — network-first service worker + cache-bust on `controllerchange`. **Bump `CACHE` with every release.**
 - `manifest.webmanifest`, `icons/`, `guide.html` (how-to), `privacy.html`, `google-apps-script/Code.gs`.
 
@@ -14,7 +14,7 @@ Everything is `localStorage`, one key per store, all prefixed `dp.`. There is no
 **The one exception (v251):** photos and voice notes live in IndexedDB (`daylog-media`, store
 `media`), because one photo is bigger than localStorage's whole budget. They are in no `dp.*`
 key, are never synced to the Sheet, and reach the backup file as `_media` (see `BACKUP_EXTRA`
-and features.md ▸ Photos & voice notes). **63 keys** as of v220, totalling ~17 KB on a store with two weeks of
+and features.md ▸ Photos & voice notes). **75 keys** as of v253, totalling ~17 KB on a store with two weeks of
 sample data — about **0.3% of the typical 5 MB origin quota**.
 
 ### How a read and a write actually work
@@ -93,17 +93,18 @@ The exceptions are deliberate and each has a reason:
 - `dp.health` — a cache of Health Connect readings, because the sensor is not always readable.
 - `dp.pomohist`, `dp.finmarks` — point-in-time facts with no other source.
 
-### Current key list (v220)
+### Current key list (v253)
 
 | Group | Keys |
 |---|---|
 | Daily records | `entries`, `gym`, `health` |
-| Lists | `tasks`, `notes`, `plans`, `docs`, `events`, `reminders`, `timelog`, `timeacts`, `timebox`, `waves`, `goals`, `projects`, `milestones` |
+| Lists | `tasks`, `notes`, `plans`, `docs`, `events`, `reminders`, `timelog`, `timeacts`, `timebox`, `waves`, `goals`, `projects`, `milestones`, `exercises` |
 | Money | `finaccts`, `fintx`, `finmarks`, `finbudget`, `fincats`, `finset` |
 | Config | `habitcfg`, `actcfg`, `deepcfg`, `gymcfg`, `gymgroups`, `daycfg`, `corecfg`, `navcfg`, `logsec`, `pomo`, `settings` |
-| Ledgers / caches | `awards`, `awardsInit`, `pomohist`, `pjnames` (deleted-project name tombstones), `gapskip` |
+| Ledgers / caches | `awards`, `awardsInit`, `pomohist`, `pjnames` (deleted-project name tombstones), `actnames` (deleted-activity names), `gapskip` |
+| Sync stamps (install state, BACKUP_EXCLUDED) | `listAt`, `listDel`, `timelogDel`, `gymAt`, `sheetScript` (Sheet script version per link) |
 | Per-device prefs | `cardratio`, `hapticsOff`, `moodMeterOff`, `nudgeOff`, `ringOff`, `throwbackOff`, `alarmSound` |
-| Bookkeeping | `touched` (last-write ms), `onboarded`, `toured`, `whatsnew`, `lastBackup`, `backupNudge`, `quotaWarn`, `sampleMeta`, `errlog`, `pausedAct`, `usageDisclosure`, `exactAsked`, `alarmHealth`, `freshSeen`, and migration flags (`logsecMigrated`, `moodInputMigrated`) |
+| Bookkeeping | `touched` (last-write ms), `onboarded`, `toured`, `whatsnew`, `lastBackup`, `backupNudge`, `quotaWarn`, `sampleMeta`, `errlog`, `pausedAct`, `pausedPid`, `usageDisclosure`, `exactAsked`, `alarmHealth`, `freshSeen`, `celeb` (one full-screen celebration a day), `tip`, `rateAsk`, `playNudge`, `mediaWipe`, and migration flags (`logsecMigrated`, `moodInputMigrated`) |
 
 `dp.health` is deliberately **absent from the sync payload** — Health Connect readings never
 leave the device, and the Play Data Safety answer depends on that staying true. There is a
@@ -154,7 +155,7 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   `canonJSON` (sorted keys), or two phones with different key orders would push in turn on
   every open.
 - **Restore** (`listIds` before, `listRestored(before, backupTime)` after): an item the
-  backup changed or brought back is stamped at the BACKUP'S time (`_at` in backups from v254
+  backup changed or brought back is stamped at the BACKUP'S time (`_at` in backups from the unreleased build (on origin after v253)
   on; the newest day or time block inside an older one; 1 with neither), so an edit made
   anywhere after the backup still wins and the backup beats what is older. An item the
   restore left unchanged keeps its stamp. An item this phone deleted since the backup is
@@ -172,7 +173,7 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   `timelogForget`; otherwise the other phone sent each dropped record back, with a push.
 - `dp.listAt` / `dp.listDel` are install state: in `BACKUP_EXCLUDED`, sent with every push.
 
-### The pull itself (v254, not deployed)
+### The pull itself (unreleased, on origin after v253)
 - **Script version.** Code.gs answers a pull with `callback(state, {script: SCRIPT_VERSION})`.
   The app records `{url, v}` in `dp.sheetScript` (v1 when the second argument is missing, i.e.
   a copy pasted before versions) and compares with `SHEET_SCRIPT` in app.js. Raise BOTH when
@@ -186,7 +187,7 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
 
 ## Native shell (Android)
 Two wrappers exist; **Capacitor is current**:
-- `daily-pulse-native/` (Capacitor) — loads the live site remotely (`server.url`), so web pushes update the app instantly. Adds native plugins: `@capacitor/local-notifications` + a custom `FullScreenAlarmPlugin` (Java) for lock-screen alarms. This builds the `.aab` for the Play Store.
+- `daily-pulse-native/` (Capacitor) — loads the live site remotely (`server.url`), so web pushes update the app instantly. Adds native plugins: `@capacitor/local-notifications`, `@capacitor-community/speech-recognition`, and custom Java plugins `FullScreenAlarmPlugin` (lock-screen alarms), `SharePlugin`, `BillingPlugin`, `TimerNotifPlugin`, `HealthConnectPlugin` (+ `BootReceiver`, re-arms alarms after reboot). This builds the `.aab` for the Play Store.
 - `daily-pulse-android/` (older TWA/Bubblewrap) — superseded; keep only for `android.keystore` + `keystore-password.txt` (the shared signing identity — back these up, never lose them).
 
 Because the shell loads the remote URL, **web-only features need no rebuild** (they reach the installed app on next open). Only native-code changes (new plugin, permission, icon) need a Gradle rebuild with JDK 21 (Android Studio's JBR).
@@ -195,4 +196,4 @@ Because the shell loads the remote URL, **web-only features need no rebuild** (t
 Two GitHub repos, both GitHub Pages, both owned by personal account **kishore2494** (git keychain defaults to work account kishore-FP — see gotchas for the push helper):
 - `kishore2494/daily-pulse` → **production** URL. Push here for stable releases.
 - `kishore2494/jurnal-app` → **dev** URL. First/original repo.
-Git remotes in `daily-pulse-app/`: `origin` = jurnal-app, `prod` = daily-pulse. Release = commit, push both, bump version + cache.
+Git remotes in `daily-pulse-app/`: `origin` = jurnal-app, `prod` = daily-pulse. Release = `tools/bump.sh`, then `tools/deploy.sh --tag`.

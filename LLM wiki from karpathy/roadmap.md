@@ -25,7 +25,7 @@
     Listing wording becomes "no account required — optional sign-in for cloud sync".
   - **Popups:** the What's-new mention + Settings card only. Never a recurring nag.
   - Phase 0 done: `SHOW_SYNC` is now `!!settings.syncUrl` (app.js), so the sync card only shows for someone who already set up a Sheet (checked 2026-11-01).
-- **Google Play Billing** — ₹9/mo sub w/ 30-day trial, OR simpler ₹99 one-time "Pro" unlock. Needs merchant profile (PAN + bank) in Play Console; then wire the Digital Goods API purchase + gate Pro features. Purchases auto-follow the user's Google account across devices.
+- **Google Play Billing** — tip jar shipped (web v246, native 118) — see play-store.md ▸ Merchant setup.
 - **Foreground service for the running-timer** — current timer notification with Pause/Stop works while the app process is alive; if Android fully kills the app, actions only apply on relaunch. A true always-live control needs a native foreground service (Java, + Android 14 foregroundServiceType declaration).
 
 ## Photos & voice: next steps (from v251, 2026-11-01)
@@ -33,22 +33,22 @@
   filter plus a small plugin that hands the file to the web layer. Needs a native build.
 - **Sharing voice notes in the app:** `DaylogShare.shareImage` hard-codes an image MIME type, so
   the viewer offers Share for photos only. Add `shareFile({base64, mime, filename})`. Native build.
-- An image block in Write. (Media on an existing note: done in v253.)
+- (Done v253: image block in Write; media on an existing note.)
 - Optionally export media as a SEPARATE file once libraries get big; the guard asks past ~35 MB.
 
 ## Native fixes found 2026-11-01 — DONE in build 119 (built, not uploaded)
 - **TimerNotifPlugin:** queue `{action, atMillis}` instead of one overwritten tag, so a Stop or
-  Pause from the notification applies at the time it was tapped. Today a Stop at 18:00 seen at
-  22:00 counts to 22:00, and Pause + Resume collapse to just Resume.
-- **SharePlugin.shareTextFile:** report whether the user actually shared. Today it resolves as
-  soon as the sheet opens, so `dp.lastBackup` is stamped after a cancel on Android ≤9, or
-  when saving to Downloads fails.
+  Pause from the notification applies at the time it was tapped. Before 119 a Stop at 18:00 seen at
+  22:00 counted to 22:00, and Pause + Resume collapsed to just Resume.
+- **SharePlugin.shareTextFile:** report whether the user actually shared. Before 119 it resolved as
+  soon as the sheet opened, so `dp.lastBackup` was stamped after a cancel on Android ≤9, or
+  when saving to Downloads failed.
 
 ## User action items (only they can do)
 - Finish Google Play identity verification (blocking everything).
 - Deploy `Code.gs` (latest) + redeploy new version → unlocks Time Log / Events / Articles Sheet tabs,
   and (v253) stops `_State` pieces and "- …" journal lines coming back as #ERROR!.
-  - (DONE 2026-11-02, v254 not deployed: `doGet` passes `SCRIPT_VERSION` as a second JSONP
+  - (DONE 2026-11-02, unreleased (on origin after v253): `doGet` passes `SCRIPT_VERSION` as a second JSONP
     argument; the app keeps it per link in `dp.sheetScript` and says "update your Sheet
     script" in Settings ▸ Backup & restore when it is older than `SHEET_SCRIPT`.)
 - Deploy `Feedback.gs` → paste URL into `FEEDBACK_URL` in app.js.
@@ -56,9 +56,9 @@
 - Test full-screen alarm + timer notification on the real phone (emulator can't).
 
 ## Open questions / deferred
-- **Tab count** (13 nav tabs) may overwhelm new users — decided to let the 12-person closed test tell us before simplifying. Consider a "starter" default that hides advanced tabs.
+- **Tab count** — the default tab set may still overwhelm new users (5 pinned + menu since v250). Consider a "starter" default that hides advanced tabs.
 - Whether to make the Sheet's `Log` columns dynamic (so custom deep-log fields get Sheet columns) — currently fixed.
-- Marketing: a large programmatic-SEO page factory already exists (`daily-pulse-factory/`, ~128 pages) — separate track.
+- Marketing: a large programmatic-SEO page set already exists (the `*-for-*.html` + `daily-pulse-vs-*.html` pages in the app root, ~128 pages; there is no `daily-pulse-factory/` folder) — separate track.
 
 ## Phase 2 — iOS (decided 2026-08-16: AFTER Android production ships)
 Android-first confirmed by Kishore. When Android is live:
@@ -67,7 +67,7 @@ Android-first confirmed by Kishore. When Android is live:
 - Zero-cost interim: iPhone users can install the **PWA** (Safari → Add to Home Screen) today.
 
 ## From competitor research (2026-08-18) — ranked web-shippable wins
-1. Year in Pixels (S) · 2. streak grace + flexible habit schedules e.g. 3x/week (M) · 3. PIN lock (S) · 4. CSV import (S) · 5. notes per habit check-in + week-start setting (S). Native-only gaps: widgets, Wear OS. Monetization: one-time unlock or free (fits privacy brand).
+Still unbuilt: PIN lock (S) · flexible habit schedules e.g. 3x/week (M) · CSV import for entries (S; Money has one) · notes per habit check-in + week-start setting (S). Shipped: Year in Pixels (v124) — see competitors.md. Native-only gaps: widgets, Wear OS. Monetization: one-time unlock or free (fits privacy brand).
 
 ## Nice-to-haves (not committed)
 - Pomodoro count → Stats card. Widget. Data-viz polish on Stats.
@@ -81,19 +81,7 @@ Android-first confirmed by Kishore. When Android is live:
   - Found again 2026-11-01 (review 2), both reproduced in a jsdom harness:
     - (DONE 2026-11-01, v253: per-habit stamps `habitsAt`; time-log tombstones `dp.timelogDel`;
       push-after-pull and flush-on-hide. List stores: done too, same day.)
-    - **Un-ticked habits come back.** Clearing a habit deletes its key, and the entry merge
-      unions `habits`, so an older device's `true` wins over a newer un-tick. Storing `false`
-      would fix the merge, but `false` is read as "logged" by goal counters and `entryHasContent`
-      paths. Needs per-habit stamps or tombstones; decide together with the list-store tombstones.
-    - **A pull drops a time block the other device never saw** (an unsynced running timer),
-      and a deleted block comes back when the other device saves later. Same fix: tombstones
-      (id → deletedAt), and never treat "missing" as "deleted" (review 4, 2026-11-01).
-    - **A save in the last ~1.2 s before a kill never syncs.** `pushState` is debounced.
-      On the next launch the pull sees a newer local `touched` and uploads nothing. Fix: when
-      local `touched` is newer than remote, push after the pull; and send on hide with
-      `keepalive`.
 - **Sync security**: the sync URL is an unauthenticated bearer to all data; pull uses JSONP. Add a shared-secret token + CORS fetch with shape validation. Document the secrecy requirement.
-- **Native**: add a BOOT_COMPLETED receiver (alarms lost on reboot); request POST_NOTIFICATIONS in Focus/timebox paths; fill the SCHEDULE_EXACT_ALARM Play declaration.
+- **Native**: fill the SCHEDULE_EXACT_ALARM Play declaration. (Done, build 109: BOOT_COMPLETED receiver, POST_NOTIFICATIONS.)
 - **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).
-- **Consistency**: dead dp.exercises store. (Done: fonts are self-hosted, so the privacy claim holds; custom number fields show in Stats as averages; 'Push all to Sheet' sends Events/Articles since v253.)
-- **UX**: 12-tab nav is cramped (<44px) — consider overflow sheet or fewer default tabs.
+- **Consistency**: (Done: `dp.exercises` is a live list store (LIST_SYNC, merged on pull); fonts are self-hosted, so the privacy claim holds; custom number fields show in Stats as averages; 'Push all to Sheet' sends Events/Articles since v253.)

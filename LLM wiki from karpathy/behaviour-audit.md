@@ -61,8 +61,9 @@ invent a weighted total from them and attribute it to the audit.
 
 ## Still open
 
-- **Attention volume.** ~25 blocking full-screen confetti modals in month one vs ~2 in month
-  six. The award count (60) may simply be too many; tier spacing is fine, frequency is not.
+- ~~**Attention volume.** ~25 blocking full-screen confetti modals in month one vs ~2 in month
+  six. The award count (60) may simply be too many; tier spacing is fine, frequency is not.~~
+  — fixed v241: one full-screen celebration a day (`dp.celeb`), the rest become toasts.
 - ~~**`loggedStreak()` counts a content-free entry**~~ — fixed: it uses `entryHasContent()`
   (checked 2026-11-01).
 - **Crisis response.** A mood tracker will record a very low mood and the app does nothing.

@@ -19,10 +19,9 @@ rule each one is now bound by.
 | 11 | Implementation intentions | habit cues (when & where) | v174 |
 | 12 | Fresh-start effect | Monday / 1st / New Year landmark note | v190 |
 
-**Still outstanding:** only the *delivery* half of #1. `SharePlugin.java` is written, registered
-and compiling (`native-112`), but Android WebView has no Web Share API, so one-tap share
-needs the next store build. Until then `deliverCard()` falls to its last rung and tells the
-user to screenshot — it never promises a share sheet it cannot open.
+**Delivery shipped natively** (`SharePlugin.java`, build 113+, live on Play; native share verified
+on device 2026-08-27). Android WebView has no Web Share API, so `deliverCard()`'s screenshot
+rung is now only the PWA fallback — it never promises a share sheet it cannot open.
 
 ## The rules these features are bound by
 

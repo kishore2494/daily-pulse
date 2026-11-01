@@ -3,7 +3,7 @@
 ## Layout
 - `index.md` — one-line catalog of every page. Update when pages are added/removed.
 - `log.md` — reverse-chronological timeline. Append an entry per ingest/change.
-- Topic pages: architecture, features, gotchas, play-store, roadmap.
+- Topic pages: architecture, features, gotchas, play-store, roadmap, competitors, backups, strava-build, distribution, behaviour-audit.
 
 ## Operations
 - **Ingest**: new fact/decision/bug → fold into the most relevant existing page (prefer updating over new pages; dedupe hard). Append a `log.md` entry. Update `index.md` if pages changed.

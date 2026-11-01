@@ -1,27 +1,10 @@
 # Play Store launch — status & handoff
 
-> **STATUS 2026-08-23 — PRODUCTION ACCESS GRANTED.** Applied 2026-08-22 21:07, granted
-> within a day. Production track still **Inactive** — access is permission, not a release.
-> Next action is to create the production release.
->
-> ### ⚠️ THE ONE THING THAT MATTERS NOW
-> **Promote 109 (69), NOT 108 (68).** 108 contains the alarm bug (Android 14+ denies
-> SCHEDULE_EXACT_ALARM by default → reminders never fired, silently). Only 109 has the fix.
-> Version codes only increase, so promoting 108 would ship the bug AND force an immediate
-> follow-up. Confirm 109 shows "Available to selected testers" (i.e. it cleared closed-test
-> review) before promoting.
->
-> ### Recommended: STAGED ROLLOUT, not 100%
-> The alarm fix is verified firing on the POCO (Android 11) and verified structurally, but
-> **never confirmed on an Android 14+ device** — which is the only platform where the
-> original bug exists. Android 11 cannot reproduce it. Start production at a low percentage,
-> confirm reminders fire on a real Android 14+ phone, then ramp to 100%.
+> **LIVE on Google Play since 2026-08-26, native 118, web v253.**
 >
 > Play title: `Daylog: Habit Tracker & Mood` · package `io.github.kishore2494.dailypulse`
 > (the "dailypulse" id and the hosting URL deliberately keep the old name — changing either
 > breaks every install).
-
-_Last updated: 2026-07-29 · app live at v60 · Play Console: closed-test release submitting for review._
 
 ## Where we are RIGHT NOW
 - Google Play Console account: **kishore_ (Personal)**, identity **verified**. One app: **Daily Pulse**, package **`io.github.kishore2494.dailypulse`**, status **Draft → first closed-test release being submitted for review**.
@@ -42,7 +25,7 @@ _Last updated: 2026-07-29 · app live at v60 · Play Console: closed-test releas
 4. Verify the "Finish setting up your app" checklist is all green (privacy policy, content rating=Everyone, target audience 18+, store listing, category, contact).
 
 ## Store listing content (all prepared)
-- App name: **Daily Pulse: Private Log**. Short/full description + data-safety answers: `store/play-listing.md`.
+- App name: **Daylog: Habit Tracker & Mood**. Short/full description + data-safety answers: `store/play-listing.md`.
 - Privacy policy URL: `https://kishore2494.github.io/daily-pulse/privacy.html`
 - Website URL (for Console contact): `https://kishore2494.github.io/daily-pulse/landing.html` (the marketing landing page).
 - Graphics in `store/assets/` (committed to git except the binaries):
@@ -60,7 +43,7 @@ cp app/build/outputs/apk/release/app-release.apk  ../../daily-pulse-app/store/as
 Verify it has native alarms: `aapt dump xmltree DailyPulse.apk AndroidManifest.xml | grep -iE "AlarmActivity|USE_FULL_SCREEN_INTENT"`.
 
 ## Decisions locked
-- **Free launch.** Later: optional **₹9/mo cloud-sync subscription** (or ₹99 one-time Pro) via Google Play Billing. Sync/accounts = the premium feature. Sync UI currently HIDDEN in-app (`SHOW_SYNC=false` in renderSettings; code intact). Multi-device sync backend = Firebase (user must create the project) — see roadmap.
+- **Free launch.** Later: optional cloud sync = Google sign-in + Cloudflare blob sync, pay-what-you-want sub — see roadmap. Sync/accounts = the premium feature. The Sheet sync card shows only when a syncUrl is set (`SHOW_SYNC = !!s.syncUrl` in renderSettings).
 - Feedback: email field removed; posts to owner-only `Feedback.gs` sheet.
 
 ## Still on the USER (only they can do)
@@ -95,11 +78,10 @@ Audited the shipping bundle (106/66) against Play policy. Findings and status:
 > collected, transmitted, sold or shared. Not a medical app; no health claims.
 
 ## PRODUCTION CHECKLIST (109/69 rolled out 2026-08-22; applying for production)
-1. **`SHOW_SYNC = false`** in app.js (Sheet sync is the future paid feature; also keeps the data-safety answer "collects nothing" unambiguous). Ship as a web push before applying.
-2. Store listing: **upload the v92 screenshots** (`store/assets/screenshot-1-log…5-streak.png` + `tablet-1..3.png` to BOTH tablet slots) — old ones show the pre-icon design.
-3. Verify latest closed-testing build is the one to promote (currently 103/63 with the speech plugin).
-4. Re-check "App content": data safety (no collection — still true), ads (none), target audience, privacy policy URL live.
-5. Landing page: swap "coming soon" pill → Get-it-on-Google-Play badge after approval.
+1. Store listing: **upload the v92 screenshots** (`store/assets/screenshot-1-log…5-streak.png` + `tablet-1..3.png` to BOTH tablet slots) — old ones show the pre-icon design.
+2. Verify latest closed-testing build is the one to promote (currently 103/63 with the speech plugin).
+3. Re-check "App content": data safety (no collection — still true), ads (none), target audience, privacy policy URL live.
+4. Landing page: swap "coming soon" pill → Get-it-on-Google-Play badge after approval.
 
 ### Draft answers for Google's production-access questions
 - **How did you recruit testers?** "12+ personal contacts (friends/colleagues) recruited directly; they installed via the closed-testing opt-in link and used the app daily as their personal life tracker."
@@ -133,7 +115,7 @@ app cannot open. Add that paragraph once 113 is live and tested.
 
 ## Build 117 / versionName 77 — built and device-tested, NOT uploaded (2026-10-30)
 First build carrying `BillingPlugin` (`DaylogBilling`), the native half of the v246 tip jar.
-Confirmed in the dex: 117 has it, 116 (live on Play) does not — so **no donation can happen for
+Confirmed in the dex: 117 has it, 116 (then live) does not — so **no donation can happen for
 anyone until 117 is live**. The manifest gains `com.android.vending.BILLING` (billing 7.1.1).
 - Staged: `~/Documents/p/Daylog-117.aab` (4.72 MB, for Play) and `Daylog-117.apk` (4.91 MB).
 - Upload key `144d1f76…d728` = 116's upload key, so Play will accept it. The copy installed on
@@ -161,6 +143,7 @@ Staged `~/Documents/p/Daylog-118.aab` (4.75 MB); dex contains `QueryProductDetai
 `DaylogBilling`; upload key `144d1f76…d728`. Not device-tested (phone was disconnected).
 The "no deobfuscation file" warning is expected — R8 is off (see app/build.gradle).
 An uploaded versionCode can never be reused, so a rejected build always means a bump.
+Published on Play (date: Kishore to confirm).
 
 ## Merchant setup (2026-10-31)
 - Developer account: personal, ID `5724262917689037597`, owner/developer email
@@ -175,4 +158,4 @@ An uploaded versionCode can never be reused, so a rejected build always means a 
 - Products CREATED and active (Kishore, 2026-10-31): one-time `daylog_tip_small` ₹49,
   `daylog_tip_medium` ₹99, `daylog_tip_large` ₹299 (purchase option ID `buy`, backwards
   compatible), subscription `daylog_support_monthly` base plan `monthly` ₹49, no offers.
-  Donations go live for Play installs once build 118 is published.
+  Donations are live for Play installs now that build 118 is published.
