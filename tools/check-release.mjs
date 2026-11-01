@@ -55,9 +55,13 @@ for (const a of assets) {
 // Scoped to .js and .css — the files whose absence stops the app running. Images and fonts
 // degrade rather than break, and listing every one here would make this a nuisance that gets
 // switched off.
-const loaded = [...new Set(
-  [...html.matchAll(/(?:src|href)="\.?\/?([A-Za-z0-9._\/-]+\.(?:js|css))(?:\?[^"]*)?"/g)].map((m) => m[1]),
-)];
+// Plus what app.js loads on demand by setting a script's src (libs/qrcode.js, for the invite
+// card). Those must be precached too — the share card is offered offline — and before this
+// line they were reported as dead weight on every release.
+const loaded = [...new Set([
+  ...[...html.matchAll(/(?:src|href)="\.?\/?([A-Za-z0-9._\/-]+\.(?:js|css))(?:\?[^"]*)?"/g)].map((m) => m[1]),
+  ...[...app.matchAll(/\.src = '\.?\/?([A-Za-z0-9._\/-]+\.js)'/g)].map((m) => m[1]),
+])];
 const precached = new Set(assets.map((a) => a.replace(/^\.\//, "")));
 for (const f of loaded) {
   if (!precached.has(f)) {
