@@ -33,7 +33,7 @@
   filter plus a small plugin that hands the file to the web layer. Needs a native build.
 - **Sharing voice notes in the app:** `DaylogShare.shareImage` hard-codes an image MIME type, so
   the viewer offers Share for photos only. Add `shareFile({base64, mime, filename})`. Native build.
-- Media on an existing note (today only new notes get Photo/Voice), and an image block in Write.
+- An image block in Write. (Media on an existing note: done in v253.)
 - Optionally export media as a SEPARATE file once libraries get big; the guard asks past ~35 MB.
 
 ## User action items (only they can do)
@@ -65,5 +65,5 @@ Android-first confirmed by Kishore. When Android is live:
 - **Sync security**: the sync URL is an unauthenticated bearer to all data; pull uses JSONP. Add a shared-secret token + CORS fetch with shape validation. Document the secrecy requirement.
 - **Native**: add a BOOT_COMPLETED receiver (alarms lost on reboot); request POST_NOTIFICATIONS in Focus/timebox paths; fill the SCHEDULE_EXACT_ALARM Play declaration.
 - **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).
-- **Consistency**: custom deep-log NUMBER/TEXT fields never show in Stats (only scales); 'Push all to Sheet' omits Events/Articles; dead dp.exercises store; privacy claim vs Google Fonts fetch.
+- **Consistency**: dead dp.exercises store. (Done: fonts are self-hosted, so the privacy claim holds; custom number fields show in Stats as averages; 'Push all to Sheet' sends Events/Articles since v253.)
 - **UX**: 12-tab nav is cramped (<44px) — consider overflow sheet or fewer default tabs.

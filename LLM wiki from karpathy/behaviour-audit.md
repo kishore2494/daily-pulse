@@ -63,8 +63,8 @@ invent a weighted total from them and attribute it to the audit.
 
 - **Attention volume.** ~25 blocking full-screen confetti modals in month one vs ~2 in month
   six. The award count (60) may simply be too many; tier spacing is fine, frequency is not.
-- **`loggedStreak()` counts a content-free entry** — opening the app and saving nothing
-  extends a streak.
+- ~~**`loggedStreak()` counts a content-free entry**~~ — fixed: it uses `entryHasContent()`
+  (checked 2026-11-01).
 - **Crisis response.** A mood tracker will record a very low mood and the app does nothing.
   The audit deliberately argued both sides; for an offline, no-account app a helpline link is
   not obviously right. Needs a human decision, not a default.
