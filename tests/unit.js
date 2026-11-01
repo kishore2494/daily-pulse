@@ -2272,6 +2272,79 @@
     } finally { window.setTimeout = st; window.setInterval = si; stopAlarm(); _alarmQueue = []; }
   })();
 
+  // ---- v253: sync — un-ticks, deleted blocks, unsynced timers, the last save before a kill ----
+  (function () {
+    const keys = ['dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.touched', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    try {
+      const T0 = todayStr();
+      // mergeHabits, directly
+      let m = mergeHabits({ habits: {}, habitsAt: { w: 200 } }, { habits: { w: true }, habitsAt: { w: 100 } });
+      ok('a newer un-tick beats an older tick', !('w' in m.habits) && m.habitsAt.w === 200);
+      m = mergeHabits({ habits: {}, habitsAt: { w: 100 } }, { habits: { w: true }, habitsAt: { w: 200 } });
+      ok('…and a newer tick beats an older un-tick', m.habits.w === true);
+      m = mergeHabits({ habits: { w: true }, habitsAt: { w: 100 } }, { habits: {}, updatedAt: new Date(Date.now() + 9e6).toISOString(), timeSummary: 'x' });
+      ok('a side that never touched a habit cannot drop its tick (a stale machine write)', m.habits.w === true);
+      m = mergeHabits({ habits: { a: true } }, { habits: { b: 0 } });
+      ok('entries without stamps (older app) still merge as a union', m.habits.a === true && m.habits.b === 0 && !m.habitsAt);
+      // end to end: un-tick in the Log, then a pull of the other phone's older tick
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const h = HABITS[0].key;
+      const olderTick = { [T0]: { habits: { [h]: true }, habitsAt: { [h]: Date.now() - 60000 }, updatedAt: new Date(Date.now() - 60000).toISOString() } };
+      localStorage.setItem('dp.entries', JSON.stringify(olderTick));
+      navigateTo('today');
+      const chip = () => document.querySelector(`#s-today [data-habit="${h}"]`);
+      if (goalFor(h)) ok('(first habit is a plain one)', true);
+      else { chip().click(); chip().click(); }             // done → skip → cleared
+      flushAutosave();
+      ok('(un-ticked locally)', !(h in (DB.entry(T0).habits || {})) && DB.entry(T0).habitsAt[h] > olderTick[T0].habitsAt[h]);
+      applyRemoteState({ touched: Date.now() + 5000, entries: olderTick });
+      ok('an un-ticked habit stays un-ticked when the other phone\'s older tick syncs in', !(h in (DB.entry(T0).habits || {})), DB.entry(T0).habits);
+      // time log
+      const t = Date.now();
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'run1', act: 'work', start: t - 3600000, end: null, upd: t - 3600000 }]));
+      localStorage.setItem('dp.timelogDel', '{}'); localStorage.setItem('dp.touched', String(t - 3600000));
+      applyRemoteState({ touched: t, timelog: [], timelogDel: {} });
+      ok('a running timer the other phone has not seen survives a pull', DB.timelog().some(s => s.id === 'run1'));
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'b1', act: 'work', start: t - 7200000, end: t - 3600000, upd: t - 7200000 }]));
+      timelogForget('b1'); localStorage.setItem('dp.timelog', '[]');
+      applyRemoteState({ touched: t + 9000, timelog: [{ id: 'b1', act: 'work', start: t - 7200000, end: t - 3600000, upd: t - 7200000 }], timelogDel: {} });
+      ok('a block deleted here does not come back from the other phone', !DB.timelog().some(s => s.id === 'b1'));
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'b5', act: 'work', start: t - 7200000, end: t - 3600000, upd: t - 7200000 }]));
+      show('time'); ttDate = todayStr(new Date(t - 7200000)); ttSelSeg = 'b5'; renderTime();
+      const del = document.getElementById('seg-del'); if (del) del.click();
+      ok('deleting a block on the Time screen records the delete for the other phone', !!del && !DB.timelog().some(s => s.id === 'b5') && !!timelogDels().b5);
+      ttSelSeg = null;
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'b2', act: 'work', start: t - 7200000, end: t - 3600000, upd: t - 7200000 }]));
+      applyRemoteState({ touched: t - 99999999, timelog: [], timelogDel: { b2: t - 1000 } });
+      ok('a block deleted on the other phone goes here too, even from an older save', !DB.timelog().some(s => s.id === 'b2'));
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'b3', act: 'work', start: t - 7200000, end: t - 3600000, upd: t }]));
+      applyRemoteState({ touched: t + 5, timelog: [], timelogDel: { b3: t - 1000 } });
+      ok('…unless it was edited after that delete', DB.timelog().some(s => s.id === 'b3'));
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'b4', act: 'work', start: t - 7200000, end: t - 3600000, upd: t - 7200000 }]));
+      localStorage.setItem('dp.timelogDel', '{}'); localStorage.setItem('dp.touched', String(t - 3600000));   // the other phone saved later
+      applyRemoteState({ touched: t + 10, timelog: [] });
+      ok('a state from an older app version (no tombstones) still deletes the old way', !DB.timelog().some(s => s.id === 'b4'));
+      ok('tombstones go up with every push', (pushState(true), sent.length && 'timelogDel' in sent[sent.length - 1]));
+      // the last save before a kill: a pull with nothing new still sends ours
+      sent.length = 0;
+      localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.touched', String(t + 50000));
+      applyRemoteState({ touched: t, timelog: [], timelogDel: {} });
+      ok('a pull with nothing new still pushes this phone\'s unsent changes', sent.some(x => x.type === 'state'));
+      sent.length = 0;
+      pushState();                                       // debounced
+      window.dispatchEvent(new Event('pagehide'));
+      ok('hiding or closing the app sends a push still waiting out its debounce', sent.some(x => x.type === 'state') && !_pushPending);
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: the Time tracker (independent review 4) ----
   (function () {
     const keys = ['dp.timelog', 'dp.timeacts', 'dp.actnames', 'dp.pausedAct', 'dp.pausedPid', 'dp.pomo', 'dp.timebox', 'dp.projects'];

@@ -457,7 +457,7 @@ function toast(msg, isErr) {
    Deliberately conservative: a lone zero on an auto-mirrored counter is not content, and an
    all-false habits map is not content — but a SKIP (0) is, because choosing to skip is a
    choice you tapped. */
-const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample'];
+const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt'];
 function entryHasContent(en) {
   if (!en) return false;
   for (const k of Object.keys(en)) {
@@ -722,11 +722,17 @@ function pushState(now) {
       finaccts: finAccts(), fintx: finTx(), finmarks: finMarks(),
       finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
-      awards: safeParse(localStorage.getItem('dp.awards'), {}) };
+      awards: safeParse(localStorage.getItem('dp.awards'), {}),
+      timelogDel: timelogDels() };
+    _pushPending = null;
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
-  now ? send() : (pushTimer = setTimeout(send, 1200));
+  if (now) send(); else { _pushPending = send; pushTimer = setTimeout(send, 1200); }
 }
+/* Send a debounced push now — when the app is being hidden or closed. Android can kill the
+   WebView any time after that, and a push still waiting out its 1.2 s never went. */
+let _pushPending = null;
+function flushPush() { if (!_pushPending) return; clearTimeout(pushTimer); const f = _pushPending; _pushPending = null; f(); }
 function pullState(done) {
   const url = DB.settings().syncUrl; if (!url) { done && done(false); return; }
   const cb = 'dpcb' + Date.now();
@@ -766,6 +772,26 @@ function remoteSectionOk(store, value) {
   return Array.isArray(cur) === Array.isArray(value);              // a list must stay a list
 }
 
+/* Habits merge per habit, newest change first. The old rule was a union ("never drop a tick from
+   either side"), but clearing a habit deletes its key, so a habit un-ticked on one phone came back
+   from the other phone's older tick on the next sync. Every habit change now stamps
+   habitsAt[key]. A side that never touched a habit has no say about it, so a stale machine write
+   (gym, time summary) still cannot drop a tick. An entry from an older app version has no stamps:
+   its updatedAt stands in for the habits it holds. */
+function mergeHabits(a, b) {
+  const ha = (a && a.habits) || {}, hb = (b && b.habits) || {}, ta = (a && a.habitsAt) || {}, tb = (b && b.habitsAt) || {};
+  const stamp = (e, h, t, k) => +t[k] || (k in h ? (Date.parse(e.updatedAt) || 1) : 0);
+  const habits = {}, habitsAt = {};
+  new Set([...Object.keys(ha), ...Object.keys(hb), ...Object.keys(ta), ...Object.keys(tb)]).forEach(k => {
+    const sa = stamp(a, ha, ta, k), sb = stamp(b, hb, tb, k);
+    const win = sb > sa ? hb : sa > sb ? ha : (k in hb ? hb : ha);   // a tie keeps a value rather than a gap
+    if (k in win) habits[k] = win[k];
+    const s = Math.max(+ta[k] || 0, +tb[k] || 0); if (s) habitsAt[k] = s;
+  });
+  const out = { habits };
+  if (Object.keys(habitsAt).length) out.habitsAt = habitsAt;
+  return out;
+}
 function applyRemoteState(remote) {
   flushAutosave();   // merge what was just typed, rather than re-render it away
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
@@ -787,7 +813,7 @@ function applyRemoteState(remote) {
       const rNewer = (r.updatedAt || '') >= (l.updatedAt || '');
       const older = rNewer ? l : r, newer = rNewer ? r : l;
       const merged = Object.assign({}, older, newer);          // newer wins shared keys; older fills any gaps
-      merged.habits = Object.assign({}, older.habits || {}, newer.habits || {});   // never drop a tick from either side
+      Object.assign(merged, mergeHabits(l, r));   // per habit: the newest change wins, an un-tick included
       if (JSON.stringify(merged) !== JSON.stringify(l)) { local[d] = merged; changed = true; }
     });
     safeSet('dp.entries', JSON.stringify(local));
@@ -805,24 +831,31 @@ function applyRemoteState(remote) {
     safeSet('dp.gym', JSON.stringify(local));
   }
   // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
-  // Deletions: when the other device saved more recently, drop local segments it no longer has
-  // (unless ours is newer than its save — that's a fresh local segment it hasn't seen yet).
+  // Deletions travel as tombstones (dp.timelogDel, id → when). "Missing on the side that saved
+  // last" used to mean "deleted": a block the other phone had never seen — a running timer not yet
+  // pushed — vanished on the next pull, and a deleted block came back whenever the other phone
+  // saved later. Missing now only means "not seen yet"; a block goes only if a side deleted it
+  // (and nobody edited it after). A state pushed by an older app version has no tombstones, so
+  // for that one the old rule still applies, or its deletions would never arrive.
   if (remote.timelog && !(Array.isArray(remote.timelog))) skippedSections.push('timelog');
   else if (remote.timelog) {
     const local = DB.timelog();
     const byId = {}; local.forEach(s => byId[s.id] = s);
     const remoteIds = new Set();
     remote.timelog.forEach(r => {
+      if (!r || !r.id) return;
       remoteIds.add(r.id);
       const l = byId[r.id];
       if (!l || (r.upd || 0) > (l.upd || 0)) { byId[r.id] = r; changed = true; }
     });
+    const dels = timelogDels(), rdels = remote.timelogDel && typeof remote.timelogDel === 'object' ? remote.timelogDel : null;
+    if (rdels) Object.keys(rdels).forEach(id => { if (+rdels[id] > (dels[id] || 0)) dels[id] = +rdels[id]; });
     let merged = Object.values(byId);
-    if (remoteNewer) {
-      const before = merged.length;
-      merged = merged.filter(s => remoteIds.has(s.id) || (s.upd || 0) > remote.touched);
-      if (merged.length !== before) changed = true;
-    }
+    const before = merged.length;
+    merged = merged.filter(s => !(dels[s.id] && dels[s.id] >= (s.upd || 0)));
+    if (remoteNewer && !rdels) merged = merged.filter(s => remoteIds.has(s.id) || (s.upd || 0) > remote.touched);
+    if (merged.length !== before) changed = true;
+    safeSet('dp.timelogDel', JSON.stringify(dels));
     merged.sort((a, b) => a.start - b.start);
     // Guard: two devices can each have an open (end==null) segment. Keep only the
     // latest as running; close the earlier ones at the next segment's start so time
@@ -890,6 +923,10 @@ function applyRemoteState(remote) {
     const curScr = ((document.querySelector('.screen.on') || {}).id || '').replace('s-', '');
     if (curScr && RENDER[curScr]) show(curScr);
     toast('Synced from your other device ⬇️');
+  } else if (localTouched > remote.touched) {
+    // This phone changed something the Sheet has not got — a save just before the app was killed
+    // never left. Nothing came down, so nothing else would ever send it.
+    pushState(true);
   }
 }
 
@@ -924,6 +961,8 @@ function trackedSleepHours(date) {
   return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;
 }
 function fmtH(v) { return v == null ? '' : Math.floor(v) + 'h ' + Math.round((v - Math.floor(v)) * 60) + 'm'; }
+/* When this habit last changed on this day — what the sync merge compares (mergeHabits). */
+function habitTouch(k) { draft.habitsAt = draft.habitsAt || {}; draft.habitsAt[k] = Date.now(); }
 function loadDraft() {
   flushAutosave();
   const existing = DB.entry(logDate);
@@ -1862,12 +1901,12 @@ document.addEventListener('click', (ev) => {
     const cur = typeof draft.habits[k] === 'number' ? draft.habits[k] : (draft.habits[k] === true && g ? g.n : 0);
     const next = cur - 1;
     if (next <= 0 && g && g.cmp !== 'atmost') delete draft.habits[k]; else draft.habits[k] = Math.max(0, next);
-    refreshHabitChip(k); autosaveDraft(); return; }
+    habitTouch(k); refreshHabitChip(k); autosaveDraft(); return; }
   const hz = ev.target.closest('[data-habit-zero]');
   if (hz && document.getElementById('s-today').classList.contains('on')) {
     const k = hz.dataset.habitZero;
     draft.habits[k] = 0;                          // a clean zero — counts as done for "at most"
-    buzz(18); refreshHabitChip(k); autosaveDraft(); return; }
+    habitTouch(k); buzz(18); refreshHabitChip(k); autosaveDraft(); return; }
   const hb = ev.target.closest('[data-habit]');
   if (hb && document.getElementById('s-today').classList.contains('on')) {
     const k = hb.dataset.habit;
@@ -1876,6 +1915,7 @@ document.addEventListener('click', (ev) => {
       const was = hVal(draft, k);
       const cur = typeof draft.habits[k] === 'number' ? draft.habits[k] : (draft.habits[k] === true ? g.n : 0);
       draft.habits[k] = (k in draft.habits ? cur : 0) + 1;
+      habitTouch(k);
       const now = hVal(draft, k);
       if (was !== H_DONE && now === H_DONE) buzz(24);
       refreshHabitChip(k); autosaveDraft(); return;
@@ -1885,6 +1925,7 @@ document.addEventListener('click', (ev) => {
     if (was === H_DONE) { draft.habits[k] = 0; buzz(12); toast('Skipped — your streak is safe'); }
     else if (was === H_SKIP) { delete draft.habits[k]; }
     else { draft.habits[k] = true; buzz(18); }
+    habitTouch(k);
     const now = hVal(draft, k), on = now === H_DONE, sk = now === H_SKIP;
     hb.classList.toggle('on', on); hb.classList.toggle('skip', sk);
     const ckEl = hb.querySelector('.check'); if (ckEl) ckEl.textContent = sk ? '⤳' : '✓';
@@ -2132,8 +2173,8 @@ function celebSpend() {
 let _awTimer = null, _awDate = null;
 // Backgrounding or closing the app must not eat a pending scan — Android can kill the
 // WebView at any point after onPause, and a dropped timer would lose the award silently.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} } });
-window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} } });
+window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} });
 function checkNewAwardsSoon(savedDate) {
   _awDate = savedDate || _awDate;
   if (_awTimer) clearTimeout(_awTimer);
@@ -3028,6 +3069,15 @@ function overlappingBlocks(block, log) {
   });
 }
 
+/* Deleted time blocks: id → when (see the time-log merge in applyRemoteState). Kept 90 days —
+   long enough to reach every phone that syncs at all. */
+function timelogDels() { const v = safeParse(localStorage.getItem('dp.timelogDel'), {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+function timelogForget(ids) {
+  const del = timelogDels(), now = Date.now();
+  [].concat(ids).forEach(id => { if (id) del[id] = now; });
+  Object.keys(del).forEach(id => { if (now - del[id] > 90 * 864e5) delete del[id]; });
+  safeSet('dp.timelogDel', JSON.stringify(del));
+}
 function segsForDay(dateStr) {
   const d0 = dayStartMs(dateStr), d1 = dayEndMs(dateStr);
   const now = Date.now();
@@ -3389,6 +3439,7 @@ document.addEventListener('click', (ev) => {
   if (sg) { ttSelSeg = (ttSelSeg === sg.dataset.seg) ? null : sg.dataset.seg; renderTime(); return; }
   if (ev.target.id === 'seg-close') { ttSelSeg = null; renderTime(); return; }
   if (ev.target.id === 'seg-del') {
+    timelogForget(ttSelSeg);
     DB.saveTimelog(DB.timelog().filter(s => s.id !== ttSelSeg));
     ttSelSeg = null; renderTime(); refreshTimerNotif(); toast('Block deleted'); return;   // it may have been the running one
   }
@@ -7730,7 +7781,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct', 'pausedPid',
+  'touched', 'pausedAct', 'pausedPid', 'timelogDel',
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
@@ -8350,6 +8401,7 @@ function clearSampleData() {
   safeSet('dp.pomohist', JSON.stringify(ph));
   if (meta.timelog && meta.timelog.length) {
     const ids = new Set(meta.timelog);
+    timelogForget([...ids]);   // synced to the other phone too: without this they came back from it
     safeSet('dp.timelog', JSON.stringify(safeParse(localStorage.getItem('dp.timelog'), []).filter(s => !ids.has(s.id))));
   }
   localStorage.removeItem('dp.sampleMeta');
