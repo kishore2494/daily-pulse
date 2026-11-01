@@ -20,6 +20,8 @@
     else { fail++; R.push('FAIL ' + name + (got !== undefined ? ' → got ' + JSON.stringify(got) : '')); }
   };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // wait for an async chain started by a click, up to a limit (a fixed sleep flakes on a busy machine)
+  const until = async (f, ms = 2000) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < ms) await sleep(5); };
   const T = todayStr();
 
   /* ---------- the shim ---------- */
@@ -153,7 +155,7 @@
     ok('if its media cannot be deleted, the note stays', DB.notes().some(n => n.id === 'nZ') && _media.has('b2'));
     show('notes');
     document.querySelector('#s-notes [data-delnote="nZ"]').click();
-    await sleep(30);
+    await until(() => !DB.notes().some(n => n.id === 'nZ'));
     ok('…and when it can, both go', !DB.notes().some(n => n.id === 'nZ') && !_media.has('b2'));
 
     /* ---- what goes into an export ---- */
@@ -184,42 +186,42 @@
     }
     const mrSnap = window.MediaRecorder; window.MediaRecorder = FakeMR;
     voiceStart('log', T); voiceStart('log', T);                  // a fast double-tap
-    await sleep(60);
+    await until(() => !!_rec); await sleep(20);
     ok('a double-tap on Record opens the microphone once', gum === 1 && !!_rec, gum);
     ok('…and nothing is busy-reloadable while it records', mediaBusyNow());
     ok('voice is recorded in mono (v252)', !!gumArgs && gumArgs.audio && gumArgs.audio.channelCount === 1, gumArgs);
     ok('…at 24 kbps, not 32', !!mrOpts && mrOpts.audioBitsPerSecond === 24000, mrOpts);
     _rec.t0 = Date.now() - 3000;
     voiceStop(false);
-    await sleep(40);
+    await until(() => [..._media.values()].filter(r => r.kind === 'voice').length === 1 && !mediaBusyNow());
     const v1 = [..._media.values()].filter(r => r.kind === 'voice');
     ok('Stop saves the voice note with its length', v1.length === 1 && v1[0].dur >= 2900 && v1[0].ctx === 'log', v1.map(r => r.dur));
     ok('…and releases the microphone', stopped.length === 1 && !_rec && !mediaBusyNow());
 
-    voiceStart('log', T); await sleep(60);
+    voiceStart('log', T); await until(() => !!_rec);
     const r0 = _rec; r0.t0 = Date.now() - 2000;
     r0.mr.stop();                                                // the recorder stops BY ITSELF
-    await sleep(40);
+    await until(() => [..._media.values()].filter(r => r.kind === 'voice').length === 2 && !_rec);
     const v2 = [..._media.values()].filter(r => r.kind === 'voice' && r.id !== v1[0].id);
     ok('a recorder that stops on its own still saves, with a duration', v2.length === 1 && v2[0].dur >= 1900, v2.map(r => r.dur));
     ok('…and its timers are cleared', !_rec);
 
-    voiceStart('note:new', T); await sleep(60);
+    voiceStart('note:new', T); await until(() => !!_rec);
     const nBefore = DB.notes().length;
     voiceStop(true);
-    await sleep(40);
+    await until(() => !_rec && !mediaBusyNow()); await sleep(20);
     ok('Discard saves nothing and makes no note', DB.notes().length === nBefore && [..._media.values()].filter(r => r.kind === 'voice').length === 2);
 
-    voiceStart('note:new', T); await sleep(60);
+    voiceStart('note:new', T); await until(() => !!_rec);
     _rec.t0 = Date.now() - 1500;
-    voiceStop(false); await sleep(40);
+    voiceStop(false); await until(() => DB.notes().length === nBefore + 1 && !mediaBusyNow());
     const nn = DB.notes()[0];
     ok('a voice note from Notes becomes a new note holding it', DB.notes().length === nBefore + 1 && mediaList('note:' + nn.id, null).length === 1);
 
-    voiceStart('log', addDays(T, -1)); await sleep(60);
+    voiceStart('log', addDays(T, -1)); await until(() => !!_rec);
     _rec.t0 = Date.now() - 1500;
     logDate = T; renderToday();                                  // switching day mid-recording
-    await sleep(40);
+    await until(() => !_rec && [..._media.values()].filter(r => r.kind === 'voice').some(r => r.day === addDays(T, -1)));
     ok('switching the Log to another day saves the recording to the day it began', !_rec && [..._media.values()].some(r => r.kind === 'voice' && r.day === addDays(T, -1)));
 
     window.MediaRecorder = mrSnap;
@@ -304,6 +306,62 @@
     ok('…so a restored photo is not shrunk a second time', _media.get('s1').enc === MEDIA_ENC && mediaShrinkCount() === 0);
     ok('a WebP thumbnail is restored as WebP', _media.get('s1').thumb.type === 'image/webp', _media.get('s1').thumb.type);
     ok('an old JPEG thumbnail is restored as JPEG', b64ImageMime('/9j/4AAQ') === 'image/jpeg' && b64ImageMime('UklGRiQ') === 'image/webp');
+
+    /* v253: photos in a Write article */
+    {
+      const docsSnap = localStorage.getItem('dp.docs'), encW = window.mediaPhotoBlobs, supW = window.mediaSupported;
+      window.mediaSupported = () => true;
+      window.mediaPhotoBlobs = async () => ({ blob: new Blob(['RIFF' + 'w'.repeat(396)], { type: 'image/webp' }), thumb: new Blob(['RIFFtt']), mime: 'image/webp', w: 1280, h: 960, size: 406 });
+      window.confirm = () => true;
+      try {
+        await mediaWipe(); await mediaLoad();
+        localStorage.setItem('dp.docs', JSON.stringify([{ id: 'docW1', title: 'Trip', blocks: [{ id: 'bkA', t: 'p', text: 'We drove north.' }], created: T, updated: '' }]));
+        curDoc = 'docW1'; show('write');
+        const acts = [...document.querySelectorAll('#s-write [data-madd]')];
+        ok('the article editor offers Camera and Photo for THAT article', acts.length === 2 && acts.every(b => b.dataset.mctx === 'doc:docW1'), acts.map(b => b.dataset.mctx));
+        _mediaTarget = { ctx: 'doc:docW1', day: T };
+        await mediaTakeFiles([new File(['jpg1'], 'a.jpg', { type: 'image/jpeg' }), new File(['jpg2'], 'b.jpg', { type: 'image/jpeg' })]);
+        let doc = DB.docs()[0];
+        const pb = doc.blocks.filter(b => b.t === 'i');
+        ok('two picked photos become two photo blocks after the text', doc.blocks.length === 3 && doc.blocks[0].id === 'bkA' && pb.length === 2 && pb.every(b => _media.get(b.mid) && _media.get(b.mid).ctx === 'doc:docW1'), doc.blocks);
+        ok('…and show in the open editor at once', document.querySelectorAll('#s-write .blk-photo [data-mview]').length === 2);
+        ok('…in a set the viewer pages through in block order', !!document.querySelector('#blk-list[data-mset]'));
+        await reread();
+        const bk = await mediaForBackup();
+        ok('article photos are valid backup items', bk.items.filter(x => x.ctx === 'doc:docW1').length === 2 && bk.items.every(mediaItemValid));
+        // delete one block: its photo goes too
+        document.querySelector(`#s-write [data-blkdel="${pb[0].id}"]`).click(); await until(() => !DB.docs()[0].blocks.some(b => b.id === pb[0].id));
+        doc = DB.docs()[0];
+        ok('removing a photo block deletes its photo', !_media.has(pb[0].mid) && !doc.blocks.some(b => b.id === pb[0].id));
+        // delete the other in the viewer: its block leaves the article
+        await mediaConfirmDelete(pb[1].mid);
+        doc = DB.docs()[0];
+        ok('deleting an article photo in the viewer removes its block', !_media.has(pb[1].mid) && !doc.blocks.some(b => b.t === 'i') && doc.blocks.length === 1, doc.blocks);
+        // a block whose photo is not on this phone (synced from another) says so and is left alone
+        doc.blocks.push({ id: 'bkX', t: 'i', mid: 'not-here', text: '' }); localStorage.setItem('dp.docs', JSON.stringify([doc])); renderWrite();
+        ok('a photo block from another phone says the photo is not here', /This photo is not on this phone/.test(document.getElementById('s-write').innerHTML));
+        refreshMediaSlots();
+        ok('…and is never pruned automatically', DB.docs()[0].blocks.some(b => b.id === 'bkX'));
+        // deleting the article deletes its photos
+        _mediaTarget = { ctx: 'doc:docW1', day: T }; await mediaTakeFiles([new File(['jpg3'], 'c.jpg', { type: 'image/jpeg' })]);
+        ok('(a third photo for the delete test)', mediaList('doc:docW1', null).length === 1);
+        document.getElementById('doc-del').click(); await until(() => !DB.docs().length);
+        ok('deleting the article deletes its photos too', !DB.docs().length && !mediaList('doc:docW1', null).length && curDoc === null);
+        // an article deleted on another phone: its photos are listed, and can come back as an article
+        await mediaAdd(rec('wo1', 'doc:docGone', 'photo'));
+        ok('photos of an article that is gone are listed as unattached', mediaOrphanCtxs().includes('doc:docGone'));
+        navigateTo('notes');
+        const btn = document.querySelector('[data-orphan-doc="doc:docGone"]');
+        ok('…with "Make it an article again"', !!btn && /article again/.test(btn.textContent));
+        btn.click();
+        const rd = DB.docs().find(d => d.id === 'docGone');
+        ok('…which brings back an article holding them', rd && rd.blocks.length === 1 && rd.blocks[0].t === 'i' && rd.blocks[0].mid === 'wo1' && !mediaOrphanCtxs().length);
+      } finally {
+        window.mediaPhotoBlobs = encW; window.mediaSupported = supW; window.confirm = confSnap; curDoc = null;
+        if (docsSnap != null) localStorage.setItem('dp.docs', docsSnap); else localStorage.removeItem('dp.docs');
+        await mediaWipe(); await mediaLoad();
+      }
+    }
 
     // v253: "Push all to Sheet" sends every tab the Sheet has, Calendar events and articles included
     {

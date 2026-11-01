@@ -1906,7 +1906,7 @@
     ok('a well-formed backup item passes', mediaItemValid(good));
     ok('a note voice item passes', mediaItemValid(Object.assign({}, good, { ctx: 'note:n123', kind: 'voice', mime: 'audio/webm;codecs=opus' })));
     [['a path in its id', { id: '../evil' }], ['an unknown kind', { kind: 'video' }], ['a bad day', { day: '31/10/2026' }],
-     ['an unknown context', { ctx: 'doc:x' }], ['no data', { data: '' }], ['an html mime', { mime: 'text/html' }],
+     ['an unknown context', { ctx: 'page:x' }], ['a context with a bad id', { ctx: 'doc:a b' }], ['no data', { data: '' }], ['an html mime', { mime: 'text/html' }],
      ['non-string data', { data: 5 }]]
       .forEach(([n, patch]) => ok('a backup item with ' + n + ' is refused', !mediaItemValid(Object.assign({}, good, patch))));
     ok('null is refused', !mediaItemValid(null));

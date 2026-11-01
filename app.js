@@ -2368,6 +2368,8 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'note-add-btn') return addNote();
   const nat = ev.target.closest('[data-note-attach]');
   if (nat) { openAttachId = openAttachId === nat.dataset.noteAttach ? null : nat.dataset.noteAttach; renderNotes(); return; }
+  const ord = ev.target.closest('[data-orphan-doc]');
+  if (ord) { if (mediaRestoreDoc(ord.dataset.orphanDoc)) { renderNotes(); toast('Back in Write, as "Recovered photos"'); } return; }
   const orn = ev.target.closest('[data-orphan-note]');
   if (orn) { if (mediaCommitNote(orn.dataset.orphanNote, '')) { renderNotes(); toast('Back in your notes'); } return; }
   const dn = ev.target.closest('[data-delnote]');
@@ -2418,9 +2420,10 @@ function renderNotes() {
   </div>`;
   const orphans = _mediaReady ? mediaOrphanCtxs() : [];
   const orphanHTML = orphans.length ? `<div class="card">
-      <h2>Unattached photos &amp; voice notes <span class="hint">their note was deleted on another device or replaced by a restore</span></h2>
+      <h2>Unattached photos &amp; voice notes <span class="hint">their note or article was deleted on another device or replaced by a restore</span></h2>
       ${orphans.map(c => `<div class="orphan-row">${mediaSlot(c, '', { compact: true })}
-        <button class="btn btn-ghost btn-sm" data-orphan-note="${escapeHtml(c.slice(5))}">Make it a note again</button></div>`).join('')}
+        ${c.indexOf('doc:') === 0 ? `<button class="btn btn-ghost btn-sm" data-orphan-doc="${escapeHtml(c)}">Make it an article again</button>`
+          : `<button class="btn btn-ghost btn-sm" data-orphan-note="${escapeHtml(c.slice(5))}">Make it a note again</button>`}</div>`).join('')}
     </div>` : '';
   document.getElementById('s-notes').innerHTML = `
     <div class="card">
@@ -4513,7 +4516,7 @@ function runSearch(q) {
   _media.forEach(r => { if (r.kind === 'photo' && hit(r.caption)) capRows.push(r); });
   capRows.sort((a, b) => b.day.localeCompare(a.day));
   if (capRows.length) groups.push(['📷 Photo captions', capRows.map(r =>
-    `<div class="sr-row sr-photo" data-sr="${r.ctx === 'log' ? 'log' : 'note'}" data-d="${r.day}">
+    `<div class="sr-row sr-photo" data-sr="${r.ctx === 'log' ? 'log' : r.ctx.indexOf('doc:') === 0 ? 'doc' : 'note'}" data-d="${r.day}"${r.ctx.indexOf('doc:') === 0 ? ` data-id="${escapeHtml(r.ctx.slice(4))}"` : ''}>
       <button class="mthumb sr-thumb" data-mview="${r.id}" aria-label="Open photo"><img src="${mediaUrl(r, 't')}" alt="" loading="lazy"></button>
       <span class="sr-when">${prettyDate(r.day).replace(/, \d{4}$/, '')}</span><span class="sr-snip">${snippet(r.caption, q)}</span></div>`)]);
   if (!groups.length) return `<div class="empty">Nothing found for “${escapeHtml(q)}”.</div>`;
@@ -4848,12 +4851,27 @@ let docsSyncTimer;
 function syncDocs() { clearTimeout(docsSyncTimer); docsSyncTimer = setTimeout(() => {
   const url = DB.settings().syncUrl; if (!url) return;
   const items = DB.docs().map(d => ({ title: d.title || 'Untitled', updated: (d.updated || '').slice(0, 10),
-    text: (d.blocks || []).map(b => (b.t === 'h' ? '## ' : b.t === 'c' ? (b.done ? '[x] ' : '[ ] ') : b.t === 'b' ? '• ' : '') + b.text).join('\n') }));
+    text: (d.blocks || []).map(b => b.t === 'i' ? '[photo' + (_media.get(b.mid) && _media.get(b.mid).caption ? ': ' + _media.get(b.mid).caption : '') + ']'
+      : (b.t === 'h' ? '## ' : b.t === 'c' ? (b.done ? '[x] ' : '[ ] ') : b.t === 'b' ? '• ' : '') + (b.text || '')).join('\n') }));
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'docs', items }) }).catch(() => {});
 }, 2000); }
 
+/* A photo block holds a media id, never the picture: the photo lives in IndexedDB with
+   ctx 'doc:<docId>', like a note's. On another synced phone the block arrives without it. */
+function photoBlockRow(b) {
+  const r = _media.get(b.mid);
+  const pic = r ? `<button class="mthumb blk-pic" data-mview="${escapeHtml(r.id)}" aria-label="Open photo${r.caption ? ': ' + escapeHtml(r.caption) : ''}"><img src="${mediaUrl(r, 'f')}" alt="" loading="lazy" decoding="async"></button>
+      ${r.caption ? `<div class="blk-cap">${escapeHtml(r.caption)}</div>` : ''}`
+    : `<div class="blk-nopic">${_mediaReady ? 'This photo is not on this phone' : 'Loading…'}</div>`;
+  return `<div class="blk-row blk-photo" data-id="${b.id}">
+    <span class="drag-handle" data-drag>⠿</span>
+    <div class="blk-pic-wrap">${pic}</div>
+    <button class="del" data-blkdel="${b.id}" aria-label="Remove photo">×</button>
+  </div>`;
+}
 function blockRow(b) {
+  if (b.t === 'i') return photoBlockRow(b);
   const ta = `<textarea class="blk blk-${b.t}" data-blk="${b.id}" rows="1"
     placeholder="${b.t === 'h' ? 'Heading…' : b.t === 'c' ? 'To-do…' : b.t === 'b' ? 'Point…' : 'Write… (or tap 🎤 and speak)'}">${escapeHtml(b.text || '')}</textarea>`;
   return `<div class="blk-row ${b.t === 'c' && b.done ? 'done' : ''}" data-id="${b.id}">
@@ -4897,7 +4915,7 @@ function renderWrite() {
     <button class="back-btn" id="doc-back">← All articles</button>
     <div class="card">
       <input type="text" class="doc-title-input" data-doctitle="${d.id}" value="${escapeHtml(d.title || '')}" placeholder="Article title…">
-      <div id="blk-list" style="margin-top:10px">${(d.blocks || []).map(blockRow).join('') || '<div class="empty">Empty — add a block below 👇</div>'}</div>
+      <div id="blk-list" data-mset="doc" style="margin-top:10px">${(d.blocks || []).map(blockRow).join('') || '<div class="empty">Empty — add a block below 👇</div>'}</div>
       <div class="blk-toolbar">
         <button data-addblk="h">H Heading</button>
         <button data-addblk="p">¶ Text</button>
@@ -4905,6 +4923,10 @@ function renderWrite() {
         <button data-addblk="b">• Bullet</button>
         <button data-mic="#blk-focus-target" id="doc-mic">🎤</button>
       </div>
+      ${mediaSupported() ? `<div class="media-acts blk-photo-acts">
+        <button class="m-act" data-madd="camera" data-mctx="doc:${escapeHtml(d.id)}" data-mday="${todayStr()}">${icon('camera', 20)}<span>Camera</span></button>
+        <button class="m-act" data-madd="gallery" data-mctx="doc:${escapeHtml(d.id)}" data-mday="${todayStr()}">${icon('image', 20)}<span>Photo</span></button>
+      </div>` : ''}
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-ghost btn-sm" id="doc-del" style="color:var(--bad)">🗑 Delete article</button>
       </div>
@@ -4915,6 +4937,30 @@ function renderWrite() {
     doc.blocks = ids.map(id => (doc.blocks || []).find(b => b.id === id)).filter(Boolean);
     doc.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite();
   });
+}
+/* A photo picked in the editor becomes a block at the end of its article. If the article
+   cannot be saved (storage full) the photo stays, and Notes ▸ Unattached lists it. */
+function docPhotoBlock(docId, mid) {
+  const ds = DB.docs(); const d = ds.find(x => x.id === docId); if (!d) return false;
+  d.blocks = d.blocks || [];
+  d.blocks.push({ id: 'bk' + Date.now() + Math.floor(Math.random() * 99), t: 'i', mid, text: '' });
+  d.updated = new Date().toISOString();
+  if (DB.saveDocs(ds) === false) { toast('The photo is saved, but the article could not be — phone storage is full', true); return false; }
+  return true;
+}
+function docDropBlocks(docId, pred) {
+  const ds = DB.docs(); const d = ds.find(x => x.id === docId); if (!d) return;
+  d.blocks = (d.blocks || []).filter(b => !pred(b)); d.updated = new Date().toISOString(); DB.saveDocs(ds);
+  writeRefresh();
+}
+/* The editor shows photos, so a photo added, deleted or captioned elsewhere (the viewer)
+   redraws it — only when it has a photo block, so typing elsewhere is never interrupted. */
+function writeRefresh() {
+  const sc = document.getElementById('s-write');
+  if (!sc || !sc.classList.contains('on')) return;
+  const d = curDoc && DB.docs().find(x => x.id === curDoc);
+  if (curDoc && !(d && (d.blocks || []).some(b => b.t === 'i'))) return;
+  const y = window.scrollY; renderWrite(); window.scrollTo({ top: y, behavior: 'instant' });
 }
 function addBlock(type, afterId) {
   const ds = DB.docs(); const d = ds.find(x => x.id === curDoc); if (!d) return null;
@@ -4942,8 +4988,12 @@ document.addEventListener('click', (ev) => {
   if (od) { curDoc = od.dataset.opendoc; renderWrite(); window.scrollTo(0, 0); return; }
   if (ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
   if (ev.target.id === 'doc-del') {
-    if (!confirm('Delete this whole article?')) return;
-    const wrote1 = DB.saveDocs(DB.docs().filter(x => x.id !== curDoc)); curDoc = null; renderWrite(); savedToast(wrote1, 'Article deleted'); return;
+    const did = curDoc, att = mediaList('doc:' + did, null).map(r => r.id);
+    if (!confirm(att.length ? `Delete this whole article and its ${att.length} photo${att.length === 1 ? '' : 's'}? This cannot be undone.` : 'Delete this whole article?')) return;
+    const drop = () => { const wrote1 = DB.saveDocs(DB.docs().filter(x => x.id !== did)); if (curDoc === did) curDoc = null; renderWrite(); savedToast(wrote1, 'Article deleted'); };
+    if (!att.length) { drop(); return; }
+    mediaDelete(att).then(ok => { if (ok) drop(); });
+    return;
   }
   const ab = ev.target.closest('[data-addblk]');
   if (ab) { addBlock(ab.dataset.addblk); return; }
@@ -4953,6 +5003,13 @@ document.addEventListener('click', (ev) => {
     if (b) { b.done = !b.done; d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
   const bd = ev.target.closest('[data-blkdel]');
   if (bd) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+    const blk = d && (d.blocks || []).find(z => z.id === bd.dataset.blkdel);
+    if (blk && blk.t === 'i' && _media.has(blk.mid)) {
+      if (!confirm('Remove this photo from the article and delete it? This cannot be undone.')) return;
+      // media first, as for a note: if that fails the block is still there to try again from
+      mediaDelete(blk.mid).then(ok => { if (ok) docDropBlocks(curDoc, z => z.id === blk.id); });
+      return;
+    }
     if (d) { d.blocks = (d.blocks || []).filter(z => z.id !== bd.dataset.blkdel); d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
 });
 /* typing saves live; the mic button always targets the block you touched last */
@@ -6686,7 +6743,7 @@ async function sendFeedback(text, contact) {
    restore on a new phone brings them back.
 
    A record:  { id, kind: 'photo'|'voice', mime, blob, thumb?, day: 'YYYY-MM-DD',
-                ctx: 'log' | 'note:<noteId>', ts, w?, h?, dur?, size, caption? }
+                ctx: 'log' | 'note:<noteId>' | 'doc:<docId>' (a photo block in Write), ts, w?, h?, dur?, size, caption? }
 
    Photos are re-encoded on the phone (longest edge 1280px, WebP where the phone can write
    it): a 12 MP camera shot is 4-6 MB and would fill a cheap phone in a few hundred days. On
@@ -6821,8 +6878,17 @@ function mediaCommitNote(id, text) {
    backup, or a note save that failed. Never silently dropped: the Notes screen lists them. */
 function mediaOrphanCtxs() {
   const ids = new Set(DB.notes().map(n => 'note:' + n.id)), out = new Set();
-  _media.forEach(r => { if (r.ctx.indexOf('note:') === 0 && r.ctx !== 'note:new' && !ids.has(r.ctx)) out.add(r.ctx); });
+  DB.docs().forEach(d => ids.add('doc:' + d.id));
+  _media.forEach(r => { if ((r.ctx.indexOf('note:') === 0 && r.ctx !== 'note:new') || r.ctx.indexOf('doc:') === 0) { if (!ids.has(r.ctx)) out.add(r.ctx); } });
   return [...out];
+}
+/* An article's photos whose article is gone come back as a new article holding them. */
+function mediaRestoreDoc(ctx) {
+  const id = ctx.slice(4), ds = DB.docs(); if (ds.some(d => d.id === id)) return true;
+  const pics = mediaList(ctx, null).filter(r => r.kind === 'photo');
+  ds.unshift({ id, title: 'Recovered photos', blocks: pics.map((r, i) => ({ id: 'bk' + Date.now() + i, t: 'i', mid: r.id, text: '' })),
+    created: todayStr(), updated: new Date().toISOString() });
+  return DB.saveDocs(ds) !== false;
 }
 /* Things that must not be cut off by an app-update reload (see the controllerchange handler). */
 let _mediaBusy = 0, _reloadWhenIdle = false;
@@ -6985,6 +7051,7 @@ async function mediaTakeFiles(files) {
       let rec;
       try { rec = await mediaPhotoRecord(f, ctx, t.day); } catch (e) { bad++; continue; }
       if (await mediaAdd(rec)) saved++; else break;      // out of space: stop, mediaAdd said so
+      if (ctx.indexOf('doc:') === 0) docPhotoBlock(ctx.slice(4), rec.id);
       // The note exists from the FIRST saved photo, so an interruption cannot strand the rest.
       if (newNote && saved === 1) { mediaCommitNote(newNote); mediaAfterNote(); }
     }
@@ -7176,6 +7243,7 @@ function voiceRowHTML(r, canDelete) {
 }
 function refreshMediaSlots() {
   histDayRefresh();
+  writeRefresh();
   // History ▸ Photos holds object URLs too, and mediaLoad() (after a shrink or a restore) revokes them all
   const hs = document.getElementById('s-history');
   if (hs && hs.classList.contains('on') && !histDay && histTab === 'photos') { const y = window.scrollY; renderHistory(); window.scrollTo({ top: y, behavior: 'instant' }); }
@@ -7322,6 +7390,7 @@ async function mediaConfirmDelete(id) {
   const rec = _media.get(id); if (!rec) return;
   if (!confirm(rec.kind === 'photo' ? 'Delete this photo? This cannot be undone.' : 'Delete this voice note? This cannot be undone.')) return;
   if (!(await mediaDelete(id))) return;
+  if (rec.ctx.indexOf('doc:') === 0) docDropBlocks(rec.ctx.slice(4), b => b.t === 'i' && b.mid === id);
   if (_mview) {
     _mview.ids = _mview.ids.filter(x => x !== id);
     if (!_mview.ids.length) mediaViewClose();
@@ -7419,7 +7488,7 @@ function mediaItemValid(it) {
     && typeof it.id === 'string' && /^[\w-]{1,40}$/.test(it.id)
     && (it.kind === 'photo' || it.kind === 'voice')
     && typeof it.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.day)
-    && typeof it.ctx === 'string' && /^(log|note:[\w-]{1,40})$/.test(it.ctx)
+    && typeof it.ctx === 'string' && /^(log|note:[\w-]{1,40}|doc:[\w-]{1,40})$/.test(it.ctx)
     && typeof it.data === 'string' && it.data.length > 0
     && (it.mime == null || (typeof it.mime === 'string' && /^(image|audio)\/[\w.+-]+(;[\w=.,+ -]*)?$/.test(it.mime)));
 }

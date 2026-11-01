@@ -544,6 +544,14 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .blk-row.done .check { background: var(--good); border-color: var(--good); color: #06291d; }
 .blk-row.done .blk { text-decoration: line-through; color: var(--text-faint); }
 .blk-bullet { color: var(--accent-ink); font-size: 20px; line-height: 1.3; padding-top: 4px; flex: 0 0 auto; }
+.blk-pic-wrap { flex: 1; min-width: 0; padding: 4px 0; }
+/* .mthumb (a square crop) is defined further down; these win on specificity */
+.mthumb.blk-pic { display: block; width: 100%; aspect-ratio: auto; border-radius: 12px; }
+.mthumb.blk-pic img { width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+.blk-cap { font-size: 13px; color: var(--text-dim); margin: 6px 2px 0; line-height: 1.4; }
+.blk-nopic { padding: 18px 12px; border: 1px dashed var(--border); border-radius: 12px; font-size: 13px; color: var(--text-faint); text-align: center; }
+.blk-photo-acts { grid-template-columns: repeat(2, 1fr); margin-top: 8px; }
+.blk-photo-acts .m-act { min-height: 48px; flex-direction: row; gap: 8px; }
 .blk { flex: 1; min-width: 0; background: none; border: none; outline: none; resize: none; overflow: hidden; color: var(--text); font-family: 'DM Sans', 'Twemoji Mozilla', system-ui, sans-serif; font-size: 15px; line-height: 1.55; padding: 6px 2px; border-radius: 6px; transition: background .15s; }
 .blk:focus { background: rgba(109,140,255,.06); }
 .blk-h { font-family: var(--font-display); font-size: 18.5px; font-weight: 750; letter-spacing: -.3px; }
