@@ -2272,6 +2272,97 @@
     } finally { window.setTimeout = st; window.setInterval = si; stopAlarm(); _alarmQueue = []; }
   })();
 
+  // ---- v253: the Time tracker (independent review 4) ----
+  (function () {
+    const keys = ['dp.timelog', 'dp.timeacts', 'dp.actnames', 'dp.pausedAct', 'dp.pausedPid', 'dp.pomo', 'dp.timebox', 'dp.projects'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const ttSnap = ttDate, selSnap = ttSelSeg, manSnap = ttShowManual;
+    const tl = () => DB.timelog();
+    const H = 3600000;
+    try {
+      localStorage.setItem('dp.timelog', '[]');
+      // Stop on a project timer stops it
+      startAct('pj:p1', 'p1');
+      stopRunning();
+      ok('Stop on a project timer stops it, without starting an untagged one', !runningSeg() && tl().length === 1 && tl()[0].pid === 'p1' && tl()[0].end != null, tl());
+      // notification Pause / Resume keep the project
+      localStorage.setItem('dp.timelog', '[]');
+      startAct('pj:p1', 'p1'); timerAction('pause');
+      ok('Pause from the notification stops the project block and remembers it', !runningSeg() && localStorage.getItem('dp.pausedPid') === 'p1');
+      timerAction('resume');
+      const rr = runningSeg();
+      ok('…and Resume starts it again ON the project', rr && rr.act === 'pj:p1' && rr.pid === 'p1' && !localStorage.getItem('dp.pausedAct'));
+      timerAction('pause'); startAct('work');
+      ok('starting something in the app clears a stale pause', !localStorage.getItem('dp.pausedAct') && !localStorage.getItem('dp.pausedPid'));
+      stopRunning();
+      // fixing a block's time across midnight
+      const d0 = new Date(); d0.setHours(0, 0, 0, 0); const D0 = d0.getTime();
+      const sleepBlk = { id: 'tsS1', act: 'sleep', start: D0 - 1 * H, end: D0 + 7 * H, upd: 1 };   // 23:00 → 07:00
+      localStorage.setItem('dp.timelog', JSON.stringify([sleepBlk]));
+      show('time'); ttDate = todayStr(); ttSelSeg = 'tsS1';   // opening Time clears the selection
+      const fix = (which, val) => { const i = document.createElement('input'); i.type = 'time'; i.dataset.segt = which; i.value = val; document.getElementById('s-time').appendChild(i); i.dispatchEvent(new Event('change', { bubbles: true })); i.remove(); };
+      fix('start', '00:30');
+      let sb = tl().find(s => s.id === 'tsS1');
+      ok('fixing a 23:00→07:00 sleep to start at 00:30 gives 6.5 hours, not 30.5', sb.end - sb.start === 6.5 * H, (sb.end - sb.start) / H);
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'tsS2', act: 'work', start: D0 - 2 * H, end: D0 + 0.5 * H, upd: 1 }]));   // 22:00 → 00:30
+      ttSelSeg = 'tsS2'; fix('end', '23:50');
+      sb = tl().find(s => s.id === 'tsS2');
+      ok('fixing a 22:00→00:30 block to end at 23:50 gives 1h 50m, not 25.8 hours', Math.round((sb.end - sb.start) / 60000) === 110, (sb.end - sb.start) / H);
+      // a running block's start can only move into the past
+      const nowD = new Date(); const startRun = Date.now() - 20 * 60000;
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'tsR', act: 'sleep', start: startRun, end: null, upd: 1 }]));
+      ttSelSeg = 'tsR';
+      const later = new Date(Date.now() + 2 * H); fix('start', String(later.getHours()).padStart(2, '0') + ':' + String(later.getMinutes()).padStart(2, '0'));
+      sb = tl().find(s => s.id === 'tsR');
+      ok('a running block cannot be given a start in the future', sb.start < Date.now(), new Date(sb.start).toString());
+      stopRunning();
+      // old data can already hold a future start (before this fix); stopping it must not go negative
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'tsF', act: 'sleep', start: Date.now() + 3 * H, end: null, upd: 1 }]));
+      stopRunning();
+      ok('…and stopping it never makes a negative block', tl().every(s => s.end == null || s.end >= s.start), tl());
+      ttSelSeg = null;
+      // daylight saving: a day's bounds are calendar-true (25 h on 1 Nov 2026 in Los Angeles)
+      const n1s = new Date(2026, 10, 1, 22).getTime(), n2 = new Date(2026, 10, 2, 0).getTime();
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'tsD', act: 'work', start: n1s, end: n2, upd: 1 }]));
+      const tot = segsForDay('2026-11-01').reduce((s, x) => s + (x.b - x.a), 0);
+      ok('22:00 to midnight counts in full on a 23- or 25-hour day', tot === n2 - n1s && segsForDay('2026-11-02').length === 0, tot / H);
+      ok('dayEndMs is the next day\'s midnight, not +24 h', dayEndMs('2026-11-01') === n2 && dayEndMs('2026-03-08') === new Date(2026, 2, 9).getTime());
+      // manual add uses the wall clock on that date
+      localStorage.setItem('dp.timelog', '[]'); ttDate = '2026-11-01'; ttShowManual = true; renderTime();
+      const ma = document.getElementById('tt-m-act'), ms = document.getElementById('tt-m-start'), me = document.getElementById('tt-m-end');
+      if (ma && ms && me) { ma.value = 'work'; ms.value = '09:00'; me.value = '10:00'; document.getElementById('tt-m-save').click(); }
+      const mb = tl()[0] || {};
+      ok('a manual 09:00–10:00 is stored as 09:00–10:00 on that date, whatever its length', mb.start === new Date(2026, 10, 1, 9).getTime() && mb.end === new Date(2026, 10, 1, 10).getTime(), [new Date(mb.start).toString(), new Date(mb.end).toString()]);
+      ttShowManual = false;
+      // pomodoro catch-up closes the linked block where the focus ended
+      const endsAt = Date.now() - 2 * H;
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'tsP', act: 'work', start: endsAt - 25 * 60000, end: null, upd: 1 }]));
+      localStorage.setItem('dp.pomo', JSON.stringify({ cfg: Object.assign({}, POMO_DEFAULTS, { act: 'work', auto: true }), run: { phase: 'focus', endsAt, round: 1 }, done: { d: todayStr(), n: 0 } }));
+      pomoAdvance(true);
+      const pb = tl().find(s => s.id === 'tsP');
+      ok('a focus phase that ended while away closes its tracked block at its end, not now', pb.end === endsAt, (pb.end - endsAt) / 60000);
+      // "Was this <project>?" logs the project
+      localStorage.setItem('dp.timelog', '[]'); ttDate = todayStr(); show('time');
+      const g = document.createElement('button'); g.dataset.gapSet = (D0 + 9 * H) + ':' + (D0 + 10 * H) + ':pj:p1'; document.getElementById('s-time').appendChild(g); g.click(); g.remove();
+      ok('filling a gap with a project logs the project, not an activity called "pj"', tl().length === 1 && tl()[0].act === 'pj:p1' && tl()[0].pid === 'p1', tl());
+      // a timebox's ▶ for what is already running leaves it running
+      localStorage.setItem('dp.timelog', '[]'); startAct('work');
+      localStorage.setItem('dp.timebox', JSON.stringify([{ id: 'tbX', date: todayStr(), start: '09:00', end: '10:00', label: 'Deep work', act: 'work' }]));
+      show('focus');   // the timebox buttons only answer on the Focus screen
+      const tbb = document.createElement('button'); tbb.dataset.tbStart = 'tbX'; document.getElementById('s-focus').appendChild(tbb); tbb.click(); tbb.remove();
+      ok('▶ on a timebox for the running activity does not stop it', !!runningSeg() && runningSeg().act === 'work');
+      stopRunning();
+      // a deleted activity keeps its name in history
+      DB.saveTimeacts([{ id: 'taR', emoji: '📚', name: 'Reading', color: '#f0f' }]);
+      DB.saveTimeacts([]);
+      ok('a deleted activity\'s history still shows its name', actById('taR').name === 'Reading' && actById('taR').emoji === '📚');
+    } finally {
+      try { stopRunning(); } catch (e) {}
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      ttDate = ttSnap; ttSelSeg = selSnap; ttShowManual = manSnap; navigateTo('today');
+    }
+  })();
+
   // ---- v253: the read-only parse cache (Stats 2.4× faster with 3 years of data) ----
   (function () {
     const eSnap = localStorage.getItem('dp.entries'), roSnap = roParse;

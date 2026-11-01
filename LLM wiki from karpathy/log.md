@@ -47,6 +47,54 @@ each change is committed and pushed to origin only.
     - An edit saved within ~1.2 s of the app being killed never reaches the other device.
   - Each reviewer's repro scripts were re-run against the fixed code: all fixed cases now
     behave correctly.
+  - **Review 3, backup / restore / delete (6 fixed, 1 native deferred):**
+    - Restore no longer runs `pushState(true)`. It stamped the restored file newer than every
+      phone, and the Sheet's `saveState_` replaces its whole state, so restoring an old backup
+      on one phone wiped newer notes, tasks and articles on the others. It now calls
+      `pullState()` when a Sheet is set up.
+    - `mediaForExport` asks the database (`mediaReadAll`) when `_media` is empty. A failed or
+      slow start-up read had produced photo-less backups, and `dp.lastBackup` is no longer
+      stamped when media could not be read.
+    - `setupReminders` with nothing left calls `clearNativeReminderAlarms()`, using
+      `checkPermissions`, never request. Up to 7 days of alarms for a deleted reminder kept
+      ringing.
+    - `BACKUP_FLAG_KEYS`: the seven on/off flags (stored as '1', exported as the number 1)
+      were dropped on restore. tools/check-import.mjs now supplies the list and tests it.
+    - `backupDropSample`: sample-preview rows stay out of backups, and a restore removes
+      `dp.sampleMeta`.
+    - `mediaRestore` holds `_mediaBusy`, so an update reload waits for it.
+    - Deferred (native): SharePlugin.shareTextFile reports success when the sheet opens, so
+      `dp.lastBackup` can be stamped after a cancel on Android ≤9 or a failed Downloads save.
+  - **Review 4, Time tracker (9 fixed, 2 deferred):**
+    - `stopRunning()`: Stop on a project timer opened a new untagged block, because
+      `startAct(act)` without the pid takes the switch path. The fix covers the in-app Stop,
+      the pomodoro break and stop sites, and the notification actions (`timerAction`, with
+      `dp.pausedPid` so Resume keeps the project).
+    - `startAct` clears a stale pause and never writes a negative block; deleting a block
+      refreshes the notification.
+    - `drainTimerAction()` also runs at launch. A Stop tapped while the app was closed was
+      undone by the start-up notification refresh.
+    - Block time edits choose the day (−1/0/+1) that keeps the block between 0 and 24 h, and
+      warn about overlaps. A cross-midnight fix had made 30.5 h blocks, and a running block
+      could get a future start.
+    - Daylight saving: `dayStartMs` / `dayEndMs` replace `d0 + 86400000` in segsForDay,
+      trackedSleepHours, every timeline, gaps, the export split and coverage. Manual add now
+      uses the wall clock (`new Date(ds + 'T' + hh:mm)`).
+    - Pomodoro catch-up closes the linked block at the focus phase's `endsAt`
+      (`stopRunningAt`).
+    - The gap card's project choice logs `pj:<id>` with its pid, not `act:'pj'`.
+    - A timebox ▶ for the activity already running no longer stops it.
+    - `rememberActNames()`: a deleted activity (Customize or a sync) keeps its name in
+      history (`dp.actnames`, backed up).
+    - **Deferred (native):** notification taps carry no timestamp, so one is applied when the
+      app next opens; a Stop at 18:00 seen at 22:00 counts to 22:00. This needs a queue of
+      `{action, atMillis}` in TimerNotifPlugin.
+    - **Deferred (sync):** a pull deletes a block the other device has never seen (an
+      unsynced running timer) and resurrects deleted ones. This needs tombstones; see the
+      roadmap.
+  - **Perf:** `roParse`/`DB.entriesRO`/`DB.timelogRO`. Stats tabs went from ~540 to ~225 ms
+    and the Calendar from 292 to 51 ms (3 years of data, 4× throttled CPU, medians of 5).
+    Textarea auto-sizing is batched (`autoSizeAll`).
 - **Write: photo blocks** (features.md, "Write ▸ photos"). Backups accept `doc:` media; older
   versions skip and count those items.
 - **Tests:** 797 sync+async × 4 timezones. Every fix was mutation-checked, and one survivor led

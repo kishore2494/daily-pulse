@@ -36,6 +36,14 @@
 - An image block in Write. (Media on an existing note: done in v253.)
 - Optionally export media as a SEPARATE file once libraries get big; the guard asks past ~35 MB.
 
+## Native fixes found 2026-11-01 (need an .aab build)
+- **TimerNotifPlugin:** queue `{action, atMillis}` instead of one overwritten tag, so a Stop or
+  Pause from the notification applies at the time it was tapped. Today a Stop at 18:00 seen at
+  22:00 counts to 22:00, and Pause + Resume collapse to just Resume.
+- **SharePlugin.shareTextFile:** report whether the user actually shared. Today it resolves as
+  soon as the sheet opens, so `dp.lastBackup` is stamped after a cancel on Android ≤9, or
+  when saving to Downloads fails.
+
 ## User action items (only they can do)
 - Finish Google Play identity verification (blocking everything).
 - Deploy `Code.gs` (latest) + redeploy new version → unlocks Time Log / Events / Articles Sheet tabs.
@@ -67,6 +75,9 @@ Android-first confirmed by Kishore. When Android is live:
       unions `habits`, so an older device's `true` wins over a newer un-tick. Storing `false`
       would fix the merge, but `false` is read as "logged" by goal counters and `entryHasContent`
       paths. Needs per-habit stamps or tombstones; decide together with the list-store tombstones.
+    - **A pull drops a time block the other device never saw** (an unsynced running timer),
+      and a deleted block comes back when the other device saves later. Same fix: tombstones
+      (id → deletedAt), and never treat "missing" as "deleted" (review 4, 2026-11-01).
     - **A save in the last ~1.2 s before a kill never syncs.** `pushState` is debounced.
       On the next launch the pull sees a newer local `touched` and uploads nothing. Fix: when
       local `touched` is newer than remote, push after the pull; and send on hide with

@@ -331,7 +331,7 @@ const DB = {
   timelogRO() { return roParse('dp.timelog', []); },   // read-only: see roParse
   saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
-  saveTimeacts(a) { const ok = safeSet('dp.timeacts', JSON.stringify(a)); pushState(); return ok; },
+  saveTimeacts(a) { rememberActNames(a); const ok = safeSet('dp.timeacts', JSON.stringify(a)); pushState(); return ok; },
 
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
   saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); return ok; },
@@ -845,6 +845,7 @@ function applyRemoteState(remote) {
       if (!remote[key]) return;
       if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
+        if (key === 'timeacts' && Array.isArray(remote[key])) rememberActNames(remote[key]);   // deleted on the other phone
         safeSet(store, JSON.stringify(remote[key])); changed = true;
       }
     });
@@ -910,8 +911,13 @@ function trackedHours(date, actId) {
 }
 // Sleep is special: "last night's sleep" = the FULL sleep segments that END on this date
 // (a 23:00→07:00 night counts 8h toward the morning you woke up — no midnight clipping).
+/* A calendar day's bounds in epoch ms. Never d0 + 86400000: the day the clocks go back is 25
+   hours long and the day they go forward 23, and a fixed 24 h lost an hour off one day's end
+   or counted one on two days. */
+function dayStartMs(ds) { return new Date(ds + 'T00:00:00').getTime(); }
+function dayEndMs(ds) { return new Date(addDays(ds, 1) + 'T00:00:00').getTime(); }
 function trackedSleepHours(date) {
-  const d0 = new Date(date + 'T00:00:00').getTime(), d1 = d0 + 86400000;
+  const d0 = dayStartMs(date), d1 = dayEndMs(date);
   const ms = DB.timelog()
     .filter(s => s.act === 'sleep' && s.end != null && s.end >= d0 && s.end < d1)
     .reduce((sum, s) => sum + Math.min(s.end - s.start, 16 * 3600000), 0);   // cap a segment at 16h (bad edits)
@@ -1004,6 +1010,8 @@ const WHATS_NEW = {
   v: 'w23',
   items: [
     '🛟 <b>Nothing you type gets lost</b> — the last moment of typing could vanish if the Log redrew itself, a sync landed or the app was closed straight after; and a Log left open overnight kept saving the morning to yesterday. Both are fixed, along with voice typing that kept going after you switched day, and a mood word that could cut text out of a longer #tag.',
+    '⏱️ <b>Time tracker fixes</b> — Stop now stops a project timer (it used to start a new one), fixing a time across midnight no longer makes a 30-hour block, the day the clocks change counts every hour once, and a deleted activity keeps its name in your history.',
+    '💾 <b>Safer backups</b> — restoring a backup no longer overwrites newer data on your other synced phone, a backup can no longer leave your photos out without saying so, and a deleted reminder stops ringing.',
     '🖼️ <b>Photos in Write</b> — add photos to an article with <b>Camera</b> or <b>Photo</b> under the toolbar. Tap one to see it full-screen.',
     '📎 <b>Photos on any note</b> — tap a note\'s camera to add a photo or a voice note to a note you already have.',
     '📖 <b>Look back at a day</b> — tapping a past day (in History, the Calendar, Stats, Search or On this day) now opens a page that shows the whole day: how it felt, your journal, photos and voice notes, your checklist, where the time went, workouts, money and notes. Only the <b>Edit</b> button takes you to the Log, and Back brings you here again.',
@@ -2895,6 +2903,16 @@ function allActs() { return TIME_ACTS_ALL.filter(a => !a.hidden).concat(DB.timea
    `dp.pjnames` is a tombstone written when a project is deleted: without it, that project's
    past blocks would resolve to the raw string "pj:pj1787…" forever. History stays readable. */
 const PJ_ACT = 'pj:';
+/* "Delete this? Its logged history stays." — so must its name. Blocks of a deleted custom
+   activity showed as "⏱️ ta1". Called before the list is replaced, from every path that can
+   drop an activity (Customize, a sync from another phone). */
+function rememberActNames(next) {
+  const keep = new Set((next || []).map(a => a && a.id)), gone = DB.timeacts().filter(a => a && !keep.has(a.id));
+  if (!gone.length) return;
+  const an = safeParse(localStorage.getItem('dp.actnames'), {}) || {};
+  gone.forEach(a => { an[a.id] = { name: a.name, emoji: a.emoji, color: a.color }; });
+  safeSet('dp.actnames', JSON.stringify(an));
+}
 function actById(id) {
   if (typeof id === 'string' && id.indexOf(PJ_ACT) === 0) {
     const pid = id.slice(PJ_ACT.length);
@@ -2904,7 +2922,10 @@ function actById(id) {
     if (gone) return { id, emoji: '🗂️', name: gone.name, color: gone.color || '#5f6b85', project: pid, gone: true };
     return { id, emoji: '🗂️', name: 'Former project', color: '#5f6b85', project: pid, gone: true };
   }
-  return TIME_ACTS_ALL.concat(DB.timeacts()).find(a => a.id === id) || { id, emoji: '⏱️', name: id, color: '#64748b' };
+  const live = TIME_ACTS_ALL.concat(DB.timeacts()).find(a => a.id === id);
+  if (live) return live;
+  const gone = (safeParse(localStorage.getItem('dp.actnames'), {}) || {})[id];
+  return gone ? { id, emoji: gone.emoji || '⏱️', name: gone.name || id, color: gone.color || '#64748b', gone: true } : { id, emoji: '⏱️', name: id, color: '#64748b' };
 }
 
 let ttDate = todayStr();       // day being viewed on the timeline
@@ -2924,11 +2945,37 @@ function fmtClock(ms) { const d = new Date(ms); return String(d.getHours()).padS
 /* `pid` tags the new block to a project. Passing it is what makes project hours exact: a
    block belongs to one project or none, so two projects sharing an activity never both
    claim the same time. */
+/* Stop whatever is running. startAct(act) alone is NOT a stop for a project block: without the
+   project id it does not match the running block, so it took the "switch" path and opened a new
+   untagged block — the timer never stopped. */
+function stopRunning() { const r = runningSeg(); if (r) startAct(r.act, r.pid || ''); return r; }
+/* The running block of `actId`, closed at `t` (not now) — for a phase that ended while away. */
+function stopRunningAt(actId, t) {
+  const log = DB.timelog(), run = log.find(s => s.end == null && s.act === actId);
+  if (!run) return;
+  run.end = Math.max(run.start, Math.min(t, Date.now())); run.upd = Date.now();
+  DB.saveTimelog(log); refreshTimerNotif();
+}
+/* Notification Stop / Pause / Resume (both the live listener and the drained native queue). */
+function timerAction(a) {
+  const r = runningSeg();
+  if (a === 'stop') { if (r) startAct(r.act, r.pid || ''); localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid'); }
+  else if (a === 'pause') {
+    if (r) { startAct(r.act, r.pid || ''); safeSet('dp.pausedAct', r.act); if (r.pid) safeSet('dp.pausedPid', r.pid); else localStorage.removeItem('dp.pausedPid'); }
+  } else if (a === 'resume') {
+    const pa = localStorage.getItem('dp.pausedAct'), pp = localStorage.getItem('dp.pausedPid') || '';
+    localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid');
+    if (pa) startAct(pa, pp);
+  }
+}
 function startAct(actId, pid) {
+  // Any start or stop supersedes a paused timer; left behind, every later stop re-posted an
+  // ongoing "Paused <old activity>" notification. (timerAction's pause sets it again after.)
+  localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid');
   const log = DB.timelog(); const now = Date.now();
   const run = log.find(s => s.end == null);
   if (run) {
-    run.end = now; run.upd = now;
+    run.end = Math.max(now, run.start); run.upd = now;   // a start fixed into the future must not make a negative block
     // Same activity AND same project = stop. Same activity for a DIFFERENT project has to
     // start a fresh block, or the hours would land on whichever project started first.
     if (run.act === actId && (run.pid || '') === (pid || '')) {   // tapping the running activity = just stop it
@@ -2982,7 +3029,7 @@ function overlappingBlocks(block, log) {
 }
 
 function segsForDay(dateStr) {
-  const d0 = new Date(dateStr + 'T00:00:00').getTime(), d1 = d0 + 86400000;
+  const d0 = dayStartMs(dateStr), d1 = dayEndMs(dateStr);
   const now = Date.now();
   return DB.timelogRO()
     .map(s => ({ seg: s, a: Math.max(s.start, d0), b: Math.min(s.end == null ? now : s.end, d1) }))
@@ -2991,14 +3038,14 @@ function segsForDay(dateStr) {
 }
 
 function timelineHTML(dateStr) {
-  const d0 = new Date(dateStr + 'T00:00:00').getTime();
-  const px = t => ((t - d0) / 86400000 * 100).toFixed(2) + '%';
+  const d0 = dayStartMs(dateStr), dl = dayEndMs(dateStr) - d0;
+  const px = t => ((t - d0) / dl * 100).toFixed(2) + '%';
   const clips = segsForDay(dateStr);
   const blocks = clips.map(({ seg, a, b }) => {
     const act = actById(seg.act);
     const run = seg.end == null;
     return `<div class="tl-seg ${run ? 'run' : ''} ${ttSelSeg === seg.id ? 'sel' : ''}" data-seg="${seg.id}"
-      style="left:${px(a)};width:${((b - a) / 86400000 * 100).toFixed(2)}%;background:${act.color}"
+      style="left:${px(a)};width:${((b - a) / dl * 100).toFixed(2)}%;background:${act.color}"
       title="${escapeHtml(act.name)} ${fmtClock(a)}–${run ? 'now' : fmtClock(b)}"></div>`;
   }).join('');
   const isToday = dateStr === todayStr();
@@ -3018,8 +3065,8 @@ function timeTotalsHTML(dateStr) {
       <span class="bar-track"><span class="bar-fill" style="width:${Math.round(x.ms / max * 100)}%;background:${x.act.color}"></span></span>
       <span class="pct" style="width:56px">${fmtDur(x.ms, true)}</span></div>`).join('');
   // "untracked" compares against how much of the day has actually elapsed (full 24h for past days)
-  const dayStart = new Date(dateStr + 'T00:00:00').getTime();
-  const elapsed = dateStr === todayStr() ? Math.min(86400000, Date.now() - dayStart) : 86400000;
+  const dayStart = dayStartMs(dateStr), dayLen = dayEndMs(dateStr) - dayStart;
+  const elapsed = dateStr === todayStr() ? Math.min(dayLen, Date.now() - dayStart) : dayLen;
   return rows + `<div class="hint" style="margin-top:8px">Tracked <b>${fmtDur(tracked)}</b> · untracked ${fmtDur(Math.max(0, elapsed - tracked))}</div>`;
 }
 
@@ -3287,7 +3334,7 @@ function syncTimelogNow() {
     let a = s.start;
     while (a < end) {                             // split per calendar day for the sheet
       const dayStr = todayStr(new Date(a));
-      const dayEnd = new Date(dayStr + 'T00:00:00').getTime() + 86400000;
+      const dayEnd = dayEndMs(dayStr);
       const b = Math.min(end, dayEnd);
       const act = actById(s.act);
       items.push({ date: dayStr, activity: act.emoji + ' ' + act.name,
@@ -3337,24 +3384,24 @@ document.addEventListener('click', (ev) => {
   if (!document.getElementById('s-time').classList.contains('on')) return;
   const st = ev.target.closest('[data-act-start]');
   if (st) { startAct(st.dataset.actStart, st.dataset.actPid || ''); return; }
-  if (ev.target.id === 'tt-stop') { const run = runningSeg(); if (run) startAct(run.act); return; }   // startAct on the running act = stop
+  if (ev.target.id === 'tt-stop') { stopRunning(); return; }
   const sg = ev.target.closest('[data-seg]');
   if (sg) { ttSelSeg = (ttSelSeg === sg.dataset.seg) ? null : sg.dataset.seg; renderTime(); return; }
   if (ev.target.id === 'seg-close') { ttSelSeg = null; renderTime(); return; }
   if (ev.target.id === 'seg-del') {
     DB.saveTimelog(DB.timelog().filter(s => s.id !== ttSelSeg));
-    ttSelSeg = null; renderTime(); toast('Block deleted'); return;
+    ttSelSeg = null; renderTime(); refreshTimerNotif(); toast('Block deleted'); return;   // it may have been the running one
   }
   if (ev.target.id === 'tt-manual-toggle') { ttShowManual = !ttShowManual; renderTime(); return; }
   if (ev.target.id === 'tt-m-save') {
     const act = document.getElementById('tt-m-act').value;
     const sv = document.getElementById('tt-m-start').value, ev2 = document.getElementById('tt-m-end').value;
     if (!sv || !ev2) { toast('Pick both times', true); return; }
-    const d0 = new Date(ttDate + 'T00:00:00').getTime();
-    const toMs = t => { const [h, m] = t.split(':').map(Number); return d0 + (h * 60 + m) * 60000; };
-    const a = toMs(sv); let b = toMs(ev2);
+    // wall-clock times on that date (d0 + minutes was an hour off on a daylight-saving day)
+    const toMs = (ds, t) => new Date(ds + 'T' + t.slice(0, 5) + ':00').getTime();
+    const a = toMs(ttDate, sv); let b = toMs(ttDate, ev2);
     if (sv === ev2) { toast('Start and end are the same', true); return; }
-    if (b <= a) b += 86400000;   // end earlier than start → it crosses midnight (e.g. 23:00 → 07:00 sleep)
+    if (b <= a) b = toMs(addDays(ttDate, 1), ev2);   // end earlier than start → it crosses midnight (e.g. 23:00 → 07:00 sleep)
     const log = DB.timelog(); const now = Date.now();
     let mid = 'ts' + now, mn = 0;
     while (log.some(x => x.id === mid)) mid = 'ts' + now + '-' + (++mn);
@@ -3385,13 +3432,24 @@ document.addEventListener('change', (ev) => {
   if (te && ttSelSeg) {
     const log = DB.timelog(); const seg = log.find(s => s.id === ttSelSeg); if (!seg || !ev.target.value) return;
     const [h, m] = ev.target.value.split(':').map(Number);
-    const base = new Date(te.dataset.segt === 'start' ? seg.start : seg.end);   // keep the segment's own date, change only the clock time
-    base.setHours(h, m, 0, 0);
-    const v = base.getTime();
-    if (te.dataset.segt === 'start' && seg.end != null && v >= seg.end) { toast('Start must be before end', true); renderTime(); return; }
-    if (te.dataset.segt === 'end' && v <= seg.start) { toast('End must be after start', true); renderTime(); return; }
-    seg[te.dataset.segt] = v; seg.upd = Date.now();
-    const fok = DB.saveTimelog(log); renderTime(); savedToast(fok, 'Time fixed ✅');
+    const isStart = te.dataset.segt === 'start', now = Date.now();
+    /* Keeping the time's own calendar date was wrong once a block crosses midnight: a 23:00→07:00
+       sleep with its start fixed to 00:30 became 30.5 hours, and a running sleep started at 00:10
+       fixed to 23:30 landed in the future and later saved a negative block. Take the clock time on
+       the day before, the same day or the day after — whichever keeps the block between 0 and 24
+       hours long (a running block runs to now), nearest the old date. */
+    const other = isStart ? (seg.end == null ? now : seg.end) : seg.start;
+    const base = new Date(isStart ? seg.start : seg.end); base.setHours(h, m, 0, 0);
+    const len = v => isStart ? other - v : v - other;
+    const v = [-1, 0, 1].map(k => { const x = new Date(base); x.setDate(x.getDate() + k); return x.getTime(); })
+      .filter(x => len(x) > 0 && len(x) < 864e5)
+      .sort((x, y) => Math.abs(x - base.getTime()) - Math.abs(y - base.getTime()))[0];
+    if (v == null) { toast(isStart ? 'Start must be before end' : 'End must be after start', true); renderTime(); return; }
+    seg[te.dataset.segt] = v; seg.upd = now;
+    const fok = DB.saveTimelog(log); renderTime();
+    const clash = fok === false ? [] : overlappingBlocks(seg, log.filter(s => s.id !== seg.id));
+    if (clash.length) toast(`Fixed, but it now overlaps ${actById(clash[0].act).name} ${fmtClock(clash[0].start)}–${clash[0].end == null ? 'now' : fmtClock(clash[0].end)} — those hours are counted twice.`, true);
+    else savedToast(fok, 'Time fixed ✅');
   }
 });
 
@@ -4041,8 +4099,8 @@ function timeStatsHTML(days) {
 
   // ---- headline stats ----
   const elapsedInRange = days.reduce((s, d) => {
-    const d0 = new Date(d + 'T00:00:00').getTime();
-    return s + Math.max(0, Math.min(86400000, Date.now() - d0));
+    const d0 = dayStartMs(d);
+    return s + Math.max(0, Math.min(dayEndMs(d) - d0, Date.now() - d0));
   }, 0);
   const coverage = elapsedInRange ? Math.round(tracked / elapsedInRange * 100) : 0;
   const top = actById(actIds[0]);
@@ -4071,10 +4129,10 @@ function timeStatsHTML(days) {
   // ---- day-by-day 24h strips (newest first, capped at 14 rows) ----
   const stripDays = dayData.filter(x => x.clips.length).slice(-14).reverse();
   const strips = stripDays.map(({ d, clips }) => {
-    const d0 = new Date(d + 'T00:00:00').getTime();
-    const px = t => ((t - d0) / 86400000 * 100).toFixed(2) + '%';
+    const d0 = dayStartMs(d), dl = dayEndMs(d) - d0;
+    const px = t => ((t - d0) / dl * 100).toFixed(2) + '%';
     const blocks = clips.map(({ seg, a, b }) => { const act = actById(seg.act);
-      return `<div class="tl-seg" style="left:${px(a)};width:${((b - a) / 86400000 * 100).toFixed(2)}%;background:${act.color}" title="${escapeHtml(act.name)}"></div>`; }).join('');
+      return `<div class="tl-seg" style="left:${px(a)};width:${((b - a) / dl * 100).toFixed(2)}%;background:${act.color}" title="${escapeHtml(act.name)}"></div>`; }).join('');
     return `<div class="tl-day-row"><span class="tl-day-lab">${prettyDate(d).replace(/,.*$/, '')} ${d.slice(8)}</span><div class="tl-wrap tl-mini">${blocks}</div></div>`;
   }).join('');
   const stripLegend = actIds.map(id => { const a = actById(id);
@@ -4790,12 +4848,12 @@ function historyDayHTML(d) {
   const clips = segsForDay(d);
   let timeHTML = '';
   if (clips.length) {
-    const d0 = new Date(d + 'T00:00:00').getTime();
+    const d0 = dayStartMs(d), dl = dayEndMs(d) - d0;
     const by = {};
     clips.forEach(({ seg, a, b }) => { by[seg.act] = (by[seg.act] || 0) + (b - a); });
     const acts = Object.keys(by).map(k => ({ act: actById(k), ms: by[k] })).sort((x, y) => y.ms - x.ms);
     const tot = acts.reduce((s, x) => s + x.ms, 0);
-    timeHTML = `<div class="hd-tlbar">${clips.map(({ seg, a, b }) => `<i style="left:${((a - d0) / 864e5 * 100).toFixed(2)}%;width:${Math.max(0.4, (b - a) / 864e5 * 100).toFixed(2)}%;background:${actById(seg.act).color}"></i>`).join('')}</div>
+    timeHTML = `<div class="hd-tlbar">${clips.map(({ seg, a, b }) => `<i style="left:${((a - d0) / dl * 100).toFixed(2)}%;width:${Math.max(0.4, (b - a) / dl * 100).toFixed(2)}%;background:${actById(seg.act).color}"></i>`).join('')}</div>
       <div class="hd-tlax"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
       ${acts.slice(0, 6).map(x => `<div class="hd-act"><span class="hd-adot" style="background:${x.act.color}"></span><span class="hd-an">${escapeHtml(x.act.emoji || '')} ${escapeHtml(x.act.name)}</span><span class="hd-ab"><i style="width:${(x.ms / acts[0].ms * 100).toFixed(1)}%;background:${x.act.color}"></i></span><b>${fmtDur(x.ms, true)}</b></div>`).join('')}
       ${acts.length > 6 ? `<div class="hint">and ${acts.length - 6} more · ${fmtDur(tot, true)} tracked in all</div>` : ''}`;
@@ -5618,14 +5676,14 @@ function pomoStart(ph) {
   p.run = { phase: ph, endsAt, round: (p.run && ph !== 'focus') ? p.run.round : (p.run ? p.run.round : 1) };
   DB.savePomo(p);
   if (ph === 'focus' && p.cfg.act) { const r = runningSeg(); if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
-  else if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }   // stop timing on break
+  else if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act, r.pid || ''); }   // stop timing on break
   schedulePomoAlarm(endsAt, phaseName(ph));
   renderFocus();
 }
 function pomoAdvance(silent) {
   const p = pomoState();
   if (!p.run) return;
-  const wasFocus = p.run.phase === 'focus';
+  const wasFocus = p.run.phase === 'focus', endedAt = p.run.endsAt;
   let round = p.run.round;
   if (wasFocus) {
     p.done = { d: todayStr(), n: pomoDoneToday(p) + 1 };
@@ -5638,11 +5696,17 @@ function pomoAdvance(silent) {
     p.run = { phase: 'focus', endsAt: Date.now() + p.cfg.focus * 60000, round };
   }
   DB.savePomo(p);
-  if (silent) { if (!p.cfg.auto) pomoPause(); return; }   // catch-up: just fix state, no side effects/recursion
+  if (silent) {   // catch-up: just fix state, no side effects/recursion
+    // ...except the linked time block. The focus phase ended at its own end time, not when the app
+    // was next opened; left running, Work counted every break and the hours after it.
+    if (wasFocus && p.cfg.act) stopRunningAt(p.cfg.act, endedAt);
+    if (!p.cfg.auto) pomoPause();
+    return;
+  }
   // time-tracker link
   if (p.cfg.act) { const r = runningSeg();
     if (p.run.phase === 'focus') { if (!r || r.act !== p.cfg.act) startAct(p.cfg.act); }
-    else if (r && r.act === p.cfg.act) startAct(r.act); }
+    else if (r && r.act === p.cfg.act) startAct(r.act, r.pid || ''); }
   schedulePomoAlarm(p.run.endsAt, phaseName(p.run.phase));
   try { pomoChime(); } catch (e) {}
   if (navigator.vibrate) navigator.vibrate([300, 120, 300]);
@@ -5654,7 +5718,7 @@ function pomoPause() {
   const p = pomoState(); if (!p.run) return;
   p.run.paused = true; p.run.remain = Math.max(0, p.run.endsAt - Date.now());
   DB.savePomo(p); cancelPomoAlarm();
-  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }
+  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act, r.pid || ''); }
   renderFocus();
 }
 function pomoResume() {
@@ -5667,7 +5731,7 @@ function pomoResume() {
 }
 function pomoReset() {
   const p = pomoState();
-  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act); }
+  if (p.cfg.act) { const r = runningSeg(); if (r && r.act === p.cfg.act) startAct(r.act, r.pid || ''); }
   p.run = null; DB.savePomo(p); cancelPomoAlarm(); renderFocus();
 }
 let _pomoAC;
@@ -5825,7 +5889,11 @@ document.addEventListener('click', (ev) => {
     const wrote9 = DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); savedToast(wrote9, 'Block added 📦'); return;
   }
   const ts = ev.target.closest('[data-tb-start]');
-  if (ts) { const b = DB.timebox().find(x => x.id === ts.dataset.tbStart); if (b && b.act) { startAct(b.act); toast('▶ ' + actById(b.act).name + ' started'); } return; }
+  if (ts) { const b = DB.timebox().find(x => x.id === ts.dataset.tbStart);
+    if (b && b.act) { const r = runningSeg();
+      // startAct on the running activity is a STOP — ▶ on a timebox for what is already running stopped it
+      if (r && r.act === b.act && !r.pid) toast('▶ ' + actById(b.act).name + ' is already running'); else startAct(b.act); }
+    return; }
   const td = ev.target.closest('[data-tb-del]');
   if (td) { DB.saveTimebox(DB.timebox().filter(x => x.id !== td.dataset.tbDel)); scheduleTimeboxAlarms(); renderFocus(); return; }
 });
@@ -7623,7 +7691,7 @@ function mediaWipe() {
 }
 
 /* Everything the app stores, for a COMPLETE backup/restore. */
-const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'gapskip', 'cardratio',
+const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'actnames', 'gapskip', 'cardratio',
   'finaccts', 'fintx', 'finmarks', 'finbudget', 'fincats', 'finset', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen',
   /* Added v230. These are the user's own CHOICES and earned state, and leaving them out meant
      a wipe-then-restore silently reset them while the app said "Backup restored" — the export
@@ -7662,7 +7730,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct',
+  'touched', 'pausedAct', 'pausedPid',
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
@@ -10541,9 +10609,7 @@ async function setupTimerNotif() {
     ] });
     LN.addListener('localNotificationActionPerformed', (e) => {
       const a = e.actionId;
-      if (a === 'dp_stop') { const r = runningSeg(); if (r) startAct(r.act); localStorage.removeItem('dp.pausedAct'); }
-      else if (a === 'dp_pause') { const r = runningSeg(); if (r) { localStorage.setItem('dp.pausedAct', r.act); startAct(r.act); } }
-      else if (a === 'dp_resume') { const pa = localStorage.getItem('dp.pausedAct'); localStorage.removeItem('dp.pausedAct'); if (pa) startAct(pa); }
+      if (a === 'dp_stop' || a === 'dp_pause' || a === 'dp_resume') timerAction(a.slice(3));
       refreshTimerNotif();
       if (document.getElementById('s-time').classList.contains('on')) renderTime();
     });
@@ -10621,15 +10687,14 @@ async function drainTimerAction() {
   let a = '';
   try { a = (await T.consumeAction()).action || ''; } catch (e) { return; }
   if (!a) return;
-  const r = runningSeg();
-  if (a === 'stop') { if (r) startAct(r.act); localStorage.removeItem('dp.pausedAct'); }
-  else if (a === 'pause') { if (r) { localStorage.setItem('dp.pausedAct', r.act); startAct(r.act); } }
-  else if (a === 'resume') { const pa = localStorage.getItem('dp.pausedAct');
-    localStorage.removeItem('dp.pausedAct'); if (pa) startAct(pa); }
+  timerAction(a);
   refreshTimerNotif();
   try { if (document.getElementById('s-time').classList.contains('on')) renderTime(); } catch (e) {}
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) drainTimerAction(); });
+// ...and at launch: after a cold start the startup notification refresh showed "running" again,
+// undoing a Stop tapped while the app was closed, and the stale Stop then hit a later timer.
+drainTimerAction();
 
 /* ---------- 2-day inactivity nudge (native shell, fully offline) ----------
    Pre-schedules one "we miss you" notification for (last active day + 2 days)
@@ -11307,13 +11372,13 @@ function gapSkipped(dateStr, a) { return !!gapSkips()[dateStr + '|' + a]; }
 function gapIsWeekend(ds) { const d = new Date(ds + 'T00:00:00').getDay(); return d === 0 || d === 6; }
 /* A gap that runs to the end of the day ends at midnight, and fmtClock renders that as
    "00:00" — which reads as the START of the day. */
-function gapClock(ms, dayStart) { return ms - dayStart >= 86400000 ? '24:00' : fmtClock(ms); }
+function gapClock(ms, dayStart) { return ms >= dayEndMs(todayStr(new Date(dayStart))) ? '24:00' : fmtClock(ms); }
 
 /* Untracked stretches of a day, as absolute ms ranges. Never anything in the future:
    "you didn't track 20:00–24:00" at lunchtime is not missing data. */
 function gapsRaw(dateStr) {
-  const d0 = new Date(dateStr + 'T00:00:00').getTime();
-  const cap = Math.min(d0 + 86400000, Date.now());
+  const d0 = dayStartMs(dateStr);
+  const cap = Math.min(dayEndMs(dateStr), Date.now());
   if (cap <= d0) return [];
   const out = []; let cur = d0;
   segsForDay(dateStr).slice().sort((x, y) => x.a - y.a).forEach(({ a, b }) => {
@@ -11338,7 +11403,7 @@ function gapModel(dateStr) {
   const log = DB.timelog().filter(s => s.end != null);   // a running block has no settled span
   for (let i = 1; i <= GAP_LOOKBACK; i++) {
     const ds = addDays(dateStr, -i);
-    const b0 = new Date(ds + 'T00:00:00').getTime(), b1 = b0 + 86400000;
+    const b0 = dayStartMs(ds), b1 = dayEndMs(ds);
     const targets = gapIsWeekend(ds) === wantWeekend ? [all, same] : [all];
     log.forEach(s => {
       const a = Math.max(s.start, b0), b = Math.min(s.end, b1);
@@ -11397,7 +11462,7 @@ function gapHistoryDays(dateStr) {
   const days = {};
   for (let i = 1; i <= GAP_LOOKBACK; i++) {
     const ds = addDays(dateStr, -i);
-    const b0 = new Date(ds + 'T00:00:00').getTime(), b1 = b0 + 86400000;
+    const b0 = dayStartMs(ds), b1 = dayEndMs(ds);
     if (log.some(s => s.end > b0 && s.start < b1)) days[ds] = 1;
   }
   return Object.keys(days).length;
@@ -11451,7 +11516,9 @@ function gapFill(dateStr, a, b, actId) {
   const log = DB.timelog();
   let id = 'ts' + a, n = 0;
   while (log.some(s => s.id === id)) id = 'ts' + a + '-' + (++n);
-  log.push({ id, act: actId, start: a, end: b, upd: Date.now() });
+  const blk = { id, act: actId, start: a, end: b, upd: Date.now() };
+  if (actId.indexOf(PJ_ACT) === 0) blk.pid = actId.slice(PJ_ACT.length);   // counts toward the project
+  log.push(blk);
   DB.saveTimelog(log);
   gapOpen = null;
   renderTime();
@@ -11518,7 +11585,8 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('click', (ev) => {
   const set = ev.target.closest('[data-gap-set]');
-  if (set) { const [a, b, actId] = set.dataset.gapSet.split(':'); gapFill(ttDate, +a, +b, actId); return; }
+  // the activity id can itself hold a ':' (a project is 'pj:<id>') — keep everything after the second
+  if (set) { const [a, b, ...rest] = set.dataset.gapSet.split(':'); gapFill(ttDate, +a, +b, rest.join(':')); return; }
   const other = ev.target.closest('[data-gap-other]');
   if (other) { gapOpen = gapOpen === other.dataset.gapOther ? null : other.dataset.gapOther; renderTime(); return; }
   const sk = ev.target.closest('[data-gap-skip]');
