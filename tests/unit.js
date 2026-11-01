@@ -2523,6 +2523,289 @@
     }
   })();
 
+  // ---- plans sync step by step: a tick on each phone both survive ----
+  (function () {
+    const keys = ['dp.plans', 'dp.listAt', 'dp.listDel', 'dp.touched', 'dp.settings', 'dp.entries', 'dp.timelog', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const cSnap = window.confirm; window.confirm = () => true;
+    const cpSnap = curPlan;
+    const at = () => listMeta('dp.listAt'), dl = () => listMeta('dp.listDel');
+    const dig = (o, ...ks) => ks.reduce((x, k) => x == null ? undefined : x[k], o);   // a missing level reads as undefined, not a throw
+    const step = (id, done, text) => ({ id, text: text || id, done: !!done, color: '', created: '2026-01-01' });
+    const plan = (items, extra) => Object.assign({ id: 'p1', name: 'Trip', color: '', created: '2026-01-01', items }, extra || {});
+    const P = () => DB.plans().find(p => p.id === 'p1') || {};
+    const its = () => (P().items || []).map(i => i.id + (i.done ? '+' : '')).join(',');
+    const seed = (items, listAt, listDel) => {
+      localStorage.setItem('dp.plans', JSON.stringify([plan(items)]));
+      localStorage.setItem('dp.listAt', JSON.stringify(listAt || {})); localStorage.setItem('dp.listDel', JSON.stringify(listDel || {}));
+    };
+    const open = () => { show('plans'); curPlan = 'p1'; renderPlans(); };
+    const tap = sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; };
+    const pull = (plans, listAt, listDel, extra) => applyRemoteState(Object.assign({ touched: Date.now() + 5000, plans, listAt, listDel: listDel || {}, entries: {}, timelog: [], timelogDel: {} }, extra || {}));
+    try {
+      // what each save records
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: 1000 } });
+      open();
+      ok('(the plan is open)', tap('[data-planitem-toggle="i1"]'));
+      let A = at();
+      ok('ticking a step stamps that step', A.planItems && dig(A, 'planItems', 'p1', 'i1') > 1000, A.planItems);
+      ok('…the steps it did not change keep the plan\'s earlier stamp', dig(A, 'planItems', 'p1', 'i2') === 1000 && dig(A, 'planItems', 'p1', 'i3') === 1000);
+      ok('…and so do the plan\'s own fields', dig(A, 'planFields', 'p1') === 1000);
+      ok('…while the whole-plan stamp still moves (older app versions merge by it)', dig(A, 'plans', 'p1') > 1000);
+      ok('…and no delete records appear', !('planItems' in dl()), dl());
+      const tTick = dig(A, 'planItems', 'p1', 'i1');
+      const nm = document.querySelector('[data-planname="p1"]');
+      if (nm) { nm.value = 'Trip to Goa'; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+      ok('renaming a plan stamps its fields, and no step', !!nm && P().name === 'Trip to Goa' && dig(at(), 'planFields', 'p1') >= tTick && dig(at(), 'planItems', 'p1', 'i2') === 1000);
+      open(); tap('[data-planitem-del="i3"]');
+      ok('deleting a step records when', (dl().planItems || {}).p1 && dig(dl(), 'planItems', 'p1', 'i3') >= tTick && !('i3' in (dig(at(), 'planItems', 'p1') || {})), dl());
+      open(); tap('[data-planitem-toggle="i2"]'); open(); tap('#plan-clear-done');
+      ok('"Clear completed" records each step it removed', its() === '' && dig(dl(), 'planItems', 'p1', 'i1') >= tTick && dig(dl(), 'planItems', 'p1', 'i2') >= tTick, its());
+      open(); const inp = document.getElementById('plan-item-input'); if (inp) inp.value = 'Book hotel'; tap('#plan-item-add-btn');
+      const added = (P().items || [])[0];
+      ok('adding a step stamps it', !!added && dig(at(), 'planItems', 'p1', added.id) >= tTick);
+      const A0 = at(); A0.planItems = A0.planItems || {}; A0.planItems.p1 = A0.planItems.p1 || {}; A0.planFields = A0.planFields || {}; A0.planItems.p1[added.id] = 7; A0.planFields.p1 = 7; localStorage.setItem('dp.listAt', JSON.stringify(A0));
+      open(); setColor(added.id, 'red');
+      ok('colouring a step stamps it, not the plan\'s fields', P().items[0].color === 'red' && dig(at(), 'planFields', 'p1') === 7 && dig(at(), 'planItems', 'p1', added.id) > 7, at());
+      seed([step('i1')], {}, { planItems: { p1: { old: Date.now() - 91 * 864e5 } } });
+      open(); tap('[data-planitem-toggle="i1"]');
+      ok('a plan with no stamp at all: its fields are marked as not yet changed (0)', dig(at(), 'planFields', 'p1') === 0 && dig(at(), 'planItems', 'p1', 'i1') > 0, at());
+      ok('delete records older than 90 days are dropped', !(dl().planItems || {}).p1);
+      localStorage.setItem('dp.listDel', JSON.stringify({ planItems: { p1: { i9: Date.now() - 1000 } } }));
+      DB.savePlans([plan([step('i1', true), step('i9')])]);
+      ok('a step saved again under a deleted id loses its delete record', !(dl().planItems || {}).p1 && dig(at(), 'planItems', 'p1', 'i9') > 0, dl());
+      DB.savePlans([plan([step('i1', true), step('i9')]), { id: 'p2', name: 'New', items: [step('j1')] }]);
+      ok('a new plan stamps its fields and every step', dig(at(), 'planFields', 'p2') > 0 && dig(at(), 'planItems', 'p2', 'j1') > 0);
+      show('plans'); curPlan = null; renderPlans(); tap('[data-delplan="p2"]');
+      ok('deleting a plan drops its steps\' stamps (its own delete record covers them)', !DB.plans().some(p => p.id === 'p2') && !((at().planItems || {}).p2) && !('p2' in (at().planFields || {})) && !!dig(dl(), 'plans', 'p2'));
+
+      // the merge, directly: a tick on each phone
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const now = Date.now();
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: 1000 } });
+      open(); tap('[data-planitem-toggle="i1"]');   // ticked here
+      const tA = dig(at(), 'planItems', 'p1', 'i1');
+      localStorage.setItem('dp.touched', String(tA));
+      pull([plan([step('i1'), step('i2', true), step('i3')])],
+        { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tA + 5, i3: 1000 } } });
+      ok('a step ticked on each phone: both ticks survive', its() === 'i1+,i2+,i3', its());
+      ok('…and both stamps are kept', dig(at(), 'planItems', 'p1', 'i1') === tA && dig(at(), 'planItems', 'p1', 'i2') === tA + 5, at().planItems);
+      // un-tick here, the other phone still has the tick (older)
+      open(); tap('[data-planitem-toggle="i1"]');
+      const tU = dig(at(), 'planItems', 'p1', 'i1');
+      pull([plan([step('i1', true), step('i2', true), step('i3')])],
+        { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: tA, i2: tA + 5, i3: 1000 } } });
+      ok('an un-tick here survives the other phone\'s older tick', its() === 'i1,i2+,i3', its());
+      pull([plan([step('i1'), step('i2'), step('i3')])],
+        { plans: { p1: tU + 50 }, planFields: { p1: 1000 }, planItems: { p1: { i1: tU, i2: tU + 50, i3: 1000 } } });
+      ok('…and an un-tick there arrives here', its() === 'i1,i2,i3', its());
+      // a rename on one phone, a tick on the other
+      seed([step('i1'), step('i2')], { plans: { p1: now - 500 }, planFields: { p1: now - 400 }, planItems: { p1: { i1: 1000, i2: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1'), step('i2')], { name: 'Renamed here' })]));
+      pull([plan([step('i1', true), step('i2')])], { plans: { p1: now }, planFields: { p1: 1000 }, planItems: { p1: { i1: now, i2: 1000 } } });
+      ok('a rename here survives the other phone\'s later tick', P().name === 'Renamed here' && its() === 'i1+,i2', [P().name, its()]);
+      pull([plan([step('i1', true), step('i2')], { name: 'Renamed there' })], { plans: { p1: now + 9 }, planFields: { p1: now + 9 }, planItems: { p1: { i1: now, i2: 1000 } } });
+      ok('…and a later rename there wins', P().name === 'Renamed there');
+      // delete beats an older edit
+      seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } });
+      open(); tap('[data-planitem-del="i2"]');
+      const tD = dig(dl(), 'planItems', 'p1', 'i2');
+      pull([plan([step('i1'), step('i2', false, 'edited there')])], { plans: { p1: tD - 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD - 10 } } });
+      ok('a step deleted here is not brought back by the other phone\'s older edit', its() === 'i1', its());
+      pull([plan([step('i1'), step('i2', false, 'edited later')])], { plans: { p1: tD + 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD + 10 } } });
+      ok('…but an edit made after the delete brings it back', its() === 'i1,i2' && P().items[1].text === 'edited later', its());
+      pull([plan([step('i1')])], { plans: { p1: tD + 20 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000 } } }, { planItems: { p1: { i2: tD + 20 } } });
+      ok('a step deleted there goes here too', its() === 'i1', its());
+      // an older app version (v253): its whole-plan stamp stands for every step
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: now - 900 }, planFields: { p1: 1000 }, planItems: { p1: { i1: now - 900, i2: 1000, i3: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
+      pull([plan([step('i1'), step('i2', true)], { name: 'Theirs' })], { plans: { p1: now - 100 } });
+      ok('a newer plan from an older app version wins whole, as before', its() === 'i1,i2+' && P().name === 'Theirs', [its(), P().name]);
+      ok('…and its stamp now stands for each of its steps here', dig(at(), 'planItems', 'p1', 'i1') === now - 100 && dig(dl(), 'planItems', 'p1', 'i3') === now - 100, [at().planItems, dl().planItems]);
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: now - 50 }, planFields: { p1: 1000 }, planItems: { p1: { i1: now - 50, i2: 1000, i3: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
+      pull([plan([step('i1'), step('i2', true), step('i3')])], { plans: { p1: now - 100 } });
+      ok('…an older one keeps this phone\'s later tick, and takes its own', its() === 'i1+,i2+,i3', its());
+      seed([step('i1')], { plans: { p1: now - 900 } });
+      pull([plan([step('i1', true), step('i2')])], { plans: { p1: now - 100 } });
+      ok('two phones without step stamps: the newer whole plan, as before', its() === 'i1+,i2' && dig(at(), 'planFields', 'p1') === now - 100, [its(), at()]);
+      seed([step('i1')], { planFields: { p1: 0 } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')], { name: 'A' })]));
+      localStorage.setItem('dp.touched', String(now + 1e6));
+      pull([plan([step('i1', true)], { name: 'B' })], { plans: { p1: now }, planFields: { p1: 0 } }, {}, { touched: now });
+      ok('steps and fields neither phone stamped follow the plan changed last, not the state saved last', its() === 'i1+' && P().name === 'B', [its(), P().name]);
+      seed([step('i1')], { plans: { p1: now - 900 } });
+      localStorage.setItem('dp.touched', String(now));
+      applyRemoteState({ touched: now + 30, plans: [plan([step('i9')])] });
+      ok('a state from before item stamps (no listAt) still replaces the list', its() === 'i9', its());
+      // a plan only the other phone has: its step stamps come with it — unless it has none
+      seed([step('i1')], { plans: { p1: 1000, p6: 1000 }, planFields: { p1: 1000, p6: 1000 }, planItems: { p1: { i1: 1000 }, p6: { q1: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')]), { id: 'p6', name: 'Mine', items: [step('q1')] }]));
+      pull([plan([step('i1')]), { id: 'p3', name: 'Theirs', items: [step('k1')] }, { id: 'p4', name: 'Old', items: [step('m1')] }],
+        { plans: { p1: 1000, p3: now, p4: now }, planFields: { p1: 1000, p3: now }, planItems: { p1: { i1: 1000 }, p3: { k1: now } } }, { planItems: { p3: { k0: now } } });
+      ok('a plan that arrives brings its step stamps and delete records', dig(at(), 'planItems', 'p3', 'k1') === now && dig(at(), 'planFields', 'p3') === now && dig(dl(), 'planItems', 'p3', 'k0') === now);
+      ok('…and one with none stays without (its whole-plan stamp stands for them)', !('p4' in (dig(at(), 'planFields') || {})) && !(at().planItems || {}).p4);
+      ok('a plan only this phone has keeps its step stamps', dig(at(), 'planItems', 'p6', 'q1') === 1000 && dig(at(), 'planFields', 'p6') === 1000);
+      // pushes: none when nothing differs, one when the Sheet lacks a delete record
+      seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } }, { planItems: { p1: { i0: now } } });
+      localStorage.setItem('dp.touched', String(now + 100)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
+      applyRemoteState({ touched: now + 100, plans: DB.plans(), listAt: at(), listDel: dl(), entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull of an identical state (steps and all) sends nothing', !sent.some(x => x.type === 'state'), sent.length);
+      applyRemoteState({ touched: now + 100, plans: DB.plans(), listAt: at(), listDel: {}, entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet lacks a deleted step\'s record sends ours', sent.some(x => x.type === 'state' && x.listDel.planItems && x.listDel.planItems.p1.i0 === now));
+      // restore
+      seed([step('i1', true), step('i2')], { plans: { p1: now }, planFields: { p1: now }, planItems: { p1: { i1: now, i2: now } } }, { planItems: { p1: { i9: now - 5, i8: now - 5 } } });
+      const before = listIds(['plans']);
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1'), step('i9')]), { id: 'p5', name: 'Back', items: [step('n1')] }]));
+      listRestored(before, now - 3000);   // a backup taken 3 s ago
+      A = at(); const D = dl();
+      ok('restore: a step it brings back is stamped at the backup\'s time and its delete record goes', dig(A, 'planItems', 'p1', 'i9') === now - 3000 && !('i9' in (dig(D, 'planItems', 'p1') || {})) && dig(D, 'planItems', 'p1', 'i8') === now - 5, [A.planItems, D.planItems]);
+      ok('…a rolled-back step and the plan\'s fields lose their stamps', !('i1' in (dig(A, 'planItems', 'p1') || {})) && dig(A, 'planFields', 'p1') === 0);
+      ok('…and a plan it brings back whole is left to its new whole-plan stamp, the backup\'s time', dig(A, 'plans', 'p5') === now - 3000 && !('p5' in (dig(A, 'planFields') || {})) && !(dig(A, 'planItems', 'p5')));
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; window.confirm = cSnap; curPlan = cpSnap; clearTimeout(pushTimer); _pushPending = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
+  // ---- gym days sync tick by tick: un-ticks and log edits propagate ----
+  (function () {
+    const keys = ['dp.gym', 'dp.gymAt', 'dp.entries', 'dp.touched', 'dp.settings', 'dp.timelog', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const gdSnap = gymDate, gidSnap = gymDayId, gvSnap = gymView;
+    const GA = () => listMeta('dp.gymAt');
+    const dig = (o, ...ks) => ks.reduce((x, k) => x == null ? undefined : x[k], o);
+    const D = '2026-01-05';
+    const day = (done, log) => ({ [D]: { done: done || {}, log: log || {} } });
+    try {
+      // gymMerge, directly: (local, remote, local stamps, remote stamps, when the remote state was saved)
+      let m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 200 } } }, { [D]: { done: { a: 100 } } }, 1);
+      ok('gym: a newer un-tick beats an older tick', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 200, m);
+      m = gymMerge(day({ a: true }), day({ a: false }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 200 } } }, 1);
+      ok('gym: …and an un-tick on the other phone arrives', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 200);
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, {}, 1);
+      ok('gym: an un-tick beats a tick older than the stamps', dig(m.gym, D, 'done', 'a') === false);
+      m = gymMerge(day({ a: true }), day({}), { [D]: { done: { a: 100 } } }, {}, 1);
+      ok('gym: a side that never touched an exercise has no say about it', dig(m.gym, D, 'done', 'a') === true);
+      m = gymMerge(day({ a: false, b: true }, { x: '' }), day({ a: true, c: true }, { x: '3x10', y: '2x5' }), {}, {}, 1);
+      ok('gym: what neither phone has stamped still merges as a union', dig(m.gym, D, 'done', 'a') === true && dig(m.gym, D, 'done', 'b') === true && dig(m.gym, D, 'done', 'c') === true && dig(m.gym, D, 'log', 'x') === '3x10' && dig(m.gym, D, 'log', 'y') === '2x5' && !Object.keys(m.at).length, m);
+      m = gymMerge(day({}, { x: '3x12' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
+      ok('gym: a newer log edit here is kept', dig(m.gym, D, 'log', 'x') === '3x12');
+      m = gymMerge(day({}, { x: '3x10' }), day({}, { x: '3x12' }), { [D]: { log: { x: 200 } } }, { [D]: { log: { x: 300 } } }, 1);
+      ok('gym: …and a newer one there arrives', dig(m.gym, D, 'log', 'x') === '3x12' && dig(m.at, D, 'log', 'x') === 300);
+      m = gymMerge(day({}, { x: '' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
+      ok('gym: a cleared log stays cleared', dig(m.gym, D, 'log', 'x') === '');
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 100 } } }, 1);
+      ok('gym: a tie keeps the tick rather than a gap', dig(m.gym, D, 'done', 'a') === true);
+      m = gymMerge(day({}), { '2026-01-06': { done: { z: true }, log: {} } }, {}, { '2026-01-06': { done: { z: 50 } } }, 1);
+      ok('gym: a day only the other phone has arrives with its stamps', dig(m.gym, '2026-01-06', 'done', 'z') === true && dig(m.at, '2026-01-06', 'done', 'z') === 50 && D in m.gym);
+      m = gymMerge(day({}), day({ a: false }), {}, {}, 1);
+      ok('gym: an unticked exercise the other phone holds is kept (or the two would send it back and forth)', dig(m.gym, D, 'done', 'a') === false);
+      m = gymMerge({ [D]: { done: { a: true }, note: 'x' } }, { [D]: { done: { a: true } } }, {}, {}, 1);
+      ok('gym: a day keeps what it holds and gets nothing it did not have', !('log' in (m.gym[D] || {})) && dig(m.gym, D, 'note') === 'x', m.gym[D]);
+      // a state from an older app version (no gymAt): the union, as before…
+      m = gymMerge(day({ a: false }, { x: '3x12' }), day({ a: true, c: true }, { x: '3x10' }), { [D]: { done: { a: 100 }, log: { x: 100 } } }, undefined, 500);
+      ok('gym: an older app version\'s tick still arrives (the union, as before)', dig(m.gym, D, 'done', 'a') === true && dig(m.gym, D, 'done', 'c') === true, m);
+      ok('gym: …stamped with when that state was saved', dig(m.at, D, 'done', 'a') === 500 && dig(m.at, D, 'done', 'c') === 500);
+      ok('gym: …and the union never overwrites a log here', dig(m.gym, D, 'log', 'x') === '3x12' && dig(m.at, D, 'log', 'x') === 100);
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 900 } } }, undefined, 500);
+      ok('gym: …but an un-tick made after that state was saved stays', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 900);
+
+      // writers stamp: putGymDay, saveGym, the Gym screen (tick, typed log, Save)
+      localStorage.setItem('dp.gymAt', '{}');
+      const T0 = todayStr(), Y = addDays(T0, -1);
+      const day0 = gymDays()[0], ex = cookedDayEx(day0), k1 = dkey(day0.id, ex[0].id), k2 = dkey(day0.id, ex[1].id);
+      localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true }, log: {} } }));
+      DB.putGymDay(Y, { done: { [k1]: true }, log: {} });
+      ok('putGymDay stamps what it changed', GA()[Y] && dig(GA(), Y, 'done', k1) > 0 && !GA()[T0], GA());
+      const g = DB.gym(); g[Y].log[k1] = '5 km'; DB.saveGym(g);
+      ok('saveGym stamps what changed, and nothing else', dig(GA(), Y, 'log', k1) > 0 && Object.keys(dig(GA(), Y, 'done') || {}).length === 1 && !GA()[T0]);
+      const tY = dig(GA(), Y, 'done', k1);
+      DB.saveGym(DB.gym());
+      ok('saving it unchanged stamps nothing new', dig(GA(), Y, 'done', k1) === tY);
+      gymDate = T0; show('gym'); gymDayId = day0.id; gymView = 'day'; renderGym();
+      const tg = document.querySelector(`#s-gym [data-ex-toggle="${ex[0].id}"]`);
+      if (tg) tg.click();
+      ok('un-ticking on the Gym screen stamps it', !!tg && DB.gymDay(T0).done[k1] === false && dig(GA(), T0, 'done', k1) > 0, GA()[T0]);
+      const tU = dig(GA(), T0, 'done', k1);
+      const stT = window.setTimeout; let due = null;
+      window.setTimeout = (f, ms) => { if (ms === 700) due = f; return stT(() => {}, 0); };
+      const lg0 = document.querySelector(`#s-gym [data-ex-log="${ex[2].id}"]`);
+      if (lg0) { lg0.value = 'warm-up'; lg0.dispatchEvent(new Event('input', { bubbles: true })); }
+      window.setTimeout = stT;
+      if (due) due();
+      ok('a typed log is saved, and stamped, when its debounce runs out', !!due && DB.gymDay(T0).log[dkey(day0.id, ex[2].id)] === 'warm-up' && dig(GA(), T0, 'log', dkey(day0.id, ex[2].id)) > 0 && !_gymPending);
+      const lg = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg) { lg.value = '3 x 12'; lg.dispatchEvent(new Event('input', { bubbles: true })); }
+      ok('(typing waits out its debounce)', !!lg && !!_gymPending && !DB.gymDay(T0).log[k2]);
+      // a pull lands mid-typing: the typing is saved first, the other phone's newer tick arrives, nothing is undone after
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
+      const k3 = dkey(day0.id, ex[2].id), later = Date.now() + 1000;
+      applyRemoteState({ touched: Date.now() + 5000, gym: { [T0]: { done: { [k1]: true, [k3]: true }, log: {} } }, gymAt: { [T0]: { done: { [k3]: later } } }, entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull mid-typing saves the typed log first, stamped', DB.gymDay(T0).log[k2] === '3 x 12' && dig(GA(), T0, 'log', k2) > 0 && !_gymPending);
+      ok('…the other phone\'s older tick does not undo the un-tick here', DB.gymDay(T0).done[k1] === false && dig(GA(), T0, 'done', k1) === tU);
+      ok('…and its newer tick arrives', DB.gymDay(T0).done[k3] === true && dig(GA(), T0, 'done', k3) === later);
+      flushGymSave();
+      ok('…and no late save writes the old day back over it', DB.gymDay(T0).done[k3] === true && dig(GA(), T0, 'done', k3) === later);
+      gymDayId = day0.id; gymView = 'day'; renderGym();
+      const lg2 = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg2) { lg2.value = '3 x 15'; lg2.dispatchEvent(new Event('input', { bubbles: true })); }
+      window.dispatchEvent(new Event('pagehide'));
+      ok('hiding the app saves typing still waiting in the Gym', DB.gymDay(T0).log[k2] === '3 x 15' && !_gymPending);
+      gymDate = Y; openGym(); gymDayId = day0.id; gymView = 'day'; renderGym();
+      const lg3 = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg3) { lg3.value = 'day Y'; lg3.dispatchEvent(new Event('input', { bubbles: true })); }
+      gymDate = T0; openGym();
+      ok('switching day mid-typing saves the typing to the day it was typed on', DB.gymDay(Y).log[k2] === 'day Y' && DB.gymDay(T0).log[k2] === '3 x 15' && !_gymPending);
+      // pushes: what goes up, and when
+      sent.length = 0; pushState(true);
+      ok('every push carries the gym stamps', sent.length && dig(sent[sent.length - 1], 'gymAt', T0, 'done', k1) === tU);
+      const mine = JSON.parse(localStorage.getItem('dp.gym')), myAt = GA(), ents = () => JSON.parse(localStorage.getItem('dp.entries'));
+      const reorder = o => JSON.parse(JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).reverse().reduce((x, kk) => { x[kk] = v[kk]; return x; }, {}) : v));
+      localStorage.setItem('dp.touched', String(Date.now() + 9000)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
+      applyRemoteState({ touched: Date.now() + 9000, gym: reorder(mine), gymAt: reorder(myAt), entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull of the same gym days and stamps (keys in another order) sends nothing', !sent.some(x => x.type === 'state') && localStorage.getItem('dp.gym') === JSON.stringify(mine), sent.length);
+      applyRemoteState({ touched: Date.now() + 9000, gym: mine, entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull from an older app version (no stamps) sends ours back up', sent.some(x => x.type === 'state' && x.gymAt && x.gymAt[T0]));
+      sent.length = 0;
+      const theirs = JSON.parse(JSON.stringify(mine)); theirs[T0].done[k1] = true;
+      const theirAt = JSON.parse(JSON.stringify(myAt)); theirAt[T0] = Object.assign({}, theirAt[T0]); theirAt[T0].done = Object.assign({}, theirAt[T0].done, { [k1]: tU - 1000 });
+      applyRemoteState({ touched: Date.now() + 9000, gym: theirs, gymAt: theirAt, entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet still has the old tick sends the un-tick back up', DB.gymDay(T0).done[k1] === false && sent.some(x => x.type === 'state' && dig(x, 'gym', T0, 'done', k1) === false));
+      sent.length = 0;
+      const extra = JSON.parse(localStorage.getItem('dp.gym')); extra['2025-12-31'] = { done: { 'x/y': true }, log: {} };
+      localStorage.setItem('dp.gym', JSON.stringify(extra));
+      const sheet = JSON.parse(JSON.stringify(extra)); delete sheet['2025-12-31'];
+      applyRemoteState({ touched: Date.now() + 9000, gym: sheet, gymAt: GA(), entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet lacks a gym day only this phone has sends it', sent.some(x => x.type === 'state' && x.gym['2025-12-31']));
+      ok('gym stamps are not in a backup', BACKUP_EXCLUDED.includes('gymAt') && !BACKUP_KEYS.includes('gymAt'));
+      ok('every gym write goes through the stamping save', DB.saveGym.toString().includes('gymStamp(') && DB.putGymDay.toString().includes('this.saveGym(') && persistGym.toString().includes('DB.putGymDay(') && importData.toString().includes('gymRestored('));
+      // restore: what it brings back is new, what it rolls back is old
+      const before = { [T0]: { done: { [k1]: false, [k2]: true }, log: { [k1]: 'old' } } };
+      localStorage.setItem('dp.gymAt', JSON.stringify({ [T0]: { done: { [k1]: 5, [k2]: 5 }, log: { [k1]: 5 } } }));
+      localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true, [k2]: true }, log: { [k1]: 'older' } }, [Y]: { done: { z: true }, log: {} } }));
+      const tR = Date.now() - 2 * 864e5; gymRestored(before, tR);   // a backup taken two days ago
+      const ra = GA();
+      ok('restore: a tick it brings back is stamped at the backup\'s time, so a later un-tick elsewhere wins', dig(ra, T0, 'done', k1) === tR && dig(ra, Y, 'done', 'z') === tR, ra);
+      ok('…an unchanged or rolled-back one loses its stamp', !(k2 in (dig(ra, T0, 'done') || {})) && !dig(ra, T0, 'log'));
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
+      clearTimeout(_gymSaveTimer); _gymPending = null;
+      gymDate = gdSnap; gymDayId = gidSnap; gymView = gvSnap;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: the Time tracker (independent review 4) ----
   (function () {
     const keys = ['dp.timelog', 'dp.timeacts', 'dp.actnames', 'dp.pausedAct', 'dp.pausedPid', 'dp.pomo', 'dp.timebox', 'dp.projects'];

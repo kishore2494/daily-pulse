@@ -315,11 +315,13 @@ function listMetaSave(at, del) {
    does not re-read and re-serialise the whole list to find what changed. Checked against the
    stored text first: a pull or a restore that wrote the list since makes it rebuild. */
 const _listSeen = {};
-function listItemsOf(raw) {
-  const m = new Map(), v = safeParse(raw, []);
+function listItemsOf(raw) { return idJSON(safeParse(raw, [])); }
+function idJSON(v) {
+  const m = new Map();
   if (Array.isArray(v)) v.forEach(x => { if (x && x.id != null) m.set(String(x.id), JSON.stringify(x)); });
   return m;
 }
+function objOf(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
 /* `when` is the stamp for what changed; it is now unless the list is adopted whole from an
    older app's save (applyRemoteState), when it is the time that phone saved. */
 function listSave(store, list, when) {
@@ -339,6 +341,7 @@ function listSave(store, list, when) {
   const gone = [...prev.keys()].filter(id => !items.has(id));
   if (changed.length || gone.length) {
     const key = store.slice(3), now = Date.now(), t = +when || now, at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
+    if (key === 'plans') planPartsSave(at, del, list, prev, changed, gone, t);   // before the plan stamps move
     const a = at[key] || (at[key] = {}), d = del[key] || (del[key] = {});
     changed.forEach(id => { a[id] = t; delete d[id]; });
     gone.forEach(id => { d[id] = t; delete a[id]; });
@@ -378,8 +381,9 @@ function canonJSON(v) {
    after. Items with no stamp on either side are older than the stamps, from a time when missing
    could still mean deleted, so for those the old rule decides: the side that saved last. The
    side that saved last also sets the order; the other side's new items go after the item they
-   followed there. */
-function mergeList(local, remote, la, ra, ld, rd, remoteNewer) {
+   followed there. `both(l, r, remoteWins)`, when given, builds the item from both sides' copies
+   instead of picking one (a plan: see mergePlans). */
+function mergeList(local, remote, la, ra, ld, rd, remoteNewer, both) {
   const now = Date.now(), del = {};
   [ld, rd].forEach(d => Object.keys(d).forEach(id => { const t = +d[id] || 0; if (t > (del[id] || 0) && now - t <= LIST_DEL_KEEP) del[id] = t; }));
   const idOf = x => x && x.id != null ? String(x.id) : null;
@@ -394,6 +398,7 @@ function mergeList(local, remote, la, ra, ld, rd, remoteNewer) {
     if (s) at[id] = s;
     if (!l) return r;
     if (!r) return l;
+    if (both) return both(l, r, sr > sl || (sr === sl && remoteNewer));
     return sr > sl ? r : sl > sr ? l : remoteNewer ? r : l;
   };
   const first = remoteNewer ? remote : local, second = remoteNewer ? local : remote;
@@ -420,6 +425,88 @@ function mergeList(local, remote, la, ra, ld, rd, remoteNewer) {
   return { list, at, del };
 }
 
+/* ---------- A plan's checklist syncs item by item too ----------
+   A plan is ONE item of dp.plans, so a tick on each phone lost one of them: the later save of
+   the whole plan won. Its checklist items and its own fields (name, colour) now carry stamps of
+   their own, beside the list's:
+     dp.listAt.planItems[plan][item]   when that checklist item last changed
+     dp.listDel.planItems[plan][item]  when it was deleted
+     dp.listAt.planFields[plan]        when the plan's own fields last changed (0: not since this
+                                       phone began stamping them — the marker that it has)
+   dp.listAt.plans[plan] still moves on every change inside the plan, so an older app version
+   keeps merging whole plans exactly as before. */
+function planItemsOf(p) { return p && Array.isArray(p.items) ? p.items : []; }
+function planFieldsJSON(p) { return JSON.stringify(Object.assign({}, p, { items: undefined })); }
+/* Called by listSave with the plans that changed and went. The first change to a plan since its
+   parts had stamps gives the parts it did NOT change the whole-plan stamp they had, so they stay
+   exactly as new as planSide said they were. */
+function planPartsSave(at, del, list, prev, changed, gone, now) {
+  const PI = objOf(at.planItems), PD = objOf(del.planItems), PF = objOf(at.planFields);
+  const byId = new Map(list.filter(p => p && p.id != null).map(p => [String(p.id), p]));
+  changed.forEach(pid => {
+    const p = byId.get(pid), was = safeParse(prev.get(pid), null);
+    const old = pid in PF ? 0 : +objOf(at.plans)[pid] || 0;
+    if (!was || planFieldsJSON(was) !== planFieldsJSON(p)) PF[pid] = now;
+    else if (!(pid in PF)) PF[pid] = old;
+    const a = objOf(PI[pid]), d = objOf(PD[pid]), before = idJSON(planItemsOf(was));
+    idJSON(planItemsOf(p)).forEach((s, id) => {
+      if (before.get(id) !== s) { a[id] = now; delete d[id]; } else if (old) a[id] = old;
+      before.delete(id);
+    });
+    before.forEach((s, id) => { d[id] = now; delete a[id]; });
+    Object.keys(d).forEach(id => { if (now - d[id] > LIST_DEL_KEEP) delete d[id]; });
+    PI[pid] = a; PD[pid] = d;
+  });
+  gone.forEach(pid => { delete PI[pid]; delete PD[pid]; delete PF[pid]; });
+  [PI, PD].forEach(m => Object.keys(m).forEach(pid => { if (!Object.keys(m[pid]).length) delete m[pid]; }));
+  at.planItems = PI; del.planItems = PD; at.planFields = PF;
+}
+/* One side's stamps for one plan's parts. A side with none for it (an older app version, or a
+   plan not changed since the update) has only its whole-plan stamp, and that stands for every
+   part: each item it holds changed then, and each it lacks was deleted then. Between two such
+   sides that is the old whole-plan rule; against a side with stamps, it is that rule item by item. */
+function planSide(A, D, pid, p, other) {
+  const F = objOf(A.planFields);
+  if (pid in F) return { at: objOf(objOf(A.planItems)[pid]), del: objOf(objOf(D.planItems)[pid]), f: +F[pid] || 0 };
+  const t = +objOf(A.plans)[pid] || 0, at = {}, del = {};
+  if (t) {
+    planItemsOf(p).forEach(x => { if (x && x.id != null) at[x.id] = t; });
+    planItemsOf(other).forEach(x => { if (x && x.id != null && !(x.id in at)) del[x.id] = t; });
+  }
+  return { at, del, f: t };
+}
+/* mergeList for dp.plans: a plan both phones hold is merged part by part — its checklist with
+   mergeList (newer stamp per item, a delete beats older edits, the side whose plan changed last
+   sets the order) and its own fields by their stamp. A plan only one side holds keeps that side's
+   part stamps. LA/RA/LD/RD are the whole dp.listAt/dp.listDel maps of each side. */
+function mergePlans(local, remote, LA, RA, LD, RD, remoteNewer) {
+  const parts = { at: {}, del: {}, f: {} }, merged = new Set();
+  const both = (l, r, rWins) => {
+    const pid = String(l.id), L = planSide(LA, LD, pid, l, r), R = planSide(RA, RD, pid, r, l);
+    const m = mergeList(planItemsOf(l), planItemsOf(r), L.at, R.at, L.del, R.del, rWins);
+    const p = Object.assign({}, R.f > L.f || (R.f === L.f && rWins) ? r : l);
+    if ('items' in l || 'items' in r) p.items = m.list;
+    merged.add(pid); parts.f[pid] = Math.max(L.f, R.f);
+    if (Object.keys(m.at).length) parts.at[pid] = m.at;
+    if (Object.keys(m.del).length) parts.del[pid] = m.del;
+    return p;
+  };
+  const m = mergeList(local, remote, objOf(LA.plans), objOf(RA.plans), objOf(LD.plans), objOf(RD.plans), remoteNewer, both);
+  const mine = idJSON(local);
+  m.list.forEach(p => {
+    const pid = p && p.id != null ? String(p.id) : null;
+    if (!pid || merged.has(pid)) return;
+    const [A, D] = mine.has(pid) ? [LA, LD] : [RA, RD], F = objOf(A.planFields);
+    if (!(pid in F)) return;
+    parts.f[pid] = +F[pid] || 0;
+    const a = objOf(objOf(A.planItems)[pid]), d = objOf(objOf(D.planItems)[pid]);
+    if (Object.keys(a).length) parts.at[pid] = a;
+    if (Object.keys(d).length) parts.del[pid] = d;
+  });
+  m.parts = parts;
+  return m;
+}
+
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
@@ -436,7 +523,8 @@ const DB = {
   exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
   saveExercises(x) { const ok = listSave('dp.exercises', x); pushState(); return ok; },
   gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
-  saveGym(g) { const ok = safeSet('dp.gym', JSON.stringify(g)); pushState(); return ok; },
+  // Every gym write goes through here, so every change is stamped (gymStamp) for the sync merge.
+  saveGym(g) { const prev = this.gym(), ok = safeSet('dp.gym', JSON.stringify(g)); if (ok) gymStamp(g, prev); pushState(); return ok; },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; return this.saveGym(g); },
 
@@ -860,7 +948,7 @@ function pushState(now) {
       finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}),
-      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel') };
+      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel'), gymAt: listMeta('dp.gymAt') };
     _pushPending = null;
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
@@ -977,8 +1065,56 @@ function mergeHabits(a, b) {
   if (Object.keys(habitsAt).length) out.habitsAt = habitsAt;
   return out;
 }
+/* ---------- Gym days sync tick by tick ----------
+   dp.gym merged as a union: a tick on either phone was kept, so un-ticking an exercise, or
+   changing what you typed against it, came back from the other phone's older copy. Every save
+   (DB.saveGym) now records when each tick and each typed log last changed, in dp.gymAt —
+   { date: { done: { key: when }, log: { key: when } } } — and the pull (gymMerge) takes the
+   newer one per key. */
+const GYM_PARTS = ['done', 'log'];
+function gymStamp(next, prev) {
+  const at = listMeta('dp.gymAt'), P = objOf(prev), now = Date.now(); let hit = false;
+  Object.keys(objOf(next)).forEach(d => GYM_PARTS.forEach(f => {
+    const nv = objOf(objOf(next[d])[f]), pv = objOf(objOf(P[d])[f]);
+    new Set([...Object.keys(nv), ...Object.keys(pv)]).forEach(k => {
+      if (nv[k] === pv[k]) return;
+      const s = at[d] = objOf(at[d]); (s[f] = objOf(s[f]))[k] = now; hit = true;
+    });
+  }));
+  if (hit) safeSet('dp.gymAt', JSON.stringify(at));
+}
+/* The other phone's gym days into this one's: per date, per exercise, the tick and the log
+   apart. The newer stamp wins, an un-tick or a cleared log included. A side that never touched
+   a key has no say about it; a key neither side has stamped (older than the stamps) keeps the
+   old union, which never drops a tick or a log. A state from an older app version has no gymAt
+   at all, so the union again — except where this phone changed the key after that state was
+   saved (it cannot hold anything newer), and what the union does take from it is stamped with
+   when it was saved. */
+function gymMerge(local, remote, la, ra, touched) {
+  const stamped = !!ra && typeof ra === 'object' && !Array.isArray(ra);
+  const gym = {}, at = {};
+  new Set([...Object.keys(local), ...Object.keys(remote)]).forEach(d => {
+    const l = objOf(local[d]), r = objOf(remote[d]), day = Object.assign({}, r, l), dat = {};
+    GYM_PARTS.forEach(f => {
+      const lv = objOf(l[f]), rv = objOf(r[f]), ls = objOf(objOf(la[d])[f]), rs = stamped ? objOf(objOf(ra[d])[f]) : {}, v = {}, s = {};
+      new Set([...Object.keys(lv), ...Object.keys(rv), ...Object.keys(ls), ...Object.keys(rs)]).forEach(k => {
+        const gain = !!rv[k] && !lv[k];   // what the old union would take from the other phone
+        const a = +ls[k] || 0, b = stamped ? +rs[k] || 0 : gain ? +touched || 0 : 0;
+        const win = b > a ? rv : a > b ? lv : gain || !(k in lv) ? rv : lv;   // a tie keeps a value rather than a gap
+        if (k in win) v[k] = win[k];
+        if (Math.max(a, b)) s[k] = Math.max(a, b);
+      });
+      if (f in l || f in r) day[f] = v;
+      if (Object.keys(s).length) dat[f] = s;
+    });
+    gym[d] = day;
+    if (Object.keys(dat).length) at[d] = dat;
+  });
+  return { gym, at };
+}
 function applyRemoteState(remote) {
   flushAutosave();   // merge what was just typed, rather than re-render it away
+  flushGymSave();    // …in the Gym too: a late save would write back the day as it was before the pull
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
   const localTouched = +(localStorage.getItem('dp.touched') || 0);
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
@@ -1009,17 +1145,14 @@ function applyRemoteState(remote) {
     if (Object.keys(local).some(d => !(d in remote.entries))) remoteBehind = true;
     safeSet('dp.entries', JSON.stringify(local));
   }
-  // Gym: merge by date, union of done/log — never lose a workout.
+  // Gym: per date, per exercise, newest change first (see gymMerge).
   if (remote.gym && !(typeof remote.gym === 'object' && !Array.isArray(remote.gym))) skippedSections.push('gym');
   else if (remote.gym) {
-    const local = DB.gym();
-    Object.keys(remote.gym).forEach(d => {
-      if (!local[d]) { local[d] = remote.gym[d]; changed = true; return; }
-      const ld = local[d], rd = remote.gym[d];
-      Object.keys(rd.done || {}).forEach(k => { if (rd.done[k] && !ld.done[k]) { ld.done[k] = true; changed = true; } });
-      Object.keys(rd.log || {}).forEach(k => { if (rd.log[k] && !ld.log[k]) { ld.log[k] = rd.log[k]; changed = true; } });
-    });
-    safeSet('dp.gym', JSON.stringify(local));
+    const local = objOf(DB.gym()), la = listMeta('dp.gymAt');
+    const m = gymMerge(local, remote.gym, la, remote.gymAt, remote.touched);
+    if (canonJSON(m.gym) !== canonJSON(local)) { safeSet('dp.gym', JSON.stringify(m.gym)); changed = true; }
+    if (canonJSON(m.at) !== canonJSON(la)) safeSet('dp.gymAt', JSON.stringify(m.at));
+    if (canonJSON(m.gym) !== canonJSON(remote.gym) || canonJSON(m.at) !== canonJSON(objOf(remote.gymAt))) remoteBehind = true;
   }
   // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
   // Deletions travel as tombstones (dp.timelogDel, id → when). "Missing on the side that saved
@@ -1080,13 +1213,18 @@ function applyRemoteState(remote) {
       if (!Array.isArray(remote[key]) || !remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       const cur = safeParse(localStorage.getItem(store), null);
       const local = Array.isArray(cur) ? cur : key === 'exercises' ? DB.exercises() : [];
-      const m = mergeList(local, remote[key], obj(at[key]), obj(remote.listAt[key]), obj(del[key]), obj(rdel[key]), remoteNewer);
+      const m = key === 'plans' ? mergePlans(local, remote[key], at, remote.listAt, del, rdel, remoteNewer)
+        : mergeList(local, remote[key], obj(at[key]), obj(remote.listAt[key]), obj(del[key]), obj(rdel[key]), remoteNewer);
       if (key === 'timeacts') rememberActNames(remote[key]);   // deleted on the other phone
       const s = JSON.stringify(m.list);
       if (s !== (localStorage.getItem(store) || 'null')) { safeSet(store, s); changed = true; }
       if ((s !== JSON.stringify(remote[key]) && canonJSON(m.list) !== canonJSON(remote[key])) ||
           Object.keys(m.del).some(id => m.del[id] !== +obj(rdel[key])[id])) remoteBehind = true;
       at[key] = m.at; del[key] = m.del;
+      if (!m.parts) return;
+      // a plan's deleted checklist items: the Sheet must have them, or the other phone keeps them
+      if (canonJSON(m.parts.del) !== canonJSON(obj(rdel.planItems))) remoteBehind = true;
+      at.planItems = m.parts.at; del.planItems = m.parts.del; at.planFields = m.parts.f;
     });
     listMetaSave(at, del);
   }
@@ -2399,7 +2537,7 @@ let _awTimer = null, _awDate = null;
 // Backgrounding or closing the app must not eat a pending scan — Android can kill the
 // WebView at any point after onPause, and a dropped timer would lose the award silently.
 document.addEventListener('visibilitychange', () => { if (document.hidden) { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} } });
-window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} });
+window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { flushGymSave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} });
 function checkNewAwardsSoon(savedDate) {
   _awDate = savedDate || _awDate;
   if (_awTimer) clearTimeout(_awTimer);
@@ -3002,6 +3140,7 @@ function gymStreak() {
   return n;
 }
 function openGym() {
+  flushGymSave();   // typing for the day being left, before its draft is replaced
   const d = DB.gymDay(gymDate);
   gymDraft = { done: Object.assign({}, d.done), log: Object.assign({}, d.log) };
   gymView = 'home';
@@ -3125,13 +3264,21 @@ function persistGym(silent, date, draft) {
   if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
   return entry;
 }
-let _gymSaveTimer;
+let _gymSaveTimer, _gymPending = null;
 document.addEventListener('input', (ev) => {
   const lg = ev.target.closest('[data-ex-log]');
   if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value;
-    const capDate = gymDate, capDraft = gymDraft;   // capture NOW so a date-switch mid-debounce is safe
-    clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(() => persistGym(true, capDate, capDraft), 700); }
+    _gymPending = [gymDate, gymDraft];   // captured NOW so a date-switch mid-debounce is safe
+    clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(flushGymSave, 700); }
 });
+/* Save typing still waiting out its debounce. A sync pull calls this first: otherwise the pull
+   re-opens the day without the typing, and the late save then writes back the whole day as it
+   was before the pull — now stamped as the newest change, so it would undo the other phone's. */
+function flushGymSave() {
+  const p = _gymPending; if (!p) return;
+  clearTimeout(_gymSaveTimer); _gymPending = null;
+  persistGym(true, p[0], p[1]);
+}
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
 
 /* ============================================================
@@ -8023,7 +8170,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel',
+  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel', 'gymAt',
   'sheetScript',                       // which script version this device's sync link answered with
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
@@ -8267,7 +8414,38 @@ function listRestored(before, at0, stamps) {
     });
     at[key] = a; del[key] = d;
   });
+  if (before.plans) planPartsRestored(before.plans, at, del, at0);   // at the backup's time, as above
   listMetaSave(at, del);
+}
+/* The same inside each plan. A plan the restore brings back whole has its new whole-plan stamp,
+   which stands for all its parts (planSide). In a plan that was here, a checklist item the
+   restore brings back is stamped now and its delete record goes; every other part loses its
+   stamp, since that was for the version just replaced. */
+function planPartsRestored(before, at, del, now) {
+  const PI = {}, PD = {}, PF = {}, oldDel = objOf(del.planItems);
+  listItemsOf(localStorage.getItem('dp.plans')).forEach((s, pid) => {
+    if (!before.has(pid)) return;
+    const had = idJSON(planItemsOf(safeParse(before.get(pid), null))), a = {}, d = Object.assign({}, objOf(oldDel[pid]));
+    PF[pid] = 0;
+    idJSON(planItemsOf(safeParse(s, null))).forEach((v, id) => { if (!had.has(id)) { a[id] = now; delete d[id]; } });
+    if (Object.keys(a).length) PI[pid] = a;
+    if (Object.keys(d).length) PD[pid] = d;
+  });
+  at.planItems = PI; del.planItems = PD; at.planFields = PF;
+}
+/* The same for gym days (dp.gymAt): a tick or a log the restore brings back (not there before)
+   is stamped now, so the other phone's older un-tick does not take it away again; every other
+   stamp goes, since it was for the version just replaced, and a newer change on the other
+   phone then still wins. */
+/* Stamped at the backup's time (`at0`), not now — the same rule as listRestored: an edit made
+   anywhere after the backup still wins over what the restore brought back. */
+function gymRestored(before, at0) {
+  const at = {}, g = objOf(DB.gym()), now = +at0 || Date.now();
+  Object.keys(g).forEach(d => GYM_PARTS.forEach(f => {
+    const v = objOf(objOf(g[d])[f]), was = objOf(objOf(objOf(before)[d])[f]);
+    Object.keys(v).forEach(k => { if (v[k] && !was[k]) { const s = at[d] = objOf(at[d]); (s[f] = objOf(s[f]))[k] = now; } });
+  }));
+  safeSet('dp.gymAt', JSON.stringify(at));
 }
 /* `after(restoredAnything)` lets a caller react to the OUTCOME — onboarding uses it to skip
    itself only when a restore really happened. It fires false on a bad file, a refused
@@ -8288,9 +8466,10 @@ function importData(file, after) {
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
       // RESTORE path, where it matters more.
       let failed = 0, wrote = 0;
-      const listsBefore = listIds(check.keys);
+      const listsBefore = listIds(check.keys), gymBefore = check.keys.includes('gym') ? DB.gym() : null;
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
       listRestored(listsBefore, backupTime(d._at, d.entries, d.timelog), d._stamps);
+      if (gymBefore) gymRestored(gymBefore, backupTime(d._at, d.entries, d.timelog));
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');
