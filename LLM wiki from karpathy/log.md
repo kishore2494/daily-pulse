@@ -1,3 +1,20 @@
+## 2026-11-01 (evening) — v253 in progress: spare-budget session
+
+Kishore asked me to use the spare weekly budget usefully and log it. This is not deployed;
+each change is committed and pushed to origin only.
+- **Notes:** photos and voice can be added to an existing note, not just a new one
+  (features.md, "Photos & voice"). 10 tests.
+- **Web reminders:** of two reminders due in the same minute, the second never rang (old
+  bug-hunt item #7). It now waits its turn. 5 tests. This only affects the browser PWA; the
+  Play app's alarms are native.
+- **Push all to Sheet** now also sends Calendar events and Write articles (`resyncAll` never
+  called `syncEvents`/`syncDocs`). Async test.
+- **Checked and already fixed, so dropped from the open lists:** `loggedStreak` counting
+  empty entries (fixed by `entryHasContent`), the midnight-crossing manual time block (v71),
+  the habit chip's streak badge not refreshing (`refreshHabitChip` re-renders it), and custom
+  number fields in Stats (`numAvgRows`).
+- All 6 + 1 mutations were caught.
+
 ## 2026-11-01 — v252 deployed (live)
 
 Kishore said "deploy". `tools/deploy.sh --tag` pushed 8ce2df9..3664df2 to prod and tagged

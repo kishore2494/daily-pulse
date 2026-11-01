@@ -28,6 +28,9 @@ Everything is editable and hideable: theme mode (navy/black/light) + accent (6 c
 ## Alarms & notifications (native shell only, all offline)
 - **Reminders** (`dp.reminders`) — daily; mode `alarm` (full-screen) or `notify`.
 - **Events** (`dp.events`) — one-time dated, optional alarm.
+- **Web (no native shell):** `checkReminders` fires `fireAlarm`. Since v253 a reminder due while
+  another is ringing waits in `_alarmQueue` and rings 600 ms after the first is dismissed.
+  Before that it was marked notified and dropped. The same label is never queued twice.
 - **Full-screen alarm** — `FullScreenAlarmPlugin` → `AlarmActivity` over lock screen (siren/vibrate/Dismiss/Snooze).
 - **Running-timer notification** (id 770) — shows active activity + Pause/Stop/Resume (`refreshTimerNotif`).
 - **2-day inactivity nudge** (id 760) — pre-scheduled, fires even if app never opened (`scheduleInactivityReminder`).
@@ -78,6 +81,10 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
   - Notes: Photo / Gallery / Voice each create a new note. The note is created only after the
     media is written, so a cancelled camera leaves no empty note. Deleting a note deletes its
     media.
+  - An existing note (v253): its camera button (`data-note-attach`, state `openAttachId`) shows
+    Photo / Gallery / Voice with `data-mctx="note:<id>"`. Every note now renders its compact
+    media slot (empty and hidden by `:empty` until something is added), so an addition or a
+    recording bar appears in place through `refreshMediaSlots()`.
   - History row pills (📷 n 🎙 n), History ▸ Photos (by month), "On this day" (photo-only days
     count), and the `photos` share card.
 - **Photos:**
