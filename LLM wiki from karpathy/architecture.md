@@ -123,16 +123,40 @@ backup, which is why adding a store means editing that list.
 
 **Four lists must stay in sync — edit ALL of them when adding a store:**
 1. `pushState()` payload — what goes to the Sheet
-2. `applyRemoteState()` merge — how it comes back (lists adopt newest-device-wins; entries /
-   gym / timelog merge per record; `awards` and `gapskip` **union**, because a stale second
-   phone must never be able to un-earn an award)
+2. `applyRemoteState()` merge — how it comes back. Lists with ids (`LIST_SYNC`: tasks, notes,
+   plans, projects, reminders, exercises, timeacts, events, docs, timebox, goals, finaccts,
+   fintx, finmarks) merge **item by item** (`mergeList`, since v253); settings-like stores
+   adopt newest-device-wins; entries / gym / timelog merge per record; `awards` and `gapskip`
+   **union**, because a stale second phone must never be able to un-earn an award. A new list
+   with ids goes in `LIST_SYNC` and is saved through `listSave()`, never raw `safeSet`.
 3. `BACKUP_KEYS` — export / import
 4. `reloadCfg()` if it is a customization config
 
 Plus `google-apps-script/Code.gs` if it needs a human-readable Sheet tab.
 
 ## Multi-device sync (optional)
-The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web App (Execute as Me, access Anyone). Full-state snapshot chunked into a hidden `_State` tab; pulled via **JSONP** (`pullState`) to dodge CORS; pushed via `no-cors` POST (`pushState`, debounced 1.2s). Readable tabs also written: `Log`, `Time Log`, `Events`, `Articles`, `Notes`, `Reminders`, `Feedback`. **When Code.gs changes, the user must re-paste it and redeploy a new version** — the Sheet's Log columns are FIXED, so brand-new custom fields sync between devices but don't auto-create Sheet columns.
+The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web App (Execute as Me, access Anyone). Full-state snapshot chunked into a hidden `_State` tab (cut by `cut_()` only where neither side is a character Sheets changes — see gotchas); pulled via **JSONP** (`pullState`) to dodge CORS; pushed via `no-cors` POST (`pushState`, debounced 1.2s). Readable tabs also written: `Log`, `Time Log`, `Events`, `Articles`, `Notes`, `Reminders`, `Feedback`. **When Code.gs changes, the user must re-paste it and redeploy a new version** — the Sheet's Log columns are FIXED, so brand-new custom fields sync between devices but don't auto-create Sheet columns.
+
+### How lists sync item by item (v253)
+- **Stamps at save time.** `listSave(store, list)` diffs against what is stored and records,
+  per list, `dp.listAt[list][id]` = when that item last changed and `dp.listDel[list][id]` =
+  when it was deleted (kept 90 days). No screen has to remember to do it. A per-session memo
+  (`_listSeen`, checked against the stored text) keeps a keystroke from re-serialising the
+  list twice: 0.6 → 1.0 ms per note keystroke at 4x CPU with 3 years of data.
+- **Merge on pull** (`mergeList`): the later stamp wins an item; an item on one side only is
+  new unless a delete record is at least as new as its stamp; an item with **no stamp on
+  either side** (older than v253) follows the old rule, the side that saved last, because
+  "missing" could still mean "deleted by an older version". The side that saved last sets
+  the order; the other side's new items go after the item they followed there.
+- **Older app versions:** a pushed state without `listAt` gets the old whole-list adoption.
+- **The Sheet is behind:** a pull that brings nothing new still pushes when this phone holds
+  something the Sheet's copy lacks (`remoteBehind`: entries, time log, lists). Compared with
+  `canonJSON` (sorted keys), or two phones with different key orders would push in turn on
+  every open.
+- **Restore** (`listIds` before, `listRestored` after): an item the backup brings back is
+  stamped now and its delete record dropped; an item it rolls back loses its stamp, so a
+  newer edit on the other phone still wins.
+- `dp.listAt` / `dp.listDel` are install state: in `BACKUP_EXCLUDED`, sent with every push.
 
 ## Native shell (Android)
 Two wrappers exist; **Capacitor is current**:

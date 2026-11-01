@@ -46,7 +46,10 @@
 
 ## User action items (only they can do)
 - Finish Google Play identity verification (blocking everything).
-- Deploy `Code.gs` (latest) + redeploy new version → unlocks Time Log / Events / Articles Sheet tabs.
+- Deploy `Code.gs` (latest) + redeploy new version → unlocks Time Log / Events / Articles Sheet tabs,
+  and (v253) stops `_State` pieces and "- …" journal lines coming back as #ERROR!.
+  - The app cannot tell that a user's sheet runs an old script. Idea: `doGet` returns a
+    script version, and Settings ▸ Sync says "update your Sheet script" when it is old.
 - Deploy `Feedback.gs` → paste URL into `FEEDBACK_URL` in app.js.
 - Back up `daily-pulse-android/android.keystore` + `keystore-password.txt` off-machine.
 - Test full-screen alarm + timer notification on the real phone (emulator can't).
@@ -69,10 +72,14 @@ Android-first confirmed by Kishore. When Android is live:
 - Pomodoro count → Stats card. Widget. Data-viz polish on Stats.
 
 ## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
-- **Sync robustness**: list/config stores are last-writer-wins whole-list → concurrent multi-device edits can drop items. Move to id-keyed merge + tombstones + per-item stamps. Gym merge is union-only (uncheck/edit doesn't propagate).
+- **Sync robustness**: (DONE 2026-11-01, v253: the 14 lists with ids merge item by item with
+  stamps + delete records — see architecture.md.) Still open: settings-like stores (habitcfg,
+  actcfg, navcfg, finbudget, fincats, …) are last-writer-wins whole; gym merge is union-only
+  (uncheck/edit doesn't propagate); plans merge as whole plans (two phones ticking different
+  items of one plan: the later tick of the plan wins).
   - Found again 2026-11-01 (review 2), both reproduced in a jsdom harness:
     - (DONE 2026-11-01, v253: per-habit stamps `habitsAt`; time-log tombstones `dp.timelogDel`;
-      push-after-pull and flush-on-hide. The list-store tombstones below are still open.)
+      push-after-pull and flush-on-hide. List stores: done too, same day.)
     - **Un-ticked habits come back.** Clearing a habit deletes its key, and the entry merge
       unions `habits`, so an older device's `true` wins over a newer un-tick. Storing `false`
       would fix the merge, but `false` is read as "logged" by goal counters and `entryHasContent`

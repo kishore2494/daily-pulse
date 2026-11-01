@@ -1,3 +1,36 @@
+## 2026-11-01 (late night) — lists sync item by item; the Sheet script stops mangling text
+
+Kishore: "still the tokens are left". Took the biggest open roadmap item.
+- **Lists merge item by item** (v253, not deployed). Tasks, notes, plans, projects,
+  reminders, exercises, activities, events, articles, time boxes, goals, money accounts,
+  transactions and balance marks used to sync whole, the phone that saved last winning, so
+  a note added on one phone was lost when the other saved before seeing it.
+  - `listSave()` stamps changes and records deletes at save time (`dp.listAt`,
+    `dp.listDel`); `mergeList()` merges on pull; details in architecture.md.
+  - Items older than the stamps, and states from older app versions, keep the old rule.
+  - A pull that brings nothing new now pushes when the Sheet's copy lacks something this
+    phone has (lists, entries, time log), compared key-order-blind so two phones never push
+    in turn forever.
+  - Restore: items the backup brings back count as new, items it rolls back as old.
+  - Side fix: the day merge no longer adds an empty `habits: {}` to a day that had none
+    (it made the day differ from both phones' copies; v252 did it too).
+- **Code.gs** (needs a re-paste + redeploy by each user, Kishore included):
+  - `_State` pieces are cut only where Sheets will not change them (`cut_`). A piece
+    starting with `-`, `=`, `+` or `'` came back changed, so the next pull got broken JSON.
+  - Typed text goes through `text_()`: "- ran 5k" no longer shows as #ERROR! in Log,
+    Notes, Events, Articles, Reminders, Time Log.
+  - `sheets-setup.html` carries its own copy of the script; updated to match.
+  - New release check `tools/check-sheet-script.mjs` (deploy.sh + CI + README). Against
+    the old script it reports 14 failures; against the new one, none. It uses a stand-in
+    sheet, not Google.
+- **Verified:** 888 unit tests × 4 timezones; 19 deliberate breaks of the new code, all
+  caught; all release checks pass. In headless Chrome with 3 years of data at 4x CPU, a note
+  keystroke's save went 0.6 → 1.0 ms (articles 3.3 → 3.5, money 2.1 → 2.3); two simulated
+  phones converged through a fake Sheet (both new notes kept, a delete and an edit both
+  arrived), no page errors.
+- **Still open:** settings-like stores sync whole; a plan merges as one item; gym is a
+  union; the app cannot tell a user that their Sheet script is old.
+
 ## 2026-11-01 (night) — the four deferred items, fixed: sync merge + native build 119
 
 Kishore asked why four items were left unfixed ("do it then"). All four are done.

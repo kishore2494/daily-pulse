@@ -417,3 +417,20 @@ phone". Pruning it there would sync back and orphan the photo on the phone that 
 With no emulator, a native change can be compile-checked (`assembleDebug`) but not run.
 Free space first (ask Kishore before deleting anything), or test on the phone through the
 internal track.
+
+## Sheets reads a value written from Apps Script like typed input (2026-11-01)
+- A string starting with `=` becomes a formula; `+` or `-` before text is a formula parse
+  error (`#ERROR!`); a leading `'` is dropped. `setValues` / `appendRow` do this too.
+- So `saveState_` cutting the JSON every 45000 characters could start a piece with `-`
+  (every date has one) and the next pull got broken JSON. `cut_()` now cuts only where
+  neither side of the cut is one of those characters; readState_ is unchanged.
+- Text the user typed goes through `text_()`, which prefixes `'` (hidden in the cell).
+- `tools/check-sheet-script.mjs` runs Code.gs against a stand-in sheet with these rules,
+  and first proves the stand-in reproduces the damage. It also holds the copy embedded in
+  `sheets-setup.html` to the file: the page has its own copy, and nothing kept them equal.
+- It pins what the script assumes about Sheets; it was never run against Google itself.
+
+## Date-like test stamps get pruned as "older than 90 days"
+- Delete records older than 90 days are dropped on merge. A test using `{ b: 200 }` as a
+  delete time (200 ms after 1970) had its record pruned and failed for the wrong reason;
+  use `Date.now()`-relative stamps.
