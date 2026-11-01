@@ -284,6 +284,109 @@ function savedToast(ok, msg) {
   toast(msg); return true;
 }
 
+/* ---------- Lists that sync item by item ----------
+   These lists used to sync whole: the phone that saved last won, so a note added on one phone
+   was lost when the other phone, not having pulled it yet, saved after it. Every save of one of
+   them now compares it with what is stored and records beside it when each item last changed
+   (dp.listAt) and when each was deleted (dp.listDel), per list, by id. The pull (mergeList)
+   then merges item by item. Recorded at save time, so no screen has to remember to do it. */
+const LIST_SYNC = ['tasks', 'notes', 'plans', 'projects', 'reminders', 'exercises', 'timeacts', 'events', 'docs', 'timebox', 'goals', 'finaccts', 'fintx', 'finmarks'];
+const LIST_DEL_KEEP = 90 * 864e5;   // long enough to reach every phone that syncs at all
+function listMeta(store) { const v = safeParse(localStorage.getItem(store), {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+function listMetaSave(at, del) {
+  [[at, 'dp.listAt'], [del, 'dp.listDel']].forEach(([m, store]) => {
+    Object.keys(m).forEach(k => { if (!m[k] || typeof m[k] !== 'object' || !Object.keys(m[k]).length) delete m[k]; });
+    safeSet(store, JSON.stringify(m));
+  });
+}
+/* What each list held when this session last saved it, item by item, so a keystroke in a note
+   does not re-read and re-serialise the whole list to find what changed. Checked against the
+   stored text first: a pull or a restore that wrote the list since makes it rebuild. */
+const _listSeen = {};
+function listItemsOf(raw) {
+  const m = new Map(), v = safeParse(raw, []);
+  if (Array.isArray(v)) v.forEach(x => { if (x && x.id != null) m.set(String(x.id), JSON.stringify(x)); });
+  return m;
+}
+function listSave(store, list) {
+  if (!Array.isArray(list)) return safeSet(store, JSON.stringify(list));
+  const raw = localStorage.getItem(store);
+  const prev = _listSeen[store] && _listSeen[store].raw === raw ? _listSeen[store].items : listItemsOf(raw);
+  const items = new Map();
+  const out = '[' + list.map(x => {
+    const s = JSON.stringify(x);
+    if (x && x.id != null) items.set(String(x.id), s);
+    return s === undefined ? 'null' : s;
+  }).join(',') + ']';
+  const ok = safeSet(store, out);
+  if (!ok) return ok;
+  _listSeen[store] = { raw: out, items };
+  const changed = [...items.keys()].filter(id => prev.get(id) !== items.get(id));
+  const gone = [...prev.keys()].filter(id => !items.has(id));
+  if (changed.length || gone.length) {
+    const key = store.slice(3), now = Date.now(), at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
+    const a = at[key] || (at[key] = {}), d = del[key] || (del[key] = {});
+    changed.forEach(id => { a[id] = now; delete d[id]; });
+    gone.forEach(id => { d[id] = now; delete a[id]; });
+    Object.keys(d).forEach(id => { if (now - d[id] > LIST_DEL_KEEP) delete d[id]; });
+    listMetaSave(at, del);
+  }
+  return ok;
+}
+/* JSON with every object's keys in sorted order: the same data saved by two phones can list its
+   keys in a different order, and a plain string compare would call that a difference on every
+   pull, sending a push from each phone in turn, forever. */
+function canonJSON(v) {
+  return JSON.stringify(v, (k, x) => x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.keys(x).sort().reduce((o, key) => { o[key] = x[key]; return o; }, {}) : x);
+}
+/* Merge one list from the other phone into this one's. An item one side changed later wins. An
+   item on one side only is new to the other, unless a side deleted it and nobody changed it
+   after. Items with no stamp on either side are older than the stamps, from a time when missing
+   could still mean deleted, so for those the old rule decides: the side that saved last. The
+   side that saved last also sets the order; the other side's new items go after the item they
+   followed there. */
+function mergeList(local, remote, la, ra, ld, rd, remoteNewer) {
+  const now = Date.now(), del = {};
+  [ld, rd].forEach(d => Object.keys(d).forEach(id => { const t = +d[id] || 0; if (t > (del[id] || 0) && now - t <= LIST_DEL_KEEP) del[id] = t; }));
+  const idOf = x => x && x.id != null ? String(x.id) : null;
+  const L = new Map(), R = new Map();
+  local.forEach(x => { const id = idOf(x); if (id && !L.has(id)) L.set(id, x); });
+  remote.forEach(x => { const id = idOf(x); if (id && !R.has(id)) R.set(id, x); });
+  const at = {};
+  const pick = id => {
+    const l = L.get(id), r = R.get(id), sl = +la[id] || 0, sr = +ra[id] || 0, s = Math.max(sl, sr);
+    if (del[id] && del[id] >= s) return null;
+    if ((!l || !r) && !s && !l !== remoteNewer) return null;
+    if (s) at[id] = s;
+    if (!l) return r;
+    if (!r) return l;
+    return sr > sl ? r : sl > sr ? l : remoteNewer ? r : l;
+  };
+  const first = remoteNewer ? remote : local, second = remoteNewer ? local : remote;
+  const seen = new Set(), out = [];
+  first.forEach(x => {
+    const id = idOf(x);
+    if (!id) { out.push(x); return; }
+    if (seen.has(id)) return;
+    seen.add(id);
+    const v = pick(id); if (v) out.push(v);
+  });
+  const placed = new Set(out.map(idOf)), after = new Map();
+  let anchor = '';
+  second.forEach(x => {
+    const id = idOf(x); if (!id) return;
+    if (seen.has(id)) { if (placed.has(id)) anchor = id; return; }
+    seen.add(id);
+    const v = pick(id); if (!v) return;
+    if (!after.has(anchor)) after.set(anchor, []);
+    after.get(anchor).push(v);
+  });
+  const list = (after.get('') || []).slice();
+  out.forEach(x => { list.push(x); const id = idOf(x); if (id && after.has(id)) list.push(...after.get(id)); });
+  return { list, at, del };
+}
+
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
@@ -295,43 +398,43 @@ const DB = {
   putEntry(date, data) { const e = this.entries(); e[date] = data; return this.saveEntries(e); },
 
   tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
-  saveTasks(t) { const ok = safeSet('dp.tasks', JSON.stringify(t)); pushState(); return ok; },
+  saveTasks(t) { const ok = listSave('dp.tasks', t); pushState(); return ok; },
 
   exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
-  saveExercises(x) { const ok = safeSet('dp.exercises', JSON.stringify(x)); pushState(); return ok; },
+  saveExercises(x) { const ok = listSave('dp.exercises', x); pushState(); return ok; },
   gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
   saveGym(g) { const ok = safeSet('dp.gym', JSON.stringify(g)); pushState(); return ok; },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; return this.saveGym(g); },
 
   reminders() { return safeParse(localStorage.getItem('dp.reminders'), []); },
-  saveReminders(r) { const ok = safeSet('dp.reminders', JSON.stringify(r)); pushState(); return ok; },
+  saveReminders(r) { const ok = listSave('dp.reminders', r); pushState(); return ok; },
 
   notes() { return safeParse(localStorage.getItem('dp.notes'), []); },
-  saveNotes(n) { const ok = safeSet('dp.notes', JSON.stringify(n)); pushState(); return ok; },
+  saveNotes(n) { const ok = listSave('dp.notes', n); pushState(); return ok; },
 
   plans() { return safeParse(localStorage.getItem('dp.plans'), []); },
-  savePlans(p) { const ok = safeSet('dp.plans', JSON.stringify(p)); pushState(); return ok; },
+  savePlans(p) { const ok = listSave('dp.plans', p); pushState(); return ok; },
 
   projects() { return safeParse(localStorage.getItem('dp.projects'), []); },
-  saveProjects(p) { const ok = safeSet('dp.projects', JSON.stringify(p)); pushState(); return ok; },
+  saveProjects(p) { const ok = listSave('dp.projects', p); pushState(); return ok; },
 
   docs() { return safeParse(localStorage.getItem('dp.docs'), []); },
-  saveDocs(d) { const ok = safeSet('dp.docs', JSON.stringify(d)); pushState(); syncDocs(); return ok; },
+  saveDocs(d) { const ok = listSave('dp.docs', d); pushState(); syncDocs(); return ok; },
 
   events() { return safeParse(localStorage.getItem('dp.events'), []); },
-  saveEvents(x) { const ok = safeSet('dp.events', JSON.stringify(x)); pushState(); syncEvents(); return ok; },
+  saveEvents(x) { const ok = listSave('dp.events', x); pushState(); syncEvents(); return ok; },
 
   pomo() { return safeParse(localStorage.getItem('dp.pomo'), null); },
   savePomo(p) { const ok = safeSet('dp.pomo', JSON.stringify(p)); pushState(); return ok; },
   timebox() { return safeParse(localStorage.getItem('dp.timebox'), []); },
-  saveTimebox(t) { const ok = safeSet('dp.timebox', JSON.stringify(t)); pushState(); return ok; },
+  saveTimebox(t) { const ok = listSave('dp.timebox', t); pushState(); return ok; },
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
   timelogRO() { return roParse('dp.timelog', []); },   // read-only: see roParse
   saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
-  saveTimeacts(a) { rememberActNames(a); const ok = safeSet('dp.timeacts', JSON.stringify(a)); pushState(); return ok; },
+  saveTimeacts(a) { rememberActNames(a); const ok = listSave('dp.timeacts', a); pushState(); return ok; },
 
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
   saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); return ok; },
@@ -723,7 +826,7 @@ function pushState(now) {
       finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}),
-      timelogDel: timelogDels() };
+      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel') };
     _pushPending = null;
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
@@ -798,6 +901,7 @@ function applyRemoteState(remote) {
   const localTouched = +(localStorage.getItem('dp.touched') || 0);
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
   let changed = false;
+  let remoteBehind = false;   // this phone holds something the Sheet's copy lacks
   const skippedSections = [];
 
   // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields,
@@ -813,9 +917,14 @@ function applyRemoteState(remote) {
       const rNewer = (r.updatedAt || '') >= (l.updatedAt || '');
       const older = rNewer ? l : r, newer = rNewer ? r : l;
       const merged = Object.assign({}, older, newer);          // newer wins shared keys; older fills any gaps
-      Object.assign(merged, mergeHabits(l, r));   // per habit: the newest change wins, an un-tick included
-      if (JSON.stringify(merged) !== JSON.stringify(l)) { local[d] = merged; changed = true; }
+      // per habit: the newest change wins, an un-tick included. A day with no habits on either
+      // side gets none: an empty one added here made it differ from both phones' copies.
+      if (l.habits || r.habits || l.habitsAt || r.habitsAt) Object.assign(merged, mergeHabits(l, r));
+      const ms = JSON.stringify(merged);
+      if (ms !== JSON.stringify(l)) { local[d] = merged; changed = true; }
+      if (ms !== JSON.stringify(r) && canonJSON(merged) !== canonJSON(r)) remoteBehind = true;
     });
+    if (Object.keys(local).some(d => !(d in remote.entries))) remoteBehind = true;
     safeSet('dp.entries', JSON.stringify(local));
   }
   // Gym: merge by date, union of done/log — never lose a workout.
@@ -866,15 +975,41 @@ function applyRemoteState(remote) {
       for (let i = 0; i < open.length - 1; i++) { open[i].end = open[i + 1].start > open[i].start ? open[i + 1].start : open[i].start; open[i].upd = Date.now(); }
       changed = true;
     }
+    const rById = {}; remote.timelog.forEach(r => { if (r && r.id) rById[r.id] = r; });
+    if (merged.some(s => !rById[s.id] || (rById[s.id].upd || 0) !== (s.upd || 0)) ||
+        Object.keys(dels).some(id => dels[id] !== +(rdels || {})[id])) remoteBehind = true;
     safeSet('dp.timelog', JSON.stringify(merged));
   }
-  // Tasks / Notes / Reminders / Exercises are LISTS that get completed, edited, reordered, deleted —
-  // a union-of-ids would never propagate those. So when the other device changed more recently,
-  // adopt its whole list (so done/edit/reorder/delete all sync). Local-newer keeps local.
+  // Tasks, notes, money and the other lists with ids: item by item (see mergeList), whichever
+  // phone saved last. A state from an older app version has no stamps, so for that one the old
+  // whole-list rule below still applies, or its edits and deletes would never arrive.
+  const itemwise = !!remote.listAt && typeof remote.listAt === 'object' && !Array.isArray(remote.listAt);
+  if (itemwise) {
+    const at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
+    const obj = v => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    const rdel = obj(remote.listDel);
+    LIST_SYNC.forEach(key => {
+      const store = 'dp.' + key;
+      if (!remote[key]) return;
+      if (!Array.isArray(remote[key]) || !remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
+      const cur = safeParse(localStorage.getItem(store), null);
+      const local = Array.isArray(cur) ? cur : key === 'exercises' ? DB.exercises() : [];
+      const m = mergeList(local, remote[key], obj(at[key]), obj(remote.listAt[key]), obj(del[key]), obj(rdel[key]), remoteNewer);
+      if (key === 'timeacts') rememberActNames(remote[key]);   // deleted on the other phone
+      const s = JSON.stringify(m.list);
+      if (s !== (localStorage.getItem(store) || 'null')) { safeSet(store, s); changed = true; }
+      if ((s !== JSON.stringify(remote[key]) && canonJSON(m.list) !== canonJSON(remote[key])) ||
+          Object.keys(m.del).some(id => m.del[id] !== +obj(rdel[key])[id])) remoteBehind = true;
+      at[key] = m.at; del[key] = m.del;
+    });
+    listMetaSave(at, del);
+  }
+  // Settings-like stores (and every list, from an older app version): when the other device
+  // changed more recently, adopt its whole copy. Local-newer keeps local.
   if (remoteNewer) {
-    [['tasks', 'dp.tasks'], ['notes', 'dp.notes'], ['plans', 'dp.plans'], ['projects', 'dp.projects'], ['reminders', 'dp.reminders'], ['exercises', 'dp.exercises'], ['timeacts', 'dp.timeacts'], ['events', 'dp.events'], ['docs', 'dp.docs'], ['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['timebox', 'dp.timebox'], ['goals', 'dp.goals'], ['projectnames', 'dp.pjnames'],
-     ['finaccts', 'dp.finaccts'], ['fintx', 'dp.fintx'], ['finmarks', 'dp.finmarks'], ['finbudget', 'dp.finbudget'],
-     ['fincats', 'dp.fincats'], ['finset', 'dp.finset']].forEach(([key, store]) => {
+    [['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['projectnames', 'dp.pjnames'],
+     ['finbudget', 'dp.finbudget'], ['fincats', 'dp.fincats'], ['finset', 'dp.finset'],
+     ...(itemwise ? [] : LIST_SYNC.map(k => [k, 'dp.' + k]))].forEach(([key, store]) => {
       if (!remote[key]) return;
       if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
@@ -923,9 +1058,10 @@ function applyRemoteState(remote) {
     const curScr = ((document.querySelector('.screen.on') || {}).id || '').replace('s-', '');
     if (curScr && RENDER[curScr]) show(curScr);
     toast('Synced from your other device ⬇️');
-  } else if (localTouched > remote.touched) {
+  } else if (localTouched > remote.touched || remoteBehind) {
     // This phone changed something the Sheet has not got — a save just before the app was killed
-    // never left. Nothing came down, so nothing else would ever send it.
+    // never left, or the other phone saved over it without having seen it. Nothing came down,
+    // so nothing else would ever send it.
     pushState(true);
   }
 }
@@ -1048,6 +1184,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w23',
   items: [
+    '🔄 <b>Two phones, one set of lists</b> — notes, tasks, plans, events, articles and money now sync item by item. Something added on one phone is no longer lost when the other phone saves before it has seen it, and something deleted on one phone stays deleted on both. Update both phones to get it. <b>Using the Google Sheet?</b> Paste the script from the Sheet setup page again and redeploy it: a journal or note starting with “- ” showed as #ERROR! in the sheet, and a large sync could come back broken.',
     '🛟 <b>Nothing you type gets lost</b> — the last moment of typing could vanish if the Log redrew itself, a sync landed or the app was closed straight after; and a Log left open overnight kept saving the morning to yesterday. Both are fixed, along with voice typing that kept going after you switched day, and a mood word that could cut text out of a longer #tag.',
     '⏱️ <b>Time tracker fixes</b> — Stop now stops a project timer (it used to start a new one), fixing a time across midnight no longer makes a 30-hour block, the day the clocks change counts every hour once, and a deleted activity keeps its name in your history.',
     '💾 <b>Safer backups</b> — restoring a backup no longer overwrites newer data on your other synced phone, a backup can no longer leave your photos out without saying so, and a deleted reminder stops ringing.',
@@ -7789,7 +7926,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct', 'pausedPid', 'timelogDel',
+  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel',
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
@@ -7985,6 +8122,26 @@ function validateBackup(d) {
   }
   return { ok: true, reason: '', keys: keys.filter(k => !bad.includes(k)) };
 }
+/* A restore replaces lists whose items this phone has change stamps and delete records for.
+   An item the restore brings back (deleted here, or never here) is stamped now and its delete
+   record dropped: bringing things back is what a restore is often for, and otherwise the delete
+   record would remove it again on the next pull, here and on every other phone. An item the
+   restore rolls back to an older version loses its stamp instead, since the stamp was for the
+   version just replaced; a newer edit of it on the other phone then still wins. */
+function listIds(keys) {
+  const out = {};
+  LIST_SYNC.filter(k => keys.includes(k)).forEach(key => { out[key] = listItemsOf(localStorage.getItem('dp.' + key)); });
+  return out;
+}
+function listRestored(before) {
+  const at = listMeta('dp.listAt'), del = listMeta('dp.listDel'), now = Date.now();
+  Object.keys(before).forEach(key => {
+    const d = del[key] || {}, a = {};
+    listItemsOf(localStorage.getItem('dp.' + key)).forEach((v, id) => { if (!before[key].has(id)) { a[id] = now; delete d[id]; } });
+    at[key] = a; del[key] = d;
+  });
+  listMetaSave(at, del);
+}
 /* `after(restoredAnything)` lets a caller react to the OUTCOME — onboarding uses it to skip
    itself only when a restore really happened. It fires false on a bad file, a refused
    confirm, or an all-keys-failed write, so a caller can never mistake a no-op for success. */
@@ -8004,7 +8161,9 @@ function importData(file, after) {
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
       // RESTORE path, where it matters more.
       let failed = 0, wrote = 0;
+      const listsBefore = listIds(check.keys);
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
+      listRestored(listsBefore);
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');
@@ -8855,7 +9014,7 @@ const GOAL_METRICS = [
 function goalMetric(k) { return GOAL_METRICS.find(m => m.k === k) || null; }
 
 function DBgoals() { const g = safeParse(localStorage.getItem('dp.goals'), null); return Array.isArray(g) ? g : []; }
-function saveGoals(g) { const ok = safeSet('dp.goals', JSON.stringify(g)); pushState(); return ok; }
+function saveGoals(g) { const ok = listSave('dp.goals', g); pushState(); return ok; }
 
 /* Shared context so nine measures do not each re-read the store. */
 function goalCtx() {
@@ -11718,11 +11877,11 @@ function finCat(id) {
 
 /* ---- stores ---- */
 function finAccts() { const v = safeParse(localStorage.getItem('dp.finaccts'), []); return Array.isArray(v) ? v : []; }
-function finSaveAccts(a) { const ok = safeSet('dp.finaccts', JSON.stringify(a)); pushState(); return ok; }
+function finSaveAccts(a) { const ok = listSave('dp.finaccts', a); pushState(); return ok; }
 function finTx() { const v = safeParse(localStorage.getItem('dp.fintx'), []); return Array.isArray(v) ? v : []; }
-function finSaveTx(t) { const ok = safeSet('dp.fintx', JSON.stringify(t)); pushState(); return ok; }
+function finSaveTx(t) { const ok = listSave('dp.fintx', t); pushState(); return ok; }
 function finMarks() { const v = safeParse(localStorage.getItem('dp.finmarks'), []); return Array.isArray(v) ? v : []; }
-function finSaveMarks(m) { const ok = safeSet('dp.finmarks', JSON.stringify(m)); pushState(); return ok; }
+function finSaveMarks(m) { const ok = listSave('dp.finmarks', m); pushState(); return ok; }
 function finBudgets() { return safeParse(localStorage.getItem('dp.finbudget'), {}) || {}; }
 function finSaveBudgets(b) { const ok = safeSet('dp.finbudget', JSON.stringify(b)); pushState(); return ok; }
 function finSet() {

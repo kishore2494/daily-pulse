@@ -409,7 +409,7 @@
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));
   ok('goals reach the sync payload', /goals: DBgoals\(\)/.test(pushState.toString()));
-  ok('goals are in the sync adopt list', /\['goals', 'dp\.goals'\]/.test(applyRemoteState.toString()));
+  ok('goals sync item by item', LIST_SYNC.includes('goals') && /listSave\('dp\.goals'/.test(saveGoals.toString()));
   ok('nine measures offered free', GOAL_METRICS.length === 9, GOAL_METRICS.length);
   ok('three timeframes offered', Object.keys(GOAL_PERIODS).length === 3);
   // periods are calendar-true, not rolling
@@ -2342,6 +2342,130 @@
       window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
       navigateTo('today');
+    }
+  })();
+
+  // ---- v253: lists sync item by item (tasks, notes, money, …) ----
+  (function () {
+    const keys = ['dp.notes', 'dp.tasks', 'dp.fintx', 'dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.listAt', 'dp.listDel', 'dp.touched', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast, toasts = []; window.toast = (m) => toasts.push(m);
+    const ids = l => l.map(x => x.id).join(',');
+    try {
+      // mergeList, directly
+      const A = { id: 'a', text: 'a' }, B = { id: 'b', text: 'b' }, C = { id: 'c', text: 'c' };
+      let m = mergeList([{ id: 'n1', text: 'mine' }, A], [{ id: 'n2', text: 'theirs' }, A], { n1: 200 }, { n2: 300 }, {}, {}, true);
+      ok('a new item on each phone: both kept', ids(m.list) === 'n1,n2,a' || ids(m.list) === 'n2,n1,a', ids(m.list));
+      ok('…the newer side\'s order, the other side\'s new item where it was (top)', ids(m.list) === 'n1,n2,a', ids(m.list));
+      ok('…and both stamps kept', m.at.n1 === 200 && m.at.n2 === 300);
+      m = mergeList([A, B], [A, B, C], {}, { c: 500 }, {}, {}, false);
+      ok('an item the other phone added arrives even when this phone saved last', ids(m.list) === 'a,b,c', ids(m.list));
+      m = mergeList([A, B, C], [A, B], { c: 500 }, {}, {}, {}, true);
+      ok('…and one added here survives the other phone\'s later save', ids(m.list) === 'a,b,c', ids(m.list));
+      const N = Date.now() - 864e5;
+      m = mergeList([A], [A, B], {}, { b: N }, { b: N + 100 }, {}, true);
+      ok('an item deleted here does not come back from the other phone', ids(m.list) === 'a' && m.del.b === N + 100 && !('b' in m.at), ids(m.list));
+      m = mergeList([A, B], [A], { b: N }, {}, {}, { b: N + 100 }, false);
+      ok('an item deleted on the other phone goes here too, even from its older save', ids(m.list) === 'a', ids(m.list));
+      m = mergeList([A, { id: 'b', text: 'edited' }], [A], { b: N + 200 }, {}, {}, { b: N + 100 }, true);
+      ok('…unless it was edited after that delete', m.list[1] && m.list[1].text === 'edited');
+      m = mergeList([{ id: 'a', text: 'here, later' }], [{ id: 'a', text: 'there' }], { a: 900 }, { a: 100 }, {}, {}, true);
+      ok('the later edit of one item wins, whichever phone saved last', m.list[0].text === 'here, later');
+      m = mergeList([{ id: 'a', text: 'here' }], [{ id: 'a', text: 'there' }], {}, {}, {}, {}, true);
+      ok('unstamped (older than the stamps): the phone that saved last wins, as before', m.list[0].text === 'there');
+      m = mergeList([A, B], [A], {}, {}, {}, {}, true);
+      ok('…and an unstamped item missing from the later save goes, as before', ids(m.list) === 'a');
+      m = mergeList([A, B], [A], {}, {}, {}, {}, false);
+      ok('…but stays when this phone saved last', ids(m.list) === 'a,b');
+      m = mergeList([A, B, C], [C, B, A], {}, {}, {}, {}, true);
+      ok('a reorder follows the phone that saved last', ids(m.list) === 'c,b,a');
+      m = mergeList([A, { id: 'x', text: 'x' }, B], [A, B], { x: 50 }, {}, {}, {}, true);
+      ok('a new item is placed after the one it followed', ids(m.list) === 'a,x,b', ids(m.list));
+      m = mergeList([A], [A], {}, {}, { old: Date.now() - 91 * 864e5 }, {}, false);
+      ok('delete records older than 90 days are dropped', !('old' in m.del));
+
+      // listSave: stamps what changed, records what went, nothing else
+      localStorage.setItem('dp.listAt', '{}'); localStorage.setItem('dp.listDel', '{}');
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'n1', text: 'one' }, { id: 'n2', text: 'two' }]));
+      const list = DB.notes(); list[1].text = 'two!'; DB.saveNotes(list);
+      let at = listMeta('dp.listAt').notes || {};
+      ok('saving a list stamps only the item that changed', !!at.n2 && !('n1' in at), at);
+      ok('…and stores exactly what JSON.stringify would', localStorage.getItem('dp.notes') === JSON.stringify(list));
+      const t0 = at.n2;
+      DB.saveNotes(DB.notes());
+      ok('saving it unchanged stamps nothing', (listMeta('dp.listAt').notes || {}).n2 === t0 && !('n1' in (listMeta('dp.listAt').notes || {})));
+      DB.saveNotes(DB.notes().filter(n => n.id !== 'n1'));
+      ok('deleting an item records when', !!(listMeta('dp.listDel').notes || {}).n1);
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'n2', text: 'two!' }, { id: 'n3', text: 'from a pull' }]));
+      DB.saveNotes(DB.notes());
+      ok('a list written by a pull is re-read, not diffed against the old one', !('n3' in (listMeta('dp.listAt').notes || {})));
+      DB.saveNotes([...DB.notes(), { id: 'n4', text: 'new' }]);
+      ok('a new item is stamped', !!(listMeta('dp.listAt').notes || {}).n4);
+
+      // end to end
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const now = Date.now();
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
+      localStorage.setItem('dp.listAt', '{}'); localStorage.setItem('dp.listDel', '{}');
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'old', text: 'old' }]));
+      DB.saveNotes([{ id: 'mine', text: 'typed here' }, ...DB.notes()]);
+      localStorage.setItem('dp.touched', String(now - 60000));
+      sent.length = 0;
+      applyRemoteState({ touched: now, notes: [{ id: 'theirs', text: 'typed there' }, { id: 'old', text: 'old' }], listAt: { notes: { theirs: now - 1000 } }, listDel: {}, entries: {}, timelog: [], timelogDel: {} });
+      ok('a note typed here survives the other phone\'s later save that never saw it', DB.notes().some(n => n.id === 'mine'), ids(DB.notes()));
+      ok('…and the other phone\'s note arrives', DB.notes().some(n => n.id === 'theirs'));
+      ok('…and the merge goes back up', sent.some(x => x.type === 'state' && x.notes.some(n => n.id === 'mine') && x.notes.some(n => n.id === 'theirs')));
+      ok('every push carries the stamps and delete records', sent.length && 'listAt' in sent[sent.length - 1] && 'listDel' in sent[sent.length - 1]);
+      // nothing new came down, but the Sheet lacks this phone's note: push anyway
+      localStorage.setItem('dp.touched', String(now - 5000));
+      DB.saveNotes([{ id: 'late', text: 'unsent' }, ...DB.notes()]); localStorage.setItem('dp.touched', String(now - 5000));
+      clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
+      const sheet = DB.notes().filter(n => n.id !== 'late');
+      applyRemoteState({ touched: now, notes: sheet, listAt: { notes: listMeta('dp.listAt').notes }, listDel: listMeta('dp.listDel'), entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull that brings nothing new still sends what the Sheet lacks', sent.some(x => x.type === 'state' && x.notes.some(n => n.id === 'late')));
+      // …and does not push when the Sheet already has it all
+      localStorage.setItem('dp.touched', String(now + 10)); sent.length = 0;
+      applyRemoteState({ touched: now + 10, notes: DB.notes(), listAt: { notes: listMeta('dp.listAt').notes }, listDel: listMeta('dp.listDel'), entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull of an identical state sends nothing', !sent.some(x => x.type === 'state'), sent.length);
+      // two phones holding the same day with its keys in a different order: no push back and forth
+      localStorage.setItem('dp.entries', JSON.stringify({ '2026-01-02': { mood: 5, journal: 'x', updatedAt: '2026-01-02T10:00:00.000Z' } }));
+      localStorage.setItem('dp.touched', String(now + 10)); sent.length = 0;
+      applyRemoteState({ touched: now + 10, entries: { '2026-01-02': { journal: 'x', updatedAt: '2026-01-02T10:00:00.000Z', mood: 5 } }, notes: DB.notes(), listAt: { notes: listMeta('dp.listAt').notes }, listDel: listMeta('dp.listDel'), timelog: [], timelogDel: {} });
+      ok('the same day with its keys in another order is not a difference', !sent.some(x => x.type === 'state'), sent.length);
+      // a time block only this phone has, the other phone saved later: push it
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'only-here', act: 'work', start: now - 7200000, end: now - 3600000, upd: now - 7200000 }]));
+      localStorage.setItem('dp.touched', String(now - 99999)); sent.length = 0;
+      applyRemoteState({ touched: now + 20, entries: JSON.parse(localStorage.getItem('dp.entries')), timelog: [], timelogDel: {}, notes: DB.notes(), listAt: { notes: listMeta('dp.listAt').notes }, listDel: listMeta('dp.listDel') });
+      ok('a time block the Sheet lost to the other phone\'s save is sent again', DB.timelog().some(s => s.id === 'only-here') && sent.some(x => x.type === 'state' && x.timelog.some(s => s.id === 'only-here')));
+      // a state from an older app version: the whole list, the old way
+      localStorage.setItem('dp.tasks', JSON.stringify([{ id: 't1', text: 'kept?' }]));
+      localStorage.setItem('dp.touched', String(now));
+      applyRemoteState({ touched: now + 30, tasks: [{ id: 't2', text: 'theirs' }] });
+      ok('a state from an older app version still replaces the list (no stamps to merge by)', ids(DB.tasks()) === 't2', ids(DB.tasks()));
+      // a list in the wrong shape is refused and named
+      toasts.length = 0;
+      applyRemoteState({ touched: now + 40, tasks: 'garbage', listAt: {}, listDel: {} });
+      ok('a list in the wrong shape is refused and named', Array.isArray(DB.tasks()) && toasts.some(t => /tasks/.test(t)));
+      // restore: what it brings back is new, what it rolls back is old
+      localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'x1', a: 100 }, { id: 'x2', a: 999 }]));
+      localStorage.setItem('dp.listAt', JSON.stringify({ fintx: { x1: now - 5000, x2: now - 5000 } }));
+      localStorage.setItem('dp.listDel', JSON.stringify({ fintx: { x3: now - 4000 } }));
+      const before = listIds(['fintx', 'entries']);
+      localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'x1', a: 100 }, { id: 'x2', a: 500 }, { id: 'x3', a: 42 }]));   // the backup
+      listRestored(before);
+      const fa = listMeta('dp.listAt').fintx || {}, fd = listMeta('dp.listDel').fintx || {};
+      ok('a restored item that was deleted here is stamped new, and its delete record goes', fa.x3 >= now && !('x3' in fd), { fa, fd });
+      ok('a rolled-back item loses its stamp, so a newer edit on the other phone wins', !('x2' in fa) && !('x1' in fa));
+      m = mergeList(finTx(), [{ id: 'x2', a: 999 }, { id: 'x1', a: 100 }], fa, { x2: now - 5000, x1: now - 5000 }, fd, { x3: now - 4000 }, false);
+      ok('…end to end: the restored item survives the pull, the newer edit wins', m.list.some(x => x.id === 'x3') && m.list.find(x => x.id === 'x2').a === 999);
+      ok('list stamps are not in a backup', BACKUP_EXCLUDED.includes('listAt') && BACKUP_EXCLUDED.includes('listDel'));
+      const savers = { tasks: DB.saveTasks, notes: DB.saveNotes, plans: DB.savePlans, projects: DB.saveProjects, reminders: DB.saveReminders, exercises: DB.saveExercises, timeacts: DB.saveTimeacts, events: DB.saveEvents, docs: DB.saveDocs, timebox: DB.saveTimebox, goals: saveGoals, finaccts: finSaveAccts, fintx: finSaveTx, finmarks: finSaveMarks };
+      ok('every list in the sync is saved through listSave', LIST_SYNC.every(k => savers[k] && savers[k].toString().includes("listSave('dp." + k + "'")), LIST_SYNC.filter(k => !(savers[k] && savers[k].toString().includes("listSave('dp." + k + "'"))));
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
     }
   })();
 
