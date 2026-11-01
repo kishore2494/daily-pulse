@@ -2134,6 +2134,27 @@
     ok('On this day opens the read-only page instead of loading that day into the Log', onDay() && histDay === d1 && logDate === todayStr());
     handleBack();
     ok('…and Back returns to today\'s Log', document.getElementById('s-today').classList.contains('on') && logDate === todayStr());
+    // independent review: Edit from there, Done, then "← Log" must land on TODAY's Log
+    navigateTo('today'); tap(plant('today', 'data-throwback'));
+    tap('#s-history .hd-hero [data-hday-edit]');
+    ok('…Edit from that page opens the old day', logDate === d1);
+    tap('#save-entry');
+    ok('…Done returns to its page', onDay() && histDay === d1);
+    tap('#s-history [data-hday-back]');
+    ok('…and "← Log" lands on today\'s Log, not the old day\'s', document.getElementById('s-today').classList.contains('on') && logDate === todayStr(), logDate);
+    // Edit, then pick another day in the Log's own date picker: Done goes to THAT day's page
+    histDayOpen(d1); tap('#s-history .hd-hero [data-hday-edit]');
+    const ld = document.getElementById('log-date');
+    if (ld) { ld.value = d2; ld.dispatchEvent(new Event('change', { bubbles: true })); }
+    tap('#save-entry');
+    ok('Edit, change the date, Done → the page of the day now shown', onDay() && histDay === d2, histDay);
+    navigateTo('history');
+    // a day with only auto-tracked steps is not "Nothing was logged"
+    const hsSnap = localStorage.getItem('dp.health'), dS = addDays(T0, -30);
+    const hs0 = healthStore(); hs0[dS] = { steps: 4321 }; localStorage.setItem('dp.health', JSON.stringify(hs0));
+    const stepsOnly = historyDayHTML(dS);
+    ok('a steps-only day shows its steps without claiming nothing was logged', /4,321/.test(stepsOnly) && !/Nothing was logged/.test(stepsOnly));
+    if (hsSnap != null) localStorage.setItem('dp.health', hsSnap); else localStorage.removeItem('dp.health');
     navigateTo('history');
     logDate = ldSnap;
 
@@ -2152,6 +2173,12 @@
     ok('"Open day" in the viewer opens the read-only day', !mediaViewIsOpen() && histDay === d1 && histTab === 'days' && !!document.querySelector('#s-history .hd-hero'));
     mediaViewOpen('hd1');
     ok('…and is not offered for the day already open', !document.querySelector('#media-view [data-mview-day]'));
+    mediaViewClose(); handleBack();
+    ok('Back from a day opened from History ▸ Photos returns to Photos', histDay === null && histTab === 'photos' && !!document.querySelector('#s-history .mgrid, #s-history [data-mview="hd1"]'), histTab);
+    _media.set('hd4', { id: 'hd4', kind: 'photo', mime: 'image/webp', blob: new Blob(['x']), thumb: new Blob(['y']), day: d1, ctx: 'log', ts: 4, size: 2 });
+    refreshMediaSlots();
+    ok('History ▸ Photos redraws when the photos change (fresh object URLs after a shrink)', !!document.querySelector('#s-history [data-mview="hd4"]'));
+    _media.delete('hd4'); histDayOpen(d1); mediaViewOpen('hd1');
     _media.get('hd1').caption = 'Renamed in the viewer';
     mediaViewClose();
     ok('a caption typed in the viewer shows on the day page', /Renamed in the viewer/.test(document.getElementById('s-history').innerHTML));

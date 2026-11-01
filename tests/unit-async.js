@@ -264,6 +264,35 @@
     ok('…leaving the photo it was on exactly as it was', _media.get('s6').size === 1000 && _media.get('s7').size === 1000 && mediaShrinkCount() === 2);
     await mediaShrinkAll();
     ok('…and it finishes once there is room', mediaShrinkCount() === 0);
+
+    /* v253: a photo deleted while the shrink is on it stays deleted (independent review) */
+    const enc1 = window.mediaPhotoBlobs; let gate = null;
+    window.mediaPhotoBlobs = async (b) => { await new Promise(r => { gate = r; }); return enc1(b); };
+    await mediaAdd(rec('s8', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)]), size: 1000 }));
+    await mediaAdd(rec('s9', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)]), size: 1000 }));
+    const mwSnap = window.mediaWrite, puts = [];
+    window.mediaWrite = fn => mwSnap(st => fn({ put: r => { puts.push(r.id); return st.put(r); }, delete: id => st.delete(id) }));
+    const run = mediaShrinkAll(); await sleep(5);              // s8 is being re-encoded
+    const again = await mediaShrinkAll();
+    ok('a second Shrink while one runs says it is busy, not "already small"', again.busy === true && again.total === 0, again);
+    ok('…and the Storage page, drawn again meanwhile, shows the running shrink', /id="st-shrink" disabled>Shrinking 0 of 2/.test(storagePageHTML()));
+    await mediaDelete(['s8']);
+    gate(); await sleep(5); gate();
+    await run; await reread();
+    window.mediaWrite = mwSnap;
+    ok('a photo deleted while it was being shrunk stays deleted', !_media.has('s8'), [..._media.keys()]);
+    ok('…and is never written back, not even for a moment (an app kill then would resurrect it)', !puts.includes('s8') && puts.includes('s9'), puts);
+    ok('…and the next one is still shrunk', _media.get('s9').enc === MEDIA_ENC && _media.get('s9').size === 450);
+    window.mediaPhotoBlobs = async (b) => { if (b.size === 1001) mediaDelete(['s10']); return enc1(b); };   // delete queued just before the put
+    await mediaAdd(rec('s10', 'log', 'photo', { blob: new Blob(['j'.repeat(1001)]), size: 1001 }));
+    await mediaShrinkAll(); await reread();
+    ok('…even when the delete was queued just before the smaller copy was saved', !_media.has('s10'), [..._media.keys()]);
+    window.mediaPhotoBlobs = enc1;
+    await mediaAdd(rec('s11', 'log', 'photo', { blob: new Blob(['j'.repeat(1000)]), size: 1000 }));
+    shim.failNext = 'UnknownError';
+    const sx = await mediaShrinkAll();
+    ok('a storage error that is not "full" is reported as a failure, not as success', sx.failed === true && sx.full === false, sx);
+    await mediaShrinkAll();
     window.mediaPhotoBlobs = encSnap;
 
     /* the backup keeps which encoder made a photo, and a WebP thumbnail comes back as WebP */

@@ -2173,6 +2173,7 @@ document.addEventListener('change', (ev) => {
     const v = ev.target.value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { ev.target.value = logDate; return; }
     logDate = v; openToday();
+    if (_editFromHist) _editFromHist = v;   // Edit, then a different day picked: Done/Back go to THAT day's page
   }
   if (ev.target.id === 'dash-range') { dashRange = +ev.target.value; renderDash(); }   // Stats range dropdown (#stats)
 });
@@ -4603,7 +4604,7 @@ document.addEventListener('click', (ev) => {
    every empty field showing, when what you wanted was to look back at the day. This page
    shows what the day holds and nothing it does not. "Edit" opens the Log for that day, and
    Back or Done there brings you back here. */
-let histDay = null, _histScroll = 0, _editFromHist = null, _dayFrom = null;
+let histDay = null, _histScroll = 0, _histTabWas = null, _editFromHist = null, _dayFrom = null;
 function longDate(d) {
   try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return d; }
 }
@@ -4745,7 +4746,7 @@ function historyDayHTML(d) {
     return rows.length ? `<div class="hd-deep"><h3>${escapeHtml(stripLeadEmoji(s.title))}</h3>${rows.join('')}</div>` : '';
   }).join('') : '';
 
-  const nothing = !en && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML;
+  const nothing = !en && !tiles.length && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML;
   return `<div class="hd-nav">
       <button class="back-btn" data-hday-back>← ${_dayFrom ? escapeHtml(dayFromLabel(_dayFrom.screen)) : 'All days'}</button>
       <span class="hd-step">
@@ -4781,7 +4782,8 @@ function histDayRefresh() {
   const y = window.scrollY; renderHistoryDay(histDay); window.scrollTo(0, y);
 }
 function histDayOpen(d) {
-  if (!histDay) _histScroll = window.scrollY || 0;    // the list's place, for coming back to it
+  // the list's place and tab (Days or Photos, via the viewer's "Open day"), for coming back to it
+  if (!histDay) { _histScroll = window.scrollY || 0; _histTabWas = histTab; }
   histDay = d; histTab = 'days';
   if (document.getElementById('s-history').classList.contains('on')) renderHistory(); else show('history');
   window.scrollTo(0, 0);
@@ -4789,7 +4791,10 @@ function histDayOpen(d) {
 function histDayClose() {
   histDay = null;
   // instant, not the page's smooth scroll: back should land where you were, not glide 5,000px to it
-  if (_dayFrom) { const f = _dayFrom; _dayFrom = null; show(f.screen); window.scrollTo({ top: f.y, behavior: 'instant' }); return; }
+  // Edit moved logDate to this day; put it back, or "← Log" would land on the old day's Log
+  // and the next thing typed there would be saved to it.
+  if (_dayFrom) { const f = _dayFrom; _dayFrom = null; logDate = f.logDate; show(f.screen); window.scrollTo({ top: f.y, behavior: 'instant' }); return; }
+  if (_histTabWas) { histTab = _histTabWas; _histTabWas = null; }
   renderHistory();
   window.scrollTo({ top: _histScroll, behavior: 'instant' });
 }
@@ -4799,7 +4804,7 @@ function histDayClose() {
 function dayOpen(d) {
   const cur = ((document.querySelector('.screen.on') || {}).id || '').replace('s-', '');
   if (cur === 'history') { histDayOpen(d); return; }
-  _dayFrom = { screen: cur || defaultTab(), y: window.scrollY || 0 };
+  _dayFrom = { screen: cur || defaultTab(), y: window.scrollY || 0, logDate };
   histDay = d; histTab = 'days';
   show('history');
 }
@@ -6007,7 +6012,8 @@ function storagePageHTML() {
       <h2 class="h2-icon">${hicon('image')}<span>Shrink older photos</span></h2>
       <div class="hint" style="margin-bottom:10px">${ns === 1 ? 'One photo was' : ns + ' photos were'} saved before Daylog compressed photos this well.
         Shrinking re-saves ${ns === 1 ? 'it' : 'them'} at the size new photos use: they look the same on your phone's screen and usually take less than half the space. It runs on this phone.</div>
-      <button class="btn btn-primary" id="st-shrink">Shrink ${ns} photo${ns === 1 ? '' : 's'}</button>
+      ${_shrinkNow ? `<button class="btn btn-primary" id="st-shrink" disabled>Shrinking ${_shrinkNow.done} of ${_shrinkNow.total}…</button>`
+        : `<button class="btn btn-primary" id="st-shrink">Shrink ${ns} photo${ns === 1 ? '' : 's'}</button>`}
     </div>` : '') + `
     <div class="hint st-note">New photos are saved small (usually 100–300 KB each) and voice notes at about 180 KB a minute.
       Android's <b>Settings ▸ Apps ▸ Daylog</b> shows a bigger number than this page, because it also counts the app itself and its temporary files.
@@ -6023,8 +6029,11 @@ document.addEventListener('click', async (ev) => {
   b.disabled = true;
   const n0 = mediaShrinkCount();
   b.textContent = `Shrinking 0 of ${n0}…`;
-  const res = await mediaShrinkAll(r => { if (b.isConnected) b.textContent = `Shrinking ${r.done} of ${r.total}…`; });
+  // Look the button up each step: leaving Storage and coming back draws a new one.
+  const res = await mediaShrinkAll(r => { const x = document.getElementById('st-shrink'); if (x) x.textContent = `Shrinking ${r.done} of ${r.total}…`; });
+  if (res.busy) return;
   if (res.full) toast('Your phone ran out of space part-way. Free some up, then try again', true);
+  else if (res.failed) toast('Could not save the smaller copies. Nothing was lost — try again', true);
   else toast(res.changed ? `Saved ${fmtBytes(res.saved)} · ${res.changed} photo${res.changed === 1 ? '' : 's'} shrunk` : 'They were already as small as they can usefully get');
   if (settingsPage === 'storage') renderSettingsIfShown();
 });
@@ -6907,14 +6916,14 @@ async function mediaPhotoRecord(file, ctx, day) {
    photo that cannot be decoded is left exactly as it is. */
 function mediaShrinkable(r) { return !!r && r.kind === 'photo' && (r.enc || 0) < MEDIA_ENC; }
 function mediaShrinkCount() { let n = 0; _media.forEach(r => { if (mediaShrinkable(r)) n++; }); return n; }
-let _shrinking = false;
+let _shrinking = false, _shrinkNow = null;   // _shrinkNow: the running shrink's progress, for a redrawn Storage page
 async function mediaShrinkAll(onStep) {
-  const res = { done: 0, changed: 0, saved: 0, total: 0, full: false };
-  if (_shrinking) return res;
+  const res = { done: 0, changed: 0, saved: 0, total: 0, full: false, failed: false, busy: false };
+  if (_shrinking) { res.busy = true; return res; }
   const todo = [..._media.values()].filter(mediaShrinkable);
   res.total = todo.length;
   if (!todo.length) return res;
-  _shrinking = true; _mediaBusy++;
+  _shrinking = true; _shrinkNow = res; _mediaBusy++;
   try {
     for (const r of todo) {
       if (!_media.has(r.id)) { res.done++; continue; }     // deleted while this ran
@@ -6923,15 +6932,20 @@ async function mediaShrinkAll(onStep) {
       try { p = await mediaPhotoBlobs(r.blob); } catch (e) { p = null; }
       const better = p && p.size < old * 0.9;
       const next = Object.assign({}, r, better ? p : {}, { enc: MEDIA_ENC });
+      // Deleted while it was being re-encoded: a put() now would bring it back from the dead.
+      if (!_media.has(r.id)) { res.done++; continue; }
       try { await mediaWrite(s => s.put(next)); }
-      catch (e) { res.full = /quota/i.test(String(e && (e.name || '') + (e.message || ''))); break; }
+      catch (e) { res.full = /quota/i.test(String(e && (e.name || '') + (e.message || ''))); res.failed = !res.full; break; }
+      // A delete already queued before the put commits first and the put then re-creates the
+      // photo. mediaDelete drops it from _media once its delete is done, so check again.
+      if (!_media.has(r.id)) { try { await mediaWrite(s => s.delete(r.id)); } catch (e) {} res.done++; continue; }
       if (better) { mediaRevoke(r.id); res.changed++; res.saved += old - p.size; }
       if (_media.has(r.id)) _media.set(r.id, next);
       res.done++;
       if (onStep) onStep(res);
     }
   } finally {
-    _shrinking = false; _mediaBusy--;
+    _shrinking = false; _shrinkNow = null; _mediaBusy--;
     // New blobs live in memory; re-read so they become disk-backed handles (see mediaRestore).
     if (res.changed) await mediaLoad();
     mediaIdleCheck();
@@ -7162,6 +7176,9 @@ function voiceRowHTML(r, canDelete) {
 }
 function refreshMediaSlots() {
   histDayRefresh();
+  // History ▸ Photos holds object URLs too, and mediaLoad() (after a shrink or a restore) revokes them all
+  const hs = document.getElementById('s-history');
+  if (hs && hs.classList.contains('on') && !histDay && histTab === 'photos') { const y = window.scrollY; renderHistory(); window.scrollTo({ top: y, behavior: 'instant' }); }
   document.querySelectorAll('.media-slot').forEach(s => {
     s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact });
   });
