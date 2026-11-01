@@ -17,6 +17,8 @@ editor.
   mutation-checked. Clicks in the sync suite go through `tap()`, so a missing button is a
   failed check, not a crash that silently skips everything after it. A crash had hidden four
   mutations on the first pass.
+- **Not deployed yet:** committed as 8b10955 and pushed to origin. The production deploy was
+  blocked pending Kishore's explicit "deploy"; live is still v251.
 - **Verified in real Chrome at 360 and 320 px, dark and light:** the day page, Edit → Back
   showing the edit, voice playback, the viewer, Storage before and after Shrink, a reload, and
   all 21 screens.
