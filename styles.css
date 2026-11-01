@@ -2262,6 +2262,10 @@ input[type="range"] { height: 30px; }
 .m-act:active { transform: scale(.97); }
 .m-act[disabled] { opacity: .45; }
 .note-acts { margin-top: 10px; }
+.lrow .natt { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border); background: transparent; color: var(--text-faint); cursor: pointer; }
+.lrow .natt.on { color: var(--accent-ink); border-color: var(--accent); }
+.natt-acts { margin: 0 0 10px; }
 .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 2px 0 4px; }
 .mthumb { position: relative; aspect-ratio: 1; padding: 0; border: 0; border-radius: 10px; overflow: hidden;
   background: var(--bg-input); cursor: pointer; }

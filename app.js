@@ -148,6 +148,7 @@ const COLORS = [
 ];
 const colorHex = id => { const c = COLORS.find(c => c.id === id); return c ? c.hex : ''; };
 let openColorId = null; // which task/note's color swatches are showing
+let openAttachId = null; // which note's Photo / Gallery / Voice buttons are showing
 
 /* A reusable swatch strip (shown under an item when its 🎨 is tapped). */
 function swatchStrip(id) {
@@ -2363,6 +2364,8 @@ document.addEventListener('click', (ev) => {
   const sc = ev.target.closest('[data-setcolor]');
   if (sc) { setColor(sc.dataset.setcolor, sc.dataset.color); return; }
   if (ev.target.id === 'note-add-btn') return addNote();
+  const nat = ev.target.closest('[data-note-attach]');
+  if (nat) { openAttachId = openAttachId === nat.dataset.noteAttach ? null : nat.dataset.noteAttach; renderNotes(); return; }
   const orn = ev.target.closest('[data-orphan-note]');
   if (orn) { if (mediaCommitNote(orn.dataset.orphanNote, '')) { renderNotes(); toast('Back in your notes'); } return; }
   const dn = ev.target.closest('[data-delnote]');
@@ -2391,14 +2394,24 @@ function renderNotes() {
   document.getElementById('screen-title').textContent = 'Notes';
   const notes = DB.notes();
   document.getElementById('screen-sub').textContent = `${notes.length} note${notes.length===1?'':'s'}`;
+  /* Every note can take photos and voice notes, not only a new one. The slot is always there
+     (empty, and hidden by CSS, until something is added) so that a photo or a recording
+     added to an older note shows up in place. */
+  const media = mediaSupported(), today = todayStr();
   const item = n => `<div class="lrow note" data-id="${n.id}" style="${n.color?`border-left:3px solid ${colorHex(n.color)}`:''}">
     <div class="lrow-main">
       <span class="drag-handle" data-drag>⠿</span>
       <textarea class="note-text" data-note="${n.id}" rows="1" placeholder="Note…">${escapeHtml(n.text)}</textarea>
+      ${media ? `<button class="natt${openAttachId === n.id ? ' on' : ''}" data-note-attach="${escapeHtml(n.id)}" aria-label="Add a photo or voice note" aria-expanded="${openAttachId === n.id}" title="Photo or voice">${icon('camera', 17)}</button>` : ''}
       <button class="pal" data-palette="${n.id}" title="highlight color"${n.color?` style="background:${colorHex(n.color)};border-color:${colorHex(n.color)}"`:''}></button>
       <button class="del" data-delnote="${n.id}">×</button>
     </div>
-    ${mediaHas('note:' + n.id) ? mediaSlot('note:' + n.id, '', { compact: true }) : ''}
+    ${media && openAttachId === n.id ? `<div class="media-acts natt-acts">
+      <button class="m-act" data-madd="camera" data-mctx="note:${escapeHtml(n.id)}" data-mday="${today}">${icon('camera', 20)}<span>Photo</span></button>
+      <button class="m-act" data-madd="gallery" data-mctx="note:${escapeHtml(n.id)}" data-mday="${today}">${icon('image', 20)}<span>Gallery</span></button>
+      <button class="m-act" data-mrec data-mctx="note:${escapeHtml(n.id)}" data-mday="${today}"${_rec ? ' disabled' : ''}>${icon('mic', 20)}<span>Voice</span></button>
+    </div>` : ''}
+    ${media ? mediaSlot('note:' + n.id, today, { compact: true }) : ''}
     ${openColorId===n.id ? swatchStrip(n.id) : ''}
   </div>`;
   const orphans = _mediaReady ? mediaOrphanCtxs() : [];
@@ -2420,7 +2433,7 @@ function renderNotes() {
         <button class="m-act" data-mrec data-mctx="note:new" data-mday="${todayStr()}">${icon('mic', 20)}<span>Voice</span></button>
       </div>
       ${mediaSlot('note:new', todayStr(), { compact: true })}` : ''}
-      <div class="hint" style="margin-top:8px">Drag ⠿ to reorder · tap ◌ to color · 🎤 to speak. Photo and Voice save a new note, with anything you typed as its text.</div>
+      <div class="hint" style="margin-top:8px">Drag ⠿ to reorder · tap ◌ to color · 🎤 to speak. Photo and Voice save a new note, with anything you typed as its text${media ? '. To add to a note you already have, tap its camera' : ''}.</div>
     </div>
     <div class="card" id="note-list" style="padding:4px 16px">
       ${notes.length ? notes.map(item).join('') : '<div class="empty">No notes yet. Add one above 👆</div>'}
@@ -7778,8 +7791,15 @@ function beep(freq) {
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
   o.connect(g); g.connect(_ac.destination); o.start(t); o.stop(t + 0.47);
 }
+/* Two reminders due in the same minute (or one due while another is ringing) used to lose the
+   second: it was marked notified and then silently dropped here. Now it waits its turn. */
+let _alarmQueue = [];
 function fireAlarm(label, time, missed) {
-  const el = document.getElementById('alarm'); if (!el || el.classList.contains('on')) return;
+  const el = document.getElementById('alarm'); if (!el) return;
+  if (el.classList.contains('on')) {
+    if (el.dataset.label !== label && !_alarmQueue.some(q => q[0] === label)) _alarmQueue.push([label, time, missed]);
+    return;
+  }
   el.dataset.label = label; el.dataset.time = time || '';
   document.getElementById('alarm-label').textContent = label;
   document.getElementById('alarm-sub').textContent = (missed ? 'missed · ' : '') + (time || '') + ' reminder';
@@ -7793,6 +7813,8 @@ function stopAlarm() {
   const el = document.getElementById('alarm'); if (el) el.classList.remove('on');
   clearInterval(_alarmTimer); _alarmTimer = null;
   if (navigator.vibrate) navigator.vibrate(0);
+  const next = _alarmQueue.shift();
+  if (next) setTimeout(() => fireAlarm(...next), 600);   // a beat between them, so it reads as a new alarm
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.id === 'alarm-dismiss') { stopAlarm(); return; }

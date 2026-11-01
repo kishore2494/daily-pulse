@@ -2198,6 +2198,53 @@
     histDay = null; settingsPage = null;
   })();
 
+  // ---- v253: photos and voice on a note you already have ----
+  (function () {
+    const tap = (sel) => { const el = document.querySelector(sel); if (!el) { ok('the page has ' + sel, false); return false; } el.click(); return true; };
+    const nSnap = localStorage.getItem('dp.notes');
+    const readySnap = _mediaReady, supSnap = window.mediaSupported, urlSnap = URL.createObjectURL;
+    URL.createObjectURL = () => 'blob:test'; window.mediaSupported = () => true; _mediaReady = true;
+    localStorage.setItem('dp.notes', JSON.stringify([{ id: 'nA1', text: 'Old note', color: '', created: '2026-01-02' }, { id: 'nA"2', text: 'Odd id', color: '', created: '2026-01-02' }]));
+    navigateTo('notes');
+    ok('every note offers a camera button', document.querySelectorAll('#note-list [data-note-attach]').length === 2);
+    ok('…and has a media slot of its own, empty until something is added', !!document.querySelector('#note-list .media-slot[data-mctx="note:nA1"]') && document.querySelector('#note-list .media-slot[data-mctx="note:nA1"]').innerHTML === '');
+    ok('Photo / Gallery / Voice stay hidden until asked for', !document.querySelector('#note-list [data-madd]'));
+    tap('#note-list [data-note-attach="nA1"]');
+    const acts = [...document.querySelectorAll('#note-list [data-madd],[data-mrec]')].filter(b => b.closest('#note-list'));
+    ok('tapping it shows Photo, Gallery and Voice for THAT note', acts.length === 3 && acts.every(b => b.dataset.mctx === 'note:nA1' && b.dataset.mday === todayStr()));
+    ok('…and marks the button as open', document.querySelector('#note-list [data-note-attach="nA1"]').classList.contains('on'));
+    tap('#note-list [data-note-attach="nA1"]');
+    ok('tapping it again hides them', !document.querySelector('#note-list [data-madd]') && openAttachId === null);
+    ok('an id with a quote in it is escaped, not broken out of', !!document.querySelector('#note-list [data-note-attach="nA\\"2"]'));
+    _media.set('nm1', { id: 'nm1', kind: 'photo', mime: 'image/webp', blob: new Blob(['x']), thumb: new Blob(['y']), day: todayStr(), ctx: 'note:nA1', ts: 1, size: 2, enc: MEDIA_ENC });
+    refreshMediaSlots();
+    ok('a photo added to an older note shows in that note at once', !!document.querySelector('#note-list .media-slot[data-mctx="note:nA1"] [data-mview="nm1"]'));
+    ok('…and nowhere else', document.querySelectorAll('[data-mview="nm1"]').length === 1);
+    ok('…and the note is not treated as unattached', !mediaOrphanCtxs().includes('note:nA1'));
+    _media.delete('nm1'); _mediaUrls.clear(); openAttachId = null;
+    _mediaReady = readySnap; window.mediaSupported = supSnap; URL.createObjectURL = urlSnap;
+    if (nSnap != null) localStorage.setItem('dp.notes', nSnap); else localStorage.removeItem('dp.notes');
+  })();
+
+  // ---- v253: two reminders in the same minute both ring ----
+  (function () {
+    const st = window.setTimeout, si = window.setInterval; let later = [];
+    window.setTimeout = (fn) => { later.push(fn); return 0; }; window.setInterval = () => 0;
+    const el = document.getElementById('alarm'), lbl = () => document.getElementById('alarm-label').textContent;
+    try {
+      fireAlarm('Take meds', '08:00', false);
+      fireAlarm('Water plants', '08:00', false);
+      ok('the first reminder rings', el.classList.contains('on') && lbl() === 'Take meds');
+      ok('…and the second waits instead of being dropped', _alarmQueue.length === 1);
+      fireAlarm('Water plants', '08:00', false); fireAlarm('Take meds', '08:00', false);
+      ok('the same reminder is not queued twice, nor the one already ringing', _alarmQueue.length === 1);
+      stopAlarm(); later.splice(0).forEach(f => f());
+      ok('dismissing the first rings the second', el.classList.contains('on') && lbl() === 'Water plants' && _alarmQueue.length === 0);
+      stopAlarm(); later.splice(0).forEach(f => f());
+      ok('dismissing the last leaves it quiet', !el.classList.contains('on'));
+    } finally { window.setTimeout = st; window.setInterval = si; stopAlarm(); _alarmQueue = []; }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
