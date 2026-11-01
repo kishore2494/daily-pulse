@@ -2272,6 +2272,95 @@
     } finally { window.setTimeout = st; window.setInterval = si; stopAlarm(); _alarmQueue = []; }
   })();
 
+  // ---- v253: the Log's save path (independent review: lost typing, wrong day) ----
+  (function () {
+    const T0 = todayStr(), dA = addDays(T0, -2), dB = addDays(T0, -3);
+    const eSnap = localStorage.getItem('dp.entries'), ldSnap = logDate, tsSnap = window.todayStr;
+    const ent = d => (DB.entries()[d] || {});
+    const jt = () => document.querySelector('#s-today [data-txt=journal]');
+    const typeJ = (txt) => { const t = jt(); if (!t) { ok('the Log has a journal box', false); return; } t.value = txt; t.dispatchEvent(new Event('input', { bubbles: true })); };
+    try {
+      const e = DB.entries(); delete e[T0]; delete e[dA]; delete e[dB]; localStorage.setItem('dp.entries', JSON.stringify(e));
+      navigateTo('today');
+      typeJ('Walked to the lake');
+      ok('(typing schedules an autosave)', !!_pendingSave && ent(T0).journal !== 'Walked to the lake');
+      navigateTo('today');                                   // a re-render inside the 700 ms
+      ok('re-opening the Log inside the autosave delay keeps what was typed', ent(T0).journal === 'Walked to the lake' && jt().value === 'Walked to the lake', [ent(T0).journal, jt() && jt().value]);
+      typeJ('Walked to the lake. Then dinner.');
+      applyRemoteState({ touched: 1, entries: {} });         // a sync pull lands mid-typing
+      ok('a sync pull mid-typing saves the typing first', ent(T0).journal === 'Walked to the lake. Then dinner.' && !_pendingSave);
+      typeJ('Typed right before switching apps');
+      window.dispatchEvent(new Event('pagehide'));
+      ok('closing or hiding the app saves the pending typing', ent(T0).journal === 'Typed right before switching apps' && !_pendingSave);
+      // a pending save for another day is not cancelled by Done on this one
+      logDate = dA; openToday(); typeJ('About day A');
+      logDate = T0; draft = JSON.parse(JSON.stringify(DB.entry(T0))); // the draft was replaced without loadDraft
+      document.getElementById('save-entry') && document.getElementById('save-entry').click();
+      ok('Done does not throw away a pending save for another day', ent(dA).journal === 'About day A', ent(dA));
+
+      // midnight: the Log open as "Today" moves to the new today when the app comes back
+      navigateTo('today');
+      const tomorrow = addDays(T0, 1);
+      window.todayStr = () => tomorrow;
+      logRollover();
+      ok('the Log left open overnight moves to the new day', logDate === tomorrow && document.getElementById('screen-title').textContent === 'Today' && document.getElementById('log-date').max === tomorrow, [logDate, document.getElementById('log-date') && document.getElementById('log-date').max]);
+      window.todayStr = tsSnap;
+      logDate = dA; openToday();
+      window.todayStr = () => tomorrow; logRollover(); window.todayStr = tsSnap;
+      ok('…but a past day opened on purpose stays put', logDate === dA);
+      navigateTo('today'); jt().focus();
+      window.todayStr = () => tomorrow; logRollover(); window.todayStr = tsSnap;
+      ok('…and nothing moves while you are typing', logDate === T0);
+      jt().blur();
+
+      // dictation started on one day never writes into another day's journal
+      const SRsnap = window.SpeechRecognition; let rec = null, aborted = false;
+      window.SpeechRecognition = function () { rec = this; this.start = () => {}; this.stop = () => {}; this.abort = () => { aborted = true; }; };
+      const res = t => ({ results: [Object.assign([{ transcript: t }], { isFinal: true })] });
+      navigateTo('today'); typeJ('TODAY notes');
+      const mic = document.createElement('button');
+      dictateInto('[data-txt=journal]', mic);
+      rec.onresult(res('went for a run'));
+      ok('(dictation writes into the open day)', ent(T0).journal === 'TODAY notes went for a run ' || jt().value === 'TODAY notes went for a run ', jt().value);
+      flushAutosave();
+      const e2 = DB.entries(); e2[dB] = { journal: 'YESTERDAY: the trip', habits: {} }; localStorage.setItem('dp.entries', JSON.stringify(e2));
+      logDate = dB; openToday();
+      rec.onresult(res('went for a run and'));
+      flushAutosave();
+      ok('switching day mid-dictation leaves the other day\'s journal alone', ent(dB).journal === 'YESTERDAY: the trip' && jt().value === 'YESTERDAY: the trip', [ent(dB).journal, jt().value]);
+      ok('…and stops listening', aborted);
+      stopDictation && (_recogOn = false, _recog = null, _recogBtn = null);
+      window.SpeechRecognition = SRsnap;
+      ok('dictation into a field outside the Log is never "stale"', dictStaleCheck(document.createElement('textarea'))() === false);
+
+      // tags: whole tags only
+      ok('hasTag matches a whole tag, any case, before punctuation', hasTag('A day. #Content.', '#content') && hasTag('#content', '#content') && !hasTag('for #contentcreation', '#content') && !hasTag('#content-ish', '#content') && !hasTag('a#content', '#content'));
+      navigateTo('today'); typeJ('Filmed two reels for #contentcreation today');
+      const w = document.createElement('button'); w.dataset.mmword = 'Content'; document.getElementById('s-today').appendChild(w);
+      w.click();
+      ok('tagging "Content" next to #contentcreation adds the tag', draft.journal === 'Filmed two reels for #contentcreation today #content', draft.journal);
+      w.click();
+      ok('…and untagging removes only it, never part of another tag', draft.journal === 'Filmed two reels for #contentcreation today', draft.journal);
+      w.remove();
+
+      // a sample day you write in is yours
+      saveDraftNow(dA, { sample: true, journal: 'REAL: my sister visited', habits: {} });
+      ok('saving a sample day makes it a real entry ("Clear sample" keeps it)', ent(dA).journal === 'REAL: my sister visited' && ent(dA).sample === undefined);
+
+      // Workout from a past day's Log
+      logDate = dA; openToday();
+      const g = document.getElementById('log-open-gym') || Object.assign(document.createElement('button'), { id: 'log-open-gym' });
+      if (!g.isConnected) document.getElementById('s-today').appendChild(g);
+      ok('the Log\'s workout button names the day it opens', !document.getElementById('log-open-gym').textContent.includes("today's") || logDate === todayStr());
+      g.click();
+      ok('…and opens THAT day\'s gym, not today\'s', document.getElementById('s-gym').classList.contains('on') && gymDate === dA, gymDate);
+    } finally {
+      window.todayStr = tsSnap; flushAutosave();
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      logDate = ldSnap; navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

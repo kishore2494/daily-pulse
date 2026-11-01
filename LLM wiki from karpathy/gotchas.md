@@ -395,3 +395,19 @@ exit or "threw" as caught, not only lines containing FAIL.
 ## The Money screen's `.in` / `.out` are global (2026-11-01)
 styles.css has bare `.in` and `.out` rules (green and red text). Any other element with class
 `in` or `out` gets a coloured row. Use prefixed names (`hd-in`).
+
+## A debounced save must be flushed before anything re-reads storage (2026-11-01)
+The Log autosaves 700 ms after the last change. `loadDraft()` re-reads the entry from storage,
+so before v253 any re-render inside that window (re-opening the Log, a sync pull landing,
+Done after a re-render) showed the stale copy, and the next keystroke saved over the pending
+text. The rule: every re-read and every exit (hidden, pagehide, update reload) calls
+`flushAutosave()` first. Add any new debounced store to the same places.
+
+## Fixed sleeps in the async tests flake under load (2026-11-01)
+`await sleep(40)` after a click that starts an async chain passes on an idle machine and fails
+when four timezone runs (or a reviewer's harness) share the CPU. Use `until(() => condition)`
+in tests/unit-async.js, which polls for up to 2 s.
+
+## A photo block that points at a missing photo is never pruned (2026-11-01)
+Media stay on one phone; articles sync. On another phone the block's photo is "not on this
+phone". Pruning it there would sync back and orphan the photo on the phone that has it.

@@ -14,6 +14,44 @@ each change is committed and pushed to origin only.
   the habit chip's streak badge not refreshing (`refreshHabitChip` re-renders it), and custom
   number fields in Stats (`numAvgRows`).
 - All 6 + 1 mutations were caught.
+- **Two independent reviews (fresh subagents, not given my conclusions), with all findings
+  fixed except two sync items.**
+  - **Review 1, v252 code (now live):**
+    - "On this day" → Edit → Done → "← Log" left the Log on the OLD day, so the next thing
+      typed was saved there. `dayOpen` now stores `logDate` and restores it.
+    - Shrink could bring back a photo deleted while it ran. It now re-checks before the put,
+      and deletes again after the put if a delete was already queued.
+    - History ▸ Photos → Open day → Back went to Days at the wrong scroll.
+    - A second Shrink tap said "already small". The Storage page now shows the running shrink
+      (`_shrinkNow`), and a non-quota error reports as a failure.
+    - A steps-only day said "Nothing was logged".
+    - Changing `#log-date` mid-Edit broke Done.
+    - History ▸ Photos kept revoked object URLs.
+  - **Review 2, the Log's save path (seven fixed, two deferred):**
+    - `flushAutosave()`: a pending 700 ms autosave was lost when anything re-read the entry
+      (`loadDraft` on re-opening the Log, a sync pull, Done after a re-render). It is now run
+      first: in `loadDraft`, `applyRemoteState`, Done (when it is for another day/draft),
+      `visibilitychange` hidden, `pagehide`, and before an update reload.
+    - `logRollover()`: the Log left open overnight still showed yesterday as "Today" and saved
+      the morning to it. It now moves to the new day on resume and once a minute, but not for a
+      past day opened on purpose and not while a field has focus.
+    - Dictation that started on one day overwrote another day's journal after a date switch
+      (`dictStaleCheck`, for both web and native).
+    - Mood-word tags: tapping "Content" treated `#contentcreation` as tagged and cut text out of
+      the journal (`hasTag`, whole-tag match).
+    - Editing a sample day now drops `sample`, so "Clear sample" no longer deletes real writing.
+    - The Log's workout button on a past day opened today's gym.
+  - **Deferred (sync design, documented in roadmap.md):**
+    - An un-ticked habit comes back from an older device, because the habits merge is a union
+      and clearing deletes the key.
+    - An edit saved within ~1.2 s of the app being killed never reaches the other device.
+  - Each reviewer's repro scripts were re-run against the fixed code: all fixed cases now
+    behave correctly.
+- **Write: photo blocks** (features.md, "Write ▸ photos"). Backups accept `doc:` media; older
+  versions skip and count those items.
+- **Tests:** 797 sync+async × 4 timezones. Every fix was mutation-checked, and one survivor led
+  to an extra "never written back" test. The async suite now waits on conditions instead of
+  fixed sleeps; two old tests flaked under load.
 
 ## 2026-11-01 — v252 deployed (live)
 

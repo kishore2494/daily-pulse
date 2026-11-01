@@ -175,6 +175,25 @@ read-only page, as a sub-view of History (`histDay`, like `curDoc` in Write).
 - Money rows use `hd-in`, not `.in`/`.out`. The Money screen's global `.in`/`.out` rules colour
   whole rows.
 
+## Write ▸ photos (v253)
+
+- Camera / Photo under the block toolbar save a photo with ctx `doc:<docId>` and append a block
+  `{t:'i', mid}` (`docPhotoBlock`). `photoBlockRow` shows it full width with the viewer caption;
+  `#blk-list[data-mset]` makes the viewer page in block order.
+- Deleting:
+  - Removing the block deletes the photo, media first.
+  - Deleting the photo in the viewer drops its block (`docDropBlocks`).
+  - Deleting the article deletes its photos.
+- A block whose photo is missing (synced from another phone) shows "not on this phone" and is
+  never pruned automatically: pruning would sync back and orphan the photo on the phone that
+  has it.
+- Orphans: `mediaOrphanCtxs` includes `doc:` ctxs with no article. Notes ▸ Unattached offers
+  "Make it an article again" (`mediaRestoreDoc`, titled "Recovered photos").
+- `writeRefresh()` (from `refreshMediaSlots`) redraws the editor only when it holds a photo
+  block, so typing elsewhere is not interrupted.
+- The Sheet gets a `[photo: caption]` line.
+- Backup: `mediaItemValid` accepts `doc:`.
+
 ## Settings ▸ Storage (v252, 2026-11-01)
 
 `storagePageHTML()`, on the "Your data" group's Storage row (whose subtitle is the total).

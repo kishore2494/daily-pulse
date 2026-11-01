@@ -62,6 +62,15 @@ Android-first confirmed by Kishore. When Android is live:
 
 ## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
 - **Sync robustness**: list/config stores are last-writer-wins whole-list → concurrent multi-device edits can drop items. Move to id-keyed merge + tombstones + per-item stamps. Gym merge is union-only (uncheck/edit doesn't propagate).
+  - Found again 2026-11-01 (review 2), both reproduced in a jsdom harness:
+    - **Un-ticked habits come back.** Clearing a habit deletes its key, and the entry merge
+      unions `habits`, so an older device's `true` wins over a newer un-tick. Storing `false`
+      would fix the merge, but `false` is read as "logged" by goal counters and `entryHasContent`
+      paths. Needs per-habit stamps or tombstones; decide together with the list-store tombstones.
+    - **A save in the last ~1.2 s before a kill never syncs.** `pushState` is debounced.
+      On the next launch the pull sees a newer local `touched` and uploads nothing. Fix: when
+      local `touched` is newer than remote, push after the pull; and send on hide with
+      `keepalive`.
 - **Sync security**: the sync URL is an unauthenticated bearer to all data; pull uses JSONP. Add a shared-secret token + CORS fetch with shape validation. Document the secrecy requirement.
 - **Native**: add a BOOT_COMPLETED receiver (alarms lost on reboot); request POST_NOTIFICATIONS in Focus/timebox paths; fill the SCHEDULE_EXACT_ALARM Play declaration.
 - **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).

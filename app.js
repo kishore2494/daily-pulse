@@ -365,10 +365,13 @@ async function dictateInto(sel, btn) {
     }
   }
   const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
+  const stale = dictStaleCheck(ta);
   _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = false; btn.classList.add('rec');
   _recog = new SR(); _recog.lang = DICT_LANG; _recog.continuous = true; _recog.interimResults = true;
   const liveTa = () => document.querySelector(sel) || ta;   // survive re-renders mid-dictation
+  const recog = _recog;
   _recog.onresult = (ev) => {   // rebuild from start each event so interim words show live, finals stick
+    if (stale()) { try { recog.abort(); } catch (e) {} return; }
     let all = ''; for (let i = 0; i < ev.results.length; i++) all += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
     const el = liveTa(); el.value = startText + all; el.dispatchEvent(new Event('input', { bubbles: true }));
   };
@@ -377,6 +380,13 @@ async function dictateInto(sel, btn) {
   try { _recog.start(); toast('🎙️ Listening — tap 🎤 to stop'); }
   catch (e) { _recogOn = false; btn.classList.remove('rec'); _recog = null; }
 }
+/* Dictating into the Log belongs to the day it started on. liveTa() re-finds the field after a
+   re-render, so after a switch to another day it found THAT day's journal and replaced it with
+   this day's words. Returns a test the result handlers run first. */
+function dictStaleCheck(ta) {
+  const day = ta && ta.closest && ta.closest('#s-today') ? logDate : null;
+  return () => day != null && logDate !== day;
+}
 // Native speech-to-text via @capacitor-community/speech-recognition (added in a rebuild).
 async function dictateNative(sp, ta, btn, sel) {
   try {
@@ -384,6 +394,7 @@ async function dictateNative(sp, ta, btn, sel) {
     if (sp.requestPermissions) { try { await sp.requestPermissions(); } catch (_) {} }
     else if (sp.requestPermission) { try { await sp.requestPermission(); } catch (_) {} }
     const startText = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
+    const stale = dictStaleCheck(ta);
     _userStopped = false; _recogOn = true; _recogBtn = btn; _natSR = true; btn.classList.add('rec');
     if (sp.removeAllListeners) { try { await sp.removeAllListeners(); } catch (_) {} }
     // Re-query by selector on every partial — a re-render mid-dictation detaches the
@@ -391,6 +402,7 @@ async function dictateNative(sp, ta, btn, sel) {
     const liveTa = () => (sel && document.querySelector(sel)) || ta;
     if (sp.addListener) sp.addListener('partialResults', (d) => {
       const m = d && d.matches && d.matches[0];
+      if (stale()) { try { sp.stop && sp.stop(); } catch (_) {} return; }
       if (m) { const el = liveTa(); el.value = startText + m; el.dispatchEvent(new Event('input', { bubbles: true })); }
     });
     await sp.start({ language: DICT_LANG, partialResults: true, popup: false });
@@ -731,6 +743,7 @@ function remoteSectionOk(store, value) {
 }
 
 function applyRemoteState(remote) {
+  flushAutosave();   // merge what was just typed, rather than re-render it away
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
   const localTouched = +(localStorage.getItem('dp.touched') || 0);
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
@@ -882,6 +895,7 @@ function trackedSleepHours(date) {
 }
 function fmtH(v) { return v == null ? '' : Math.floor(v) + 'h ' + Math.round((v - Math.floor(v)) * 60) + 'm'; }
 function loadDraft() {
+  flushAutosave();
   const existing = DB.entry(logDate);
   draft = existing ? JSON.parse(JSON.stringify(existing)) : { habits: {} };
   if (!draft.habits) draft.habits = {};
@@ -1118,6 +1132,10 @@ document.addEventListener('click', (ev) => {
   if (tb && !ev.target.closest('[data-mview]')) dayOpen(tb.dataset.throwback);
 });
 
+/* "#calm" is in the text as a tag of its own, not as the start of "#calmness" */
+function hasTag(text, tag) {
+  return new RegExp('(^|[^\\p{L}\\p{N}_#-])' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}_-])', 'iu').test(String(text || ''));
+}
 /* ---------- Mood Meter (How We Feel / RULER's model) ----------
    Their insight: people can't name what they feel, so don't ask them to invent a word —
    GIVE them one. Pleasantness x energy is exactly the mood/energy pair we already store,
@@ -1166,7 +1184,7 @@ function moodMeterHTML() {
     // as --good-ink / --bad-ink). Do not put q.c back on text.
     head = `<b class="mmq-${key}">${q.label}</b> · mood ${m}, energy ${en}`;
     const jl = (draft.journal || '').toLowerCase();
-    words = `<div class="mm-words">${q.words.map(w => { const sel = jl.includes('#' + w.toLowerCase());
+    words = `<div class="mm-words">${q.words.map(w => { const sel = hasTag(jl, '#' + w.toLowerCase());
       return `<button type="button" class="mm-word ${sel ? 'on' : ''}" data-mmword="${w}"
         style="${sel ? `background:${q.c};border-color:${q.c};color:#fff` : `border-color:${q.c}66`}">${w}</button>`; }).join('')}</div>
       <div class="hint mm-hint">Tap a word to tag today's entry — tap again to remove</div>`;
@@ -1203,9 +1221,10 @@ document.addEventListener('click', (ev) => {
     const tag = '#' + wd.dataset.mmword.toLowerCase();
     const ta = document.querySelector('[data-txt=journal]');
     const cur = (draft.journal || '');
-    if (cur.toLowerCase().includes(tag)) {
-      // toggle OFF: remove the tag (and the space before it) wherever it sits
-      const re = new RegExp('\\s*' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+    if (hasTag(cur, tag)) {
+      // toggle OFF: remove the tag (and the space before it) wherever it sits — the whole tag
+      // only: tagging "Content" must not cut "#content" out of "#contentcreation"
+      const re = new RegExp('\\s*' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}_-])', 'igu');
       draft.journal = cur.replace(re, '').replace(/^\s+/, '');
       toast('Removed ' + tag);
     } else {
@@ -1654,11 +1673,26 @@ function refreshHabitChip(key) {
   el.replaceWith(tmp.firstElementChild);
 }
 
+/* The Log left open overnight kept yesterday as "Today": the header, the date picker's max and
+   every tap still pointed at it, so the morning's mood and habits were saved to yesterday.
+   On coming back on a new day (and once a minute while open) it moves to the new today —
+   unless a past day was opened on purpose, or something is being typed. */
+let _logTodayAt = null;   // the date the Log showed as "Today" when last drawn
+function logRollover() {
+  if (!_logTodayAt || _logTodayAt === todayStr() || logDate !== _logTodayAt) return;
+  const sc = document.getElementById('s-today'), ae = document.activeElement;
+  if (ae && sc && sc.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+  flushAutosave();
+  logDate = todayStr();
+  if (sc && sc.classList.contains('on')) openToday(); else _logTodayAt = null;
+}
+setInterval(logRollover, 60000);
 function renderToday() {
   // The recording bar belongs to the day it started on; switching day would hide its Save
   // button while the mic kept running.
   if (_rec && _rec.ctx === 'log' && _rec.day !== logDate) voiceStop(false);
   const isToday = logDate === todayStr();
+  _logTodayAt = isToday ? logDate : null;
   document.getElementById('screen-title').textContent = isToday ? 'Today' : prettyDate(logDate);
   document.getElementById('screen-sub').textContent = isToday ? prettyDate(logDate) + ' · Daylog' : 'Editing past entry';
 
@@ -1733,7 +1767,7 @@ function renderToday() {
     </div>`,
     workout: () => `<div class="card">
       <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
-      <button class="btn btn-primary btn-sm" id="log-open-gym">Log / edit today's workout →</button>
+      <button class="btn btn-primary btn-sm" id="log-open-gym">Log / edit ${logDate === todayStr() ? "today's" : "this day's"} workout →</button>
     </div>`,
     health: () => (logDate === todayStr() ? healthCardHTML() : ''),
     reflection: () => ((reflect || journalHtml) ? `<div class="card">
@@ -1829,7 +1863,7 @@ document.addEventListener('input', (ev) => {
   const t = ev.target.closest('[data-txt]'); if (t) { draft[t.dataset.txt] = t.value; autosaveDraft(); return; }
 });
 /* Auto-save the Log draft as you go (debounced) — no need to hit Save. */
-let _autosaveTimer;
+let _autosaveTimer, _pendingSave = null;
 function autosaveDraft() {
   try { refreshTodayRing(); } catch (e) {}
   clearTimeout(_autosaveTimer);
@@ -1837,7 +1871,17 @@ function autosaveDraft() {
   // globals when you switch day or tab, and the deep-clone means this reference stays intact —
   // so a pending save always lands on the entry it was actually editing (no cross-day loss).
   const targetDate = logDate, targetDraft = draft;
-  _autosaveTimer = setTimeout(() => { _autosaveTimer = null; saveDraftNow(targetDate, targetDraft); }, 700);
+  _pendingSave = [targetDate, targetDraft];
+  _autosaveTimer = setTimeout(() => { _autosaveTimer = null; const p = _pendingSave; _pendingSave = null; if (p) saveDraftNow(p[0], p[1]); }, 700);
+}
+/* Run a pending autosave NOW. Anything that re-reads the entry from storage (loadDraft, a sync
+   merge) or that the app may not come back from (hidden, killed, reloaded for an update) must
+   call this first, or the last 700 ms of typing and ticking is silently thrown away. */
+function flushAutosave() {
+  if (!_pendingSave) return;
+  clearTimeout(_autosaveTimer); _autosaveTimer = null;
+  const p = _pendingSave; _pendingSave = null;
+  saveDraftNow(p[0], p[1]);
 }
 /* ---------- Support Daylog ----------
    A tip jar, through Google Play Billing, because that is the only rail Play's anti-steering
@@ -2053,8 +2097,8 @@ function celebSpend() {
 let _awTimer = null, _awDate = null;
 // Backgrounding or closing the app must not eat a pending scan — Android can kill the
 // WebView at any point after onPause, and a dropped timer would lose the award silently.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { try { awardsFlush(); } catch (e) {} } });
-window.addEventListener('pagehide', () => { try { awardsFlush(); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} } });
+window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} });
 function checkNewAwardsSoon(savedDate) {
   _awDate = savedDate || _awDate;
   if (_awTimer) clearTimeout(_awTimer);
@@ -2148,6 +2192,7 @@ document.addEventListener('click', (ev) => {
 });
 function saveDraftNow(date, d) {
   d.updatedAt = new Date().toISOString();
+  delete d.sample;   // a sample day you wrote in is yours now: "Clear sample" must not delete it
   d.tasks = tasksForDate(date);
   // Preserve fields owned by other flows (Gym writes workoutsDone/workoutDetail, Time writes
   // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot.
@@ -2201,7 +2246,10 @@ document.addEventListener('change', (ev) => {
 });
 document.addEventListener('click', async (ev) => {
   if (ev.target.id !== 'save-entry') return;
-  clearTimeout(_autosaveTimer); _autosaveTimer = null;   // no stale debounced save left behind
+  // A pending autosave for this same draft is superseded by the save below; one for anything
+  // else (another day, a draft re-read since) is real work and runs first.
+  if (_pendingSave && (_pendingSave[0] !== logDate || _pendingSave[1] !== draft)) flushAutosave();
+  clearTimeout(_autosaveTimer); _autosaveTimer = null; _pendingSave = null;
   const ok = saveDraftNow(logDate, draft);   // merge-safe path (preserves gym/time fields)
   // Only say it saved if it saved. On a full phone this used to say "Saved 🎉" over a write
   // that never landed, and even overwrote the quota warning in the same tick.
@@ -2231,7 +2279,8 @@ document.addEventListener('click', (ev) => {
     document.body.classList.remove('kbd-open');
     toast('Checklist item added'); return;
   }
-  if (ev.target.id === 'log-open-gym') { gymDate = logDate; navigateTo('gym'); return; }   // gym reachable from Log home (#menu-7)
+  // gym reachable from Log home (#menu-7) — show, not navigateTo, which resets gymDate to today
+  if (ev.target.id === 'log-open-gym') { gymDate = logDate; show('gym'); return; }
   const ut = ev.target.closest('[data-use-tracked]');
   if (ut) { const k = ut.dataset.useTracked; draft[k] = +ut.dataset.trackedVal;
     if (k === 'sleepHours') { draft.bedTime = ''; draft.wakeTime = ''; }   // tracked value replaces manual bed/wake
@@ -4821,7 +4870,7 @@ function dayFromLabel(k) {
    the change that was typed a moment ago rather than the one before it. */
 function histReturnFromEdit() {
   const d = _editFromHist; _editFromHist = null;
-  if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; saveDraftNow(logDate, draft); }
+  flushAutosave();
   histDay = d; show('history');
 }
 document.addEventListener('click', (ev) => {
@@ -6894,7 +6943,7 @@ function mediaRestoreDoc(ctx) {
 let _mediaBusy = 0, _reloadWhenIdle = false;
 function mediaBusyNow() { return !!(_rec || _recStarting || _mediaBusy); }
 function mediaIdleCheck() {
-  if (_reloadWhenIdle && !mediaBusyNow()) { _reloadWhenIdle = false; toast('Daylog updated — reloading'); setTimeout(() => location.reload(), 1500); }
+  if (_reloadWhenIdle && !mediaBusyNow()) { _reloadWhenIdle = false; toast('Daylog updated — reloading'); setTimeout(() => { try { flushAutosave(); } catch (e) {} location.reload(); }, 1500); }
 }
 function mediaAfterNote() {
   const sc = document.getElementById('s-notes');
@@ -7911,7 +7960,7 @@ document.addEventListener('click', (ev) => {
     toast('Snoozed 5 min'); setTimeout(() => fireAlarm(label, '', true), 5 * 60000);
   }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(true); scheduleNtfy(); syncTimelog(); refreshTimerNotif(); scheduleInactivityReminder(); if (hcPlugin()) syncHealth({ silent: true }); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { logRollover(); checkReminders(true); scheduleNtfy(); syncTimelog(); refreshTimerNotif(); scheduleInactivityReminder(); if (hcPlugin()) syncHealth({ silent: true }); } });
 if (hcPlugin()) setTimeout(() => syncHealth({ silent: true }), 4000);   // pull today's screen time/health shortly after open
 // Push the reminders list to the Sheet (a "Reminders" tab)
 function syncReminders() {
@@ -13899,7 +13948,7 @@ if ('serviceWorker' in navigator) {
       if (refreshing) return;
       // A voice note is only in memory until it is saved; a reload now would lose it.
       if (mediaBusyNow()) { _reloadWhenIdle = true; return; }
-      refreshing = true; location.reload();
+      refreshing = true; try { flushAutosave(); } catch (e) {} location.reload();
     });
   }
   navigator.serviceWorker.register('sw.js').then(reg => reg.update && reg.update()).catch(() => {});
