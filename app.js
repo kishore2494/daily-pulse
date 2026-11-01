@@ -8372,9 +8372,10 @@ function validateBackup(d) {
     if (typeof v === 'number' || (typeof v === 'string' && v.length > 512)) return true;
     // A list where an object belongs, or the reverse, is written fine and then breaks the screen
     // that reads it (tasks.filter is not a function), on every visit. Hand-edited files only.
+    // (Static, from LIST_SYNC and the three stores that are certainly objects: this function
+    // is run on its own by tools/check-import.mjs, with no storage behind it.)
     if (v && typeof v === 'object') {
-      const cur = safeParse(localStorage.getItem('dp.' + k), null);
-      const wantList = cur !== null && typeof cur === 'object' ? Array.isArray(cur) : LIST_SYNC.includes(k) ? true : null;
+      const wantList = LIST_SYNC.includes(k) ? true : ['entries', 'gym', 'settings'].includes(k) ? false : null;
       if (wantList !== null && Array.isArray(v) !== wantList) return true;
     }
     return false;

@@ -40,9 +40,16 @@ if (!BACKUP_FLAG_KEYS.length || !BACKUP_FLAG_KEYS.every((k) => BACKUP_KEYS.inclu
   process.exit(1);
 }
 
+// validateBackup also reads LIST_SYNC (the stores that must be lists), the same way.
+const listSrc = block("const LIST_SYNC", "[", "]");
+const LIST_SYNC = eval(listSrc.slice(listSrc.indexOf("[")));
+if (!Array.isArray(LIST_SYNC) || LIST_SYNC.length < 10) {
+  console.error(`!! parsed only ${LIST_SYNC?.length} LIST_SYNC keys — this check has gone stale`);
+  process.exit(1);
+}
 const fnSrc = block("function validateBackup", "{", "}");
 // eslint-disable-next-line no-new-func
-const validateBackup = new Function("BACKUP_KEYS", "BACKUP_FLAG_KEYS", `${fnSrc}; return validateBackup;`)(BACKUP_KEYS, BACKUP_FLAG_KEYS);
+const validateBackup = new Function("BACKUP_KEYS", "BACKUP_FLAG_KEYS", "LIST_SYNC", `${fnSrc}; return validateBackup;`)(BACKUP_KEYS, BACKUP_FLAG_KEYS, LIST_SYNC);
 
 const k0 = BACKUP_KEYS[0];
 const cases = [
