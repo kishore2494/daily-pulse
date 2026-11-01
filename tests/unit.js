@@ -3142,6 +3142,9 @@
       ok('restoring from a sheet whose copy cannot be read ends, as "unreadable"', out === 'unreadable', out);
       out = null; syncLinkRestore('https://script.google.com/macros/s/R/exec', (status) => { out = status; }); lastScript().onerror();
       ok('…and from one that does not load, as "unreachable"', out === 'unreachable', out);
+      out = null; window.setTimeout = (fn, ms) => { if (ms === PULL_WAIT) { fired = fn; return 0; } return stSnap(fn, ms); };
+      syncLinkRestore('https://script.google.com/macros/s/SLOW/exec', (status) => { out = status; }); window.setTimeout = stSnap; fired();
+      ok('…and from one that does not answer in time, as "timeout", keeping the link for a retry', out === 'timeout' && DB.settings().syncUrl === 'https://script.google.com/macros/s/SLOW/exec', out);
       ok('every failure has its own words', new Set(['offline', 'timeout', 'unreadable', 'unreachable'].map(syncFailMsg)).size === 4);
       ok('no pull is left open', _pullsOpen === open0, _pullsOpen);
     } finally {

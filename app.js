@@ -7138,6 +7138,7 @@ document.addEventListener('click', async (ev) => {
       else if (status === 'empty') { renderSettingsIfShown(); toast('Connected, but the sheet has no data to restore yet', true); }
       else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
       else if (status === 'unreadable') toast('That sheet answered, but its copy could not be read. Update the script in it (see the setup page) and try again.', true);
+      else if (status === 'timeout') toast('Your sheet did not answer in time. Wait a moment and tap again.', true);
       else toast('Could not reach that link — check it and try again', true);
     });
     return;
@@ -14300,6 +14301,9 @@ function syncLinkRestore(raw, onOutcome) {
     const days = ok ? contentDates().length : 0;
     if (ok && days) return onOutcome('restored', days);
     if (ok) return onOutcome('empty', 0);
+    // A link that did not answer in time is not a dead link: Apps Script can take a while to
+    // wake. Keep it, so a second tap retries; a link that did not load or made no sense goes.
+    if (why === 'timeout') return onOutcome('timeout', 0);
     const s2 = DB.settings(); s2.syncUrl = ''; DB.saveSettings(s2);
     onOutcome(why === 'unreadable' ? 'unreadable' : 'unreachable', 0);
   });
@@ -14434,6 +14438,7 @@ document.addEventListener('click', (ev) => {
       else if (status === 'empty') toast('Connected, but the sheet has no data to restore yet', true);
       else if (status === 'bad-url') toast('That does not look like a sync link — it ends in /exec', true);
       else if (status === 'unreadable') toast('That sheet answered, but its copy could not be read. Update the script in it (see the setup page) and try again.', true);
+      else if (status === 'timeout') toast('Your sheet did not answer in time. Wait a moment and tap again.', true);
       else toast('Could not reach that link — check it and try again', true);
     });
     return;

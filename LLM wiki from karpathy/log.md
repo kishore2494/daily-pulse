@@ -1,3 +1,17 @@
+## 2026-11-02 (01:10) — plans merge step by step, gym per key (merged); the 01:01 sprint
+
+Kishore set a trigger for 01:01 to spend the whole window before the weekly reset at 02:00.
+- **Merged the builder branch** (6396c2d): plan checklists merge per step (`planItems`,
+  `planFields` sub-maps inside listAt/listDel; `mergePlans`, `planSide` for stamp-less sides);
+  gym days per key (`dp.gymAt`, `gymMerge`, `flushGymSave` before a pull / on day switch /
+  pagehide). 78 tests, 77/77 mutations caught by the builder. Resolved against main; the
+  two restore helpers now stamp at the backup's time, the review-5 rule. 1020 tests.
+- A restore link that only *times out* is kept for a retry instead of being cleared.
+- Seven agents launched in parallel in worktrees: settings-store per-entry merge; adversarial
+  reviews of backup/restore and the Time tracker; a11y/phone-width audit; a fuzz harness for
+  the sync merge wired into the release checks; wiki lint; performance pass. The sync reviewer
+  is attacking the plans/gym merge. Results are folded in below as they land.
+
 ## 2026-11-02 (00:30) — review 5, second pass: restore stamps per item; adoption keeps unseen adds
 
 The reviewer's second pass on the fixes (fuzzers clean, five repros pass) found three more:
