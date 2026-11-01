@@ -24,7 +24,7 @@
     in the same release (account identifiers + app activity, encrypted in transit, deletable).
     Listing wording becomes "no account required — optional sign-in for cloud sync".
   - **Popups:** the What's-new mention + Settings card only. Never a recurring nag.
-  - Phase 0 unchanged: flip `SHOW_SYNC=false` before production (still TRUE from testing).
+  - Phase 0 done: `SHOW_SYNC` is now `!!settings.syncUrl` (app.js), so the sync card only shows for someone who already set up a Sheet (checked 2026-11-01).
 - **Google Play Billing** — ₹9/mo sub w/ 30-day trial, OR simpler ₹99 one-time "Pro" unlock. Needs merchant profile (PAN + bank) in Play Console; then wire the Digital Goods API purchase + gate Pro features. Purchases auto-follow the user's Google account across devices.
 - **Foreground service for the running-timer** — current timer notification with Pause/Stop works while the app process is alive; if Android fully kills the app, actions only apply on relaunch. A true always-live control needs a native foreground service (Java, + Android 14 foregroundServiceType declaration).
 

@@ -2272,6 +2272,45 @@
     } finally { window.setTimeout = st; window.setInterval = si; stopAlarm(); _alarmQueue = []; }
   })();
 
+  // ---- v253: the read-only parse cache (Stats 2.4× faster with 3 years of data) ----
+  (function () {
+    const eSnap = localStorage.getItem('dp.entries'), roSnap = roParse;
+    try {
+      const T0 = todayStr();
+      localStorage.setItem('dp.entries', JSON.stringify({ [T0]: { mood: 5, habits: {} } }));
+      const a = DB.entriesRO(), b = DB.entriesRO();
+      ok('a second read of an unchanged store is the cached object', a === b && a[T0].mood === 5);
+      DB.putEntry(T0, { mood: 9, habits: {} });
+      ok('…and a write through the app is seen at once', DB.entriesRO()[T0].mood === 9);
+      localStorage.setItem('dp.entries', JSON.stringify({ [T0]: { mood: 2, habits: {} } }));
+      ok('…as is a write straight to storage (a restore, a sync, another tab)', DB.entriesRO()[T0].mood === 2);
+      ok('DB.entries() still hands out a fresh copy to code that edits', DB.entries() !== DB.entries() && DB.entries() !== DB.entriesRO());
+      const nsS = localStorage.getItem('dp.notes');
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'nH1', text: 'one', color: '', created: T0 }, { id: 'nH2', text: 'two\nlines', color: '', created: T0 }]));
+      navigateTo('notes');
+      ok('note boxes are fitted to their text (in one batch)', [...document.querySelectorAll('#note-list .note-text')].every(t => /px$/.test(t.style.height)));
+      if (nsS != null) localStorage.setItem('dp.notes', nsS); else localStorage.removeItem('dp.notes');
+      // Nothing that reads through the cache may change what it reads: freeze it and draw everything.
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap);
+      seedSampleData();
+      const deepFreeze = o => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); } return o; };
+      roParse = (key, fb) => deepFreeze(roSnap(key, fb));
+      let threw = null;
+      try {
+        ['today', 'dash', 'cal', 'history', 'habits', 'time', 'awards', 'search'].forEach(k => show(k));
+        ['health', 'mood', 'habits', 'time', 'money', 'check', 'overview'].forEach(t => { dashTab = t; renderDash(); });
+        habitStreak(HABITS[0].key); bestHabitStreak(HABITS[0].key); loggedStreak(); yearPixelsHTML(); segsForDay(addDays(T0, -2)); contentDates();
+        histDayOpen(addDays(T0, -2));
+        const c = document.querySelector('#s-today [data-habit]'); navigateTo('today'); const c2 = document.querySelector('#s-today [data-habit]'); if (c2) c2.click();
+      } catch (e) { threw = e.message; }
+      ok('no screen or helper writes into the shared read-only data', threw === null, threw);
+    } finally {
+      roParse = roSnap; _roCache.clear(); try { clearSampleData && clearSampleData(); } catch (e) {}
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      histDay = null; navigateTo('today');
+    }
+  })();
+
   // ---- v253: the Log's save path (independent review: lost typing, wrong day) ----
   (function () {
     const T0 = todayStr(), dA = addDays(T0, -2), dB = addDays(T0, -3);

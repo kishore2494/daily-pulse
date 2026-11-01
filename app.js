@@ -10,6 +10,19 @@ const APP_VERSION = 'v253';   // shown in More ▸ About so you can confirm the 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
 function safeParse(raw, fb) { if (raw == null) return fb; try { const v = JSON.parse(raw); return v == null ? fb : v; } catch (e) { return fb; } }
+/* A parsed store, cached for as long as storage holds exactly the same text. Stats, the Calendar
+   and streaks re-read the same store once per day or per habit: with three years of data that
+   was 4,400 time segments parsed for every day drawn, 60–70% of a Stats render. The value is
+   SHARED between callers, so only code that never changes what it reads may use it — anything
+   that edits and saves keeps using DB.entries() / DB.timelog(), which return a fresh copy. */
+const _roCache = new Map();
+function roParse(key, fb) {
+  const raw = localStorage.getItem(key), c = _roCache.get(key);
+  if (c && c.raw === raw) return c.v;
+  const v = safeParse(raw, fb);
+  _roCache.set(key, { raw, v });
+  return v;
+}
 
 /* ---------- Config: your habits (from the Daylog form) ----------
    DEFAULT_HABITS is only the starting point — the Customize screen
@@ -157,6 +170,15 @@ function swatchStrip(id) {
 }
 
 /* ---------- Touch-friendly drag-to-reorder ---------- */
+/* Fit textareas to their text. In two passes: writing a height and then reading scrollHeight,
+   one textarea at a time, forces a full layout per textarea — 211 ms for 275 notes on a 4×
+   throttled CPU, against 31 ms batched. */
+function autoSizeAll(list) {
+  const all = [...list];
+  all.forEach(t => { t.style.height = 'auto'; });
+  const hs = all.map(t => t.scrollHeight);
+  all.forEach((t, i) => { t.style.height = hs[i] + 'px'; });
+}
 function enableDrag(listEl, onReorder) {
   if (!listEl) return;
   listEl.querySelectorAll('[data-drag]').forEach(handle => {
@@ -265,6 +287,7 @@ function savedToast(ok, msg) {
 /* ---------- Storage ---------- */
 const DB = {
   entries() { return safeParse(localStorage.getItem('dp.entries'), {}); },
+  entriesRO() { return roParse('dp.entries', {}); },   // read-only: see roParse
   // Returns false when the write failed (quota). Callers that tell the user "Saved" have to
   // know — a full phone used to show "Saved 🎉" over a write that never landed.
   saveEntries(e) { const ok = safeSet('dp.entries', JSON.stringify(e)); pushState(); return ok; },
@@ -305,6 +328,7 @@ const DB = {
   saveTimebox(t) { const ok = safeSet('dp.timebox', JSON.stringify(t)); pushState(); return ok; },
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
+  timelogRO() { return roParse('dp.timelog', []); },   // read-only: see roParse
   saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
   saveTimeacts(a) { const ok = safeSet('dp.timeacts', JSON.stringify(a)); pushState(); return ok; },
@@ -452,11 +476,11 @@ function entryHasContent(en) {
   return false;
 }
 function contentDates(ents) {
-  const e = ents || DB.entries();
+  const e = ents || DB.entriesRO();
   return Object.keys(e).filter(d => entryHasContent(e[d])).sort();
 }
 function loggedStreak() {
-  const e = DB.entries(); let n = 0; let cur = todayStr();
+  const e = DB.entriesRO(); let n = 0; let cur = todayStr();
   // allow today to be unlogged without breaking the streak (count from yesterday)
   if (!entryHasContent(e[cur])) cur = addDays(cur, -1);
   while (entryHasContent(e[cur])) { n++; cur = addDays(cur, -1); }
@@ -557,7 +581,7 @@ function hFrac(entry, key) {
   return hVal(entry, key) === H_DONE ? 1 : 0;
 }
 function habitStreak(key) {
-  const e = DB.entries(); let n = 0; let cur = todayStr();
+  const e = DB.entriesRO(); let n = 0; let cur = todayStr();
   // today may be unlogged without breaking the run
   if (hVal(e[cur], key) !== H_DONE) cur = addDays(cur, -1);
   for (;;) {
@@ -1434,7 +1458,7 @@ function refreshTodayRing() {
    Daylio's most-shared screen, and the reason is simple: a year of your life as one
    picture. 12 columns (months) x 31 rows (days), each pixel your mood that day. */
 function yearPixelsHTML(year) {
-  const e = DB.entries();
+  const e = DB.entriesRO();
   const y = year || new Date().getFullYear();
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   let logged = 0, sum = 0, rows = '';
@@ -2497,7 +2521,7 @@ function renderNotes() {
     </div>
     ${orphanHTML}`;
   // auto-size textareas
-  document.querySelectorAll('#note-list .note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
+  autoSizeAll(document.querySelectorAll('#note-list .note-text'));
   enableDrag(document.getElementById('note-list'), ids => {
     const ns = DB.notes(); DB.saveNotes(ids.map(id => ns.find(n => n.id === id)).filter(Boolean)); renderNotes(); syncNotes();
   });
@@ -2960,7 +2984,7 @@ function overlappingBlocks(block, log) {
 function segsForDay(dateStr) {
   const d0 = new Date(dateStr + 'T00:00:00').getTime(), d1 = d0 + 86400000;
   const now = Date.now();
-  return DB.timelog()
+  return DB.timelogRO()
     .map(s => ({ seg: s, a: Math.max(s.start, d0), b: Math.min(s.end == null ? now : s.end, d1) }))
     .filter(x => x.b > x.a)
     .sort((x, y) => x.a - y.a);
@@ -4095,7 +4119,7 @@ function longestLoggedStreak() {
   return best;
 }
 function bestHabitStreak(key) {
-  const e = DB.entries();
+  const e = DB.entriesRO();
   const ds = Object.keys(e).filter(d => e[d].habits && e[d].habits[key]).sort();
   let best = 0, cur = 0, prev = null;
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
@@ -4934,7 +4958,7 @@ function blockRow(b) {
   </div>`;
 }
 function autoSizeBlocks() {
-  document.querySelectorAll('#blk-list .blk').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
+  autoSizeAll(document.querySelectorAll('#blk-list .blk'));
 }
 function renderWrite() {
   document.getElementById('screen-title').textContent = 'Write';
