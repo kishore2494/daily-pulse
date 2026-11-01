@@ -2611,6 +2611,121 @@
     }
   })();
 
+  // ---- gym days sync tick by tick: un-ticks and log edits propagate ----
+  (function () {
+    const keys = ['dp.gym', 'dp.gymAt', 'dp.entries', 'dp.touched', 'dp.settings', 'dp.timelog', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const gdSnap = gymDate, gidSnap = gymDayId, gvSnap = gymView;
+    const GA = () => listMeta('dp.gymAt');
+    const D = '2026-01-05';
+    const day = (done, log) => ({ [D]: { done: done || {}, log: log || {} } });
+    try {
+      // gymMerge, directly: (local, remote, local stamps, remote stamps, when the remote state was saved)
+      let m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 200 } } }, { [D]: { done: { a: 100 } } }, 1);
+      ok('gym: a newer un-tick beats an older tick', m.gym[D].done.a === false && m.at[D].done.a === 200, m);
+      m = gymMerge(day({ a: true }), day({ a: false }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 200 } } }, 1);
+      ok('gym: …and an un-tick on the other phone arrives', m.gym[D].done.a === false && m.at[D].done.a === 200);
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, {}, 1);
+      ok('gym: an un-tick beats a tick older than the stamps', m.gym[D].done.a === false);
+      m = gymMerge(day({ a: true }), day({}), { [D]: { done: { a: 100 } } }, {}, 1);
+      ok('gym: a side that never touched an exercise has no say about it', m.gym[D].done.a === true);
+      m = gymMerge(day({ a: false, b: true }, { x: '' }), day({ a: true, c: true }, { x: '3x10', y: '2x5' }), {}, {}, 1);
+      ok('gym: what neither phone has stamped still merges as a union', m.gym[D].done.a === true && m.gym[D].done.b === true && m.gym[D].done.c === true && m.gym[D].log.x === '3x10' && m.gym[D].log.y === '2x5' && !Object.keys(m.at).length, m);
+      m = gymMerge(day({}, { x: '3x12' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
+      ok('gym: a newer log edit here is kept', m.gym[D].log.x === '3x12');
+      m = gymMerge(day({}, { x: '3x10' }), day({}, { x: '3x12' }), { [D]: { log: { x: 200 } } }, { [D]: { log: { x: 300 } } }, 1);
+      ok('gym: …and a newer one there arrives', m.gym[D].log.x === '3x12' && m.at[D].log.x === 300);
+      m = gymMerge(day({}, { x: '' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
+      ok('gym: a cleared log stays cleared', m.gym[D].log.x === '');
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 100 } } }, 1);
+      ok('gym: a tie keeps the tick rather than a gap', m.gym[D].done.a === true);
+      m = gymMerge(day({}), { '2026-01-06': { done: { z: true }, log: {} } }, {}, { '2026-01-06': { done: { z: 50 } } }, 1);
+      ok('gym: a day only the other phone has arrives with its stamps', m.gym['2026-01-06'].done.z === true && m.at['2026-01-06'].done.z === 50 && D in m.gym);
+      // a state from an older app version (no gymAt): the union, as before…
+      m = gymMerge(day({ a: false }, { x: '3x12' }), day({ a: true, c: true }, { x: '3x10' }), { [D]: { done: { a: 100 }, log: { x: 100 } } }, undefined, 500);
+      ok('gym: an older app version\'s tick still arrives (the union, as before)', m.gym[D].done.a === true && m.gym[D].done.c === true, m);
+      ok('gym: …stamped with when that state was saved', m.at[D].done.a === 500 && m.at[D].done.c === 500);
+      ok('gym: …and the union never overwrites a log here', m.gym[D].log.x === '3x12' && m.at[D].log.x === 100);
+      m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 900 } } }, undefined, 500);
+      ok('gym: …but an un-tick made after that state was saved stays', m.gym[D].done.a === false && m.at[D].done.a === 900);
+
+      // writers stamp: putGymDay, saveGym, the Gym screen (tick, typed log, Save)
+      localStorage.setItem('dp.gymAt', '{}');
+      const T0 = todayStr(), Y = addDays(T0, -1);
+      const day0 = gymDays()[0], ex = cookedDayEx(day0), k1 = dkey(day0.id, ex[0].id), k2 = dkey(day0.id, ex[1].id);
+      localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true }, log: {} } }));
+      DB.putGymDay(Y, { done: { [k1]: true }, log: {} });
+      ok('putGymDay stamps what it changed', GA()[Y] && GA()[Y].done[k1] > 0 && !GA()[T0], GA());
+      const g = DB.gym(); g[Y].log[k1] = '5 km'; DB.saveGym(g);
+      ok('saveGym stamps what changed, and nothing else', GA()[Y].log[k1] > 0 && Object.keys(GA()[Y].done).length === 1 && !GA()[T0]);
+      const tY = GA()[Y].done[k1];
+      DB.saveGym(DB.gym());
+      ok('saving it unchanged stamps nothing new', GA()[Y].done[k1] === tY);
+      gymDate = T0; show('gym'); gymDayId = day0.id; gymView = 'day'; renderGym();
+      const tg = document.querySelector(`#s-gym [data-ex-toggle="${ex[0].id}"]`);
+      if (tg) tg.click();
+      ok('un-ticking on the Gym screen stamps it', !!tg && DB.gymDay(T0).done[k1] === false && GA()[T0].done[k1] > 0, GA()[T0]);
+      const tU = GA()[T0].done[k1];
+      const lg = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg) { lg.value = '3 x 12'; lg.dispatchEvent(new Event('input', { bubbles: true })); }
+      ok('(typing waits out its debounce)', !!lg && !!_gymPending && !DB.gymDay(T0).log[k2]);
+      // a pull lands mid-typing: the typing is saved first, the other phone's newer tick arrives, nothing is undone after
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
+      const k3 = dkey(day0.id, ex[2].id), later = Date.now() + 1000;
+      applyRemoteState({ touched: Date.now() + 5000, gym: { [T0]: { done: { [k1]: true, [k3]: true }, log: {} } }, gymAt: { [T0]: { done: { [k3]: later } } }, entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull mid-typing saves the typed log first, stamped', DB.gymDay(T0).log[k2] === '3 x 12' && GA()[T0].log[k2] > 0 && !_gymPending);
+      ok('…the other phone\'s older tick does not undo the un-tick here', DB.gymDay(T0).done[k1] === false && GA()[T0].done[k1] === tU);
+      ok('…and its newer tick arrives', DB.gymDay(T0).done[k3] === true && GA()[T0].done[k3] === later);
+      flushGymSave();
+      ok('…and no late save writes the old day back over it', DB.gymDay(T0).done[k3] === true && GA()[T0].done[k3] === later);
+      gymDayId = day0.id; gymView = 'day'; renderGym();
+      const lg2 = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg2) { lg2.value = '3 x 15'; lg2.dispatchEvent(new Event('input', { bubbles: true })); }
+      window.dispatchEvent(new Event('pagehide'));
+      ok('hiding the app saves typing still waiting in the Gym', DB.gymDay(T0).log[k2] === '3 x 15' && !_gymPending);
+      gymDate = Y; openGym(); gymDayId = day0.id; gymView = 'day'; renderGym();
+      const lg3 = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
+      if (lg3) { lg3.value = 'day Y'; lg3.dispatchEvent(new Event('input', { bubbles: true })); }
+      gymDate = T0; openGym();
+      ok('switching day mid-typing saves the typing to the day it was typed on', DB.gymDay(Y).log[k2] === 'day Y' && DB.gymDay(T0).log[k2] === '3 x 15' && !_gymPending);
+      // pushes: what goes up, and when
+      sent.length = 0; pushState(true);
+      ok('every push carries the gym stamps', sent.length && sent[sent.length - 1].gymAt && sent[sent.length - 1].gymAt[T0].done[k1] === tU);
+      const mine = JSON.parse(localStorage.getItem('dp.gym')), myAt = GA(), ents = () => JSON.parse(localStorage.getItem('dp.entries'));
+      const reorder = o => JSON.parse(JSON.stringify(o, (k, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).reverse().reduce((x, kk) => { x[kk] = v[kk]; return x; }, {}) : v));
+      localStorage.setItem('dp.touched', String(Date.now() + 9000)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
+      applyRemoteState({ touched: Date.now() + 9000, gym: reorder(mine), gymAt: reorder(myAt), entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull of the same gym days and stamps (keys in another order) sends nothing', !sent.some(x => x.type === 'state') && localStorage.getItem('dp.gym') === JSON.stringify(mine), sent.length);
+      applyRemoteState({ touched: Date.now() + 9000, gym: mine, entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull from an older app version (no stamps) sends ours back up', sent.some(x => x.type === 'state' && x.gymAt && x.gymAt[T0]));
+      sent.length = 0;
+      const theirs = JSON.parse(JSON.stringify(mine)); theirs[T0].done[k1] = true;
+      const theirAt = JSON.parse(JSON.stringify(myAt)); theirAt[T0].done[k1] = tU - 1000;
+      applyRemoteState({ touched: Date.now() + 9000, gym: theirs, gymAt: theirAt, entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet still has the old tick sends the un-tick back up', DB.gymDay(T0).done[k1] === false && sent.some(x => x.type === 'state' && x.gym[T0].done[k1] === false));
+      ok('gym stamps are not in a backup', BACKUP_EXCLUDED.includes('gymAt') && !BACKUP_KEYS.includes('gymAt'));
+      ok('every gym write goes through the stamping save', DB.saveGym.toString().includes('gymStamp(') && DB.putGymDay.toString().includes('this.saveGym(') && persistGym.toString().includes('DB.putGymDay(') && importData.toString().includes('gymRestored('));
+      // restore: what it brings back is new, what it rolls back is old
+      const before = { [T0]: { done: { [k1]: false, [k2]: true }, log: { [k1]: 'old' } } };
+      localStorage.setItem('dp.gymAt', JSON.stringify({ [T0]: { done: { [k1]: 5, [k2]: 5 }, log: { [k1]: 5 } } }));
+      localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true, [k2]: true }, log: { [k1]: 'older' } }, [Y]: { done: { z: true }, log: {} } }));
+      const tR = Date.now(); gymRestored(before);
+      const ra = GA();
+      ok('restore: a tick it brings back is stamped now', ra[T0].done[k1] >= tR && ra[Y].done.z >= tR, ra);
+      ok('…an unchanged or rolled-back one loses its stamp', !(k2 in ra[T0].done) && !ra[T0].log);
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
+      clearTimeout(_gymSaveTimer); _gymPending = null;
+      gymDate = gdSnap; gymDayId = gidSnap; gymView = gvSnap;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: the Time tracker (independent review 4) ----
   (function () {
     const keys = ['dp.timelog', 'dp.timeacts', 'dp.actnames', 'dp.pausedAct', 'dp.pausedPid', 'dp.pomo', 'dp.timebox', 'dp.projects'];

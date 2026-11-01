@@ -490,7 +490,8 @@ const DB = {
   exercises() { const v = safeParse(localStorage.getItem('dp.exercises'), null); return Array.isArray(v) ? v : DEFAULT_EXERCISES.slice(); },
   saveExercises(x) { const ok = listSave('dp.exercises', x); pushState(); return ok; },
   gym() { return safeParse(localStorage.getItem('dp.gym'), {}); },
-  saveGym(g) { const ok = safeSet('dp.gym', JSON.stringify(g)); pushState(); return ok; },
+  // Every gym write goes through here, so every change is stamped (gymStamp) for the sync merge.
+  saveGym(g) { const prev = this.gym(), ok = safeSet('dp.gym', JSON.stringify(g)); if (ok) gymStamp(g, prev); pushState(); return ok; },
   gymDay(date) { return this.gym()[date] || { done: {}, log: {} }; },
   putGymDay(date, d) { const g = this.gym(); g[date] = d; return this.saveGym(g); },
 
@@ -913,7 +914,7 @@ function pushState(now) {
       finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}),
-      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel') };
+      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel'), gymAt: listMeta('dp.gymAt') };
     _pushPending = null;
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
@@ -982,8 +983,56 @@ function mergeHabits(a, b) {
   if (Object.keys(habitsAt).length) out.habitsAt = habitsAt;
   return out;
 }
+/* ---------- Gym days sync tick by tick ----------
+   dp.gym merged as a union: a tick on either phone was kept, so un-ticking an exercise, or
+   changing what you typed against it, came back from the other phone's older copy. Every save
+   (DB.saveGym) now records when each tick and each typed log last changed, in dp.gymAt —
+   { date: { done: { key: when }, log: { key: when } } } — and the pull (gymMerge) takes the
+   newer one per key. */
+const GYM_PARTS = ['done', 'log'];
+function gymStamp(next, prev) {
+  const at = listMeta('dp.gymAt'), P = objOf(prev), now = Date.now(); let hit = false;
+  Object.keys(objOf(next)).forEach(d => GYM_PARTS.forEach(f => {
+    const nv = objOf(objOf(next[d])[f]), pv = objOf(objOf(P[d])[f]);
+    new Set([...Object.keys(nv), ...Object.keys(pv)]).forEach(k => {
+      if (nv[k] === pv[k]) return;
+      const s = at[d] = objOf(at[d]); (s[f] = objOf(s[f]))[k] = now; hit = true;
+    });
+  }));
+  if (hit) safeSet('dp.gymAt', JSON.stringify(at));
+}
+/* The other phone's gym days into this one's: per date, per exercise, the tick and the log
+   apart. The newer stamp wins, an un-tick or a cleared log included. A side that never touched
+   a key has no say about it; a key neither side has stamped (older than the stamps) keeps the
+   old union, which never drops a tick or a log. A state from an older app version has no gymAt
+   at all, so the union again — except where this phone changed the key after that state was
+   saved (it cannot hold anything newer), and what the union does take from it is stamped with
+   when it was saved. */
+function gymMerge(local, remote, la, ra, touched) {
+  const stamped = !!ra && typeof ra === 'object' && !Array.isArray(ra);
+  const gym = {}, at = {};
+  new Set([...Object.keys(local), ...Object.keys(remote)]).forEach(d => {
+    const l = objOf(local[d]), r = objOf(remote[d]), day = Object.assign({}, r, l), dat = {};
+    GYM_PARTS.forEach(f => {
+      const lv = objOf(l[f]), rv = objOf(r[f]), ls = objOf(objOf(la[d])[f]), rs = stamped ? objOf(objOf(ra[d])[f]) : {}, v = {}, s = {};
+      new Set([...Object.keys(lv), ...Object.keys(rv), ...Object.keys(ls), ...Object.keys(rs)]).forEach(k => {
+        const gain = !!rv[k] && !lv[k];   // what the old union would take from the other phone
+        const a = +ls[k] || 0, b = stamped ? +rs[k] || 0 : gain ? +touched || 0 : 0;
+        const win = b > a ? rv : a > b ? lv : gain || !(k in lv) ? rv : lv;   // a tie keeps a value rather than a gap
+        if (k in win) v[k] = win[k];
+        if (Math.max(a, b)) s[k] = Math.max(a, b);
+      });
+      if (f in l || f in r) day[f] = v;
+      if (Object.keys(s).length) dat[f] = s;
+    });
+    gym[d] = day;
+    if (Object.keys(dat).length) at[d] = dat;
+  });
+  return { gym, at };
+}
 function applyRemoteState(remote) {
   flushAutosave();   // merge what was just typed, rather than re-render it away
+  flushGymSave();    // …in the Gym too: a late save would write back the day as it was before the pull
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
   const localTouched = +(localStorage.getItem('dp.touched') || 0);
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
@@ -1014,17 +1063,14 @@ function applyRemoteState(remote) {
     if (Object.keys(local).some(d => !(d in remote.entries))) remoteBehind = true;
     safeSet('dp.entries', JSON.stringify(local));
   }
-  // Gym: merge by date, union of done/log — never lose a workout.
+  // Gym: per date, per exercise, newest change first (see gymMerge).
   if (remote.gym && !(typeof remote.gym === 'object' && !Array.isArray(remote.gym))) skippedSections.push('gym');
   else if (remote.gym) {
-    const local = DB.gym();
-    Object.keys(remote.gym).forEach(d => {
-      if (!local[d]) { local[d] = remote.gym[d]; changed = true; return; }
-      const ld = local[d], rd = remote.gym[d];
-      Object.keys(rd.done || {}).forEach(k => { if (rd.done[k] && !ld.done[k]) { ld.done[k] = true; changed = true; } });
-      Object.keys(rd.log || {}).forEach(k => { if (rd.log[k] && !ld.log[k]) { ld.log[k] = rd.log[k]; changed = true; } });
-    });
-    safeSet('dp.gym', JSON.stringify(local));
+    const local = objOf(DB.gym()), la = listMeta('dp.gymAt');
+    const m = gymMerge(local, remote.gym, la, remote.gymAt, remote.touched);
+    if (canonJSON(m.gym) !== canonJSON(local)) { safeSet('dp.gym', JSON.stringify(m.gym)); changed = true; }
+    if (canonJSON(m.at) !== canonJSON(la)) safeSet('dp.gymAt', JSON.stringify(m.at));
+    if (canonJSON(m.gym) !== canonJSON(remote.gym) || canonJSON(m.at) !== canonJSON(objOf(remote.gymAt))) remoteBehind = true;
   }
   // Time log: merge by segment id, newer `upd` wins — a timer started on either device survives.
   // Deletions travel as tombstones (dp.timelogDel, id → when). "Missing on the side that saved
@@ -2403,7 +2449,7 @@ let _awTimer = null, _awDate = null;
 // Backgrounding or closing the app must not eat a pending scan — Android can kill the
 // WebView at any point after onPause, and a dropped timer would lose the award silently.
 document.addEventListener('visibilitychange', () => { if (document.hidden) { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} } });
-window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} });
+window.addEventListener('pagehide', () => { try { flushAutosave(); } catch (e) {} try { flushGymSave(); } catch (e) {} try { awardsFlush(); } catch (e) {} try { flushPush(); } catch (e) {} });
 function checkNewAwardsSoon(savedDate) {
   _awDate = savedDate || _awDate;
   if (_awTimer) clearTimeout(_awTimer);
@@ -3006,6 +3052,7 @@ function gymStreak() {
   return n;
 }
 function openGym() {
+  flushGymSave();   // typing for the day being left, before its draft is replaced
   const d = DB.gymDay(gymDate);
   gymDraft = { done: Object.assign({}, d.done), log: Object.assign({}, d.log) };
   gymView = 'home';
@@ -3129,13 +3176,22 @@ function persistGym(silent, date, draft) {
   if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
   return entry;
 }
-let _gymSaveTimer;
+let _gymSaveTimer, _gymPending = null;
 document.addEventListener('input', (ev) => {
   const lg = ev.target.closest('[data-ex-log]');
   if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value;
-    const capDate = gymDate, capDraft = gymDraft;   // capture NOW so a date-switch mid-debounce is safe
-    clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(() => persistGym(true, capDate, capDraft), 700); }
+    if (_gymPending && _gymPending[1] !== gymDraft) flushGymSave();
+    _gymPending = [gymDate, gymDraft];   // captured NOW so a date-switch mid-debounce is safe
+    clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(flushGymSave, 700); }
 });
+/* Save typing still waiting out its debounce. A sync pull calls this first: otherwise the pull
+   re-opens the day without the typing, and the late save then writes back the whole day as it
+   was before the pull — now stamped as the newest change, so it would undo the other phone's. */
+function flushGymSave() {
+  const p = _gymPending; if (!p) return;
+  clearTimeout(_gymSaveTimer); _gymPending = null;
+  persistGym(true, p[0], p[1]);
+}
 document.addEventListener('change', (ev) => { if (ev.target.id === 'gym-date') { gymDate = ev.target.value; openGym(); } });
 
 /* ============================================================
@@ -8018,7 +8074,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel',
+  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel', 'gymAt',
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
@@ -8251,6 +8307,18 @@ function planPartsRestored(before, at, del, now) {
   });
   at.planItems = PI; del.planItems = PD; at.planFields = PF;
 }
+/* The same for gym days (dp.gymAt): a tick or a log the restore brings back (not there before)
+   is stamped now, so the other phone's older un-tick does not take it away again; every other
+   stamp goes, since it was for the version just replaced, and a newer change on the other
+   phone then still wins. */
+function gymRestored(before) {
+  const at = {}, g = objOf(DB.gym()), now = Date.now();
+  Object.keys(g).forEach(d => GYM_PARTS.forEach(f => {
+    const v = objOf(objOf(g[d])[f]), was = objOf(objOf(objOf(before)[d])[f]);
+    Object.keys(v).forEach(k => { if (v[k] && !was[k]) { const s = at[d] = objOf(at[d]); (s[f] = objOf(s[f]))[k] = now; } });
+  }));
+  safeSet('dp.gymAt', JSON.stringify(at));
+}
 /* `after(restoredAnything)` lets a caller react to the OUTCOME — onboarding uses it to skip
    itself only when a restore really happened. It fires false on a bad file, a refused
    confirm, or an all-keys-failed write, so a caller can never mistake a no-op for success. */
@@ -8270,9 +8338,10 @@ function importData(file, after) {
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
       // RESTORE path, where it matters more.
       let failed = 0, wrote = 0;
-      const listsBefore = listIds(check.keys);
+      const listsBefore = listIds(check.keys), gymBefore = check.keys.includes('gym') ? DB.gym() : null;
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
       listRestored(listsBefore);
+      if (gymBefore) gymRestored(gymBefore);
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');
