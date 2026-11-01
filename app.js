@@ -234,14 +234,15 @@ function reportCrash(msg, src) {
   } catch (_) {}
 }
 /* JSONP pulls waiting for their answer (pullState). The answer is a script from Google, so if it
-   does not parse — a _State the Sheet broke, a very old script — the browser reports only
-   "Script error." here, with no file. That was raising the crash sheet on every open of an app
-   that was fine; the pull itself now reports the failure. Declared here, above its first use,
-   so an error during startup still reaches the handler. */
+   does not parse — a _State the Sheet broke, a very old script — it lands here: from another
+   origin as a bare "Script error." with no file, from this origin (the tests, a local copy) as
+   the real SyntaxError named after the pull's URL. Either way it was raising the crash sheet on
+   every open of an app that was fine; the pull itself reports the failure. Declared here,
+   above its first use, so an error during startup still reaches the handler. */
 let _pullsOpen = 0;
 window.addEventListener('error', (e) => {
   if (!e || !e.message) return;
-  if (_pullsOpen && !e.filename && /^Script error\.?$/.test(e.message)) return;
+  if (_pullsOpen && (!e.filename ? /^Script error\.?$/.test(e.message) : /[?&]type=pull&callback=dpcb/.test(e.filename))) return;
   reportCrash(e.message, e.filename + ':' + e.lineno);
 });
 window.addEventListener('unhandledrejection', (e) => { reportCrash('promise: ' + (e && e.reason), 'async'); });

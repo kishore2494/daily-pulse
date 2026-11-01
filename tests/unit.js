@@ -2774,6 +2774,11 @@
       p = start();
       window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
       ok('a reply that does not parse does not raise the crash sheet', !_crashShown && !document.getElementById('crash-sheet'));
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Uncaught SyntaxError: Invalid or unexpected token', filename: p.el.src, lineno: 1 }));
+      ok('…nor does the same from this origin, which names the pull\'s URL', !_crashShown && !document.getElementById('crash-sheet'));
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Uncaught TypeError: x is not a function', filename: 'https://daylog.test/app.js', lineno: 9 }));
+      ok('…while a real error during a pull still does', _crashShown && !!document.getElementById('crash-sheet'));
+      document.querySelectorAll('#crash-sheet').forEach(x => x.remove()); _crashShown = shown0;
       p.on.load();
       window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: '' }));
       ok('…but with no pull open, "Script error." still does', _crashShown && !!document.getElementById('crash-sheet'));
