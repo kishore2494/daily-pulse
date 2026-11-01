@@ -58,7 +58,8 @@ Sheet** to back-fill everything you've logged so far.
 - **Stats** — streak, days logged, avg mood/energy, gym streak, workouts/30d; mood/energy &
   sleep/deep-work trend charts; 30-day habit completion bars.
 - **Photos & voice** (v251) — a Log card to add photos (camera or gallery) and record voice notes
-  for the day; Notes can be a photo or a voice clip too. Kept in IndexedDB (`daylog-media`), never
+  for the day; Notes can be a photo or a voice clip too, and any note can take more (v253); Write
+  articles take photo blocks (v253). Kept in IndexedDB (`daylog-media`), never
   in localStorage and never sent to the Sheet; carried in the backup file as `_media`.
   "On this day" shows old photos, and History has a Photos tab. Since v252 photos are saved as
   1280px WebP (about 44% of v251's size) and voice notes at 24 kbps mono.

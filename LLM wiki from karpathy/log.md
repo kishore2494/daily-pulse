@@ -1,4 +1,4 @@
-## 2026-11-01 (evening) — v253 in progress: spare-budget session
+## 2026-11-01 (evening) — v253 built, not deployed: spare-budget session
 
 Kishore asked me to use the spare weekly budget usefully and log it. This is not deployed;
 each change is committed and pushed to origin only.

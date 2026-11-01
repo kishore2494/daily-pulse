@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v252';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v253';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -977,8 +977,11 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w22',
+  v: 'w23',
   items: [
+    '🛟 <b>Nothing you type gets lost</b> — the last moment of typing could vanish if the Log redrew itself, a sync landed or the app was closed straight after; and a Log left open overnight kept saving the morning to yesterday. Both are fixed, along with voice typing that kept going after you switched day, and a mood word that could cut text out of a longer #tag.',
+    '🖼️ <b>Photos in Write</b> — add photos to an article with <b>Camera</b> or <b>Photo</b> under the toolbar. Tap one to see it full-screen.',
+    '📎 <b>Photos on any note</b> — tap a note\'s camera to add a photo or a voice note to a note you already have.',
     '📖 <b>Look back at a day</b> — tapping a past day (in History, the Calendar, Stats, Search or On this day) now opens a page that shows the whole day: how it felt, your journal, photos and voice notes, your checklist, where the time went, workouts, money and notes. Only the <b>Edit</b> button takes you to the Log, and Back brings you here again.',
     '💾 <b>Settings ▸ Storage</b> — see how much space Daylog takes on your phone, and what takes it. New photos now take less than half the space they did, and voice notes are smaller too. If you added photos before this update, <b>Shrink older photos</b> there frees more than half their space.',
     '📷 <b>Photos &amp; voice notes</b> — the Log has a new <b>Photos &amp; voice</b> card, under Reflection. Take a photo, add some from your gallery, or record a voice note while the day is still fresh, and tap any photo to see it full-screen, caption it or share it. On the Notes screen, <b>Photo</b> and <b>Voice</b> each save a new note. Everything stays on your phone. Photos are shrunk to a few hundred KB, still sharp full-screen, and their location data is removed. They go into your backup file, so a new phone gets them back. They are not sent to the Google Sheet. <b>On this day</b> now shows the photos you took a week, a month or a year ago; <b>History ▸ Photos</b> shows them all by month; and there is a <b>month-in-photos</b> share card.',
