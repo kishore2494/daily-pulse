@@ -2469,6 +2469,148 @@
     }
   })();
 
+  // ---- plans sync step by step: a tick on each phone both survive ----
+  (function () {
+    const keys = ['dp.plans', 'dp.listAt', 'dp.listDel', 'dp.touched', 'dp.settings', 'dp.entries', 'dp.timelog', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const cSnap = window.confirm; window.confirm = () => true;
+    const cpSnap = curPlan;
+    const at = () => listMeta('dp.listAt'), dl = () => listMeta('dp.listDel');
+    const step = (id, done, text) => ({ id, text: text || id, done: !!done, color: '', created: '2026-01-01' });
+    const plan = (items, extra) => Object.assign({ id: 'p1', name: 'Trip', color: '', created: '2026-01-01', items }, extra || {});
+    const P = () => DB.plans().find(p => p.id === 'p1') || {};
+    const its = () => (P().items || []).map(i => i.id + (i.done ? '+' : '')).join(',');
+    const seed = (items, listAt, listDel) => {
+      localStorage.setItem('dp.plans', JSON.stringify([plan(items)]));
+      localStorage.setItem('dp.listAt', JSON.stringify(listAt || {})); localStorage.setItem('dp.listDel', JSON.stringify(listDel || {}));
+    };
+    const open = () => { show('plans'); curPlan = 'p1'; renderPlans(); };
+    const tap = sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; };
+    const pull = (plans, listAt, listDel, extra) => applyRemoteState(Object.assign({ touched: Date.now() + 5000, plans, listAt, listDel: listDel || {}, entries: {}, timelog: [], timelogDel: {} }, extra || {}));
+    try {
+      // what each save records
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: 1000 } });
+      open();
+      ok('(the plan is open)', tap('[data-planitem-toggle="i1"]'));
+      let A = at();
+      ok('ticking a step stamps that step', A.planItems && A.planItems.p1.i1 > 1000, A.planItems);
+      ok('…the steps it did not change keep the plan\'s earlier stamp', A.planItems.p1.i2 === 1000 && A.planItems.p1.i3 === 1000);
+      ok('…and so do the plan\'s own fields', A.planFields.p1 === 1000);
+      ok('…while the whole-plan stamp still moves (older app versions merge by it)', A.plans.p1 > 1000);
+      ok('…and no delete records appear', !('planItems' in dl()), dl());
+      const tTick = A.planItems.p1.i1;
+      const nm = document.querySelector('[data-planname="p1"]');
+      if (nm) { nm.value = 'Trip to Goa'; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+      ok('renaming a plan stamps its fields, and no step', !!nm && P().name === 'Trip to Goa' && at().planFields.p1 >= tTick && at().planItems.p1.i2 === 1000);
+      open(); tap('[data-planitem-del="i3"]');
+      ok('deleting a step records when', (dl().planItems || {}).p1 && dl().planItems.p1.i3 >= tTick && !('i3' in at().planItems.p1), dl());
+      open(); tap('[data-planitem-toggle="i2"]'); open(); tap('#plan-clear-done');
+      ok('"Clear completed" records each step it removed', its() === '' && dl().planItems.p1.i1 >= tTick && dl().planItems.p1.i2 >= tTick, its());
+      open(); const inp = document.getElementById('plan-item-input'); if (inp) inp.value = 'Book hotel'; tap('#plan-item-add-btn');
+      const added = (P().items || [])[0];
+      ok('adding a step stamps it', !!added && at().planItems.p1[added.id] >= tTick);
+      const A0 = at(); A0.planItems.p1[added.id] = 7; A0.planFields.p1 = 7; localStorage.setItem('dp.listAt', JSON.stringify(A0));
+      open(); setColor(added.id, 'red');
+      ok('colouring a step stamps it, not the plan\'s fields', P().items[0].color === 'red' && at().planFields.p1 === 7 && at().planItems.p1[added.id] > 7, at());
+      seed([step('i1')], {}, { planItems: { p1: { old: Date.now() - 91 * 864e5 } } });
+      open(); tap('[data-planitem-toggle="i1"]');
+      ok('a plan with no stamp at all: its fields are marked as not yet changed (0)', at().planFields.p1 === 0 && at().planItems.p1.i1 > 0, at());
+      ok('delete records older than 90 days are dropped', !(dl().planItems || {}).p1);
+      localStorage.setItem('dp.listDel', JSON.stringify({ planItems: { p1: { i9: Date.now() - 1000 } } }));
+      DB.savePlans([plan([step('i1', true), step('i9')])]);
+      ok('a step saved again under a deleted id loses its delete record', !(dl().planItems || {}).p1 && at().planItems.p1.i9 > 0, dl());
+      DB.savePlans([plan([step('i1', true), step('i9')]), { id: 'p2', name: 'New', items: [step('j1')] }]);
+      ok('a new plan stamps its fields and every step', at().planFields.p2 > 0 && at().planItems.p2.j1 > 0);
+      show('plans'); curPlan = null; renderPlans(); tap('[data-delplan="p2"]');
+      ok('deleting a plan drops its steps\' stamps (its own delete record covers them)', !DB.plans().some(p => p.id === 'p2') && !((at().planItems || {}).p2) && !('p2' in (at().planFields || {})) && !!dl().plans.p2);
+
+      // the merge, directly: a tick on each phone
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const now = Date.now();
+      localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: 1000 } });
+      open(); tap('[data-planitem-toggle="i1"]');   // ticked here
+      const tA = at().planItems.p1.i1;
+      localStorage.setItem('dp.touched', String(tA));
+      pull([plan([step('i1'), step('i2', true), step('i3')])],
+        { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tA + 5, i3: 1000 } } });
+      ok('a step ticked on each phone: both ticks survive', its() === 'i1+,i2+,i3', its());
+      ok('…and both stamps are kept', at().planItems.p1.i1 === tA && at().planItems.p1.i2 === tA + 5, at().planItems);
+      // un-tick here, the other phone still has the tick (older)
+      open(); tap('[data-planitem-toggle="i1"]');
+      const tU = at().planItems.p1.i1;
+      pull([plan([step('i1', true), step('i2', true), step('i3')])],
+        { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: tA, i2: tA + 5, i3: 1000 } } });
+      ok('an un-tick here survives the other phone\'s older tick', its() === 'i1,i2+,i3', its());
+      pull([plan([step('i1'), step('i2'), step('i3')])],
+        { plans: { p1: tU + 50 }, planFields: { p1: 1000 }, planItems: { p1: { i1: tU, i2: tU + 50, i3: 1000 } } });
+      ok('…and an un-tick there arrives here', its() === 'i1,i2,i3', its());
+      // a rename on one phone, a tick on the other
+      seed([step('i1'), step('i2')], { plans: { p1: now - 500 }, planFields: { p1: now - 400 }, planItems: { p1: { i1: 1000, i2: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1'), step('i2')], { name: 'Renamed here' })]));
+      pull([plan([step('i1', true), step('i2')])], { plans: { p1: now }, planFields: { p1: 1000 }, planItems: { p1: { i1: now, i2: 1000 } } });
+      ok('a rename here survives the other phone\'s later tick', P().name === 'Renamed here' && its() === 'i1+,i2', [P().name, its()]);
+      pull([plan([step('i1', true), step('i2')], { name: 'Renamed there' })], { plans: { p1: now + 9 }, planFields: { p1: now + 9 }, planItems: { p1: { i1: now, i2: 1000 } } });
+      ok('…and a later rename there wins', P().name === 'Renamed there');
+      // delete beats an older edit
+      seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } });
+      open(); tap('[data-planitem-del="i2"]');
+      const tD = dl().planItems.p1.i2;
+      pull([plan([step('i1'), step('i2', false, 'edited there')])], { plans: { p1: tD - 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD - 10 } } });
+      ok('a step deleted here is not brought back by the other phone\'s older edit', its() === 'i1', its());
+      pull([plan([step('i1'), step('i2', false, 'edited later')])], { plans: { p1: tD + 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD + 10 } } });
+      ok('…but an edit made after the delete brings it back', its() === 'i1,i2' && P().items[1].text === 'edited later', its());
+      pull([plan([step('i1')])], { plans: { p1: tD + 20 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000 } } }, { planItems: { p1: { i2: tD + 20 } } });
+      ok('a step deleted there goes here too', its() === 'i1', its());
+      // an older app version (v253): its whole-plan stamp stands for every step
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: now - 900 }, planFields: { p1: 1000 }, planItems: { p1: { i1: now - 900, i2: 1000, i3: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
+      pull([plan([step('i1'), step('i2', true)], { name: 'Theirs' })], { plans: { p1: now - 100 } });
+      ok('a newer plan from an older app version wins whole, as before', its() === 'i1,i2+' && P().name === 'Theirs', [its(), P().name]);
+      ok('…and its stamp now stands for each of its steps here', at().planItems.p1.i1 === now - 100 && dl().planItems.p1.i3 === now - 100, [at().planItems, dl().planItems]);
+      seed([step('i1'), step('i2'), step('i3')], { plans: { p1: now - 50 }, planFields: { p1: 1000 }, planItems: { p1: { i1: now - 50, i2: 1000, i3: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
+      pull([plan([step('i1'), step('i2', true), step('i3')])], { plans: { p1: now - 100 } });
+      ok('…an older one keeps this phone\'s later tick, and takes its own', its() === 'i1+,i2+,i3', its());
+      seed([step('i1')], { plans: { p1: now - 900 } });
+      pull([plan([step('i1', true), step('i2')])], { plans: { p1: now - 100 } });
+      ok('two phones without step stamps: the newer whole plan, as before', its() === 'i1+,i2' && at().planFields.p1 === now - 100, [its(), at()]);
+      seed([step('i1')], { plans: { p1: now - 900 } });
+      localStorage.setItem('dp.touched', String(now));
+      applyRemoteState({ touched: now + 30, plans: [plan([step('i9')])] });
+      ok('a state from before item stamps (no listAt) still replaces the list', its() === 'i9', its());
+      // a plan only the other phone has: its step stamps come with it — unless it has none
+      seed([step('i1')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000 } } });
+      pull([plan([step('i1')]), { id: 'p3', name: 'Theirs', items: [step('k1')] }, { id: 'p4', name: 'Old', items: [step('m1')] }],
+        { plans: { p1: 1000, p3: now, p4: now }, planFields: { p1: 1000, p3: now }, planItems: { p1: { i1: 1000 }, p3: { k1: now } } }, { planItems: { p3: { k0: now } } });
+      ok('a plan that arrives brings its step stamps and delete records', at().planItems.p3.k1 === now && at().planFields.p3 === now && dl().planItems.p3.k0 === now);
+      ok('…and one with none stays without (its whole-plan stamp stands for them)', !('p4' in at().planFields) && !(at().planItems || {}).p4);
+      // pushes: none when nothing differs, one when the Sheet lacks a delete record
+      seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } }, { planItems: { p1: { i0: now } } });
+      localStorage.setItem('dp.touched', String(now + 100)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
+      applyRemoteState({ touched: now + 100, plans: DB.plans(), listAt: at(), listDel: dl(), entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull of an identical state (steps and all) sends nothing', !sent.some(x => x.type === 'state'), sent.length);
+      applyRemoteState({ touched: now + 100, plans: DB.plans(), listAt: at(), listDel: {}, entries: {}, timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet lacks a deleted step\'s record sends ours', sent.some(x => x.type === 'state' && x.listDel.planItems && x.listDel.planItems.p1.i0 === now));
+      // restore
+      seed([step('i1', true), step('i2')], { plans: { p1: now }, planFields: { p1: now }, planItems: { p1: { i1: now, i2: now } } }, { planItems: { p1: { i9: now - 5, i8: now - 5 } } });
+      const before = listIds(['plans']);
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1'), step('i9')]), { id: 'p5', name: 'Back', items: [step('n1')] }]));
+      listRestored(before);
+      A = at(); const D = dl();
+      ok('restore: a step it brings back is stamped now and its delete record goes', A.planItems.p1.i9 >= now && !('i9' in D.planItems.p1) && D.planItems.p1.i8 === now - 5, [A.planItems, D.planItems]);
+      ok('…a rolled-back step and the plan\'s fields lose their stamps', !('i1' in A.planItems.p1) && A.planFields.p1 === 0);
+      ok('…and a plan it brings back whole is left to its new whole-plan stamp', A.plans.p5 >= now && !('p5' in A.planFields) && !(A.planItems.p5));
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; window.confirm = cSnap; curPlan = cpSnap; clearTimeout(pushTimer); _pushPending = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: the Time tracker (independent review 4) ----
   (function () {
     const keys = ['dp.timelog', 'dp.timeacts', 'dp.actnames', 'dp.pausedAct', 'dp.pausedPid', 'dp.pomo', 'dp.timebox', 'dp.projects'];
