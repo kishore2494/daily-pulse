@@ -2477,16 +2477,30 @@
       ok('backupTime: a new backup says when it was taken', backupTime(123456, { '2026-01-01': { updatedAt: '2026-06-01T00:00:00Z' } }) === 123456);
       ok('…an older backup counts as its newest day or time block', backupTime(undefined, { a: { updatedAt: '2026-06-01T00:00:00Z' }, b: null }, [{ upd: Date.parse('2026-07-01T00:00:00Z') }]) === Date.parse('2026-07-01T00:00:00Z'));
       ok('…and one with neither as very old', backupTime() === 1 && backupTime('x', 'junk', 'junk') === 1);
-      ok('_at is a backup section that exportData writes and restore reads', BACKUP_EXTRA.includes('_at'));
+      ok('_at is a backup section that exportData writes and restore reads', BACKUP_EXTRA.includes('_at') && BACKUP_EXTRA.includes('_stamps'));
+      // review 5, pass 2: a backup carries each item's own change time, and restores at it
+      localStorage.setItem('dp.fintx', '[]'); localStorage.removeItem('dp.listAt');
+      const fresh2 = listIds(['fintx']);
+      localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'p', n: 'old copy, exported by a phone that had not pulled' }, { id: 'q', n: 'q' }]));
+      listRestored(fresh2, now - 1000, { at: { fintx: { p: now - 7 * day } } });   // the file is fresh, the item in it is a week old
+      const r2 = listMeta('dp.listAt').fintx || {};
+      ok('an item is restored at the time it last changed, from the backup\'s own stamps', r2.p === now - 7 * day && r2.q === now - 1000, r2);
+      m = mergeList(finTx(), [{ id: 'p', n: 'edited on the other phone, before the file was exported' }, { id: 'q', n: 'q' }], r2, { p: now - 3600000, q: now - 1000 }, {}, {}, false);
+      ok('…so an edit made elsewhere after that, even before the file, wins', /edited on the other phone/.test(m.list.find(x => x.id === 'p').n));
+      ok('a restore overrides a delete record this phone holds, so the person gets back what they asked for', (() => { localStorage.setItem('dp.listDel', JSON.stringify({ fintx: { p: now - 500 } })); listRestored(fresh2, now - 1000, { at: { fintx: { p: now - 7 * day } } }); const a = listMeta('dp.listAt').fintx; return a.p === now - 499 && !(listMeta('dp.listDel').fintx || {}).p; })());
       // #2: a delete made on a phone still on an older app version must not come back
       localStorage.setItem('dp.notes', JSON.stringify([{ id: 'keep', text: 'k' }, { id: 'x', text: 'gone on the old phone' }]));
       localStorage.setItem('dp.listAt', JSON.stringify({ notes: { keep: now - 9000, x: now - 9000 } })); localStorage.removeItem('dp.listDel');
       localStorage.setItem('dp.touched', String(now - 9000));
       applyRemoteState({ touched: now - 100, notes: [{ id: 'keep', text: 'k' }] });   // the v252 phone's save: no listAt
       const oa = listMeta('dp.listAt').notes || {}, od = listMeta('dp.listDel').notes || {};
-      ok('a list adopted whole from an older app records what it dropped, at that save', ids(DB.notes()) === 'keep' && od.x === now - 100 && !('x' in oa), { oa, od });
+      ok('a list adopted whole from an older app drops what that save lacks, with no delete record and no stamp', ids(DB.notes()) === 'keep' && !('x' in od) && !('x' in oa), { oa, od });
       m = mergeList(DB.notes(), [{ id: 'keep', text: 'k' }, { id: 'x', text: 'gone on the old phone' }], oa, { keep: now - 9000, x: now - 9000 }, od, {}, true);
-      ok('…so the other v253 phone\'s copy does not bring it back', ids(m.list) === 'keep', ids(m.list));
+      ok('…so the other v253 phone brings it back (a resurrected delete beats a lost addition)', ids(m.list) === 'keep,x', ids(m.list));
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'keep', text: 'k' }, { id: 'new', text: 'added after the old phone saved' }]));
+      localStorage.setItem('dp.listAt', JSON.stringify({ notes: { keep: now - 9000, new: now - 60 } })); localStorage.setItem('dp.touched', String(now - 9000));
+      applyRemoteState({ touched: now - 100, notes: [{ id: 'keep', text: 'k' }] });
+      ok('…but an item stamped after that save is kept: the old phone cannot have seen it', ids(DB.notes()) === 'keep,new' && (listMeta('dp.listAt').notes || {}).new === now - 60, ids(DB.notes()));
       localStorage.setItem('dp.touched', String(now - 9000));   // the push the pull just made bumped it
       applyRemoteState({ touched: now - 50, notes: [{ id: 'keep', text: 'k, edited on the old phone' }] });
       ok('…and an item it changed is stamped at that save', (listMeta('dp.listAt').notes || {}).keep === now - 50 && DB.notes()[0].text === 'k, edited on the old phone');
