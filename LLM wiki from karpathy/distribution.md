@@ -83,6 +83,6 @@ to "Ads and referrals".
 - Whether to change the Play title (see `store/aso-2026-11.md` §1). The live listing still shows
   the August text; PASTE-2/3 were never applied.
 - The developer name is `kishore_`. A brand name is suggested.
-- When to start the 14-day launch calendar. Deploy v250 + v251 first, because every draft
-  mentions photos and voice notes.
+- When to start the 14-day launch calendar. v250 + v251 are live as of 2026-11-01, so the
+  drafts that mention photos and voice notes are now accurate.
 - New Play screenshots: §4 of the ASO file gives the order and captions.

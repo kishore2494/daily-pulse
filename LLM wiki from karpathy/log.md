@@ -1,3 +1,13 @@
+## 2026-11-01 — v250 + v251 deployed (live)
+
+Kishore said "deploy". `tools/deploy.sh --tag` pushed 17 commits (3432f0d..8ce2df9) to prod, tagged
+`web-v251` on both remotes, and confirmed that app.js, sw.js and index.html all serve v251. The
+gate passed (649 tests in 4 timezones). Spot-checked on the live site: `libs/qrcode.js`, the two
+new SEO pages, llms.txt and the photos screenshot all return 200, and landing.html no longer says
+"Coming soon". check-release warns "precached but referenced nowhere: libs/qrcode.js". That is a
+false positive: app.js loads it through a dynamic `s.src = 'libs/qrcode.js'`.
+Next: the Play listing (ASO), screenshot 8 and the launch calendar can now start (see distribution.md).
+
 ## 2026-11-01 (overnight, later) — v251: ten media defects from an independent review, async tests
 
 A read-only review agent went through the photos, voice and sharing commits. All ten findings

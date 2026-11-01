@@ -11,7 +11,7 @@ One-line catalog of every page. Start here.
 - **[schema.md](schema.md)** — the rules this wiki follows (ingest / query / lint).
 - **[log.md](log.md)** — reverse-chronological timeline of changes and decisions.
 
-**Current build:** v251 in the repo; **live is v249** (v250 + v251 not deployed yet). Bump with `tools/bump.sh`, which keeps `app.js`, `sw.js` and `index.html` in lockstep.
+**Current build:** v251, **live since 2026-11-01** (tag `web-v251`). Bump with `tools/bump.sh`, which keeps `app.js`, `sw.js` and `index.html` in lockstep.
 **Live:** production https://kishore2494.github.io/daily-pulse/ · dev https://kishore2494.github.io/jurnal-app/
 - [backups.md](backups.md) — where every version lives, how snapshots are made, and the one unbacked file that matters
 - [strava-build.md](strava-build.md) — the 12 ranked research items, what each shipped as, and the rules they are bound by
