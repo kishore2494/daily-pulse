@@ -436,8 +436,8 @@
         let restored = null; importData(file, okk => { restored = okk; });
         await until(() => restored !== null);
         const ga = JSON.parse(localStorage.getItem('dp.gymAt') || '{}'), la = JSON.parse(localStorage.getItem('dp.listAt') || '{}');
-        ok('a restore stamps the gym ticks it brings back, and drops the other gym stamps', restored === true && ga[T] && ga[T].done['day1/x'] >= t0 && !('day1/y' in ga[T].done), ga);
-        ok('…and the plan steps it brings back, while the rest of the plan loses its stamps', la.planItems && la.planItems.pR.b >= t0 && !('a' in la.planItems.pR) && la.planFields.pR === 0, la);
+        ok('a restore stamps the gym ticks it brings back, and drops the other gym stamps', restored === true && ((ga[T] || {}).done || {})['day1/x'] >= t0 && !('day1/y' in ((ga[T] || {}).done || {})), ga);
+        ok('…and the plan steps it brings back, while the rest of the plan loses its stamps', ((la.planItems || {}).pR || {}).b >= t0 && !('a' in ((la.planItems || {}).pR || {})) && (la.planFields || {}).pR === 0, la);
       } finally {
         window.pushState = pushSnap; window.pullState = pullSnap; window.confirm = confSnap2;
         ks.forEach(k => { if (sn[k] != null) localStorage.setItem(k, sn[k]); else localStorage.removeItem(k); });

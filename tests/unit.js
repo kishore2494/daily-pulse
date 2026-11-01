@@ -2479,6 +2479,7 @@
     const cSnap = window.confirm; window.confirm = () => true;
     const cpSnap = curPlan;
     const at = () => listMeta('dp.listAt'), dl = () => listMeta('dp.listDel');
+    const dig = (o, ...ks) => ks.reduce((x, k) => x == null ? undefined : x[k], o);   // a missing level reads as undefined, not a throw
     const step = (id, done, text) => ({ id, text: text || id, done: !!done, color: '', created: '2026-01-01' });
     const plan = (items, extra) => Object.assign({ id: 'p1', name: 'Trip', color: '', created: '2026-01-01', items }, extra || {});
     const P = () => DB.plans().find(p => p.id === 'p1') || {};
@@ -2496,36 +2497,36 @@
       open();
       ok('(the plan is open)', tap('[data-planitem-toggle="i1"]'));
       let A = at();
-      ok('ticking a step stamps that step', A.planItems && A.planItems.p1.i1 > 1000, A.planItems);
-      ok('…the steps it did not change keep the plan\'s earlier stamp', A.planItems.p1.i2 === 1000 && A.planItems.p1.i3 === 1000);
-      ok('…and so do the plan\'s own fields', A.planFields.p1 === 1000);
-      ok('…while the whole-plan stamp still moves (older app versions merge by it)', A.plans.p1 > 1000);
+      ok('ticking a step stamps that step', A.planItems && dig(A, 'planItems', 'p1', 'i1') > 1000, A.planItems);
+      ok('…the steps it did not change keep the plan\'s earlier stamp', dig(A, 'planItems', 'p1', 'i2') === 1000 && dig(A, 'planItems', 'p1', 'i3') === 1000);
+      ok('…and so do the plan\'s own fields', dig(A, 'planFields', 'p1') === 1000);
+      ok('…while the whole-plan stamp still moves (older app versions merge by it)', dig(A, 'plans', 'p1') > 1000);
       ok('…and no delete records appear', !('planItems' in dl()), dl());
-      const tTick = A.planItems.p1.i1;
+      const tTick = dig(A, 'planItems', 'p1', 'i1');
       const nm = document.querySelector('[data-planname="p1"]');
       if (nm) { nm.value = 'Trip to Goa'; nm.dispatchEvent(new Event('input', { bubbles: true })); }
-      ok('renaming a plan stamps its fields, and no step', !!nm && P().name === 'Trip to Goa' && at().planFields.p1 >= tTick && at().planItems.p1.i2 === 1000);
+      ok('renaming a plan stamps its fields, and no step', !!nm && P().name === 'Trip to Goa' && dig(at(), 'planFields', 'p1') >= tTick && dig(at(), 'planItems', 'p1', 'i2') === 1000);
       open(); tap('[data-planitem-del="i3"]');
-      ok('deleting a step records when', (dl().planItems || {}).p1 && dl().planItems.p1.i3 >= tTick && !('i3' in at().planItems.p1), dl());
+      ok('deleting a step records when', (dl().planItems || {}).p1 && dig(dl(), 'planItems', 'p1', 'i3') >= tTick && !('i3' in (dig(at(), 'planItems', 'p1') || {})), dl());
       open(); tap('[data-planitem-toggle="i2"]'); open(); tap('#plan-clear-done');
-      ok('"Clear completed" records each step it removed', its() === '' && dl().planItems.p1.i1 >= tTick && dl().planItems.p1.i2 >= tTick, its());
+      ok('"Clear completed" records each step it removed', its() === '' && dig(dl(), 'planItems', 'p1', 'i1') >= tTick && dig(dl(), 'planItems', 'p1', 'i2') >= tTick, its());
       open(); const inp = document.getElementById('plan-item-input'); if (inp) inp.value = 'Book hotel'; tap('#plan-item-add-btn');
       const added = (P().items || [])[0];
-      ok('adding a step stamps it', !!added && at().planItems.p1[added.id] >= tTick);
-      const A0 = at(); A0.planItems.p1[added.id] = 7; A0.planFields.p1 = 7; localStorage.setItem('dp.listAt', JSON.stringify(A0));
+      ok('adding a step stamps it', !!added && dig(at(), 'planItems', 'p1', added.id) >= tTick);
+      const A0 = at(); A0.planItems = A0.planItems || {}; A0.planItems.p1 = A0.planItems.p1 || {}; A0.planFields = A0.planFields || {}; A0.planItems.p1[added.id] = 7; A0.planFields.p1 = 7; localStorage.setItem('dp.listAt', JSON.stringify(A0));
       open(); setColor(added.id, 'red');
-      ok('colouring a step stamps it, not the plan\'s fields', P().items[0].color === 'red' && at().planFields.p1 === 7 && at().planItems.p1[added.id] > 7, at());
+      ok('colouring a step stamps it, not the plan\'s fields', P().items[0].color === 'red' && dig(at(), 'planFields', 'p1') === 7 && dig(at(), 'planItems', 'p1', added.id) > 7, at());
       seed([step('i1')], {}, { planItems: { p1: { old: Date.now() - 91 * 864e5 } } });
       open(); tap('[data-planitem-toggle="i1"]');
-      ok('a plan with no stamp at all: its fields are marked as not yet changed (0)', at().planFields.p1 === 0 && at().planItems.p1.i1 > 0, at());
+      ok('a plan with no stamp at all: its fields are marked as not yet changed (0)', dig(at(), 'planFields', 'p1') === 0 && dig(at(), 'planItems', 'p1', 'i1') > 0, at());
       ok('delete records older than 90 days are dropped', !(dl().planItems || {}).p1);
       localStorage.setItem('dp.listDel', JSON.stringify({ planItems: { p1: { i9: Date.now() - 1000 } } }));
       DB.savePlans([plan([step('i1', true), step('i9')])]);
-      ok('a step saved again under a deleted id loses its delete record', !(dl().planItems || {}).p1 && at().planItems.p1.i9 > 0, dl());
+      ok('a step saved again under a deleted id loses its delete record', !(dl().planItems || {}).p1 && dig(at(), 'planItems', 'p1', 'i9') > 0, dl());
       DB.savePlans([plan([step('i1', true), step('i9')]), { id: 'p2', name: 'New', items: [step('j1')] }]);
-      ok('a new plan stamps its fields and every step', at().planFields.p2 > 0 && at().planItems.p2.j1 > 0);
+      ok('a new plan stamps its fields and every step', dig(at(), 'planFields', 'p2') > 0 && dig(at(), 'planItems', 'p2', 'j1') > 0);
       show('plans'); curPlan = null; renderPlans(); tap('[data-delplan="p2"]');
-      ok('deleting a plan drops its steps\' stamps (its own delete record covers them)', !DB.plans().some(p => p.id === 'p2') && !((at().planItems || {}).p2) && !('p2' in (at().planFields || {})) && !!dl().plans.p2);
+      ok('deleting a plan drops its steps\' stamps (its own delete record covers them)', !DB.plans().some(p => p.id === 'p2') && !((at().planItems || {}).p2) && !('p2' in (at().planFields || {})) && !!dig(dl(), 'plans', 'p2'));
 
       // the merge, directly: a tick on each phone
       const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
@@ -2533,15 +2534,15 @@
       localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
       seed([step('i1'), step('i2'), step('i3')], { plans: { p1: 1000 } });
       open(); tap('[data-planitem-toggle="i1"]');   // ticked here
-      const tA = at().planItems.p1.i1;
+      const tA = dig(at(), 'planItems', 'p1', 'i1');
       localStorage.setItem('dp.touched', String(tA));
       pull([plan([step('i1'), step('i2', true), step('i3')])],
         { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tA + 5, i3: 1000 } } });
       ok('a step ticked on each phone: both ticks survive', its() === 'i1+,i2+,i3', its());
-      ok('…and both stamps are kept', at().planItems.p1.i1 === tA && at().planItems.p1.i2 === tA + 5, at().planItems);
+      ok('…and both stamps are kept', dig(at(), 'planItems', 'p1', 'i1') === tA && dig(at(), 'planItems', 'p1', 'i2') === tA + 5, at().planItems);
       // un-tick here, the other phone still has the tick (older)
       open(); tap('[data-planitem-toggle="i1"]');
-      const tU = at().planItems.p1.i1;
+      const tU = dig(at(), 'planItems', 'p1', 'i1');
       pull([plan([step('i1', true), step('i2', true), step('i3')])],
         { plans: { p1: tA + 5 }, planFields: { p1: 1000 }, planItems: { p1: { i1: tA, i2: tA + 5, i3: 1000 } } });
       ok('an un-tick here survives the other phone\'s older tick', its() === 'i1,i2+,i3', its());
@@ -2558,7 +2559,7 @@
       // delete beats an older edit
       seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } });
       open(); tap('[data-planitem-del="i2"]');
-      const tD = dl().planItems.p1.i2;
+      const tD = dig(dl(), 'planItems', 'p1', 'i2');
       pull([plan([step('i1'), step('i2', false, 'edited there')])], { plans: { p1: tD - 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD - 10 } } });
       ok('a step deleted here is not brought back by the other phone\'s older edit', its() === 'i1', its());
       pull([plan([step('i1'), step('i2', false, 'edited later')])], { plans: { p1: tD + 10 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: tD + 10 } } });
@@ -2570,14 +2571,14 @@
       localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
       pull([plan([step('i1'), step('i2', true)], { name: 'Theirs' })], { plans: { p1: now - 100 } });
       ok('a newer plan from an older app version wins whole, as before', its() === 'i1,i2+' && P().name === 'Theirs', [its(), P().name]);
-      ok('…and its stamp now stands for each of its steps here', at().planItems.p1.i1 === now - 100 && dl().planItems.p1.i3 === now - 100, [at().planItems, dl().planItems]);
+      ok('…and its stamp now stands for each of its steps here', dig(at(), 'planItems', 'p1', 'i1') === now - 100 && dig(dl(), 'planItems', 'p1', 'i3') === now - 100, [at().planItems, dl().planItems]);
       seed([step('i1'), step('i2'), step('i3')], { plans: { p1: now - 50 }, planFields: { p1: 1000 }, planItems: { p1: { i1: now - 50, i2: 1000, i3: 1000 } } });
       localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1', true), step('i2'), step('i3')])]));
       pull([plan([step('i1'), step('i2', true), step('i3')])], { plans: { p1: now - 100 } });
       ok('…an older one keeps this phone\'s later tick, and takes its own', its() === 'i1+,i2+,i3', its());
       seed([step('i1')], { plans: { p1: now - 900 } });
       pull([plan([step('i1', true), step('i2')])], { plans: { p1: now - 100 } });
-      ok('two phones without step stamps: the newer whole plan, as before', its() === 'i1+,i2' && at().planFields.p1 === now - 100, [its(), at()]);
+      ok('two phones without step stamps: the newer whole plan, as before', its() === 'i1+,i2' && dig(at(), 'planFields', 'p1') === now - 100, [its(), at()]);
       seed([step('i1')], { planFields: { p1: 0 } });
       localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')], { name: 'A' })]));
       localStorage.setItem('dp.touched', String(now + 1e6));
@@ -2592,9 +2593,9 @@
       localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')]), { id: 'p6', name: 'Mine', items: [step('q1')] }]));
       pull([plan([step('i1')]), { id: 'p3', name: 'Theirs', items: [step('k1')] }, { id: 'p4', name: 'Old', items: [step('m1')] }],
         { plans: { p1: 1000, p3: now, p4: now }, planFields: { p1: 1000, p3: now }, planItems: { p1: { i1: 1000 }, p3: { k1: now } } }, { planItems: { p3: { k0: now } } });
-      ok('a plan that arrives brings its step stamps and delete records', at().planItems.p3.k1 === now && at().planFields.p3 === now && dl().planItems.p3.k0 === now);
-      ok('…and one with none stays without (its whole-plan stamp stands for them)', !('p4' in at().planFields) && !(at().planItems || {}).p4);
-      ok('a plan only this phone has keeps its step stamps', at().planItems.p6.q1 === 1000 && at().planFields.p6 === 1000);
+      ok('a plan that arrives brings its step stamps and delete records', dig(at(), 'planItems', 'p3', 'k1') === now && dig(at(), 'planFields', 'p3') === now && dig(dl(), 'planItems', 'p3', 'k0') === now);
+      ok('…and one with none stays without (its whole-plan stamp stands for them)', !('p4' in (dig(at(), 'planFields') || {})) && !(at().planItems || {}).p4);
+      ok('a plan only this phone has keeps its step stamps', dig(at(), 'planItems', 'p6', 'q1') === 1000 && dig(at(), 'planFields', 'p6') === 1000);
       // pushes: none when nothing differs, one when the Sheet lacks a delete record
       seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } }, { planItems: { p1: { i0: now } } });
       localStorage.setItem('dp.touched', String(now + 100)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
@@ -2608,9 +2609,9 @@
       localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1'), step('i9')]), { id: 'p5', name: 'Back', items: [step('n1')] }]));
       listRestored(before);
       A = at(); const D = dl();
-      ok('restore: a step it brings back is stamped now and its delete record goes', A.planItems.p1.i9 >= now && !('i9' in D.planItems.p1) && D.planItems.p1.i8 === now - 5, [A.planItems, D.planItems]);
-      ok('…a rolled-back step and the plan\'s fields lose their stamps', !('i1' in A.planItems.p1) && A.planFields.p1 === 0);
-      ok('…and a plan it brings back whole is left to its new whole-plan stamp', A.plans.p5 >= now && !('p5' in A.planFields) && !(A.planItems.p5));
+      ok('restore: a step it brings back is stamped now and its delete record goes', dig(A, 'planItems', 'p1', 'i9') >= now && !('i9' in (dig(D, 'planItems', 'p1') || {})) && dig(D, 'planItems', 'p1', 'i8') === now - 5, [A.planItems, D.planItems]);
+      ok('…a rolled-back step and the plan\'s fields lose their stamps', !('i1' in (dig(A, 'planItems', 'p1') || {})) && dig(A, 'planFields', 'p1') === 0);
+      ok('…and a plan it brings back whole is left to its new whole-plan stamp', dig(A, 'plans', 'p5') >= now && !('p5' in (dig(A, 'planFields') || {})) && !(dig(A, 'planItems', 'p5')));
     } finally {
       window.fetch = fSnap; window.toast = tSnap; window.confirm = cSnap; curPlan = cpSnap; clearTimeout(pushTimer); _pushPending = null;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
@@ -2627,41 +2628,42 @@
     const tSnap = window.toast; window.toast = () => {};
     const gdSnap = gymDate, gidSnap = gymDayId, gvSnap = gymView;
     const GA = () => listMeta('dp.gymAt');
+    const dig = (o, ...ks) => ks.reduce((x, k) => x == null ? undefined : x[k], o);
     const D = '2026-01-05';
     const day = (done, log) => ({ [D]: { done: done || {}, log: log || {} } });
     try {
       // gymMerge, directly: (local, remote, local stamps, remote stamps, when the remote state was saved)
       let m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 200 } } }, { [D]: { done: { a: 100 } } }, 1);
-      ok('gym: a newer un-tick beats an older tick', m.gym[D].done.a === false && m.at[D].done.a === 200, m);
+      ok('gym: a newer un-tick beats an older tick', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 200, m);
       m = gymMerge(day({ a: true }), day({ a: false }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 200 } } }, 1);
-      ok('gym: …and an un-tick on the other phone arrives', m.gym[D].done.a === false && m.at[D].done.a === 200);
+      ok('gym: …and an un-tick on the other phone arrives', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 200);
       m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, {}, 1);
-      ok('gym: an un-tick beats a tick older than the stamps', m.gym[D].done.a === false);
+      ok('gym: an un-tick beats a tick older than the stamps', dig(m.gym, D, 'done', 'a') === false);
       m = gymMerge(day({ a: true }), day({}), { [D]: { done: { a: 100 } } }, {}, 1);
-      ok('gym: a side that never touched an exercise has no say about it', m.gym[D].done.a === true);
+      ok('gym: a side that never touched an exercise has no say about it', dig(m.gym, D, 'done', 'a') === true);
       m = gymMerge(day({ a: false, b: true }, { x: '' }), day({ a: true, c: true }, { x: '3x10', y: '2x5' }), {}, {}, 1);
-      ok('gym: what neither phone has stamped still merges as a union', m.gym[D].done.a === true && m.gym[D].done.b === true && m.gym[D].done.c === true && m.gym[D].log.x === '3x10' && m.gym[D].log.y === '2x5' && !Object.keys(m.at).length, m);
+      ok('gym: what neither phone has stamped still merges as a union', dig(m.gym, D, 'done', 'a') === true && dig(m.gym, D, 'done', 'b') === true && dig(m.gym, D, 'done', 'c') === true && dig(m.gym, D, 'log', 'x') === '3x10' && dig(m.gym, D, 'log', 'y') === '2x5' && !Object.keys(m.at).length, m);
       m = gymMerge(day({}, { x: '3x12' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
-      ok('gym: a newer log edit here is kept', m.gym[D].log.x === '3x12');
+      ok('gym: a newer log edit here is kept', dig(m.gym, D, 'log', 'x') === '3x12');
       m = gymMerge(day({}, { x: '3x10' }), day({}, { x: '3x12' }), { [D]: { log: { x: 200 } } }, { [D]: { log: { x: 300 } } }, 1);
-      ok('gym: …and a newer one there arrives', m.gym[D].log.x === '3x12' && m.at[D].log.x === 300);
+      ok('gym: …and a newer one there arrives', dig(m.gym, D, 'log', 'x') === '3x12' && dig(m.at, D, 'log', 'x') === 300);
       m = gymMerge(day({}, { x: '' }), day({}, { x: '3x10' }), { [D]: { log: { x: 300 } } }, { [D]: { log: { x: 200 } } }, 1);
-      ok('gym: a cleared log stays cleared', m.gym[D].log.x === '');
+      ok('gym: a cleared log stays cleared', dig(m.gym, D, 'log', 'x') === '');
       m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 100 } } }, { [D]: { done: { a: 100 } } }, 1);
-      ok('gym: a tie keeps the tick rather than a gap', m.gym[D].done.a === true);
+      ok('gym: a tie keeps the tick rather than a gap', dig(m.gym, D, 'done', 'a') === true);
       m = gymMerge(day({}), { '2026-01-06': { done: { z: true }, log: {} } }, {}, { '2026-01-06': { done: { z: 50 } } }, 1);
-      ok('gym: a day only the other phone has arrives with its stamps', m.gym['2026-01-06'].done.z === true && m.at['2026-01-06'].done.z === 50 && D in m.gym);
+      ok('gym: a day only the other phone has arrives with its stamps', dig(m.gym, '2026-01-06', 'done', 'z') === true && dig(m.at, '2026-01-06', 'done', 'z') === 50 && D in m.gym);
       m = gymMerge(day({}), day({ a: false }), {}, {}, 1);
-      ok('gym: an unticked exercise the other phone holds is kept (or the two would send it back and forth)', m.gym[D].done.a === false);
+      ok('gym: an unticked exercise the other phone holds is kept (or the two would send it back and forth)', dig(m.gym, D, 'done', 'a') === false);
       m = gymMerge({ [D]: { done: { a: true }, note: 'x' } }, { [D]: { done: { a: true } } }, {}, {}, 1);
-      ok('gym: a day keeps what it holds and gets nothing it did not have', !('log' in m.gym[D]) && m.gym[D].note === 'x', m.gym[D]);
+      ok('gym: a day keeps what it holds and gets nothing it did not have', !('log' in (m.gym[D] || {})) && dig(m.gym, D, 'note') === 'x', m.gym[D]);
       // a state from an older app version (no gymAt): the union, as before…
       m = gymMerge(day({ a: false }, { x: '3x12' }), day({ a: true, c: true }, { x: '3x10' }), { [D]: { done: { a: 100 }, log: { x: 100 } } }, undefined, 500);
-      ok('gym: an older app version\'s tick still arrives (the union, as before)', m.gym[D].done.a === true && m.gym[D].done.c === true, m);
-      ok('gym: …stamped with when that state was saved', m.at[D].done.a === 500 && m.at[D].done.c === 500);
-      ok('gym: …and the union never overwrites a log here', m.gym[D].log.x === '3x12' && m.at[D].log.x === 100);
+      ok('gym: an older app version\'s tick still arrives (the union, as before)', dig(m.gym, D, 'done', 'a') === true && dig(m.gym, D, 'done', 'c') === true, m);
+      ok('gym: …stamped with when that state was saved', dig(m.at, D, 'done', 'a') === 500 && dig(m.at, D, 'done', 'c') === 500);
+      ok('gym: …and the union never overwrites a log here', dig(m.gym, D, 'log', 'x') === '3x12' && dig(m.at, D, 'log', 'x') === 100);
       m = gymMerge(day({ a: false }), day({ a: true }), { [D]: { done: { a: 900 } } }, undefined, 500);
-      ok('gym: …but an un-tick made after that state was saved stays', m.gym[D].done.a === false && m.at[D].done.a === 900);
+      ok('gym: …but an un-tick made after that state was saved stays', dig(m.gym, D, 'done', 'a') === false && dig(m.at, D, 'done', 'a') === 900);
 
       // writers stamp: putGymDay, saveGym, the Gym screen (tick, typed log, Save)
       localStorage.setItem('dp.gymAt', '{}');
@@ -2669,24 +2671,24 @@
       const day0 = gymDays()[0], ex = cookedDayEx(day0), k1 = dkey(day0.id, ex[0].id), k2 = dkey(day0.id, ex[1].id);
       localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true }, log: {} } }));
       DB.putGymDay(Y, { done: { [k1]: true }, log: {} });
-      ok('putGymDay stamps what it changed', GA()[Y] && GA()[Y].done[k1] > 0 && !GA()[T0], GA());
+      ok('putGymDay stamps what it changed', GA()[Y] && dig(GA(), Y, 'done', k1) > 0 && !GA()[T0], GA());
       const g = DB.gym(); g[Y].log[k1] = '5 km'; DB.saveGym(g);
-      ok('saveGym stamps what changed, and nothing else', GA()[Y].log[k1] > 0 && Object.keys(GA()[Y].done).length === 1 && !GA()[T0]);
-      const tY = GA()[Y].done[k1];
+      ok('saveGym stamps what changed, and nothing else', dig(GA(), Y, 'log', k1) > 0 && Object.keys(dig(GA(), Y, 'done') || {}).length === 1 && !GA()[T0]);
+      const tY = dig(GA(), Y, 'done', k1);
       DB.saveGym(DB.gym());
-      ok('saving it unchanged stamps nothing new', GA()[Y].done[k1] === tY);
+      ok('saving it unchanged stamps nothing new', dig(GA(), Y, 'done', k1) === tY);
       gymDate = T0; show('gym'); gymDayId = day0.id; gymView = 'day'; renderGym();
       const tg = document.querySelector(`#s-gym [data-ex-toggle="${ex[0].id}"]`);
       if (tg) tg.click();
-      ok('un-ticking on the Gym screen stamps it', !!tg && DB.gymDay(T0).done[k1] === false && GA()[T0].done[k1] > 0, GA()[T0]);
-      const tU = GA()[T0].done[k1];
+      ok('un-ticking on the Gym screen stamps it', !!tg && DB.gymDay(T0).done[k1] === false && dig(GA(), T0, 'done', k1) > 0, GA()[T0]);
+      const tU = dig(GA(), T0, 'done', k1);
       const stT = window.setTimeout; let due = null;
       window.setTimeout = (f, ms) => { if (ms === 700) due = f; return stT(() => {}, 0); };
       const lg0 = document.querySelector(`#s-gym [data-ex-log="${ex[2].id}"]`);
       if (lg0) { lg0.value = 'warm-up'; lg0.dispatchEvent(new Event('input', { bubbles: true })); }
       window.setTimeout = stT;
       if (due) due();
-      ok('a typed log is saved, and stamped, when its debounce runs out', !!due && DB.gymDay(T0).log[dkey(day0.id, ex[2].id)] === 'warm-up' && GA()[T0].log[dkey(day0.id, ex[2].id)] > 0 && !_gymPending);
+      ok('a typed log is saved, and stamped, when its debounce runs out', !!due && DB.gymDay(T0).log[dkey(day0.id, ex[2].id)] === 'warm-up' && dig(GA(), T0, 'log', dkey(day0.id, ex[2].id)) > 0 && !_gymPending);
       const lg = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
       if (lg) { lg.value = '3 x 12'; lg.dispatchEvent(new Event('input', { bubbles: true })); }
       ok('(typing waits out its debounce)', !!lg && !!_gymPending && !DB.gymDay(T0).log[k2]);
@@ -2695,11 +2697,11 @@
       localStorage.setItem('dp.entries', '{}'); localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', '{}');
       const k3 = dkey(day0.id, ex[2].id), later = Date.now() + 1000;
       applyRemoteState({ touched: Date.now() + 5000, gym: { [T0]: { done: { [k1]: true, [k3]: true }, log: {} } }, gymAt: { [T0]: { done: { [k3]: later } } }, entries: {}, timelog: [], timelogDel: {} });
-      ok('a pull mid-typing saves the typed log first, stamped', DB.gymDay(T0).log[k2] === '3 x 12' && GA()[T0].log[k2] > 0 && !_gymPending);
-      ok('…the other phone\'s older tick does not undo the un-tick here', DB.gymDay(T0).done[k1] === false && GA()[T0].done[k1] === tU);
-      ok('…and its newer tick arrives', DB.gymDay(T0).done[k3] === true && GA()[T0].done[k3] === later);
+      ok('a pull mid-typing saves the typed log first, stamped', DB.gymDay(T0).log[k2] === '3 x 12' && dig(GA(), T0, 'log', k2) > 0 && !_gymPending);
+      ok('…the other phone\'s older tick does not undo the un-tick here', DB.gymDay(T0).done[k1] === false && dig(GA(), T0, 'done', k1) === tU);
+      ok('…and its newer tick arrives', DB.gymDay(T0).done[k3] === true && dig(GA(), T0, 'done', k3) === later);
       flushGymSave();
-      ok('…and no late save writes the old day back over it', DB.gymDay(T0).done[k3] === true && GA()[T0].done[k3] === later);
+      ok('…and no late save writes the old day back over it', DB.gymDay(T0).done[k3] === true && dig(GA(), T0, 'done', k3) === later);
       gymDayId = day0.id; gymView = 'day'; renderGym();
       const lg2 = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
       if (lg2) { lg2.value = '3 x 15'; lg2.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -2739,8 +2741,8 @@
       localStorage.setItem('dp.gym', JSON.stringify({ [T0]: { done: { [k1]: true, [k2]: true }, log: { [k1]: 'older' } }, [Y]: { done: { z: true }, log: {} } }));
       const tR = Date.now(); gymRestored(before);
       const ra = GA();
-      ok('restore: a tick it brings back is stamped now', ra[T0].done[k1] >= tR && ra[Y].done.z >= tR, ra);
-      ok('…an unchanged or rolled-back one loses its stamp', !(k2 in ra[T0].done) && !ra[T0].log);
+      ok('restore: a tick it brings back is stamped now', dig(ra, T0, 'done', k1) >= tR && dig(ra, Y, 'done', 'z') >= tR, ra);
+      ok('…an unchanged or rolled-back one loses its stamp', !(k2 in (dig(ra, T0, 'done') || {})) && !dig(ra, T0, 'log'));
     } finally {
       window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
       clearTimeout(_gymSaveTimer); _gymPending = null;
