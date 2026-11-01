@@ -2578,16 +2578,23 @@
       seed([step('i1')], { plans: { p1: now - 900 } });
       pull([plan([step('i1', true), step('i2')])], { plans: { p1: now - 100 } });
       ok('two phones without step stamps: the newer whole plan, as before', its() === 'i1+,i2' && at().planFields.p1 === now - 100, [its(), at()]);
+      seed([step('i1')], { planFields: { p1: 0 } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')], { name: 'A' })]));
+      localStorage.setItem('dp.touched', String(now + 1e6));
+      pull([plan([step('i1', true)], { name: 'B' })], { plans: { p1: now }, planFields: { p1: 0 } }, {}, { touched: now });
+      ok('steps and fields neither phone stamped follow the plan changed last, not the state saved last', its() === 'i1+' && P().name === 'B', [its(), P().name]);
       seed([step('i1')], { plans: { p1: now - 900 } });
       localStorage.setItem('dp.touched', String(now));
       applyRemoteState({ touched: now + 30, plans: [plan([step('i9')])] });
       ok('a state from before item stamps (no listAt) still replaces the list', its() === 'i9', its());
       // a plan only the other phone has: its step stamps come with it — unless it has none
-      seed([step('i1')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000 } } });
+      seed([step('i1')], { plans: { p1: 1000, p6: 1000 }, planFields: { p1: 1000, p6: 1000 }, planItems: { p1: { i1: 1000 }, p6: { q1: 1000 } } });
+      localStorage.setItem('dp.plans', JSON.stringify([plan([step('i1')]), { id: 'p6', name: 'Mine', items: [step('q1')] }]));
       pull([plan([step('i1')]), { id: 'p3', name: 'Theirs', items: [step('k1')] }, { id: 'p4', name: 'Old', items: [step('m1')] }],
         { plans: { p1: 1000, p3: now, p4: now }, planFields: { p1: 1000, p3: now }, planItems: { p1: { i1: 1000 }, p3: { k1: now } } }, { planItems: { p3: { k0: now } } });
       ok('a plan that arrives brings its step stamps and delete records', at().planItems.p3.k1 === now && at().planFields.p3 === now && dl().planItems.p3.k0 === now);
       ok('…and one with none stays without (its whole-plan stamp stands for them)', !('p4' in at().planFields) && !(at().planItems || {}).p4);
+      ok('a plan only this phone has keeps its step stamps', at().planItems.p6.q1 === 1000 && at().planFields.p6 === 1000);
       // pushes: none when nothing differs, one when the Sheet lacks a delete record
       seed([step('i1'), step('i2')], { plans: { p1: 1000 }, planFields: { p1: 1000 }, planItems: { p1: { i1: 1000, i2: 1000 } } }, { planItems: { p1: { i0: now } } });
       localStorage.setItem('dp.touched', String(now + 100)); clearTimeout(pushTimer); _pushPending = null; sent.length = 0;
@@ -2644,6 +2651,10 @@
       ok('gym: a tie keeps the tick rather than a gap', m.gym[D].done.a === true);
       m = gymMerge(day({}), { '2026-01-06': { done: { z: true }, log: {} } }, {}, { '2026-01-06': { done: { z: 50 } } }, 1);
       ok('gym: a day only the other phone has arrives with its stamps', m.gym['2026-01-06'].done.z === true && m.at['2026-01-06'].done.z === 50 && D in m.gym);
+      m = gymMerge(day({}), day({ a: false }), {}, {}, 1);
+      ok('gym: an unticked exercise the other phone holds is kept (or the two would send it back and forth)', m.gym[D].done.a === false);
+      m = gymMerge({ [D]: { done: { a: true }, note: 'x' } }, { [D]: { done: { a: true } } }, {}, {}, 1);
+      ok('gym: a day keeps what it holds and gets nothing it did not have', !('log' in m.gym[D]) && m.gym[D].note === 'x', m.gym[D]);
       // a state from an older app version (no gymAt): the union, as before…
       m = gymMerge(day({ a: false }, { x: '3x12' }), day({ a: true, c: true }, { x: '3x10' }), { [D]: { done: { a: 100 }, log: { x: 100 } } }, undefined, 500);
       ok('gym: an older app version\'s tick still arrives (the union, as before)', m.gym[D].done.a === true && m.gym[D].done.c === true, m);
@@ -2669,6 +2680,13 @@
       if (tg) tg.click();
       ok('un-ticking on the Gym screen stamps it', !!tg && DB.gymDay(T0).done[k1] === false && GA()[T0].done[k1] > 0, GA()[T0]);
       const tU = GA()[T0].done[k1];
+      const stT = window.setTimeout; let due = null;
+      window.setTimeout = (f, ms) => { if (ms === 700) due = f; return stT(() => {}, 0); };
+      const lg0 = document.querySelector(`#s-gym [data-ex-log="${ex[2].id}"]`);
+      if (lg0) { lg0.value = 'warm-up'; lg0.dispatchEvent(new Event('input', { bubbles: true })); }
+      window.setTimeout = stT;
+      if (due) due();
+      ok('a typed log is saved, and stamped, when its debounce runs out', !!due && DB.gymDay(T0).log[dkey(day0.id, ex[2].id)] === 'warm-up' && GA()[T0].log[dkey(day0.id, ex[2].id)] > 0 && !_gymPending);
       const lg = document.querySelector(`#s-gym [data-ex-log="${ex[1].id}"]`);
       if (lg) { lg.value = '3 x 12'; lg.dispatchEvent(new Event('input', { bubbles: true })); }
       ok('(typing waits out its debounce)', !!lg && !!_gymPending && !DB.gymDay(T0).log[k2]);
@@ -2707,6 +2725,12 @@
       const theirAt = JSON.parse(JSON.stringify(myAt)); theirAt[T0].done[k1] = tU - 1000;
       applyRemoteState({ touched: Date.now() + 9000, gym: theirs, gymAt: theirAt, entries: ents(), timelog: [], timelogDel: {} });
       ok('a pull whose Sheet still has the old tick sends the un-tick back up', DB.gymDay(T0).done[k1] === false && sent.some(x => x.type === 'state' && x.gym[T0].done[k1] === false));
+      sent.length = 0;
+      const extra = JSON.parse(localStorage.getItem('dp.gym')); extra['2025-12-31'] = { done: { 'x/y': true }, log: {} };
+      localStorage.setItem('dp.gym', JSON.stringify(extra));
+      const sheet = JSON.parse(JSON.stringify(extra)); delete sheet['2025-12-31'];
+      applyRemoteState({ touched: Date.now() + 9000, gym: sheet, gymAt: GA(), entries: ents(), timelog: [], timelogDel: {} });
+      ok('a pull whose Sheet lacks a gym day only this phone has sends it', sent.some(x => x.type === 'state' && x.gym['2025-12-31']));
       ok('gym stamps are not in a backup', BACKUP_EXCLUDED.includes('gymAt') && !BACKUP_KEYS.includes('gymAt'));
       ok('every gym write goes through the stamping save', DB.saveGym.toString().includes('gymStamp(') && DB.putGymDay.toString().includes('this.saveGym(') && persistGym.toString().includes('DB.putGymDay(') && importData.toString().includes('gymRestored('));
       // restore: what it brings back is new, what it rolls back is old

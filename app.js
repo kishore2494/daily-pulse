@@ -3180,7 +3180,6 @@ let _gymSaveTimer, _gymPending = null;
 document.addEventListener('input', (ev) => {
   const lg = ev.target.closest('[data-ex-log]');
   if (lg) { gymDraft.log[dkey(gymDayId, lg.dataset.exLog)] = lg.value;
-    if (_gymPending && _gymPending[1] !== gymDraft) flushGymSave();
     _gymPending = [gymDate, gymDraft];   // captured NOW so a date-switch mid-debounce is safe
     clearTimeout(_gymSaveTimer); _gymSaveTimer = setTimeout(flushGymSave, 700); }
 });

@@ -418,6 +418,32 @@
       }
     }
 
+    /* a restore of plans and gym days: what it brings back is stamped new, the rest loses its stamps */
+    {
+      const ks = ['dp.gym', 'dp.gymAt', 'dp.plans', 'dp.listAt', 'dp.listDel', 'dp.settings'];
+      const sn = {}; ks.forEach(k => { sn[k] = localStorage.getItem(k); });
+      const pushSnap = window.pushState, pullSnap = window.pullState, confSnap2 = window.confirm;
+      try {
+        window.pushState = () => {}; window.pullState = () => {}; window.confirm = () => true;
+        localStorage.setItem('dp.gym', JSON.stringify({ [T]: { done: { 'day1/x': false, 'day1/y': true }, log: {} } }));
+        localStorage.setItem('dp.gymAt', JSON.stringify({ [T]: { done: { 'day1/x': 5, 'day1/y': 5 } } }));
+        localStorage.setItem('dp.plans', JSON.stringify([{ id: 'pR', name: 'R', items: [{ id: 'a', done: false }] }]));
+        localStorage.setItem('dp.listAt', JSON.stringify({ plans: { pR: 5 }, planFields: { pR: 5 }, planItems: { pR: { a: 5 } } }));
+        localStorage.setItem('dp.listDel', '{}');
+        const t0 = Date.now();
+        const file = new File([JSON.stringify({ gym: { [T]: { done: { 'day1/x': true, 'day1/y': true }, log: {} } },
+          plans: [{ id: 'pR', name: 'R', items: [{ id: 'a', done: true }, { id: 'b', done: false }] }] })], 'b.json', { type: 'application/json' });
+        let restored = null; importData(file, okk => { restored = okk; });
+        await until(() => restored !== null);
+        const ga = JSON.parse(localStorage.getItem('dp.gymAt') || '{}'), la = JSON.parse(localStorage.getItem('dp.listAt') || '{}');
+        ok('a restore stamps the gym ticks it brings back, and drops the other gym stamps', restored === true && ga[T] && ga[T].done['day1/x'] >= t0 && !('day1/y' in ga[T].done), ga);
+        ok('…and the plan steps it brings back, while the rest of the plan loses its stamps', la.planItems && la.planItems.pR.b >= t0 && !('a' in la.planItems.pR) && la.planFields.pR === 0, la);
+      } finally {
+        window.pushState = pushSnap; window.pullState = pullSnap; window.confirm = confSnap2;
+        ks.forEach(k => { if (sn[k] != null) localStorage.setItem(k, sn[k]); else localStorage.removeItem(k); });
+      }
+    }
+
     /* v253: native build 119 — notification taps applied at their own time; a dismissed share sheet is not a backup */
     {
       const capSnap3 = window.Capacitor, tlSnap = localStorage.getItem('dp.timelog'), lbSnap = localStorage.getItem('dp.lastBackup');
