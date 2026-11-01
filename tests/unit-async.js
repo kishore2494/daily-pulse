@@ -363,6 +363,61 @@
       }
     }
 
+    /* v253: backup and restore (independent review 3) */
+    {
+      const snaps = {}; ['dp.entries', 'dp.sampleMeta', 'dp.pomohist', 'dp.timelog', 'dp.health', 'dp.hapticsOff', 'dp.settings', 'dp.lastBackup', 'dp.reminders', 'dp.events'].forEach(k => { snaps[k] = localStorage.getItem(k); });
+      const capSnap2 = window.Capacitor, rasSnap = window.mediaReadAll, pushSnap = window.pushState, pullSnap = window.pullState;
+      try {
+        // flags restore
+        const vb = validateBackup({ hapticsOff: 1, nudgeOff: 1, entries: {} });
+        ok('on/off choices (stored as 1) are accepted on restore', vb.ok && vb.keys.includes('hapticsOff') && vb.keys.includes('nudgeOff'), vb.keys);
+        ok('…but a number where a collection belongs is still refused', !validateBackup({ entries: 5, notes: [] }).keys.includes('entries'));
+        // sample rows never go into a backup
+        localStorage.removeItem('dp.sampleMeta'); localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 7, journal: 'real', habits: {} } }));
+        seedSampleData();
+        const meta = JSON.parse(localStorage.getItem('dp.sampleMeta'));
+        const bb = backupBlob().data;
+        ok('a backup taken during the sample preview leaves the sample days out', meta.entries.length > 0 && meta.entries.every(d => !bb.entries[d] || !bb.entries[d].sample) && bb.entries[T] && bb.entries[T].journal === 'real');
+        ok('…and the sample time blocks and pomodoro days', (bb.timelog || []).every(s => !s.sample) && (meta.pomo || []).every(d => !(bb.pomohist || {})[d]));
+        // restore: no push over the Sheet, a pull instead; this install's sample markers dropped
+        let pushed = 0, pulled = 0;
+        window.pushState = () => { pushed++; }; window.pullState = () => { pulled++; };
+        const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+        window.confirm = () => true;
+        const file = new File([JSON.stringify({ notes: [{ id: 'nR1', text: 'from backup', color: '', created: T }], hapticsOff: 1 })], 'b.json', { type: 'application/json' });
+        let restored = null; importData(file, okk => { restored = okk; });
+        await until(() => restored !== null);
+        ok('restoring does not push the old file over the Sheet (it wiped newer data on other phones)', restored === true && pushed === 0, { pushed });
+        ok('…it pulls first, so the normal merge decides what is newer', pulled === 1);
+        ok('…restores the on/off choices', localStorage.getItem('dp.hapticsOff') === '1');
+        ok('…and drops this install\'s sample markers, so "Clear sample" cannot delete restored days', localStorage.getItem('dp.sampleMeta') === null);
+        // export: an empty in-memory list is checked against the database
+        await mediaWipe(); await mediaLoad();
+        await mediaAdd(rec('ex1', 'log', 'photo')); await mediaAdd(rec('ex2', 'log', 'voice'));
+        _media.clear();                                           // as if the start-up read had failed
+        const mx = await mediaForExport();
+        ok('a backup still includes photos the start-up read missed', mx.items.length === 2, mx.items.length);
+        _media.clear(); window.mediaReadAll = () => Promise.reject(new Error('io'));
+        const my = await mediaForExport();
+        ok('…and says so when the database cannot be read at all', my.items.length === 0 && my.skipped === -1, my);
+        window.mediaReadAll = rasSnap; await mediaLoad();
+        // the last reminder gone: native alarms are cancelled, without asking for permission
+        const calls = []; let asked = 0;
+        window.Capacitor = { Plugins: {
+          LocalNotifications: { checkPermissions: async () => ({ display: 'granted' }), requestPermissions: async () => { asked++; return { display: 'granted' }; },
+            getPending: async () => ({ notifications: [{ id: 1 }, { id: 2 }, { id: 750 }] }), cancel: async (o) => { calls.push(['cancel', o.notifications.map(n => n.id)]); }, schedule: async () => {} },
+          FullScreenAlarm: { schedule: async (o) => { calls.push(['fs', o.alarms.length]); return {}; } } } };
+        localStorage.setItem('dp.reminders', '[]'); localStorage.setItem('dp.events', '[]');
+        setupReminders(); await sleep(20);
+        ok('with no reminders left, their scheduled alarms are cancelled', calls.some(c => c[0] === 'cancel' && c[1].join() === '1,2') && calls.some(c => c[0] === 'fs' && c[1] === 0), calls);
+        ok('…other features\' notifications are kept, and no permission is asked for', !calls.some(c => c[0] === 'cancel' && c[1].includes(750)) && asked === 0);
+      } finally {
+        window.Capacitor = capSnap2; window.mediaReadAll = rasSnap; window.pushState = pushSnap; window.pullState = pullSnap; window.confirm = confSnap;
+        Object.keys(snaps).forEach(k => { if (snaps[k] != null) localStorage.setItem(k, snaps[k]); else localStorage.removeItem(k); });
+        localStorage.removeItem('dp.notes');
+      }
+    }
+
     // v253: "Push all to Sheet" sends every tab the Sheet has, Calendar events and articles included
     {
       const fSnap = window.fetch, setSnap = localStorage.getItem('dp.settings'), entSnap = localStorage.getItem('dp.entries'), sent = [];

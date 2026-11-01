@@ -32,9 +32,17 @@ if (!Array.isArray(BACKUP_KEYS) || BACKUP_KEYS.length < 20) {
   process.exit(1);
 }
 
+// The on/off flags (stored as '1', so a backup carries the number 1) are its second free variable.
+const flagSrc = block("const BACKUP_FLAG_KEYS", "[", "]");
+const BACKUP_FLAG_KEYS = eval(flagSrc.slice(flagSrc.indexOf("[")));
+if (!BACKUP_FLAG_KEYS.length || !BACKUP_FLAG_KEYS.every((k) => BACKUP_KEYS.includes(k))) {
+  console.error("!! BACKUP_FLAG_KEYS must be non-empty and every flag must be a backed-up key");
+  process.exit(1);
+}
+
 const fnSrc = block("function validateBackup", "{", "}");
 // eslint-disable-next-line no-new-func
-const validateBackup = new Function("BACKUP_KEYS", `${fnSrc}; return validateBackup;`)(BACKUP_KEYS);
+const validateBackup = new Function("BACKUP_KEYS", "BACKUP_FLAG_KEYS", `${fnSrc}; return validateBackup;`)(BACKUP_KEYS, BACKUP_FLAG_KEYS);
 
 const k0 = BACKUP_KEYS[0];
 const cases = [
@@ -48,6 +56,7 @@ const cases = [
   ["{} — parses fine, means nothing",   {},                                      false],
   ["another app's JSON",                { name: "x", version: "1.0.0" },         false],
   ["our key names, numeric contents",   { [k0]: 1, [BACKUP_KEYS[1]]: 2 },        false],
+  ["only on/off flags, as exported",    { [BACKUP_FLAG_KEYS[0]]: 1 },            true],
 ];
 
 const fails = [];

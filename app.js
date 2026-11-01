@@ -7545,8 +7545,18 @@ async function mediaForExport() {
   const none = (note, skipped) => ({ items: [], skipped: skipped || 0, bytes: 0, note: note || '' });
   if (!mediaSupported()) return none();
   if (!_mediaReady) await Promise.race([mediaLoad(), new Promise(r => setTimeout(r, 8000))]);
-  const t = mediaTotals(), n = t.photos + t.voice;
-  if (!n) return none();
+  let t = mediaTotals(), n = t.photos + t.voice;
+  if (!n) {
+    /* The in-memory list is also empty when the first read at start-up failed (that error is
+       swallowed) or is still slow. A backup must not take that for "no photos": it would be
+       saved without them, stamped as today's backup, and Delete everything would then trust it.
+       Ask the database itself. */
+    const onDisk = await Promise.race([mediaReadAll().catch(() => null), new Promise(r => setTimeout(() => r(null), 8000))]);
+    if (!onDisk) return none('', -1);
+    if (!onDisk.length) return none();
+    await mediaLoad(); t = mediaTotals(); n = t.photos + t.voice;
+    if (!n) return none('', -1);
+  }
   const sp = nativeSharePlugin();
   if (window.Capacitor && !(sp && sp.saveTextFile)) {
     return none(`This app version can only copy a backup as text, so your ${n} photos and voice notes are NOT in it. Update Daylog in the Play Store to back them up.`);
@@ -7572,6 +7582,10 @@ function mediaItemValid(it) {
 async function mediaRestore(list) {
   const res = { added: 0, had: 0, bad: 0, failed: 0 };
   if (!mediaSupported() || !Array.isArray(list)) return res;
+  _mediaBusy++;   // an app-update reload must wait: it would cut the restore off half-way, unreported
+  try { return await mediaRestoreRun(list, res); } finally { _mediaBusy--; mediaIdleCheck(); }
+}
+async function mediaRestoreRun(list, res) {
   if (!_mediaReady) await mediaLoad();
   for (const it of list) {
     if (!mediaItemValid(it)) { res.bad++; continue; }
@@ -7628,6 +7642,8 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
      tools/check-backup-keys.mjs mean what it says. */
   'settings'];
 
+/* The on/off choices above, stored as the string '1' and so exported as the number 1. */
+const BACKUP_FLAG_KEYS = ['hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff', 'usageDisclosure', 'exactAsked'];
 /* Keys the app writes that are DELIBERATELY not backed up, because they describe this install
    rather than the person using it: restoring them onto a fresh device would be wrong.
    This used to be prose in the comment above, which meant nothing could check it. It is a list
@@ -7752,7 +7768,8 @@ async function exportData() {
   // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
   // sheet — the single most dangerous lie this app could tell.
   const r = await saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
-  if (saveOk(r)) localStorage.setItem('dp.lastBackup', String(Date.now()));
+  // ...and not when the photos and voice notes could not be read: the delete flow trusts this date.
+  if (saveOk(r) && !(media.skipped < 0)) localStorage.setItem('dp.lastBackup', String(Date.now()));
   // Say so if the file is incomplete. A partial backup presented as a whole one is the failure
   // this app keeps having to unlearn — and here it would not be noticed until a restore.
   if (saveOk(r) && skipped.length) {
@@ -7764,6 +7781,18 @@ async function exportData() {
       : `Backed up, but ${media.skipped} photo(s)/voice note(s) could not be read and were left out`, true);
   }
   return r;
+}
+/* The sample preview's demo rows are marked `sample: true`, but the marker list (dp.sampleMeta)
+   describes this install and is not backed up. A backup taken during the preview restored 14
+   fake days as permanent real data — no banner, nothing for "Clear sample" to find. */
+function backupDropSample(out) {
+  const meta = safeParse(localStorage.getItem('dp.sampleMeta'), null);
+  if (!meta) return;
+  if (out.entries) Object.keys(out.entries).forEach(d => { if (out.entries[d] && out.entries[d].sample) delete out.entries[d]; });
+  if (out.health) Object.keys(out.health).forEach(d => { if (out.health[d] && out.health[d].sample) delete out.health[d]; });
+  const tlIds = new Set(meta.timelog || []);
+  if (Array.isArray(out.timelog)) out.timelog = out.timelog.filter(s => !(s && (s.sample || tlIds.has(s.id))));
+  if (out.pomohist && typeof out.pomohist === 'object' && Array.isArray(meta.pomo)) meta.pomo.forEach(d => { delete out.pomohist[d]; });
 }
 function backupBlob() {
   // Everything goes through BACKUP_KEYS. `settings` used to be special-cased here and matched
@@ -7781,6 +7810,7 @@ function backupBlob() {
     try { out[k] = JSON.parse(raw); }
     catch (e) { skipped.push(k); }
   });
+  backupDropSample(out);
   return { data: out, skipped };
 }
 /* Is this actually a Daylog backup?
@@ -7814,6 +7844,9 @@ function validateBackup(d) {
   // rendering rather than restoring anything.
   const bad = keys.filter(k => {
     const v = d[k];
+    // The on/off choices are stored as '1', so a backup carries them as the number 1. Rejecting
+    // every number dropped all seven on restore while it still said "Backup restored".
+    if (BACKUP_FLAG_KEYS.includes(k) && (v === 1 || v === true)) return false;
     return typeof v === 'number' || (typeof v === 'string' && v.length > 512);
   });
   // `keys.length > 0` matters: without it, zero recognised keys makes this 0 === 0 and the file
@@ -7845,8 +7878,15 @@ function importData(file, after) {
       // RESTORE path, where it matters more.
       let failed = 0, wrote = 0;
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
+      // This install's sample markers point at rows the restore has just replaced; left in place,
+      // "Clear sample" would delete restored REAL rows on those dates.
+      localStorage.removeItem('dp.sampleMeta');
       reloadCfg();
-      refreshStreak(); setupReminders(); pushState(true); show('dash');
+      /* No pushState(true) here. Pushing the restored file stamped it newer than every other
+         phone, and the Sheet replaces its whole state on a push, so restoring last week's
+         backup on one phone wiped this week's notes, tasks and articles from the others.
+         With a Sheet set up, pull first: the normal merge then decides what is newer. */
+      refreshStreak(); setupReminders(); if (DB.settings().syncUrl) pullState(); show('dash');
       if (!wrote) toast(`Nothing was restored — all ${failed} section(s) failed to write. Free up storage and try again.`, true);
       else if (failed) toast(`Restored ${wrote} section(s); ${failed} could not be written — free up storage and import again`, true);
       else if (!nMedia) toast('Backup restored');
@@ -7922,7 +7962,7 @@ function setupReminders() {
   reminderTimeouts.forEach(clearTimeout); reminderTimeouts = [];
   const rems = DB.reminders().filter(r => r.enabled && r.time);
   const todaysEvents = DB.events().filter(x => x.date === todayStr() && x.time);
-  if (!rems.length && !todaysEvents.length) return;
+  if (!rems.length && !todaysEvents.length) { clearNativeReminderAlarms(); return; }
   // 1) Polling backup every 10s — self-heals a missed/late tick (`true` = due & unacknowledged).
   reminderInterval = setInterval(() => checkReminders(true), 10000);
   // 2) Precise per-reminder timer to the exact next occurrence today. A setTimeout aimed at the
@@ -8277,6 +8317,23 @@ function fullScreenPlugin() { return (window.Capacitor && window.Capacitor.Plugi
 // Each reminder/event carries mode 'alarm' (loud full-screen takeover) or 'notify' (plain heads-up).
 // Alarm-mode → the native FullScreenAlarm plugin (rings over the lock screen). Notify-mode, and
 // everything when the full-screen plugin is absent, → ordinary LocalNotifications.
+/* Nothing left to remind about — the last reminder deleted, Delete everything, a restore with
+   none. The early return in setupReminders skipped scheduleNativeAlarms, so up to 7 days of
+   already-scheduled alarms kept ringing. checkPermissions, not requestPermissions: someone with
+   no reminders must never be asked for notification permission because of them. */
+async function clearNativeReminderAlarms() {
+  if (!nativeShell()) return;
+  try {
+    const LN = window.Capacitor.Plugins.LocalNotifications, FS = fullScreenPlugin();
+    const perm = LN && LN.checkPermissions ? await LN.checkPermissions() : null;
+    if (perm && perm.display === 'granted') {
+      const pending = await LN.getPending();
+      const mine = (pending.notifications || []).filter(n => n.id < 700 && n.id !== 399);
+      if (mine.length) await LN.cancel({ notifications: mine.map(n => ({ id: n.id })) });
+    }
+    if (FS) await FS.schedule({ alarms: [] });
+  } catch (e) {}
+}
 async function scheduleNativeAlarms() {
   if (!nativeShell()) return false;
   const LN = window.Capacitor.Plugins.LocalNotifications;
