@@ -15,6 +15,11 @@
 
 var SHEET_NAME = 'Log';
 
+// Raised whenever the app needs a newer copy of this script. Every pull reports it, and an app
+// that expects a higher number says so in Settings ▸ Backup & restore, since otherwise nobody
+// can tell that the copy pasted into their sheet is an old one.
+var SCRIPT_VERSION = 2;
+
 // Column order written to the sheet. Add keys here to capture more fields.
 var COLUMNS = [
   'date', 'updatedAt', 'mood', 'energy', 'sleepHours', 'deepWorkHours',
@@ -87,12 +92,14 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.type === 'pull') {
     var raw = readState_();              // the exact JSON string the app last pushed (or '{}')
     if (e.parameter.callback) {
-      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ')')
+      // The version rides as a second argument, so the state itself is never parsed here. A
+      // script from before versions passes one argument, which is how the app tells it is old.
+      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ',' + JSON.stringify({ script: SCRIPT_VERSION }) + ')')
         .setMimeType(ContentService.MimeType.JAVASCRIPT);
     }
     return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
   }
-  return json_({ ok: true, msg: 'Daily Pulse sync is live.' });
+  return json_({ ok: true, msg: 'Daily Pulse sync is live.', script: SCRIPT_VERSION });
 }
 
 // Full-state snapshot for device sync, stored chunked in a hidden "_State" tab.

@@ -802,8 +802,9 @@ async function pisPush() {
 }
 
 /* ---------- Multi-device sync: full-state push + JSONP pull ----------
-   The sync link IS the login. Whichever device saved most recently wins;
-   the app pulls on open so you see the latest before editing. */
+   The sync link IS the login. The app pulls on open so you see the latest before editing,
+   and merges rather than replaces: days and habits by date and habit, lists item by item
+   (v253), so changes made on two devices both survive; the newer change wins per item. */
 let pushTimer;
 function pushState(now) {
   const url = DB.settings().syncUrl; if (!url) return;
@@ -836,12 +837,29 @@ function pushState(now) {
    WebView any time after that, and a push still waiting out its 1.2 s never went. */
 let _pushPending = null;
 function flushPush() { if (!_pushPending) return; clearTimeout(pushTimer); const f = _pushPending; _pushPending = null; f(); }
+/* Which copy of the Sheet script answered. Code.gs passes its SCRIPT_VERSION as a second
+   argument to the pull; a copy pasted before there were versions passes none, and is version 1.
+   A fix to the script only reaches a sheet when its owner pastes it again, and nothing told them
+   to, so Settings says so (the Backup & restore row, and the sync card inside it) when the copy is
+   older than this app expects. Kept per
+   link (a new link starts fresh) and per device, so it is never synced or backed up. */
+const SHEET_SCRIPT = 2;
+function sheetScriptSeen(url, meta) {
+  const v = (meta && +meta.script) || 1;
+  const prev = safeParse(localStorage.getItem('dp.sheetScript'), null);
+  safeSet('dp.sheetScript', JSON.stringify({ url, v }));
+  if (v < SHEET_SCRIPT && !(prev && prev.url === url && prev.v === v)) toast('Your Sheet script is out of date. Settings ▸ Backup & restore shows how to update it.');   // once, not on every open
+}
+function sheetScriptOld(url) {
+  const seen = safeParse(localStorage.getItem('dp.sheetScript'), null);
+  return !!(url && seen && seen.url === url && seen.v < SHEET_SCRIPT);
+}
 function pullState(done) {
   const url = DB.settings().syncUrl; if (!url) { done && done(false); return; }
   const cb = 'dpcb' + Date.now();
   const script = document.createElement('script');
   const cleanup = () => { delete window[cb]; script.remove(); };
-  window[cb] = (remote) => { cleanup(); applyRemoteState(remote); done && done(true); };
+  window[cb] = (remote, meta) => { cleanup(); sheetScriptSeen(url, meta); applyRemoteState(remote); done && done(true); };
   script.onerror = () => { cleanup(); done && done(false); };
   script.src = url + (url.includes('?') ? '&' : '?') + 'type=pull&callback=' + cb + '&t=' + Date.now();
   document.body.appendChild(script);
@@ -6502,7 +6520,12 @@ function renderSettings() {
       <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-ghost btn-sm" id="resync">Push all to Sheet</button>
       </div>
-      <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Newest edit wins.</div>
+      ${sheetScriptOld(s.syncUrl) ? `<div class="sync-old" id="sync-old" role="status"><b>⚠️ Your Sheet's script is out of date.</b> Sync still works, but the old copy can show a journal line starting with “-” as #ERROR! and can break a large sync. To update it:
+        <ol><li>Open the <a href="sheets-setup.html#update">setup page</a> and copy the script.</li>
+        <li>In your sheet: Extensions ▸ Apps Script, select everything, paste over it, Save.</li>
+        <li>Deploy ▸ <b>Manage deployments</b> ▸ ✏️ ▸ Version: <b>New version</b> ▸ Deploy. Your link stays the same. (Not “New deployment”: that makes a new link.)</li>
+        <li>Come back and tap <b>Sync now</b>.</li></ol></div>` : ''}
+      <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Days, tasks, notes and other lists merge item by item, so different changes on two phones both stay; when both phones changed the same item, the newer change wins.</div>
       <details class="sync-what"><summary>Exactly what gets sent, and where</summary>
         <div class="hint">
           <p><b>Off unless you connect it.</b> With no link pasted above, nothing ever leaves this phone.</p>
@@ -6700,7 +6723,8 @@ function renderSettings() {
       row('data-set-page="reminders"', 'bell', 'Reminders', nRem ? `${nRem} set` + (!nativeShell() && s.ntfyOn ? ' · background alarms on' : '') : 'None yet · add a daily nudge') +
       row('data-set-page="tracking"', 'heart', 'Auto-tracking', !hcPlugin() ? 'Needs the Play Store app' : at.on ? 'On · sleep, steps, screen time from your phone' : 'Off · nothing is collected'))}
     ${group('Your data',
-      row('data-set-page="data"', 'download', 'Backup &amp; restore', lastD < 0 ? 'No backup yet · do this once' : lastD === 0 ? 'Last backup today' : `Last backup ${lastD} day${lastD === 1 ? '' : 's'} ago`, lastD < 0 || lastD > 7 ? 'set-warn' : '') +
+      (sheetScriptOld(s.syncUrl) ? row('data-set-page="data"', 'download', 'Backup &amp; restore', 'Your Sheet script is out of date · how to update', 'set-warn')
+        : row('data-set-page="data"', 'download', 'Backup &amp; restore', lastD < 0 ? 'No backup yet · do this once' : lastD === 0 ? 'Last backup today' : `Last backup ${lastD} day${lastD === 1 ? '' : 's'} ago`, lastD < 0 || lastD > 7 ? 'set-warn' : '')) +
       row('data-set-page="storage"', 'hardDrive', 'Storage', storageHomeSub()) +
       row('id="open-report"', 'note', 'Download report (PDF)', 'Your stats as a printable report') +
       row('data-set-page="wipe"', 'trash', 'Delete everything', 'Erase all data on this phone', 'set-danger'))}
@@ -6722,7 +6746,7 @@ document.addEventListener('click', async (ev) => {
     if (s.syncUrl) { toast('Connected — loading your data…'); pullState(ok => { renderSettings(); toast(ok ? 'Logged in & synced ✅' : 'Connected (nothing to pull yet)'); }); }
     else { renderSettings(); toast('Link cleared'); }
   }
-  if (ev.target.id === 'sync-now') { toast('Syncing…'); pullState(ok => { if (!ok) pushState(true); toast('Synced ✅'); }); }
+  if (ev.target.id === 'sync-now') { toast('Syncing…'); pullState(ok => { if (!ok) pushState(true); toast('Synced ✅'); if (!!document.getElementById('sync-old') !== sheetScriptOld(DB.settings().syncUrl)) renderSettings(); }); }
   if (ev.target.id === 'resync') { toast('Pushing all…'); resyncAll(); }
   if (ev.target.id === 'pis-save') {
     const s2 = DB.settings();
@@ -7927,6 +7951,7 @@ const BACKUP_EXCLUDED = [
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
   'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel',
+  'sheetScript',                       // which script version this device's sync link answered with
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers

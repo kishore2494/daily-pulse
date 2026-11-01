@@ -16,11 +16,16 @@
 //
 // It also holds sheets-setup.html to the file: the page carries its own copy for people to paste,
 // and an edit to one and not the other ships a fix nobody installs.
+//
+// And it holds the script's SCRIPT_VERSION to the number app.js expects (SHEET_SCRIPT): the app
+// tells a user their pasted copy is old by comparing the two, so a change to Code.gs that the app
+// does not know about leaves everyone on the old copy without a word.
 
 import { readFileSync } from "node:fs";
 
 const gs = readFileSync("google-apps-script/Code.gs", "utf8");
 const page = readFileSync("sheets-setup.html", "utf8");
+const app = readFileSync("app.js", "utf8");
 const fails = [];
 
 // 1. the page's copy is the file
@@ -61,7 +66,7 @@ const sheets = {};
 const SpreadsheetApp = { getActiveSpreadsheet: () => ({ getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet()) }) };
 const ContentService = { createTextOutput: (text) => ({ text, setMimeType() { return this; } }), MimeType: { JSON: "json", JAVASCRIPT: "js" } };
 // eslint-disable-next-line no-new-func
-const api = new Function("SpreadsheetApp", "ContentService", `${gs}\nreturn { saveState_, readState_, doPost };`)(SpreadsheetApp, ContentService);
+const api = new Function("SpreadsheetApp", "ContentService", `${gs}\nreturn { saveState_, readState_, doPost, doGet, SCRIPT_VERSION };`)(SpreadsheetApp, ContentService);
 
 // the stand-in must reproduce the damage, or every check below passes vacuously
 if (typed("-x") !== "#ERROR!" || typed("=x") !== "#ERROR!" || typed("'x") !== "x") fails.push("the stand-in sheet no longer models Sheets' typed-input rules");
@@ -104,9 +109,23 @@ if (sheets.Notes.cells()[1][0] !== "- buy milk") fails.push(`Notes: "- buy milk"
 post({ type: "reminders", items: [{ time: "07:00", label: "-- stretch", enabled: true }] });
 if (sheets.Reminders.cells()[1][1] !== "-- stretch") fails.push(`Reminders: "-- stretch" is stored as ${JSON.stringify(sheets.Reminders.cells()[1][1])}`);
 
+// 5. the pull reports the script version, as a second argument, and it is the one the app expects
+const want = +(app.match(/const SHEET_SCRIPT = (\d+);/) || [])[1];
+if (!want) fails.push("app.js has no `const SHEET_SCRIPT = <n>;` — this check has gone stale");
+else if (api.SCRIPT_VERSION !== want) fails.push(`Code.gs SCRIPT_VERSION is ${api.SCRIPT_VERSION} but app.js expects ${want}; raise both together`);
+api.saveState_(JSON.stringify({ touched: 5 }));
+let got = null;
+try {
+  const out = api.doGet({ parameter: { type: "pull", callback: "cb" } }).text;
+  // eslint-disable-next-line no-new-func
+  new Function("cb", out)((state, meta) => { got = { state, meta }; });
+} catch (e) { fails.push(`pull: the JSONP reply does not run (${e.message})`); }
+if (got && got.state?.touched !== 5) fails.push("pull: the state did not come back as the first argument");
+if (got && got.meta?.script !== api.SCRIPT_VERSION) fails.push(`pull: the second argument is ${JSON.stringify(got.meta)}, not the script version`);
+
 if (fails.length) {
   console.error("sheet script FAILED:");
   for (const f of fails) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`sheet script: the page's copy matches Code.gs; the state round-trips through ${cuts} hard cases; typed text stays text in 3 tabs`);
+console.log(`sheet script: the page's copy matches Code.gs; the state round-trips through ${cuts} hard cases; typed text stays text in 3 tabs; the pull reports script v${api.SCRIPT_VERSION}, as app.js expects`);

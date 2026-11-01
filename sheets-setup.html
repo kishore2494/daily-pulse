@@ -131,7 +131,8 @@
     <li><b>Copy the Web app URL</b>
       It ends in <code>/exec</code>. Copy the whole thing.</li>
     <li><b>Paste it into Daylog</b>
-      <b>Menu &rsaquo; Settings &rsaquo; Sync &amp; login</b>, paste the link, tap
+      <b>Menu &rsaquo; Settings &rsaquo; Backup &amp; restore</b>, paste the link under
+      <b>Sync &amp; login</b>, tap
       <b>Connect / Log in</b>. It will pull anything already in the sheet, then keep the two
       in step. Tap <b>Push all to Sheet</b> once to send everything you have logged so far.</li>
   </ol>
@@ -139,9 +140,27 @@
   <div class="card">
     <h2>Using it on a second phone</h2>
     <p>Paste the same link into Settings on the other phone. That link is your login — there is
-    no account and no password. Newest edit wins; nothing is deleted from either side.</p>
+    no account and no password. Days, tasks, notes and other lists merge item by item, so
+    different changes made on the two phones both stay. When both phones changed the same item,
+    the newer change wins, and something you delete on one phone is deleted on the other.</p>
     <p class="warn-box"><b>So treat the link like a password.</b> Anyone who has it can read and
     write your sheet. Do not post it anywhere.</p>
+  </div>
+
+  <div class="card" id="update">
+    <h2>Updating the script you already have</h2>
+    <p>When Daylog says <b>your Sheet script is out of date</b>, your sheet still runs a copy
+    pasted before a fix. Updating keeps your link and everything in the sheet:</p>
+    <ol>
+      <li>Copy the script below.</li>
+      <li>In your sheet: <b>Extensions &rsaquo; Apps Script</b>. Select everything in
+        <code>Code.gs</code>, paste over it, and save.</li>
+      <li><b>Deploy &rsaquo; Manage deployments</b>, click the pencil, set Version to
+        <b>New version</b>, then <b>Deploy</b>.</li>
+      <li>In Daylog, tap <b>Sync now</b>. The notice goes away.</li>
+    </ol>
+    <p class="warn-box"><b>Use Manage deployments, not New deployment.</b> A new deployment makes
+    a new link, and the old link — the one in your phones — keeps running the old copy.</p>
   </div>
 
   <div class="card">
@@ -178,6 +197,11 @@
  */
 
 var SHEET_NAME = 'Log';
+
+// Raised whenever the app needs a newer copy of this script. Every pull reports it, and an app
+// that expects a higher number says so in Settings ▸ Backup &amp; restore, since otherwise nobody
+// can tell that the copy pasted into their sheet is an old one.
+var SCRIPT_VERSION = 2;
 
 // Column order written to the sheet. Add keys here to capture more fields.
 var COLUMNS = [
@@ -251,12 +275,14 @@ function doGet(e) {
   if (e &amp;&amp; e.parameter &amp;&amp; e.parameter.type === 'pull') {
     var raw = readState_();              // the exact JSON string the app last pushed (or '{}')
     if (e.parameter.callback) {
-      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ')')
+      // The version rides as a second argument, so the state itself is never parsed here. A
+      // script from before versions passes one argument, which is how the app tells it is old.
+      return ContentService.createTextOutput(e.parameter.callback + '(' + raw + ',' + JSON.stringify({ script: SCRIPT_VERSION }) + ')')
         .setMimeType(ContentService.MimeType.JAVASCRIPT);
     }
     return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
   }
-  return json_({ ok: true, msg: 'Daily Pulse sync is live.' });
+  return json_({ ok: true, msg: 'Daily Pulse sync is live.', script: SCRIPT_VERSION });
 }
 
 // Full-state snapshot for device sync, stored chunked in a hidden "_State" tab.

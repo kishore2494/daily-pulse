@@ -2688,6 +2688,52 @@
     }
   })();
 
+  // ---- v254: the app says when the Sheet's script is an old copy ----
+  (function () {
+    const keys = ['dp.sheetScript', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast, toasts = []; window.toast = (m) => toasts.push(m);
+    const pspSnap = settingsPage;
+    // pull through the real pullState; jsdom never loads the <script>, so answer it by hand
+    // (jsdom's 404 for the script lands later and would call done(false) after the test; detach it)
+    const answer = (args) => { const cb = Object.keys(window).filter(k => /^dpcb\d+$/.test(k)).pop(); const el = document.querySelector('script[src*="callback=' + cb + '&"]'); if (el) el.onerror = null; window[cb](...args); };
+    const pull = (args) => { let done = null; pullState(ok => { done = ok; }); answer(args); return done; };
+    const U1 = 'https://script.google.com/macros/s/ONE/exec', U2 = 'https://script.google.com/macros/s/TWO/exec';
+    try {
+      localStorage.removeItem('dp.sheetScript');
+      const st = DB.settings(); st.syncUrl = U1; DB.saveSettings(st);
+      ok('a pull from the current script is not "old"', pull([{}, { script: SHEET_SCRIPT }]) === true && !sheetScriptOld(U1) && !toasts.length, toasts);
+      ok('a pull from a copy pasted before versions (one argument) is old', pull([{}]) === true && sheetScriptOld(U1));
+      ok('…and says so once', toasts.length === 1 && /Sheet script is out of date/.test(toasts[0]) && /Backup & restore/.test(toasts[0]), toasts);
+      pull([{}]); pull([{}]);
+      ok('…not on every open', toasts.length === 1, toasts.length);
+      ok('an older numbered copy is old too', pull([{}, { script: SHEET_SCRIPT - 1 }]) && sheetScriptOld(U1));
+      ok('a newer copy than this app knows is not old', pull([{}, { script: SHEET_SCRIPT + 1 }]) && !sheetScriptOld(U1));
+      pull([{}]);
+      ok('it is kept per link: a new link is not judged by the old one', sheetScriptOld(U1) && !sheetScriptOld(U2) && !sheetScriptOld(''));
+      settingsPage = 'data'; renderSettings();
+      const box = document.getElementById('sync-old');
+      ok('Settings ▸ Backup & restore shows how to update an old copy', !!box && /New version/.test(box.textContent) && !!box.querySelector('a[href="sheets-setup.html#update"]'), box && box.textContent.slice(0, 80));
+      settingsPage = null; renderSettings();
+      const rowSub = [...document.querySelectorAll('#s-settings [data-set-page="data"]')].map(b => b.textContent).join('');
+      ok('…and the Settings home row says so', /Sheet script is out of date/.test(rowSub), rowSub);
+      pull([{}, { script: SHEET_SCRIPT }]);
+      settingsPage = 'data'; renderSettings();
+      ok('once the new copy answers, the notice goes', !document.getElementById('sync-old') && !sheetScriptOld(U1));
+      localStorage.setItem('dp.sheetScript', JSON.stringify({ url: U1, v: 1 }));
+      const sn = document.getElementById('sync-now');
+      if (sn) { sn.click(); answer([{}]); }
+      ok('a Sync now that finds an old copy shows the notice at once, without leaving the page', !!sn && !!document.getElementById('sync-old') && settingsPage === 'data');
+      ok('which script answered is this device\'s, never in a backup', BACKUP_EXCLUDED.includes('sheetScript'));
+    } finally {
+      window.toast = tSnap; settingsPage = pspSnap; clearTimeout(pushTimer); _pushPending = null;
+      Object.keys(window).filter(k => /^dpcb\d+$/.test(k)).forEach(k => { delete window[k]; });
+      document.querySelectorAll('script[src*="type=pull"]').forEach(x => x.remove());
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      renderSettings();
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

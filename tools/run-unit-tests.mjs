@@ -154,7 +154,7 @@ if (summary.fail > 0) {
 }
 
 console.log(`unit tests: ${summary.pass} passed`);
-if (noise.length) console.log(`   (${noise.length} unrelated jsdom notice${noise.length > 1 ? "s" : ""})`);
+if (noise.length) { console.log(`   (${noise.length} unrelated jsdom notice${noise.length > 1 ? "s" : ""})`); if (process.env.SHOW_NOISE) noise.forEach((n) => console.log("     " + n)); }
 
 // The app sets intervals and animation frames, and jsdom keeps them alive, so node has no reason
 // to exit on its own. Without this the harness PASSES and then hangs forever — which in CI is a
