@@ -418,6 +418,56 @@
       }
     }
 
+    /* v253: native build 119 — notification taps applied at their own time; a dismissed share sheet is not a backup */
+    {
+      const capSnap3 = window.Capacitor, tlSnap = localStorage.getItem('dp.timelog'), lbSnap = localStorage.getItem('dp.lastBackup');
+      let queue = [], legacy = '';
+      const H = 3600000, t0 = Date.now() - 13 * H;
+      const shareRes = { v: null };
+      window.Capacitor = { Plugins: {
+        DaylogTimer: { show: async () => ({}), hide: async () => ({}),
+          consumeActions: async () => { const a = queue; queue = []; return { actions: a }; } },
+        DaylogShare: { shareImage: async () => ({ ok: true }), saveTextFile: async () => ({ saved: false }), shareTextFile: async () => shareRes.v } } };
+      try {
+        localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'nq1', act: 'work', start: t0, end: null, upd: t0 }]));
+        queue = [{ action: 'stop', at: t0 + 9 * H }];                   // tapped 9 h in, app opened 13 h in
+        await drainTimerAction();
+        let b = DB.timelog().find(s => s.id === 'nq1');
+        ok('a Stop tapped in the notification ends the block when it was tapped, not when the app opened', b.end === t0 + 9 * H, (b.end - t0) / H);
+        localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'nq2', act: 'work', start: t0, end: null, upd: t0 }]));
+        queue = [{ action: 'resume', at: t0 + 4 * H }, { action: 'pause', at: t0 + 3 * H }];   // out of order on purpose
+        await drainTimerAction();
+        const L = DB.timelog();
+        ok('Pause then Resume both apply, each at its own time — the paused hour is not counted', L.find(s => s.id === 'nq2').end === t0 + 3 * H && L.some(s => s.end == null && s.start === t0 + 4 * H && s.act === 'work'), L.map(s => [(s.start - t0) / H, s.end == null ? null : (s.end - t0) / H]));
+        stopRunning();
+        localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'nq3', act: 'sleep', start: t0 + 10 * H, end: null, upd: t0 }]));
+        queue = [{ action: 'stop', at: t0 + 9 * H }];                   // about an earlier block
+        await drainTimerAction();
+        ok('a tap older than the running block leaves it running', DB.timelog().find(s => s.id === 'nq3').end == null);
+        stopRunning();
+        // an older Play build: one untimed action
+        delete window.Capacitor.Plugins.DaylogTimer.consumeActions;
+        window.Capacitor.Plugins.DaylogTimer.consumeAction = async () => { const a = legacy; legacy = ''; return { action: a }; };
+        localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'nq4', act: 'work', start: t0, end: null, upd: t0 }]));
+        legacy = 'stop'; await drainTimerAction();
+        ok('an older native build (one untimed action) still works', DB.timelog().find(s => s.id === 'nq4').end != null);
+        // share sheet
+        localStorage.removeItem('dp.lastBackup');
+        shareRes.v = { ok: true, chosen: false };
+        let r = await saveFile('b.json', '{}', 'application/json');
+        ok('a share sheet closed without picking an app is not a save', r === 'cancel' && !saveOk(r));
+        shareRes.v = { ok: true, chosen: true, target: 'com.google.android.apps.docs' };
+        r = await saveFile('b.json', '{}', 'application/json');
+        ok('…picking an app is', r === 'shared' && saveOk(r));
+        shareRes.v = { ok: true };                                       // an older build cannot tell
+        ok('…and an older build that cannot tell keeps the old behaviour', (await saveFile('b.json', '{}', 'application/json')) === 'shared');
+      } finally {
+        window.Capacitor = capSnap3;
+        if (tlSnap != null) localStorage.setItem('dp.timelog', tlSnap); else localStorage.removeItem('dp.timelog');
+        if (lbSnap != null) localStorage.setItem('dp.lastBackup', lbSnap); else localStorage.removeItem('dp.lastBackup');
+      }
+    }
+
     // v253: "Push all to Sheet" sends every tab the Sheet has, Calendar events and articles included
     {
       const fSnap = window.fetch, setSnap = localStorage.getItem('dp.settings'), entSnap = localStorage.getItem('dp.entries'), sent = [];

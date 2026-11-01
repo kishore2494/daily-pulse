@@ -2997,26 +2997,31 @@ function stopRunningAt(actId, t) {
   run.end = Math.max(run.start, Math.min(t, Date.now())); run.upd = Date.now();
   DB.saveTimelog(log); refreshTimerNotif();
 }
-/* Notification Stop / Pause / Resume (both the live listener and the drained native queue). */
-function timerAction(a) {
+/* Notification Stop / Pause / Resume (both the live listener and the drained native queue).
+   `at` is when the button was tapped, if known: a Stop tapped at 18:00 and only seen when the app
+   opened at 22:00 must end the block at 18:00. A tap older than the running block is about an
+   earlier one, so it leaves this one alone. */
+function timerAction(a, at) {
   const r = runningSeg();
-  if (a === 'stop') { if (r) startAct(r.act, r.pid || ''); localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid'); }
+  if ((a === 'stop' || a === 'pause') && r && at && at < r.start) return;
+  if (a === 'stop') { if (r) startAct(r.act, r.pid || '', at); localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid'); }
   else if (a === 'pause') {
-    if (r) { startAct(r.act, r.pid || ''); safeSet('dp.pausedAct', r.act); if (r.pid) safeSet('dp.pausedPid', r.pid); else localStorage.removeItem('dp.pausedPid'); }
+    if (r) { startAct(r.act, r.pid || '', at); safeSet('dp.pausedAct', r.act); if (r.pid) safeSet('dp.pausedPid', r.pid); else localStorage.removeItem('dp.pausedPid'); }
   } else if (a === 'resume') {
     const pa = localStorage.getItem('dp.pausedAct'), pp = localStorage.getItem('dp.pausedPid') || '';
     localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid');
-    if (pa) startAct(pa, pp);
+    if (pa && !r) startAct(pa, pp, at);
   }
 }
-function startAct(actId, pid) {
+function startAct(actId, pid, at) {
   // Any start or stop supersedes a paused timer; left behind, every later stop re-posted an
   // ongoing "Paused <old activity>" notification. (timerAction's pause sets it again after.)
   localStorage.removeItem('dp.pausedAct'); localStorage.removeItem('dp.pausedPid');
-  const log = DB.timelog(); const now = Date.now();
+  const log = DB.timelog(); const real = Date.now();
+  const now = at ? Math.min(+at, real) : real;   // `at`: a notification tap, applied at the time it happened
   const run = log.find(s => s.end == null);
   if (run) {
-    run.end = Math.max(now, run.start); run.upd = now;   // a start fixed into the future must not make a negative block
+    run.end = Math.max(now, run.start); run.upd = real;   // a start fixed into the future must not make a negative block
     // Same activity AND same project = stop. Same activity for a DIFFERENT project has to
     // start a fresh block, or the hours would land on whichever project started first.
     if (run.act === actId && (run.pid || '') === (pid || '')) {   // tapping the running activity = just stop it
@@ -3958,8 +3963,11 @@ async function saveFile(filename, content, mime) {
         const r = await p.saveTextFile({ filename, text: content, mime: mime || 'text/plain' });
         if (r && r.saved) { toast('Saved to your Downloads folder 📁'); return 'download'; }
         if (p.shareTextFile) {
-          await p.shareTextFile({ filename, text: content, mime: mime || 'text/plain' });
-          toast('Choose where to save 📤'); return 'shared';
+          const sr = await p.shareTextFile({ filename, text: content, mime: mime || 'text/plain' });
+          // Native build 119+ waits and says whether an app was picked. Older builds resolve as the
+          // sheet opens — a dismissed sheet then still counted as a backup.
+          if (sr && sr.chosen === false) { toast('Not saved — the share sheet was closed', true); return 'cancel'; }
+          toast(sr && sr.chosen ? 'Sent ✓' : 'Choose where to save 📤'); return 'shared';
         }
       } catch (e) { /* fall through to the rungs below and say what happened */ }
     }
@@ -10735,11 +10743,15 @@ async function refreshTimerNotif() {
    moment we are alive again, so a Pause from the lock screen is not silently lost. */
 async function drainTimerAction() {
   const T = timerPlugin();
-  if (!T || typeof T.consumeAction !== 'function') return;
-  let a = '';
-  try { a = (await T.consumeAction()).action || ''; } catch (e) { return; }
-  if (!a) return;
-  timerAction(a);
+  if (!T) return;
+  // Native build 119+ keeps every tap with its time; older builds kept only the last tap, untimed.
+  let list = [];
+  try {
+    if (typeof T.consumeActions === 'function') list = ((await T.consumeActions()).actions || []).filter(x => x && x.action);
+    else if (typeof T.consumeAction === 'function') { const a = (await T.consumeAction()).action || ''; if (a) list = [{ action: a }]; }
+  } catch (e) { return; }
+  if (!list.length) return;
+  list.sort((x, y) => (+x.at || 0) - (+y.at || 0)).forEach(x => timerAction(x.action, +x.at || 0));
   refreshTimerNotif();
   try { if (document.getElementById('s-time').classList.contains('on')) renderTime(); } catch (e) {}
 }
