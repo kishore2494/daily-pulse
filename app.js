@@ -604,7 +604,8 @@ async function resyncAll() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   let ok = 0;
   for (const d of dates) { if (await syncEntry(d, e[d])) ok++; }
-  syncReminders(); syncNotes(); syncTimelog(); pushState(true);
+  // every tab the Sheet has: Calendar events and Write articles were left out of "Push all"
+  syncReminders(); syncNotes(); syncTimelog(); syncEvents(); syncDocs(); pushState(true);
   toast(`Pushed ${ok} day(s) to your Sheet`);
 }
 

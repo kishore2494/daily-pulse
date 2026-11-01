@@ -275,6 +275,23 @@
     ok('…so a restored photo is not shrunk a second time', _media.get('s1').enc === MEDIA_ENC && mediaShrinkCount() === 0);
     ok('a WebP thumbnail is restored as WebP', _media.get('s1').thumb.type === 'image/webp', _media.get('s1').thumb.type);
     ok('an old JPEG thumbnail is restored as JPEG', b64ImageMime('/9j/4AAQ') === 'image/jpeg' && b64ImageMime('UklGRiQ') === 'image/webp');
+
+    // v253: "Push all to Sheet" sends every tab the Sheet has, Calendar events and articles included
+    {
+      const fSnap = window.fetch, setSnap = localStorage.getItem('dp.settings'), entSnap = localStorage.getItem('dp.entries'), sent = [];
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 6, habits: {} } }));
+      window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body).type); } catch (e) {} return Promise.resolve({ ok: true }); };
+      try {
+        const s = DB.settings(); s.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(s);
+        await resyncAll(); await sleep(2200);    // articles and the time log go out on a short debounce
+        ok('Push all sends days, notes, reminders, the time log and the full state', ['entry', 'notes', 'reminders', 'timelog', 'state'].every(t => sent.includes(t)), [...new Set(sent)]);
+        ok('…and Calendar events and Write articles, which it used to leave out', sent.includes('events') && sent.includes('docs'), [...new Set(sent)]);
+      } finally {
+        window.fetch = fSnap;
+        if (setSnap != null) localStorage.setItem('dp.settings', setSnap); else localStorage.removeItem('dp.settings');
+        if (entSnap != null) localStorage.setItem('dp.entries', entSnap); else localStorage.removeItem('dp.entries');
+      }
+    }
     if (mrSnap === undefined) delete window.MediaRecorder;
     delete navigator.mediaDevices;
   } catch (e) {
