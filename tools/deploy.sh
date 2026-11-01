@@ -61,6 +61,7 @@ node tools/check-overlap.mjs || { echo "!! overlap detection is broken — refus
 node tools/check-money.mjs || { echo "!! amount parsing is wrong — refusing to deploy"; exit 1; }
 node tools/check-sync.mjs || { echo "!! the sync path accepts malformed sections — refusing to deploy"; exit 1; }
 node tools/check-export.mjs || { echo "!! the CSV escaper is broken — refusing to deploy"; exit 1; }
+node tools/check-sheet-script.mjs || { echo "!! the Google Sheet script changes what it stores, or the setup page has a stale copy — refusing to deploy"; exit 1; }
 
 for R in origin prod; do
   echo "==> push $R"

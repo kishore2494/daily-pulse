@@ -60,3 +60,6 @@ jobs:
 
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs
+
+      - name: the Google Sheet script stores what it is given
+        run: node tools/check-sheet-script.mjs

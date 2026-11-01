@@ -62,7 +62,7 @@ function doPost(e) {
     if (data.type === 'state') return saveState_(e.postData.contents);
     var sheet = getSheet_();
     flatten_(data);
-    var row = COLUMNS.map(function (k) { return data[k] !== undefined && data[k] !== null ? data[k] : ''; });
+    var row = COLUMNS.map(function (k) { return data[k] !== undefined && data[k] !== null ? text_(data[k]) : ''; });
 
     // Upsert by date (column 1). Guard against an empty sheet (header only).
     var lastRow = sheet.getLastRow();
@@ -96,15 +96,33 @@ function doGet(e) {
 }
 
 // Full-state snapshot for device sync, stored chunked in a hidden "_State" tab.
+// Each piece is cut where the next one starts safely. Sheets reads a cell value starting with
+// = + or - as a formula (#ERROR!) and drops a leading ', so a piece starting with one came back
+// changed and every pull after it got broken JSON. The JSON is full of "-" (every date), so with
+// a few pieces that was likely, not rare. Pieces are still plain text joined in order, so
+// readState_ and anything already stored are unchanged.
 function saveState_(jsonStr) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName('_State') || ss.insertSheet('_State');
   sh.clear();
-  var size = 45000, rows = [];
-  for (var i = 0; i < jsonStr.length; i += size) rows.push([jsonStr.substr(i, size)]);
+  var rows = [], i = 0;
+  while (i < jsonStr.length) {
+    var j = cut_(jsonStr, i);
+    rows.push([jsonStr.substring(i, j)]);
+    i = j;
+  }
   if (rows.length) sh.getRange(1, 1, rows.length, 1).setValues(rows);
   try { sh.hideSheet(); } catch (_) {}
   return json_({ ok: true, bytes: jsonStr.length });
+}
+// Where the piece starting at i ends: about 45000 characters on, never past the 50000 a cell
+// holds, and only where neither side of the cut is something Sheets would change.
+function cut_(s, i) {
+  var n = s.length, j;
+  var safe = function (k) { return k >= n || (!/[=+\-@'\s]/.test(s.charAt(k)) && !/\s/.test(s.charAt(k - 1))); };
+  for (j = Math.min(i + 45000, n); j <= Math.min(i + 49000, n); j++) if (safe(j)) return j;
+  for (j = i + 44999; j > i; j--) if (safe(j)) return j;
+  return Math.min(i + 45000, n);
 }
 function readState_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -121,7 +139,7 @@ function saveReminders_(items) {
   sh.clear();
   sh.appendRow(['time', 'label', 'enabled']);
   sh.setFrozenRows(1);
-  items.forEach(function (r) { sh.appendRow([r.time || '', r.label || '', r.enabled ? 'Yes' : 'No']); });
+  items.forEach(function (r) { sh.appendRow([r.time || '', text_(r.label || ''), r.enabled ? 'Yes' : 'No']); });
   return json_({ ok: true, count: items.length });
 }
 
@@ -136,7 +154,7 @@ function saveTimelog_(items) {
   sh.setFrozenRows(1);
   sh.getRange('A:A').setNumberFormat('@');   // keep dates as plain text
   var rows = items.map(function (s) {
-    return [s.date || '', s.activity || '', s.start || '', s.end || '', s.duration || '', s.hours || ''];
+    return [s.date || '', text_(s.activity || ''), s.start || '', s.end || '', s.duration || '', s.hours || ''];
   });
   if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
   return json_({ ok: true, count: rows.length });
@@ -149,7 +167,7 @@ function saveList_(sheetName, cols, items) {
   sh.clear();
   sh.appendRow(cols);
   sh.setFrozenRows(1);
-  items.forEach(function (it) { sh.appendRow(cols.map(function (c) { return it[c] !== undefined && it[c] !== null ? it[c] : ''; })); });
+  items.forEach(function (it) { sh.appendRow(cols.map(function (c) { return it[c] !== undefined && it[c] !== null ? text_(it[c]) : ''; })); });
   return json_({ ok: true, count: items.length });
 }
 
@@ -187,6 +205,13 @@ function flatten_(data) {
       data[k] = Object.keys(v).filter(function (x) { return v[x]; }).join(', ');
     }
   });
+}
+
+// Text you typed, kept as text. Sheets reads a value starting with = + or - as a formula, so a
+// journal or note written as "- ran 5k" showed as #ERROR! in the sheet. A leading apostrophe
+// marks it as text and is not shown in the cell.
+function text_(v) {
+  return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v;
 }
 
 function json_(obj) {
