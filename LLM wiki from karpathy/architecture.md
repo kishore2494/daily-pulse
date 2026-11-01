@@ -160,9 +160,14 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   restore left unchanged keeps its stamp. An item this phone deleted since the backup is
   stamped just past that delete and the record dropped. (v253 stamped everything "now", so a
   backup restored on a new phone rolled back later edits on every phone — review 5.)
-- **A list adopted whole** from an older app's save (no `listAt` in the remote) goes through
-  `listSave(store, list, remote.touched)`, so an item that phone deleted gets a delete record
-  and an item it changed a stamp at that save; plain adoption let the delete come back.
+- **A list adopted whole** from an older app's save (no `listAt` in the remote): `adoptList`
+  stamps changed items at that save, keeps an item whose stamp is newer than that save (the
+  old phone cannot have seen it), and drops the rest with NO delete record — the other v253
+  phone brings a dropped item back. A resurrected delete beats a lost addition; both are
+  rollout-only (old phones update on next open).
+- Backups carry `_at` (export time) and `_stamps` (listAt/listDel); restore uses each item's
+  own stamp, `_at` only when the file has none. A restore overrides delete records this phone
+  holds (trade-off, see `listRestored`).
 - **Time-block delete records** expire after 90 days in the merge too, not only in
   `timelogForget`; otherwise the other phone sent each dropped record back, with a push.
 - `dp.listAt` / `dp.listDel` are install state: in `BACKUP_EXCLUDED`, sent with every push.

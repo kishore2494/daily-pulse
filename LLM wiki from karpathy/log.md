@@ -1,3 +1,19 @@
+## 2026-11-02 (00:30) — review 5, second pass: restore stamps per item; adoption keeps unseen adds
+
+The reviewer's second pass on the fixes (fuzzers clean, five repros pass) found three more:
+- **A backup's `_at` beat an edit older than the file but newer than its contents** (a phone
+  that had not pulled exports stale items under a fresh time). Backups now carry `_stamps`
+  (listAt/listDel at export) and each item is restored at its own change time; `_at` is only
+  the fallback. Commit 428587c.
+- **Adopting a v252 list deleted an item the old phone never saw** (my fix for finding 2 of
+  pass 1). Reverted to no delete records for dropped items — a resurrected delete beats a lost
+  addition — and an item stamped after the old phone's save is now kept outright (`adoptList`).
+- **A restore undoes a delete synced from the other phone.** KEPT as a trade-off: restoring is
+  the person's explicit act; the alternative is a restore that undoes itself on the next pull.
+  Documented in `listRestored`.
+942 tests. Pending: builder agent (plans items + gym per-key merge); Kishore's 01:01 trigger
+to spend the remaining window.
+
 ## 2026-11-02 (early) — review 5: five real v253 sync bugs fixed (not deployed)
 
 An adversarial review agent (fuzzed 2- and 3-phone sims, ±10 min clock skew, malformed
