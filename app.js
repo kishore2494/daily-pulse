@@ -963,7 +963,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w22',
   items: [
-    '📖 <b>Look back at a day</b> — tapping a day in History now opens a page that shows the whole day: how it felt, your journal, photos and voice notes, your checklist, where the time went, workouts, money and notes. The <b>Edit</b> button takes you to the Log for that day, and Back brings you here again.',
+    '📖 <b>Look back at a day</b> — tapping a past day (in History, the Calendar, Stats, Search or On this day) now opens a page that shows the whole day: how it felt, your journal, photos and voice notes, your checklist, where the time went, workouts, money and notes. Only the <b>Edit</b> button takes you to the Log, and Back brings you here again.',
     '💾 <b>Settings ▸ Storage</b> — see how much space Daylog takes on your phone, and what takes it. New photos now take less than half the space they did, and voice notes are smaller too. If you added photos before this update, <b>Shrink older photos</b> there frees more than half their space.',
     '📷 <b>Photos &amp; voice notes</b> — the Log has a new <b>Photos &amp; voice</b> card, under Reflection. Take a photo, add some from your gallery, or record a voice note while the day is still fresh, and tap any photo to see it full-screen, caption it or share it. On the Notes screen, <b>Photo</b> and <b>Voice</b> each save a new note. Everything stays on your phone. Photos are shrunk to a few hundred KB, still sharp full-screen, and their location data is removed. They go into your backup file, so a new phone gets them back. They are not sent to the Google Sheet. <b>On this day</b> now shows the photos you took a week, a month or a year ago; <b>History ▸ Photos</b> shows them all by month; and there is a <b>month-in-photos</b> share card.',
     '💌 <b>Tell a friend</b> — Settings ▸ Support. Send an invite card or a link on WhatsApp. Daylog has no marketing budget, so people mostly find it this way. Story-shaped share cards now carry a small QR code to the Play Store too.',
@@ -1113,7 +1113,7 @@ document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'otd-hide') { ev.preventDefault();
     setLogSecHidden('onthisday', true); toast('Hidden — Customize ▸ Log screen sections to bring it back'); renderToday(); return; }
   const tb = ev.target.closest && ev.target.closest('[data-throwback]');
-  if (tb && !ev.target.closest('[data-mview]')) { logDate = tb.dataset.throwback; loadDraft(); renderToday(); toast('Opened ' + prettyDate(logDate)); }
+  if (tb && !ev.target.closest('[data-mview]')) dayOpen(tb.dataset.throwback);
 });
 
 /* ---------- Mood Meter (How We Feel / RULER's model) ----------
@@ -1452,8 +1452,7 @@ document.addEventListener('click', (ev) => {
   const p = ev.target.closest && ev.target.closest('[data-yp]');
   if (p) { const d = p.dataset.yp;
     if (!DB.entry(d)) { toast('Nothing logged on ' + prettyDate(d)); return; }
-    // NOTE: navigateTo('today') force-resets logDate to today — use show() for deep links.
-    logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d)); }
+    buzz(12); dayOpen(d); }
 });
 
 /* One habit chip. Boolean habits: tap cycles done → skip → clear. Goal habits: the chip
@@ -4521,7 +4520,7 @@ document.addEventListener('click', (ev) => {
   const row = ev.target.closest('.sr-row'); if (!row || !document.getElementById('s-search').classList.contains('on')) return;
   if (ev.target.closest('[data-mview]')) return;   // a caption hit's thumbnail opens the photo, not the day
   const kind = row.dataset.sr;
-  if (kind === 'log') { logDate = row.dataset.d; show('today'); }
+  if (kind === 'log') dayOpen(row.dataset.d);
   else if (kind === 'task') show('tasks');
   else if (kind === 'note') show('notes');
   else if (kind === 'plan') { curPlan = row.dataset.id; show('plans'); }
@@ -4590,7 +4589,7 @@ document.addEventListener('click', (ev) => {
    every empty field showing, when what you wanted was to look back at the day. This page
    shows what the day holds and nothing it does not. "Edit" opens the Log for that day, and
    Back or Done there brings you back here. */
-let histDay = null, _histScroll = 0, _editFromHist = null;
+let histDay = null, _histScroll = 0, _editFromHist = null, _dayFrom = null;
 function longDate(d) {
   try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return d; }
 }
@@ -4734,7 +4733,7 @@ function historyDayHTML(d) {
 
   const nothing = !en && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML;
   return `<div class="hd-nav">
-      <button class="back-btn" data-hday-back>← All days</button>
+      <button class="back-btn" data-hday-back>← ${_dayFrom ? escapeHtml(dayFromLabel(_dayFrom.screen)) : 'All days'}</button>
       <span class="hd-step">
         <button class="hd-arrow" ${nb.older ? `data-hday-go="${nb.older}"` : 'disabled'} aria-label="Older day">${icon('chevL', 20)}</button>
         <button class="hd-arrow" ${nb.newer ? `data-hday-go="${nb.newer}"` : 'disabled'} aria-label="Newer day">${icon('chevR', 20)}</button>
@@ -4774,8 +4773,27 @@ function histDayOpen(d) {
   window.scrollTo(0, 0);
 }
 function histDayClose() {
-  histDay = null; renderHistory();
-  window.scrollTo(0, _histScroll);
+  histDay = null;
+  // instant, not the page's smooth scroll: back should land where you were, not glide 5,000px to it
+  if (_dayFrom) { const f = _dayFrom; _dayFrom = null; show(f.screen); window.scrollTo({ top: f.y, behavior: 'instant' }); return; }
+  renderHistory();
+  window.scrollTo({ top: _histScroll, behavior: 'instant' });
+}
+/* Every other "look at that day" tap — Calendar, year in pixels, personal bests, Search,
+   On this day — opens the same read-only page, never the Log. Back goes to where it was
+   tapped; only Edit opens the Log. */
+function dayOpen(d) {
+  const cur = ((document.querySelector('.screen.on') || {}).id || '').replace('s-', '');
+  if (cur === 'history') { histDayOpen(d); return; }
+  _dayFrom = { screen: cur || defaultTab(), y: window.scrollY || 0 };
+  histDay = d; histTab = 'days';
+  show('history');
+}
+function dayFromLabel(k) {
+  if (k === 'today') return 'Log';
+  if (k === 'cal') return 'Calendar';
+  const n = navCfg().find(x => x.k === k);
+  return n ? n.label : 'Back';
 }
 /* Leaving the Log after "Edit": flush the debounced autosave first, so the day page shows
    the change that was typed a moment ago rather than the one before it. */
@@ -5843,7 +5861,7 @@ function renderCal() {
     </div>
     <div class="card">
       <h2>${prettyDate(calSel)} ${calSel === today ? '<span class="hint">today</span>' : ''}
-        <button class="btn btn-ghost btn-sm" style="float:right" data-callog="${calSel}">Open log →</button></h2>
+        <button class="btn btn-ghost btn-sm" style="float:right" data-callog="${calSel}">View day →</button></h2>
       ${pills}
       <h2 style="margin-top:14px">📌 Events <span class="hint">${evs.length ? evs.length : 'none yet'}</span></h2>
       ${evRows}
@@ -5865,7 +5883,7 @@ document.addEventListener('click', (ev) => {
   const dc = ev.target.closest('[data-calday]');
   if (dc) { calSel = dc.dataset.calday; renderCal(); return; }
   const ol = ev.target.closest('[data-callog]');
-  if (ol) { logDate = ol.dataset.callog; show('today'); return; }
+  if (ol) { dayOpen(ol.dataset.callog); return; }
   if (ev.target.id === 'ev-add') {
     const time = document.getElementById('ev-new-time').value;
     const label = document.getElementById('ev-new-label').value.trim();
@@ -7299,7 +7317,7 @@ document.addEventListener('click', (ev) => {
     mediaViewOpen(d.mview, set ? [...set.querySelectorAll('[data-mview]')].map(x => x.dataset.mview) : null);
     return;
   }
-  if (d.mviewDay) { mediaViewClose(); histDayOpen(d.mviewDay); return; }
+  if (d.mviewDay) { mediaViewClose(); dayOpen(d.mviewDay); return; }
   if (d.mdel) { mediaConfirmDelete(d.mdel); return; }
   if (d.mshare) { mediaShare(d.mshare); return; }
   if (d.mviewClose !== undefined) { mediaViewClose(); return; }
@@ -8318,7 +8336,7 @@ document.addEventListener('click', (ev) => {
   if (!b) return;
   const d = b.dataset.beOpen;
   if (!DB.entry(d)) { toast('Nothing logged on ' + prettyDate(d)); return; }
-  logDate = d; loadDraft(); show('today'); buzz(12); toast('Opened ' + prettyDate(d));
+  buzz(12); dayOpen(d);
 });
 
 /* ============================================================
@@ -13259,6 +13277,7 @@ function show(name) {
   // must never survive navigating away and come back still armed.
   if (name !== 'settings') { try { wipeReset(); } catch (e) {} settingsPage = null; }
   if (name !== 'today') _editFromHist = null;          // "back to the day" only from the Log it opened
+  if (name !== 'today' && name !== 'history') _dayFrom = null;
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
   if (leaving) { voiceSaveIfRecording(); voiceHalt(); }
   mediaViewClose();
@@ -13300,7 +13319,7 @@ function navigateTo(name) {
   if (name === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }
   if (name === 'write') curDoc = null;                      // Write opens the article list
   if (name === 'history') histDay = null;                   // History opens the list of days
-  _editFromHist = null;
+  _editFromHist = null; _dayFrom = null;
   /* Picking Settings — from the menu, a pinned tab or More — opens its HOME, not whichever
      sub-page was last open, and disarms a half-started delete. Done here and not in show():
      the sync merge and the theme change re-render through show(), and must not throw someone

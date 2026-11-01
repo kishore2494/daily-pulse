@@ -1,3 +1,19 @@
+## 2026-11-01 (later) — v252: every day tap opens the read-only page, not just History
+
+Kishore saw the filling screen when opening a day and asked again for a separate view. Two
+causes. First, v252 was not live (prod was still v251). Second, even in v252 only History rows
+went to the day page: Calendar's "Open log", year in pixels, personal bests, Search hits and On
+this day still opened the Log editor.
+- All of these now call `dayOpen(d)`; details are in features.md, "History ▸ one day".
+- Back returns to the screen the tap came from, at the same scroll position, with no animation.
+  The list restore is instant as well; it used to animate because of the page's smooth scrolling.
+- Tests: 733 in 4 timezones, with 15 new checks covering the five routes, the back labels,
+  Edit → Back → Back, and `_dayFrom` being cleared by a tab tap or any other screen. All 9
+  mutations were caught (one only after adding the "any other screen" check).
+- Verified in headless Chrome with real taps on each route. Back from Stats returned to the
+  same scrollY (6299). There were no page errors.
+- Still not deployed. This waits for Kishore's "deploy".
+
 ## 2026-11-01 — v252: read-only day page in History, Settings ▸ Storage, smaller photos and voice
 
 Kishore asked for three things: compress the photos and audio, show how much storage the app

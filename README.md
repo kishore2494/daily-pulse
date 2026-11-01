@@ -64,6 +64,7 @@ Sheet** to back-fill everything you've logged so far.
   1280px WebP (about 44% of v251's size) and voice notes at 24 kbps mono.
 - **History** — every past day; tapping one opens a read-only page for that day (mood, journal,
   photos and voice, checklist, time, workout, money, notes, deep log), with Edit to open the Log.
+  Calendar, year in pixels, personal bests, Search and On this day open the same page.
   A Photos tab shows every Log photo by month.
 - **Settings** — grouped pages: Make it yours · Reminders & tracking · Your data (backup includes
   photos and voice notes; Storage shows what Daylog takes on the phone and can shrink older

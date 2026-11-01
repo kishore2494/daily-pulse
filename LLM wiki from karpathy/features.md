@@ -158,6 +158,13 @@ read-only page, as a sub-view of History (`histDay`, like `curDoc` in Write).
     returns to the day page, which shows the edit. Leaving the Log any other way (`show()` to
     another screen, or `navigateTo`, including the Log tab) forgets the way back.
   - The History tab always opens on the list.
+- **Every other "open that day" tap opens this page too**, never the Log: Calendar's "View day →"
+  (was "Open log →"), a year-in-pixels square, a personal best, a Search hit in a day, an On
+  this day row, and the photo viewer's "Open day". `dayOpen(d)` records `_dayFrom = {screen, y}`;
+  the back button then names that screen ("← Calendar", "← Stats", "← Search", "← Log") and
+  Back returns there at the same scroll (instant, because `html` has `scroll-behavior: smooth`).
+  Edit → Log → Back still comes back to the day page first. `show()` to any screen other than
+  the Log or History, and every `navigateTo`, forget `_dayFrom`.
 - Money rows use `hd-in`, not `.in`/`.out`. The Money screen's global `.in`/`.out` rules colour
   whole rows.
 

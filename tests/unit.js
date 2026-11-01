@@ -2099,6 +2099,42 @@
     ok('…including tapping the Log tab, which opens today', _editFromHist === null && logDate === todayStr());
     navigateTo('history');
     ok('the History tab always opens on the list', histDay === null && !!document.querySelector('#s-history .hist-item'));
+
+    // every other "open that day" tap lands on the same read-only page, and Back goes where it came from
+    const onDay = () => document.getElementById('s-history').classList.contains('on') && !!document.querySelector('#s-history .hd-hero');
+    const plant = (scr, attr) => { const b = document.createElement('button'); b.setAttribute(attr, d1); b.id = 't-plant'; document.getElementById('s-' + scr).appendChild(b); return '#t-plant'; };
+    navigateTo('cal'); calSel = d1; calMonth = d1.slice(0, 7); renderCal();
+    ok('Calendar offers "View day", not "Open log"', /View day →/.test(document.getElementById('s-cal').innerHTML) && !/Open log/.test(document.getElementById('s-cal').innerHTML));
+    tap(`#s-cal [data-callog="${d1}"]`);
+    ok('Calendar ▸ View day opens the read-only page, not the Log', onDay() && histDay === d1 && logDate === todayStr());
+    ok('…whose back button names the Calendar', /← Calendar/.test(document.querySelector('#s-history [data-hday-back]').textContent));
+    tap('#s-history .hd-hero [data-hday-edit]');
+    ok('…Edit there still opens the Log for that day', document.getElementById('s-today').classList.contains('on') && logDate === d1);
+    handleBack();
+    ok('…Back from that Log returns to the day page', onDay() && histDay === d1);
+    tap('#s-history [data-hday-back]');
+    ok('…and Back from the day page returns to the Calendar, on the same day', document.getElementById('s-cal').classList.contains('on') && calSel === d1 && _dayFrom === null && histDay === null);
+    logDate = todayStr();
+    navigateTo('dash'); tap(plant('dash', 'data-yp'));
+    ok('a year-in-pixels square opens the read-only page', onDay() && histDay === d1 && logDate === todayStr());
+    handleBack();
+    ok('…and Back returns to Stats', document.getElementById('s-dash').classList.contains('on') && histDay === null);
+    navigateTo('dash'); tap(plant('dash', 'data-be-open'));
+    ok('a personal best opens the read-only page', onDay() && histDay === d1 && logDate === todayStr());
+    navigateTo('history');
+    ok('…and a tab tap from there forgets the way back', _dayFrom === null && histDay === null);
+    navigateTo('dash'); tap(plant('dash', 'data-yp')); show('tasks');
+    ok('…as does leaving for any other screen', _dayFrom === null);
+    searchQ = 'lake'; navigateTo('search');
+    tap(`#s-search .sr-row[data-sr="log"][data-d="${d1}"]`);
+    ok('a Search hit in a day opens the read-only page', onDay() && histDay === d1 && logDate === todayStr());
+    handleBack();
+    ok('…and Back returns to the results', document.getElementById('s-search').classList.contains('on') && !!document.querySelector(`#s-search .sr-row[data-d="${d1}"]`));
+    navigateTo('today'); tap(plant('today', 'data-throwback'));
+    ok('On this day opens the read-only page instead of loading that day into the Log', onDay() && histDay === d1 && logDate === todayStr());
+    handleBack();
+    ok('…and Back returns to today\'s Log', document.getElementById('s-today').classList.contains('on') && logDate === todayStr());
+    navigateTo('history');
     logDate = ldSnap;
 
     // photos on the day page, and the viewer's "Open day"
