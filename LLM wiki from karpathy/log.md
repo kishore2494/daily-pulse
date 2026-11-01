@@ -1,3 +1,11 @@
+## 2026-11-01 — v252 deployed (live)
+
+Kishore said "deploy". `tools/deploy.sh --tag` pushed 8ce2df9..3664df2 to prod and tagged
+`web-v252` on both remotes. The Pages build succeeded on the third poll, and app.js, sw.js and
+index.html all serve v252. Spot-checked: the live app.js contains `dayOpen`, `historyDayHTML`,
+`storagePageHTML` and "View day →". Phones pick it up the next time the app is reopened, after
+the service worker updates.
+
 ## 2026-11-01 (later) — v252: every day tap opens the read-only page, not just History
 
 Kishore saw the filling screen when opening a day and asked again for a separate view. Two
