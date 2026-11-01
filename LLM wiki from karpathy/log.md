@@ -1,3 +1,15 @@
+## 2026-11-02 (01:15) — wiki lint 2/3: deduplicate
+
+Each repeated to-do now lives on one page; the others point to it:
+- keystore back-up → backups.md (roadmap, gotchas, play-store pointed).
+- Code.gs / Feedback.gs deploy → roadmap.md ▸ User action items (play-store's "Still on the
+  USER" list replaced by a pointer; its testers item was obsolete).
+- version-bump rule → gotchas.md ▸ Deploy / git, rewritten as "run tools/bump.sh" (architecture,
+  index pointed).
+- the 128 SEO pages → distribution.md ▸ SEO (gotchas, roadmap pointed).
+- photos/voice open items → roadmap.md ▸ Photos & voice (features pointed).
+- features.md table: the Pomodoro/Timebox notes cell moved from the Waves row to the Focus row.
+
 ## 2026-11-02 (01:15) — wiki lint 1/3: contradictions and stale facts
 
 Lint report applied (facts re-checked against app.js, the native project and git tags):

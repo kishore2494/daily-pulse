@@ -5,13 +5,13 @@
   `gh auth switch --user kishore2494 && git -c credential.helper= -c credential.helper='!gh auth git-credential' push <remote> main && gh auth switch --user kishore-FP`
   Do NOT inline `$TOKEN` in a heredoc-quoted helper — the `\$` escaping breaks. Leave kishore-FP active afterward.
 - **Two remotes**: `origin`=jurnal-app (dev), `prod`=daily-pulse (production). Push both for releases.
-- **Always bump BOTH** `APP_VERSION` (app.js) and `CACHE` (sw.js) or the service worker serves stale code.
+- **Version bump = run `tools/bump.sh`** — it moves `APP_VERSION` (app.js), `CACHE` (sw.js) and `?v=` (index.html) together; miss one and the service worker or the browser serves stale code.
 - GitHub Pages takes ~30-90s to serve a push; verify with `curl … | grep "APP_VERSION = 'vNN'"`.
 
 ## Android build
 - **Capacitor 7 needs JDK 21** → use Android Studio's JBR: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`. Bubblewrap's bundled JDK 17 fails ("invalid source release: 21").
 - Bubblewrap's `@capacitor/assets` icon generator emitted an adaptive-icon XML referencing a missing `mipmap/ic_launcher_background`; fix by pointing `<background>` at `@color/ic_launcher_background`.
-- The signing keystore + password live in `daily-pulse-android/` (`android.keystore`, `keystore-password.txt`). **Back them up. Lose them = can't update the app ever.** SHA-256 is in the site's `.well-known/assetlinks.json` (TWA leftover; Capacitor does not use it).
+- The signing keystore + password live in `daily-pulse-android/` (`android.keystore`, `keystore-password.txt`); the back-up to-do is in backups.md. SHA-256 is in the site's `.well-known/assetlinks.json` (TWA leftover; Capacitor does not use it).
 - **`USE_FULL_SCREEN_INTENT`** (full-screen alarm) is a Play-restricted permission on Android 14+ → at submission you must tick the declaration that it's an alarm/reminder app.
 
 ## Emulator testing
@@ -41,7 +41,7 @@
 - Local server for browser testing dies between turns; restart `python3 -m http.server 8471` in the app dir as needed.
 
 ## Not part of the app
-The `*-for-*.html` / `daily-pulse-vs-*.html` comparison pages / `factory-data.json` inside `daily-pulse-app/` (there is no `daily-pulse-factory/` folder) are a **programmatic-SEO landing-page generator** (separate marketing work, ~128 pages, n8n drip). Harmless to the app; don't confuse them with app code.
+The `*-for-*.html` / `daily-pulse-vs-*.html` pages / `factory-data.json` inside `daily-pulse-app/` are programmatic-SEO landing pages — see distribution.md ▸ SEO. Harmless to the app; don't confuse them with app code.
 
 
 ## MIUI / Xiaomi dark mode washes out a light WebView (RESOLVED 2026-08-19)

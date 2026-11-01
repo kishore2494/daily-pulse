@@ -52,13 +52,13 @@
     argument; the app keeps it per link in `dp.sheetScript` and says "update your Sheet
     script" in Settings ▸ Backup & restore when it is older than `SHEET_SCRIPT`.)
 - Deploy `Feedback.gs` → paste URL into `FEEDBACK_URL` in app.js.
-- Back up `daily-pulse-android/android.keystore` + `keystore-password.txt` off-machine.
+- Back up the upload keystore off-machine — see backups.md.
 - Test full-screen alarm + timer notification on the real phone (emulator can't).
 
 ## Open questions / deferred
 - **Tab count** — the default tab set may still overwhelm new users (5 pinned + menu since v250). Consider a "starter" default that hides advanced tabs.
 - Whether to make the Sheet's `Log` columns dynamic (so custom deep-log fields get Sheet columns) — currently fixed.
-- Marketing: a large programmatic-SEO page set already exists (the `*-for-*.html` + `daily-pulse-vs-*.html` pages in the app root, ~128 pages; there is no `daily-pulse-factory/` folder) — separate track.
+- Marketing: programmatic-SEO pages — see distribution.md ▸ SEO (separate track).
 
 ## Phase 2 — iOS (decided 2026-08-16: AFTER Android production ships)
 Android-first confirmed by Kishore. When Android is live:

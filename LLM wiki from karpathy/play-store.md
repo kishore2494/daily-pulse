@@ -47,10 +47,7 @@ Verify it has native alarms: `aapt dump xmltree DailyPulse.apk AndroidManifest.x
 - Feedback: email field removed; posts to owner-only `Feedback.gs` sheet.
 
 ## Still on the USER (only they can do)
-- Deploy the latest **`google-apps-script/Code.gs`** (Time Log/Events/Articles tabs) AND **`Feedback.gs`** in Apps Script, then paste the Feedback web-app URL into **`FEEDBACK_URL`** in app.js (feedback currently falls back to opening a GitHub issue).
-- **Back up `daily-pulse-android/android.keystore` + `keystore-password.txt` off-machine** — irreplaceable; losing them = can never update the app.
-- Line up the 12 testers.
-- Real-phone test of the full-screen alarm + timer notification (emulator can't; MIUI needs manual "show on lock screen" perms).
+See roadmap.md ▸ User action items (Code.gs / Feedback.gs deploy, keystore back-up, real-phone alarm test).
 
 
 ## 🚨 REJECTION-RISK AUDIT (2026-08-18) — do these before submitting

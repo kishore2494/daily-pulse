@@ -5,7 +5,7 @@ Vanilla HTML/CSS/JS — **no framework, no build step**. Three core files in `da
 - `index.html` — shell: topbar, one empty `<section class="screen" id="s-*">` per screen, `<nav id="nav">`, alarm overlay, onboarding overlay, toast. Screens are filled by JS.
 - `app.js` (~14,600 lines) — everything: storage, screens, sync, native bridges. Single file, section-commented (`SCREEN: …`).
 - `styles.css` (~2,480 lines) — "dark instrument panel" theme (Sora + DM Sans, glassy nav, gradient accents, glow + grain background). Revert-safe: `git checkout pre-ux-v40 -- styles.css`.
-- `sw.js` — network-first service worker + cache-bust on `controllerchange`. **Bump `CACHE` with every release.**
+- `sw.js` — network-first service worker + cache-bust on `controllerchange`. Bumped by `tools/bump.sh` — see gotchas.md ▸ Deploy / git.
 - `manifest.webmanifest`, `icons/`, `guide.html` (how-to), `privacy.html`, `google-apps-script/Code.gs`.
 
 ## Data model — local-first
