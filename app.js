@@ -240,6 +240,7 @@ function reportCrash(msg, src) {
    every open of an app that was fine; the pull itself reports the failure. Declared here,
    above its first use, so an error during startup still reaches the handler. */
 let _pullsOpen = 0, _pullEnded = 0;   // and when the last one ended: a reply can land after the timeout
+let _wiped = false;   // "Delete everything" has run: a sync reply landing before the reload must not put it all back
 window.addEventListener('error', (e) => {
   if (!e || !e.message) return;
   const pulling = _pullsOpen || Date.now() - _pullEnded < 5 * 60000;
@@ -1113,6 +1114,7 @@ function gymMerge(local, remote, la, ra, touched) {
   return { gym, at };
 }
 function applyRemoteState(remote) {
+  if (_wiped) return;   // everything was just erased on purpose; the reload is coming
   flushAutosave();   // merge what was just typed, rather than re-render it away
   flushGymSave();    // …in the Gym too: a late save would write back the day as it was before the pull
   if (!remote || !remote.touched) return;            // nothing in the cloud yet
@@ -4412,9 +4414,11 @@ function exportCSV() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   if (!dates.length) { toast('Nothing to export yet', true); return; }
   const cols = ['date', 'mood', 'energy', 'sleepHours', 'deepWorkHours', 'tasksDone', 'tasksPlanned', 'workoutsDone', 'workoutDetail', 'timeSummary', 'wentWell', 'improve', 'journal', 'tasks'];
-  const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n]/.test(v) ? `"${v}"` : v; };
+  // A lone \r is a row break to Excel, so it is quoted too. Seeded sample days are not the
+  // person's data and stay out, as they do of a backup.
+  const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n\r]/.test(v) ? `"${v}"` : v; };
   let csv = cols.join(',') + '\n';
-  dates.forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
+  dates.filter(d => !(e[d] && e[d].sample)).forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
   saveFile('daily-pulse-' + todayStr() + '.csv', csv, 'text/csv');
 }
 /* ---------- Obsidian-style connections graph ----------
@@ -7116,6 +7120,10 @@ document.addEventListener('click', async (ev) => {
   if (ev.target.id === 'wipe-confirm') {
     if (_wipeStage !== 4) return;
     wipeReset();
+    // A pull still waiting for its reply (Apps Script can take seconds) would write every section
+    // back, with dp.touched gone; a debounced push would post the empty state to the Sheet and
+    // on to the other phone. Neither may happen between here and the reload.
+    _wiped = true; clearTimeout(pushTimer); _pushPending = null;
     const n = wipeEverything();
     const p = mediaTotals();
     toast(n + ' items' + (p.photos + p.voice ? ` and ${p.photos + p.voice} photos/voice notes` : '') + ' erased. Daylog is empty.');
@@ -8281,7 +8289,9 @@ async function exportData() {
   // sheet — the single most dangerous lie this app could tell.
   const r = await saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
   // ...and not when the photos and voice notes could not be read: the delete flow trusts this date.
-  if (saveOk(r) && !(media.skipped < 0)) localStorage.setItem('dp.lastBackup', String(Date.now()));
+  // Not on 'copy' either: a textarea opened is not a file in the person's hands. And not when a
+  // section was left out — "last backup: today" would then vouch for an incomplete file.
+  if (saveOk(r) && r !== 'copy' && !skipped.length && !(media.skipped < 0)) localStorage.setItem('dp.lastBackup', String(Date.now()));
   // Say so if the file is incomplete. A partial backup presented as a whole one is the failure
   // this app keeps having to unlearn — and here it would not be noticed until a restore.
   if (saveOk(r) && skipped.length) {
@@ -8359,7 +8369,15 @@ function validateBackup(d) {
     // The on/off choices are stored as '1', so a backup carries them as the number 1. Rejecting
     // every number dropped all seven on restore while it still said "Backup restored".
     if (BACKUP_FLAG_KEYS.includes(k) && (v === 1 || v === true)) return false;
-    return typeof v === 'number' || (typeof v === 'string' && v.length > 512);
+    if (typeof v === 'number' || (typeof v === 'string' && v.length > 512)) return true;
+    // A list where an object belongs, or the reverse, is written fine and then breaks the screen
+    // that reads it (tasks.filter is not a function), on every visit. Hand-edited files only.
+    if (v && typeof v === 'object') {
+      const cur = safeParse(localStorage.getItem('dp.' + k), null);
+      const wantList = cur !== null && typeof cur === 'object' ? Array.isArray(cur) : LIST_SYNC.includes(k) ? true : null;
+      if (wantList !== null && Array.isArray(v) !== wantList) return true;
+    }
+    return false;
   });
   // `keys.length > 0` matters: without it, zero recognised keys makes this 0 === 0 and the file
   // is rejected here with the wrong explanation. Two branches were covering the empty case with
@@ -8384,11 +8402,12 @@ function listIds(keys) {
 /* When a backup was taken. New backups say (`_at`); for an older one the newest day or time
    block inside it is the nearest thing, and a backup with neither counts as very old. */
 function backupTime(at, entries, timelog) {
-  if (+at) return +at;
+  const now = Date.now();   // never in the future (a hand-edited file, a wrong clock): it would beat every edit until then
+  if (+at) return Math.min(+at, now);
   let t = 0;
   Object.values(entries && typeof entries === 'object' ? entries : {}).forEach(e => { const u = e && Date.parse(e.updatedAt); if (u > t) t = u; });
   (Array.isArray(timelog) ? timelog : []).forEach(x => { const u = x && +x.upd; if (u > t) t = u; });
-  return t || 1;
+  return Math.min(t || 1, now);
 }
 /* Stamps after a restore: an item the backup changed or brought back is stamped at the
    BACKUP'S time, so an edit made anywhere after the backup still wins and the backup beats
@@ -8405,14 +8424,19 @@ function backupTime(at, entries, timelog) {
    itself on the next pull. So a restore brings back what was deleted since — on every phone. */
 function listRestored(before, at0, stamps) {
   const at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
-  const sa = stamps && stamps.at && typeof stamps.at === 'object' ? stamps.at : {};
+  const sa = stamps && stamps.at && typeof stamps.at === 'object' ? stamps.at : {}, sd = stamps && stamps.del && typeof stamps.del === 'object' ? stamps.del : {};
   Object.keys(before).forEach(key => {
     const d = del[key] || {}, a = {}, was = at[key] || {}, own = sa[key] && typeof sa[key] === 'object' ? sa[key] : {};
-    listItemsOf(localStorage.getItem('dp.' + key)).forEach((v, id) => {
+    const items = listItemsOf(localStorage.getItem('dp.' + key));
+    items.forEach((v, id) => {
       if (before[key].get(id) === v && was[id]) { a[id] = was[id]; return; }
       const t = +own[id] || at0;
       a[id] = d[id] ? Math.max(t, d[id] + 1) : t; delete d[id];
     });
+    // the backup's own delete records: an item deleted on the old phone must not come back from a
+    // Sheet that never saw the delete
+    const od = sd[key] && typeof sd[key] === 'object' ? sd[key] : {};
+    Object.keys(od).forEach(id => { if (!items.has(id) && +od[id] > (d[id] || 0)) d[id] = +od[id]; });
     at[key] = a; del[key] = d;
   });
   if (before.plans) planPartsRestored(before.plans, at, del, at0);   // at the backup's time, as above
@@ -8467,6 +8491,9 @@ function importData(file, after) {
       // report-success-on-failure bug fixed for the SAVE paths in v223/v224, but on the
       // RESTORE path, where it matters more.
       let failed = 0, wrote = 0;
+      // Sample rows first: the restore replaces the sections it names, and the seeded rows in the
+      // sections it does not name would otherwise stay, unmarked, and go into the next backup.
+      clearSampleData();
       const listsBefore = listIds(check.keys), gymBefore = check.keys.includes('gym') ? DB.gym() : null;
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
       listRestored(listsBefore, backupTime(d._at, d.entries, d.timelog), d._stamps);
@@ -8474,6 +8501,10 @@ function importData(file, after) {
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');
+      // This phone's data is now as old as the backup: the pull below compares dp.touched with the
+      // Sheet's to decide whose settings-like stores win, and a fresh phone's 0 let an older Sheet
+      // overwrite a restored custom habit list.
+      safeSet('dp.touched', String(backupTime(d._at, d.entries, d.timelog)));
       reloadCfg();
       /* No pushState(true) here. Pushing the restored file stamped it newer than every other
          phone, and the Sheet replaces its whole state on a push, so restoring last week's
@@ -8483,7 +8514,7 @@ function importData(file, after) {
       if (!wrote) toast(`Nothing was restored — all ${failed} section(s) failed to write. Free up storage and try again.`, true);
       else if (failed) toast(`Restored ${wrote} section(s); ${failed} could not be written — free up storage and import again`, true);
       else if (!nMedia) toast('Backup restored');
-      done(wrote > 0);
+      done(wrote > 0 && !failed);   // a partial restore is not a restore: onboarding stays for another try
       // Pictures go after the sections, and report separately: they are big, slow on a cheap
       // phone, and the one part most likely to hit a full disk.
       if (nMedia && wrote) {
