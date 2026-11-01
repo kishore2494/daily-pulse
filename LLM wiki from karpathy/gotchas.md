@@ -434,3 +434,20 @@ internal track.
 - Delete records older than 90 days are dropped on merge. A test using `{ b: 200 }` as a
   delete time (200 ms after 1970) had its record pruned and failed for the wrong reason;
   use `Date.now()`-relative stamps.
+
+## Sync review 5 (2026-11-02): the traps the item-by-item merge added
+- **A stamp of "now" is a claim that this is the newest version.** `listRestored` stamped every
+  restored item "now", so restoring a 3-day-old backup on a new phone made its stale copies
+  beat every edit made since, on every phone. Any code that writes `dp.listAt` must stamp with
+  the time the DATA is from, never the time the code ran.
+- **Adopting a list whole keeps the old stamps.** With no delete record and a live stamp, an
+  item missing on one side is "new here", so a delete made on a v252 phone was undone. Any
+  whole-list write of a `LIST_SYNC` store must go through `listSave` (it diffs and records).
+- **`cut_` must not split a surrogate pair.** Emoji are two UTF-16 units in Apps Script too;
+  a cut between them came back as two replacement marks. The stand-in check now fails a
+  piece that starts with a low surrogate or ends with a high one.
+- **JSONP replies that do not parse** reach `window.onerror` as a bare "Script error." from
+  Google's origin, or as the real SyntaxError named after the pull URL from the same origin
+  (tests, a local copy). Both are the pull's failure, not a crash — guarded by `_pullsOpen`.
+- **Delete records need the same expiry on both sides.** `timelogForget` pruned at 90 days
+  but the merge did not, so a 200-day-old record ping-ponged with one extra push per open.

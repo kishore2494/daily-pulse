@@ -2454,13 +2454,53 @@
       localStorage.setItem('dp.listDel', JSON.stringify({ fintx: { x3: now - 4000 } }));
       const before = listIds(['fintx', 'entries']);
       localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'x1', a: 100 }, { id: 'x2', a: 500 }, { id: 'x3', a: 42 }]));   // the backup
-      listRestored(before);
+      listRestored(before, now - 10000);   // a backup taken 10 s ago
       const fa = listMeta('dp.listAt').fintx || {}, fd = listMeta('dp.listDel').fintx || {};
-      ok('a restored item that was deleted here is stamped new, and its delete record goes', fa.x3 >= now && !('x3' in fd), { fa, fd });
-      ok('a rolled-back item loses its stamp, so a newer edit on the other phone wins', !('x2' in fa) && !('x1' in fa));
+      ok('a restored item that was deleted here is stamped just past that delete, and the record goes', fa.x3 === now - 3999 && !('x3' in fd), { fa, fd });
+      ok('a rolled-back item is stamped at the backup\'s time, so a newer edit on the other phone wins', fa.x2 === now - 10000, fa);
+      ok('an item the restore left as it was keeps its stamp', fa.x1 === now - 5000, fa);
       m = mergeList(finTx(), [{ id: 'x2', a: 999 }, { id: 'x1', a: 100 }], fa, { x2: now - 5000, x1: now - 5000 }, fd, { x3: now - 4000 }, false);
       ok('…end to end: the restored item survives the pull, the newer edit wins', m.list.some(x => x.id === 'x3') && m.list.find(x => x.id === 'x2').a === 999);
       ok('list stamps are not in a backup', BACKUP_EXCLUDED.includes('listAt') && BACKUP_EXCLUDED.includes('listDel'));
+      // review 5 (2026-11-02), #1: a backup restored on a NEW phone must not roll back edits made since
+      const day = 864e5, tb = now - 3 * day;
+      localStorage.removeItem('dp.fintx'); localStorage.removeItem('dp.listAt'); localStorage.removeItem('dp.listDel');
+      const fresh = listIds(['fintx']);
+      localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'g', n: 'groceries v1' }]));   // the backup, taken at t0
+      listRestored(fresh, tb);
+      const ra = listMeta('dp.listAt').fintx || {};
+      ok('on a new phone every restored item is stamped at the backup\'s time, not now', ra.g === tb, ra);
+      m = mergeList(finTx(), [{ id: 'g', n: 'groceries v2 (edited 3 days later)' }], ra, { g: now - 1000 }, {}, {}, true);
+      ok('…so an edit made on the other phone after the backup wins', m.list[0].n === 'groceries v2 (edited 3 days later)', m.list[0]);
+      m = mergeList(finTx(), [{ id: 'g', n: 'groceries v0' }], ra, { g: tb - day }, {}, {}, true);
+      ok('…and the backup beats a version older than it', m.list[0].n === 'groceries v1', m.list[0]);
+      ok('backupTime: a new backup says when it was taken', backupTime(123456, { '2026-01-01': { updatedAt: '2026-06-01T00:00:00Z' } }) === 123456);
+      ok('…an older backup counts as its newest day or time block', backupTime(undefined, { a: { updatedAt: '2026-06-01T00:00:00Z' }, b: null }, [{ upd: Date.parse('2026-07-01T00:00:00Z') }]) === Date.parse('2026-07-01T00:00:00Z'));
+      ok('…and one with neither as very old', backupTime() === 1 && backupTime('x', 'junk', 'junk') === 1);
+      ok('_at is a backup section that exportData writes and restore reads', BACKUP_EXTRA.includes('_at'));
+      // #2: a delete made on a phone still on an older app version must not come back
+      localStorage.setItem('dp.notes', JSON.stringify([{ id: 'keep', text: 'k' }, { id: 'x', text: 'gone on the old phone' }]));
+      localStorage.setItem('dp.listAt', JSON.stringify({ notes: { keep: now - 9000, x: now - 9000 } })); localStorage.removeItem('dp.listDel');
+      localStorage.setItem('dp.touched', String(now - 9000));
+      applyRemoteState({ touched: now - 100, notes: [{ id: 'keep', text: 'k' }] });   // the v252 phone's save: no listAt
+      const oa = listMeta('dp.listAt').notes || {}, od = listMeta('dp.listDel').notes || {};
+      ok('a list adopted whole from an older app records what it dropped, at that save', ids(DB.notes()) === 'keep' && od.x === now - 100 && !('x' in oa), { oa, od });
+      m = mergeList(DB.notes(), [{ id: 'keep', text: 'k' }, { id: 'x', text: 'gone on the old phone' }], oa, { keep: now - 9000, x: now - 9000 }, od, {}, true);
+      ok('…so the other v253 phone\'s copy does not bring it back', ids(m.list) === 'keep', ids(m.list));
+      localStorage.setItem('dp.touched', String(now - 9000));   // the push the pull just made bumped it
+      applyRemoteState({ touched: now - 50, notes: [{ id: 'keep', text: 'k, edited on the old phone' }] });
+      ok('…and an item it changed is stamped at that save', (listMeta('dp.listAt').notes || {}).keep === now - 50 && DB.notes()[0].text === 'k, edited on the old phone');
+      // #4: one bad day must not abort the whole pull
+      let threw = null; try { mergeHabits({ habits: 'yes', updatedAt: 'x' }, { habits: { workout: true }, habitsAt: 'no' }); } catch (e) { threw = e; }
+      ok('a day whose habits is not an object merges as having none, rather than throwing', !threw && mergeHabits({ habits: 'yes' }, { habits: { workout: true } }).habits.workout === true, threw && threw.message);
+      // #5: time-block delete records older than the window expire in the merge too
+      localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.timelogDel', JSON.stringify({ old: now - 200 * day, young: now - day }));
+      localStorage.setItem('dp.touched', String(now));
+      sent.length = 0;
+      applyRemoteState({ touched: now + 5, timelog: [], timelogDel: { old: now - 200 * day, young: now - day, older: now - 300 * day }, listAt: {}, listDel: {} });
+      const td = timelogDels();
+      ok('a 200-day-old time-block delete record is dropped in the merge, a young one kept', !('old' in td) && !('older' in td) && td.young === now - day, td);
+      ok('…without a push to put it back', !sent.some(x => x.type === 'state'), sent.length);
       const savers = { tasks: DB.saveTasks, notes: DB.saveNotes, plans: DB.savePlans, projects: DB.saveProjects, reminders: DB.saveReminders, exercises: DB.saveExercises, timeacts: DB.saveTimeacts, events: DB.saveEvents, docs: DB.saveDocs, timebox: DB.saveTimebox, goals: saveGoals, finaccts: finSaveAccts, fintx: finSaveTx, finmarks: finSaveMarks };
       ok('every list in the sync is saved through listSave', LIST_SYNC.every(k => savers[k] && savers[k].toString().includes("listSave('dp." + k + "'")), LIST_SYNC.filter(k => !(savers[k] && savers[k].toString().includes("listSave('dp." + k + "'"))));
     } finally {

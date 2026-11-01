@@ -1,3 +1,23 @@
+## 2026-11-02 (early) — review 5: five real v253 sync bugs fixed (not deployed)
+
+An adversarial review agent (fuzzed 2- and 3-phone sims, ±10 min clock skew, malformed
+data; all repros under the session scratchpad `review/`) found five bugs; all reproduced
+against the `web-v253` tag, all fixed on main, all repros pass against main.
+1. **Restoring a backup on a new phone rolled back later edits on every phone** (data loss,
+   LIVE in v253). `listRestored` stamped restored items "now". Now stamped at the backup's
+   time: `_at` (new in backups), else the newest day/time block in it. Unchanged items keep
+   their stamp. See architecture.md ▸ Restore.
+2. **A delete on a phone still on v252 came back everywhere.** Whole-list adoption now goes
+   through `listSave(…, remote.touched)`.
+3. **`cut_` could split an emoji** in `_State` → two replacement marks, spread by the merge.
+   Fixed in Code.gs (script version stays 2 — the version bump was in the same unreleased
+   batch); the setup-page copy and `check-sheet-script` (12 cases) follow.
+4. **A day whose `habits` was not an object aborted the whole pull.** `mergeHabits` guards.
+5. **Time-block delete records never expired in the merge** → one extra push per open.
+Sound per the review: no item lost or resurrected across 170 random runs, no ping-pong,
+latest edit wins, malformed items tolerated, 20k entries merge in 46 ms.
+937 unit tests; 14/14 mutations caught (one by `check-backup-keys`).
+
 ## 2026-11-02 (early) — the app says when a Sheet script is old; a failed pull says why
 
 Kishore: "you have to use more... broo". Two sync gaps, committed on origin (20c0ae3,

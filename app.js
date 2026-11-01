@@ -319,7 +319,9 @@ function listItemsOf(raw) {
   if (Array.isArray(v)) v.forEach(x => { if (x && x.id != null) m.set(String(x.id), JSON.stringify(x)); });
   return m;
 }
-function listSave(store, list) {
+/* `when` is the stamp for what changed; it is now unless the list is adopted whole from an
+   older app's save (applyRemoteState), when it is the time that phone saved. */
+function listSave(store, list, when) {
   if (!Array.isArray(list)) return safeSet(store, JSON.stringify(list));
   const raw = localStorage.getItem(store);
   const prev = _listSeen[store] && _listSeen[store].raw === raw ? _listSeen[store].items : listItemsOf(raw);
@@ -335,10 +337,10 @@ function listSave(store, list) {
   const changed = [...items.keys()].filter(id => prev.get(id) !== items.get(id));
   const gone = [...prev.keys()].filter(id => !items.has(id));
   if (changed.length || gone.length) {
-    const key = store.slice(3), now = Date.now(), at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
+    const key = store.slice(3), now = Date.now(), t = +when || now, at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
     const a = at[key] || (at[key] = {}), d = del[key] || (del[key] = {});
-    changed.forEach(id => { a[id] = now; delete d[id]; });
-    gone.forEach(id => { d[id] = now; delete a[id]; });
+    changed.forEach(id => { a[id] = t; delete d[id]; });
+    gone.forEach(id => { d[id] = t; delete a[id]; });
     Object.keys(d).forEach(id => { if (now - d[id] > LIST_DEL_KEEP) delete d[id]; });
     listMetaSave(at, del);
   }
@@ -941,7 +943,8 @@ function remoteSectionOk(store, value) {
    (gym, time summary) still cannot drop a tick. An entry from an older app version has no stamps:
    its updatedAt stands in for the habits it holds. */
 function mergeHabits(a, b) {
-  const ha = (a && a.habits) || {}, hb = (b && b.habits) || {}, ta = (a && a.habitsAt) || {}, tb = (b && b.habitsAt) || {};
+  const obj = v => v && typeof v === 'object' && !Array.isArray(v) ? v : {};   // a day with habits: "yes" (bad data) must not abort the whole pull
+  const ha = obj(a && a.habits), hb = obj(b && b.habits), ta = obj(a && a.habitsAt), tb = obj(b && b.habitsAt);
   const stamp = (e, h, t, k) => +t[k] || (k in h ? (Date.parse(e.updatedAt) || 1) : 0);
   const habits = {}, habitsAt = {};
   new Set([...Object.keys(ha), ...Object.keys(hb), ...Object.keys(ta), ...Object.keys(tb)]).forEach(k => {
@@ -1018,6 +1021,10 @@ function applyRemoteState(remote) {
     });
     const dels = timelogDels(), rdels = remote.timelogDel && typeof remote.timelogDel === 'object' ? remote.timelogDel : null;
     if (rdels) Object.keys(rdels).forEach(id => { if (+rdels[id] > (dels[id] || 0)) dels[id] = +rdels[id]; });
+    // Records older than the window go here too, or the other phone sends back every record
+    // timelogForget dropped, with one extra push each time, for ever.
+    const keepFrom = Date.now() - LIST_DEL_KEEP;
+    Object.keys(dels).forEach(id => { if (!(dels[id] >= keepFrom)) delete dels[id]; });
     let merged = Object.values(byId);
     const before = merged.length;
     merged = merged.filter(s => !(dels[s.id] && dels[s.id] >= (s.upd || 0)));
@@ -1073,7 +1080,12 @@ function applyRemoteState(remote) {
       if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
         if (key === 'timeacts' && Array.isArray(remote[key])) rememberActNames(remote[key]);   // deleted on the other phone
-        safeSet(store, JSON.stringify(remote[key])); changed = true;
+        /* A list adopted whole from an older app's save goes through listSave, stamped at that
+           save, so an item it dropped gets a delete record. Plain adoption kept this phone's
+           stamp for the dropped item, and a stamped item on one side only is kept, so the
+           delete made on the older phone came back from the other v253 phone. */
+        if (LIST_SYNC.includes(key)) listSave(store, remote[key], +remote.touched); else safeSet(store, JSON.stringify(remote[key]));
+        changed = true;
       }
     });
   }
@@ -8004,7 +8016,7 @@ const BACKUP_EXCLUDED = [
    carry them; each has its own export and restore code. `_media` is the photos and voice notes
    held in IndexedDB (mediaForBackup / mediaRestore). tools/check-backup-keys.mjs checks every
    one is written by exportData AND read by importData, so one side cannot quietly go missing. */
-const BACKUP_EXTRA = ['_media'];
+const BACKUP_EXTRA = ['_media', '_at'];   // `_at`: when the backup was taken — read by backupTime on restore
 /* Deleting everything is irreversible, so it is deliberately hard to do by accident.
    Four stages, in memory only — a reload, a crash or leaving Settings resets it to 0:
      0  the plain button
@@ -8097,6 +8109,7 @@ async function exportData() {
   const { data: out, skipped } = backupBlob();
   const media = await mediaForExport();
   if (media.items.length) out._media = media.items;
+  out._at = Date.now();
   // Await it, and only stamp the date if the file actually reached the user. Stamping
   // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
   // sheet — the single most dangerous lie this app could tell.
@@ -8202,11 +8215,29 @@ function listIds(keys) {
   LIST_SYNC.filter(k => keys.includes(k)).forEach(key => { out[key] = listItemsOf(localStorage.getItem('dp.' + key)); });
   return out;
 }
-function listRestored(before) {
-  const at = listMeta('dp.listAt'), del = listMeta('dp.listDel'), now = Date.now();
+/* When a backup was taken. New backups say (`_at`); for an older one the newest day or time
+   block inside it is the nearest thing, and a backup with neither counts as very old. */
+function backupTime(at, entries, timelog) {
+  if (+at) return +at;
+  let t = 0;
+  Object.values(entries && typeof entries === 'object' ? entries : {}).forEach(e => { const u = e && Date.parse(e.updatedAt); if (u > t) t = u; });
+  (Array.isArray(timelog) ? timelog : []).forEach(x => { const u = x && +x.upd; if (u > t) t = u; });
+  return t || 1;
+}
+/* Stamps after a restore: an item the backup changed or brought back is stamped at the
+   BACKUP'S time, so an edit made anywhere after the backup still wins and the backup beats
+   what is older. Stamping them "now" (v253) meant a backup restored on a new phone rolled
+   back every later edit on every phone. An item the restore left as it was keeps its stamp.
+   An item this phone had deleted since the backup is stamped just past that delete, and the
+   record dropped: restoring it is the newer act, here. */
+function listRestored(before, at0) {
+  const at = listMeta('dp.listAt'), del = listMeta('dp.listDel');
   Object.keys(before).forEach(key => {
-    const d = del[key] || {}, a = {};
-    listItemsOf(localStorage.getItem('dp.' + key)).forEach((v, id) => { if (!before[key].has(id)) { a[id] = now; delete d[id]; } });
+    const d = del[key] || {}, a = {}, was = at[key] || {};
+    listItemsOf(localStorage.getItem('dp.' + key)).forEach((v, id) => {
+      if (before[key].get(id) === v && was[id]) { a[id] = was[id]; return; }
+      a[id] = d[id] ? Math.max(at0, d[id] + 1) : at0; delete d[id];
+    });
     at[key] = a; del[key] = d;
   });
   listMetaSave(at, del);
@@ -8232,7 +8263,7 @@ function importData(file, after) {
       let failed = 0, wrote = 0;
       const listsBefore = listIds(check.keys);
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
-      listRestored(listsBefore);
+      listRestored(listsBefore, backupTime(d._at, d.entries, d.timelog));
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');

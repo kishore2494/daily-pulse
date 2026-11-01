@@ -78,7 +78,7 @@ const roundTrip = (label, s) => {
   try { api.saveState_(s); } catch (e) { fails.push(`${label}: saveState_ threw ${e.message}`); return; }
   const back = api.readState_();
   if (back !== s) fails.push(`${label}: came back changed (${s.length} chars in, ${back.length} out)`);
-  const bad = sheets._State.cells().findIndex((row) => /^[=+\-'\s]/.test(String(row[0])) || /\s$/.test(String(row[0])));
+  const bad = sheets._State.cells().findIndex((row) => /^[=+\-'\s\uDC00-\uDFFF]/.test(String(row[0])) || /[\s\uD800-\uDBFF]$/.test(String(row[0])));
   if (bad >= 0) fails.push(`${label}: piece ${bad + 1} starts or ends with a character Sheets changes`);
 };
 const at45k = (c, run = 1) => '{"a":"' + "x".repeat(45000 - 6) + c.repeat(run) + 'yy"}';
@@ -86,6 +86,8 @@ for (const [name, c] of [["a dash", "-"], ["an equals sign", "="], ["a plus", "+
   roundTrip(`${name} at the 45000 cut`, at45k(c));
 }
 roundTrip("a 10000-dash run across the cut", at45k("-", 10000));
+roundTrip("an emoji across the cut (two halves in JS)", '{"a":"' + "x".repeat(45000 - 7) + "\u{1F3C3} ran 5k" + '"}');
+roundTrip("a run of emoji across the cut", '{"a":"' + "x".repeat(44000) + "\u{1F3C3}".repeat(1200) + '"}');
 roundTrip("a 30000-dash run (no safe cut ahead, so it looks back)", '{"a":"' + "x".repeat(44994) + "-".repeat(30000) + "y".repeat(50000) + '"}');
 roundTrip("a small state, one piece", JSON.stringify({ touched: 1, entries: { "2026-11-01": { mood: 7 } } }));
 const big = { touched: Date.now(), entries: {} };

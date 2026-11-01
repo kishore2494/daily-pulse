@@ -153,9 +153,18 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   something the Sheet's copy lacks (`remoteBehind`: entries, time log, lists). Compared with
   `canonJSON` (sorted keys), or two phones with different key orders would push in turn on
   every open.
-- **Restore** (`listIds` before, `listRestored` after): an item the backup brings back is
-  stamped now and its delete record dropped; an item it rolls back loses its stamp, so a
-  newer edit on the other phone still wins.
+- **Restore** (`listIds` before, `listRestored(before, backupTime)` after): an item the
+  backup changed or brought back is stamped at the BACKUP'S time (`_at` in backups from v254
+  on; the newest day or time block inside an older one; 1 with neither), so an edit made
+  anywhere after the backup still wins and the backup beats what is older. An item the
+  restore left unchanged keeps its stamp. An item this phone deleted since the backup is
+  stamped just past that delete and the record dropped. (v253 stamped everything "now", so a
+  backup restored on a new phone rolled back later edits on every phone — review 5.)
+- **A list adopted whole** from an older app's save (no `listAt` in the remote) goes through
+  `listSave(store, list, remote.touched)`, so an item that phone deleted gets a delete record
+  and an item it changed a stamp at that save; plain adoption let the delete come back.
+- **Time-block delete records** expire after 90 days in the merge too, not only in
+  `timelogForget`; otherwise the other phone sent each dropped record back, with a push.
 - `dp.listAt` / `dp.listDel` are install state: in `BACKUP_EXCLUDED`, sent with every push.
 
 ### The pull itself (v254, not deployed)

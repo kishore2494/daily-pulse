@@ -126,7 +126,9 @@ function saveState_(jsonStr) {
 // holds, and only where neither side of the cut is something Sheets would change.
 function cut_(s, i) {
   var n = s.length, j;
-  var safe = function (k) { return k >= n || (!/[=+\-@'\s]/.test(s.charAt(k)) && !/\s/.test(s.charAt(k - 1))); };
+  // Never between the two halves of an emoji either: each half alone is not a character, and
+  // the halves come back as two replacement marks.
+  var safe = function (k) { return k >= n || (!/[=+\-@'\s\uDC00-\uDFFF]/.test(s.charAt(k)) && !/\s/.test(s.charAt(k - 1))); };
   for (j = Math.min(i + 45000, n); j <= Math.min(i + 49000, n); j++) if (safe(j)) return j;
   for (j = i + 44999; j > i; j--) if (safe(j)) return j;
   return Math.min(i + 45000, n);
