@@ -1,3 +1,31 @@
+## 2026-11-02 (01:25) — the sprint hit the weekly limit; what landed and what is parked
+
+Kishore: "now it was reseted don't use just finish what is in progress". Nothing new started.
+**On main (pushed, NOT deployed, no version bump yet):**
+- Backup & restore: nine fixes from review 6 (7767db1, 532fa40): a sync reply landing after
+  "Delete everything" no longer restores it all; a pending push no longer posts the empty
+  state; sample rows cleared before a restore; `dp.touched` set from the backup; a partial
+  restore no longer ends onboarding; `lastBackup` not stamped on copy-only/partial exports;
+  the backup's delete records honoured; future `_at` clamped; list/object shape refused;
+  CSV quotes `\r` and skips sample days. Tests for these are NOT written yet (branch
+  `tests-backup` holds the reviewer's start). 1021 tests, 4 timezones, all checks pass.
+- Wiki lint commits 1 and 2 (76d59eb, ed28c50). Commit 3 (play-store history section,
+  log.md reorder) was not done.
+**Parked in worktree branches (WIP commits, untested, do not merge as is):**
+- `worktree-agent-ae099bcea5a6daba1` — settings-like stores merge per entry (code + tests
+  in progress).
+- `fix-time` — the Time-tracker review's fixes (findings: `updateTimeSummary` bumps
+  `updatedAt` so a stale phone's mood beats the other's — REAL two-phone bug, unfixed on
+  main; a deleted last block keeps its timeSummary; midnight time boxes never "now";
+  coverage >100% with overlaps). Repros in the session scratchpad `review-time/`.
+- `tests-backup` — unit tests for the review-6 fixes.
+- `worktree-agent-a907a6abb6c0c8a1a` — a11y labelling edits, mid-batch.
+- `worktree-agent-ae6722ffd04046f39` — fuzz harness for the sync merge, nearly runnable.
+- `worktree-agent-a85ff139d97c6486f` — perf pass, measurement script only.
+- The sync reviewer's third pass (plans/gym merge) never reported.
+**Next session:** finish `fix-time` first (real bug), then `tests-backup`, then decide on
+the rest; then `tools/bump.sh` and Kishore's "deploy".
+
 ## 2026-11-02 (01:15) — wiki lint 2/3: deduplicate
 
 Each repeated to-do now lives on one page; the others point to it:
