@@ -1,3 +1,13 @@
+## 2026-11-04 — v254 DEPLOYED (Memories + every fix since v253)
+
+Kishore: "then pushed to live", then "try noww". Two deploy attempts failed on a GitHub outage
+(git pushes returned 500, 15:20 IST onward); the background retry got origin through, and
+`tools/deploy.sh --tag` then passed every check (1066 tests × 4 timezones), pushed prod
+370ec07..76749fd, tagged `web-v254` on both remotes, and the live app.js, sw.js and index.html
+all serve v254. Live files checked for Memories, SHEET_SCRIPT 2 and the setup page's update
+section. **Kishore must re-paste the Sheet script (SCRIPT_VERSION 2) and deploy a new version.**
+Native 119 still not uploaded.
+
 ## 2026-11-04 — Memories: a Notion-style page per moment, with videos (built, NOT deployed)
 
 Kishore: "I need this to be live documentation … document the memories that I have, photos,
