@@ -1411,6 +1411,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w24',
   items: [
+    '🖼️ <b>Memories</b> — a new screen in the menu for the moments worth keeping. Each memory is a page: when it happened, where, who was there, tags, the story, and its photos, <b>videos</b> and voice notes. Link one page to another with <b>[[</b>its title<b>]]</b> and see what links back. Browse them year by year, search by person or place, and see what happened on this day in other years. <b>Import</b> a batch of photos and videos and they are sorted into one memory per day they were taken. Videos stay on this phone and are not in backup files.',
     '☁️ <b>Sync that tells you the truth</b> — if your Google Sheet cannot be reached, is offline, or answers with something Daylog cannot read, Sync now says which, instead of “Synced ✅”. If your Sheet still runs an older copy of the script, Settings ▸ Backup &amp; restore now says so and shows the three steps to update it (your link stays the same). And a backup restored on a new phone no longer rolls back edits you made since on your other phone.',
     '🔄 <b>Two phones, one set of lists</b> — notes, tasks, plans, events, articles and money now sync item by item. Something added on one phone is no longer lost when the other phone saves before it has seen it, and something deleted on one phone stays deleted on both. Update both phones to get it. <b>Using the Google Sheet?</b> Paste the script from the Sheet setup page again and redeploy it: a journal or note starting with “- ” showed as #ERROR! in the sheet, and a large sync could come back broken.',
     '🛟 <b>Nothing you type gets lost</b> — the last moment of typing could vanish if the Log redrew itself, a sync landed or the app was closed straight after; and a Log left open overnight kept saving the morning to yesterday. Both are fixed, along with voice typing that kept going after you switched day, and a mood word that could cut text out of a longer #tag.',
@@ -5111,7 +5112,7 @@ document.addEventListener('click', (ev) => {
   else if (kind === 'task') show('tasks');
   else if (kind === 'note') show('notes');
   else if (kind === 'plan') { curPlan = row.dataset.id; show('plans'); }
-  else if (kind === 'doc') { curDoc = row.dataset.id; show('write'); }
+  else if (kind === 'doc') { const dc = DB.docs().find(x => x.id === row.dataset.id); if (dc && dc.kind === 'memory') { curMem = dc.id; memEdit = false; show('memories'); } else { curDoc = row.dataset.id; show('write'); } }
   else if (kind === 'event') { calSel = row.dataset.d; calMonth = calSel.slice(0, 7); show('cal'); }
 });
 
@@ -5128,14 +5129,14 @@ function monthLong(ym, withYear) {
 function historyPhotosHTML() {
   if (!_mediaReady) return '<div class="empty">Loading…</div>';
   const ph = [];
-  _media.forEach(r => { if (r.kind === 'photo' && r.ctx === 'log') ph.push(r); });
+  _media.forEach(r => { if (mediaVisual(r) && r.ctx === 'log') ph.push(r); });
   if (!ph.length) return `<div class="empty">No photos yet. Add one from the <b>Photos &amp; voice</b> card on the Log — a year from now, “On this day” will show it back to you.</div>`;
   ph.sort((a, b) => b.day.localeCompare(a.day) || b.ts - a.ts);
   const byMonth = {};
   ph.forEach(r => (byMonth[r.day.slice(0, 7)] = byMonth[r.day.slice(0, 7)] || []).push(r));
   return `<div data-mset="gallery">${Object.keys(byMonth).map(ym => `<div class="card hist-photos">
     <h2>${escapeHtml(monthLong(ym, true))} <span class="hint">${byMonth[ym].length} photo${byMonth[ym].length === 1 ? '' : 's'}</span></h2>
-    <div class="mgrid">${byMonth[ym].map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo from ${escapeHtml(prettyDate(r.day))}"><img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>
+    <div class="mgrid">${byMonth[ym].map(r => mediaTileHTML(r, 't', (r.kind === 'video' ? 'Video' : 'Photo') + ' from ' + prettyDate(r.day))).join('')}</div>
   </div>`).join('')}</div>
   <div class="ss-acts"><button class="btn btn-ghost" data-share-card="photos">${icon('share', 18)} Share a month as a card</button></div>`;
 }
@@ -5148,7 +5149,7 @@ function renderHistory() {
     <button class="seg-btn ${histTab === 'days' ? 'on' : ''}" data-hist-tab="days">Days</button>
     <button class="seg-btn ${histTab === 'photos' ? 'on' : ''}" data-hist-tab="photos">Photos</button></div>` : '';
   if (histTab === 'photos' && mediaSupported()) {
-    let n = 0; _media.forEach(r => { if (r.kind === 'photo' && r.ctx === 'log') n++; });   // what the grid shows
+    let n = 0; _media.forEach(r => { if (mediaVisual(r) && r.ctx === 'log') n++; });   // what the grid shows
     document.getElementById('screen-sub').textContent = _mediaReady ? `${n} photo${n === 1 ? '' : 's'}` : '';
     document.getElementById('s-history').innerHTML = tabs + historyPhotosHTML();
     return;
@@ -5266,8 +5267,8 @@ function historyDayHTML(d) {
 
   // ---- photos & voice ----
   const items = mediaList('log', d);
-  const photos = items.filter(r => r.kind === 'photo'), voices = items.filter(r => r.kind === 'voice');
-  const pics = photos.length ? `<div class="hd-photos" data-mset="day">${photos.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo${r.caption ? ': ' + escapeHtml(r.caption) : ''}">
+  const photos = items.filter(mediaVisual), voices = items.filter(r => r.kind === 'voice');
+  const pics = photos.length ? `<div class="hd-photos" data-mset="day">${photos.map(r => r.kind === 'video' ? mediaTileHTML(r) : `<button class="mthumb" data-mview="${r.id}" aria-label="Photo${r.caption ? ': ' + escapeHtml(r.caption) : ''}">
       <img src="${mediaUrl(r, 'f')}" alt="" loading="lazy" decoding="async">${r.caption ? `<span class="hd-cap">${escapeHtml(r.caption)}</span>` : ''}</button>`).join('')}</div>` : '';
   const vl = voices.length ? `<div class="vlist">${voices.map(r => voiceRowHTML(r, false)).join('')}</div>` : '';
 
@@ -5415,13 +5416,17 @@ document.addEventListener('click', (ev) => {
 let curDoc = null;            // open doc id (null = list of articles)
 let lastBlk = null;           // id of the block that had focus last (mic target)
 
-function docText(d) { return (d.blocks || []).map(b => b.text).join(' '); }
+function docText(d) { return (d.blocks || []).filter(b => !isMediaBlk(b)).map(b => b.text).join(' '); }
+/* A page's media blocks hold a media id, never the file: i = photo, v = video, a = voice note. */
+function isMediaBlk(b) { return !!b && (b.t === 'i' || b.t === 'v' || b.t === 'a'); }
+function mediaBlockType(kind) { return kind === 'video' ? 'v' : kind === 'voice' ? 'a' : 'i'; }
 let docsSyncTimer;
 function syncDocs() { clearTimeout(docsSyncTimer); docsSyncTimer = setTimeout(() => {
   const url = DB.settings().syncUrl; if (!url) return;
   const items = DB.docs().map(d => ({ title: d.title || 'Untitled', updated: (d.updated || '').slice(0, 10),
-    text: (d.blocks || []).map(b => b.t === 'i' ? '[photo' + (_media.get(b.mid) && _media.get(b.mid).caption ? ': ' + _media.get(b.mid).caption : '') + ']'
-      : (b.t === 'h' ? '## ' : b.t === 'c' ? (b.done ? '[x] ' : '[ ] ') : b.t === 'b' ? '• ' : '') + (b.text || '')).join('\n') }));
+    text: (d.kind === 'memory' ? [memPropsLine(d)] : []).concat((d.blocks || []).map(b => b.t === 'i' ? '[photo' + (_media.get(b.mid) && _media.get(b.mid).caption ? ': ' + _media.get(b.mid).caption : '') + ']'
+      : b.t === 'v' ? '[video]' : b.t === 'a' ? '[voice note]'
+      : (b.t === 'h' ? '## ' : b.t === 'c' ? (b.done ? '[x] ' : '[ ] ') : b.t === 'b' ? '• ' : '') + (b.text || ''))).join('\n') }));
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'docs', items }) }).catch(() => {});
 }, 2000); }
@@ -5439,8 +5444,39 @@ function photoBlockRow(b) {
     <button class="del" data-blkdel="${b.id}" aria-label="Remove photo">×</button>
   </div>`;
 }
-function blockRow(b) {
+function mediaBlockRow(b) {
   if (b.t === 'i') return photoBlockRow(b);
+  const r = _media.get(b.mid), what = b.t === 'v' ? 'video' : 'voice note';
+  const body = !r ? `<div class="blk-nopic">${!_mediaReady ? 'Loading…' : b.t === 'v' ? 'This video stays on the phone it was added on — backups do not carry videos' : 'This voice note is not on this phone'}</div>`
+    : b.t === 'v' ? `<div class="blk-vid">${mediaTileHTML(r, 't', 'Video')}</div>` : `<div class="blk-voice">${voiceRowHTML(r, false)}</div>`;
+  return `<div class="blk-row blk-photo" data-id="${b.id}">
+    <span class="drag-handle" data-drag>⠿</span>
+    <div class="blk-pic-wrap">${body}</div>
+    <button class="del" data-blkdel="${b.id}" aria-label="Remove ${what}">×</button>
+  </div>`;
+}
+/* The add-media row under a page: a photo or a video from the camera, any number from the
+   gallery, or a voice note. The rec-only slot shows a recording in progress in place. */
+function docMediaActsHTML(d, day) {
+  if (!mediaSupported()) return '';
+  const c = 'doc:' + escapeHtml(d.id), dy = escapeHtml(day || todayStr());
+  return `<div class="media-acts blk-photo-acts">
+      <button class="m-act" data-madd="camera" data-mctx="${c}" data-mday="${dy}">${icon('camera', 20)}<span>Photo</span></button>
+      <button class="m-act" data-madd="video" data-mctx="${c}" data-mday="${dy}">${icon('video', 20)}<span>Video</span></button>
+      <button class="m-act" data-madd="gallery" data-mctx="${c}" data-mday="${dy}">${icon('image', 20)}<span>Gallery</span></button>
+      <button class="m-act" data-mrec data-mctx="${c}" data-mday="${dy}"${_rec ? ' disabled' : ''}>${icon('mic', 20)}<span>Voice</span></button>
+    </div>${mediaSlot('doc:' + d.id, day || todayStr(), { recOnly: true })}`;
+}
+/* The block editor serves two screens: Write (articles) and Memories. Which page is being
+   edited, and how to redraw it, depends on which of the two is showing. */
+function docHost() {
+  for (const k of ['write', 'memories']) { const el = document.getElementById('s-' + k); if (el && el.classList.contains('on')) return k; }
+  return null;
+}
+function docCurId() { const h = docHost(); return h === 'memories' ? (memEdit ? curMem : null) : h === 'write' ? curDoc : null; }
+function docRerender() { if (docHost() === 'memories') renderMemories(); else renderWrite(); }
+function blockRow(b) {
+  if (isMediaBlk(b)) return mediaBlockRow(b);
   const ta = `<textarea class="blk blk-${b.t}" data-blk="${b.id}" rows="1"
     placeholder="${b.t === 'h' ? 'Heading…' : b.t === 'c' ? 'To-do…' : b.t === 'b' ? 'Point…' : 'Write… (or tap 🎤 and speak)'}">${escapeHtml(b.text || '')}</textarea>`;
   return `<div class="blk-row ${b.t === 'c' && b.done ? 'done' : ''}" data-id="${b.id}">
@@ -5455,7 +5491,7 @@ function autoSizeBlocks() {
 }
 function renderWrite() {
   document.getElementById('screen-title').textContent = 'Write';
-  const docs = DB.docs();
+  const all = DB.docs(), docs = all.filter(d => d.kind !== 'memory');   // memories have their own screen
 
   // ---- LIST: all articles ----
   if (!curDoc) {
@@ -5477,7 +5513,7 @@ function renderWrite() {
   }
 
   // ---- EDITOR: one article ----
-  const d = docs.find(x => x.id === curDoc);
+  const d = all.find(x => x.id === curDoc);
   if (!d) { curDoc = null; return renderWrite(); }
   document.getElementById('screen-sub').textContent = 'Editing · saves as you type';
   document.getElementById('s-write').innerHTML = `
@@ -5492,10 +5528,7 @@ function renderWrite() {
         <button data-addblk="b">• Bullet</button>
         <button data-mic="#blk-focus-target" id="doc-mic">🎤</button>
       </div>
-      ${mediaSupported() ? `<div class="media-acts blk-photo-acts">
-        <button class="m-act" data-madd="camera" data-mctx="doc:${escapeHtml(d.id)}" data-mday="${todayStr()}">${icon('camera', 20)}<span>Camera</span></button>
-        <button class="m-act" data-madd="gallery" data-mctx="doc:${escapeHtml(d.id)}" data-mday="${todayStr()}">${icon('image', 20)}<span>Photo</span></button>
-      </div>` : ''}
+      ${docMediaActsHTML(d, todayStr())}
       <div class="btn-row" style="margin-top:12px">
         <button class="btn btn-ghost btn-sm" id="doc-del" style="color:var(--bad)">🗑 Delete article</button>
       </div>
@@ -5507,16 +5540,18 @@ function renderWrite() {
     doc.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite();
   });
 }
-/* A photo picked in the editor becomes a block at the end of its article. If the article
-   cannot be saved (storage full) the photo stays, and Notes ▸ Unattached lists it. */
-function docPhotoBlock(docId, mid) {
+/* A photo, video or voice note added in the editor becomes a block at the end of its page. If
+   the page cannot be saved (storage full) the media stays, and Notes ▸ Unattached lists it. */
+function docMediaBlock(docId, rec) {
   const ds = DB.docs(); const d = ds.find(x => x.id === docId); if (!d) return false;
   d.blocks = d.blocks || [];
-  d.blocks.push({ id: 'bk' + Date.now() + Math.floor(Math.random() * 99), t: 'i', mid, text: '' });
+  if (d.blocks.some(b => b.mid === rec.id)) return true;
+  d.blocks.push({ id: 'bk' + Date.now() + Math.floor(Math.random() * 999), t: mediaBlockType(rec.kind), mid: rec.id, text: '' });
   d.updated = new Date().toISOString();
-  if (DB.saveDocs(ds) === false) { toast('The photo is saved, but the article could not be — phone storage is full', true); return false; }
+  if (DB.saveDocs(ds) === false) { toast('It is saved, but the page could not be — phone storage is full', true); return false; }
   return true;
 }
+function docPhotoBlock(docId, mid) { return docMediaBlock(docId, { id: mid, kind: 'photo' }); }
 function docDropBlocks(docId, pred) {
   const ds = DB.docs(); const d = ds.find(x => x.id === docId); if (!d) return;
   d.blocks = (d.blocks || []).filter(b => !pred(b)); d.updated = new Date().toISOString(); DB.saveDocs(ds);
@@ -5525,38 +5560,38 @@ function docDropBlocks(docId, pred) {
 /* The editor shows photos, so a photo added, deleted or captioned elsewhere (the viewer)
    redraws it — only when it has a photo block, so typing elsewhere is never interrupted. */
 function writeRefresh() {
+  memRefresh();
   const sc = document.getElementById('s-write');
   if (!sc || !sc.classList.contains('on')) return;
   const d = curDoc && DB.docs().find(x => x.id === curDoc);
-  if (curDoc && !(d && (d.blocks || []).some(b => b.t === 'i'))) return;
+  if (curDoc && !(d && (d.blocks || []).some(isMediaBlk))) return;
   const y = window.scrollY; renderWrite(); window.scrollTo({ top: y, behavior: 'instant' });
 }
 function addBlock(type, afterId) {
-  const ds = DB.docs(); const d = ds.find(x => x.id === curDoc); if (!d) return null;
+  const ds = DB.docs(); const d = ds.find(x => x.id === docCurId()); if (!d) return null;
   d.blocks = d.blocks || [];
   const blk = { id: 'bk' + Date.now() + Math.floor(Math.random() * 99), t: type, text: '' };
   if (type === 'c') blk.done = false;
   const at = afterId ? d.blocks.findIndex(b => b.id === afterId) + 1 : d.blocks.length;
   d.blocks.splice(at, 0, blk);
   d.updated = new Date().toISOString();
-  DB.saveDocs(ds); renderWrite();
+  DB.saveDocs(ds); docRerender();
   const el = document.querySelector(`[data-blk="${blk.id}"]`); if (el) el.focus();
   return blk.id;
 }
 document.addEventListener('click', (ev) => {
-  const sw = document.getElementById('s-write');
-  if (!sw || !sw.classList.contains('on')) return;
-  if (ev.target.id === 'doc-new') {
+  const host = docHost(); if (!host) return;
+  if (host === 'write' && ev.target.id === 'doc-new') {
     const ds = DB.docs();
     const d = { id: 'doc' + Date.now(), title: '', blocks: [{ id: 'bk' + Date.now(), t: 'h', text: '' }], created: todayStr(), updated: new Date().toISOString() };
     ds.unshift(d); DB.saveDocs(ds); curDoc = d.id; renderWrite();
     const t = document.querySelector('.doc-title-input'); if (t) t.focus();
     return;
   }
-  const od = ev.target.closest('[data-opendoc]');
+  const od = host === 'write' && ev.target.closest('[data-opendoc]');
   if (od) { curDoc = od.dataset.opendoc; renderWrite(); window.scrollTo(0, 0); return; }
-  if (ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
-  if (ev.target.id === 'doc-del') {
+  if (host === 'write' && ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
+  if (host === 'write' && ev.target.id === 'doc-del') {
     const did = curDoc, att = mediaList('doc:' + did, null).map(r => r.id);
     if (!confirm(att.length ? `Delete this whole article and its ${att.length} photo${att.length === 1 ? '' : 's'}? This cannot be undone.` : 'Delete this whole article?')) return;
     const drop = () => { const wrote1 = DB.saveDocs(DB.docs().filter(x => x.id !== did)); if (curDoc === did) curDoc = null; renderWrite(); savedToast(wrote1, 'Article deleted'); };
@@ -5564,32 +5599,34 @@ document.addEventListener('click', (ev) => {
     mediaDelete(att).then(ok => { if (ok) drop(); });
     return;
   }
+  const cur = docCurId(); if (!cur) return;
   const ab = ev.target.closest('[data-addblk]');
   if (ab) { addBlock(ab.dataset.addblk); return; }
   const bc = ev.target.closest('[data-blkcheck]');
-  if (bc) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+  if (bc) { const ds = DB.docs(); const d = ds.find(x => x.id === cur);
     const b = d && (d.blocks || []).find(z => z.id === bc.dataset.blkcheck);
-    if (b) { b.done = !b.done; d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
+    if (b) { b.done = !b.done; d.updated = new Date().toISOString(); DB.saveDocs(ds); docRerender(); } return; }
   const bd = ev.target.closest('[data-blkdel]');
-  if (bd) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+  if (bd) { const ds = DB.docs(); const d = ds.find(x => x.id === cur);
     const blk = d && (d.blocks || []).find(z => z.id === bd.dataset.blkdel);
-    if (blk && blk.t === 'i' && _media.has(blk.mid)) {
-      if (!confirm('Remove this photo from the article and delete it? This cannot be undone.')) return;
+    if (blk && isMediaBlk(blk) && _media.has(blk.mid)) {
+      const what = blk.t === 'v' ? 'video' : blk.t === 'a' ? 'voice note' : 'photo';
+      if (!confirm(`Remove this ${what} from the page and delete it? This cannot be undone.`)) return;
       // media first, as for a note: if that fails the block is still there to try again from
-      mediaDelete(blk.mid).then(ok => { if (ok) docDropBlocks(curDoc, z => z.id === blk.id); });
+      mediaDelete(blk.mid).then(ok => { if (ok) docDropBlocks(cur, z => z.id === blk.id); });
       return;
     }
-    if (d) { d.blocks = (d.blocks || []).filter(z => z.id !== bd.dataset.blkdel); d.updated = new Date().toISOString(); DB.saveDocs(ds); renderWrite(); } return; }
+    if (d) { d.blocks = (d.blocks || []).filter(z => z.id !== bd.dataset.blkdel); d.updated = new Date().toISOString(); DB.saveDocs(ds); docRerender(); } return; }
 });
 /* typing saves live; the mic button always targets the block you touched last */
 document.addEventListener('focusin', (ev) => {
   const b = ev.target.closest('[data-blk]');
   if (b) { lastBlk = b.dataset.blk;
-    const mic = document.getElementById('doc-mic'); if (mic) mic.dataset.mic = `[data-blk="${lastBlk}"]`; }
+    ['doc-mic', 'mem-mic'].forEach(id => { const mic = document.getElementById(id); if (mic) mic.dataset.mic = `[data-blk="${lastBlk}"]`; }); }
 });
 document.addEventListener('input', (ev) => {
   const t = ev.target.closest('[data-blk]');
-  if (t) { const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+  if (t) { const ds = DB.docs(); const d = ds.find(x => x.id === docCurId());
     const b = d && (d.blocks || []).find(z => z.id === t.dataset.blk);
     if (b) { b.text = t.value; d.updated = new Date().toISOString(); DB.saveDocs(ds); }
     t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; return; }
@@ -5600,9 +5637,525 @@ document.addEventListener('input', (ev) => {
 document.addEventListener('keydown', (ev) => {
   const t = ev.target.closest('[data-blk]');
   if (!t || ev.key !== 'Enter') return;
-  const ds = DB.docs(); const d = ds.find(x => x.id === curDoc);
+  const ds = DB.docs(); const d = ds.find(x => x.id === docCurId());
   const b = d && (d.blocks || []).find(z => z.id === t.dataset.blk);
   if (b && (b.t === 'c' || b.t === 'b')) { ev.preventDefault(); addBlock(b.t, b.id); }   // Enter = next item
+});
+
+/* ============================================================
+   SCREEN: MEMORIES  (v254)
+   A memory is a Write page with kind:'memory' and properties: the day it happened, a place,
+   the people in it and tags. It reads like a Notion or Obsidian page — a cover, a row of
+   properties, then its blocks — and pages link to each other with [[Title]], with backlinks
+   underneath. Its text syncs through the Sheet like any page. Its photos, videos and voice
+   notes stay on this phone (IndexedDB, ctx 'doc:<id>'), and videos are in no backup file.
+   ============================================================ */
+let curMem = null, memEdit = false, memQ = '', memFilter = null, memLinkOpen = false, memLinkQ = '', _memImport = null;
+function memList() { return DB.docs().filter(d => d && d.kind === 'memory'); }
+function memDate(m) { return /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : (String(m.created || '').slice(0, 10) || todayStr()); }
+function memDateLong(day) {
+  try { return new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch (e) { return day; }
+}
+function memTitle(m) { return String(m.title || '').trim() || memDateLong(memDate(m)); }
+// people and tags arrive from other phones too, so they are read defensively
+function memArr(v) { return Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : []; }
+function memWords(str) {
+  const out = [];
+  String(str || '').split(',').forEach(x => { x = x.trim().slice(0, 60); if (x && !out.some(y => y.toLowerCase() === x.toLowerCase())) out.push(x); });
+  return out.slice(0, 30);
+}
+function memPropsLine(m) {
+  return ['📅 ' + memDate(m), m.place ? '📍 ' + m.place : '', memArr(m.people).length ? '👥 ' + memArr(m.people).join(', ') : '',
+    memArr(m.tags).length ? '🏷 ' + memArr(m.tags).join(', ') : ''].filter(Boolean).join(' · ');
+}
+function memMedia(m) { return (m.blocks || []).filter(isMediaBlk).map(b => _media.get(b.mid)).filter(Boolean); }
+function memCover(m) {
+  const c = m.cover && _media.get(m.cover);
+  if (c && (c.kind === 'photo' || c.thumb)) return c;
+  return memMedia(m).find(r => r.kind === 'photo' || (r.kind === 'video' && r.thumb)) || null;
+}
+function memYearsAgo(day) {
+  const n = new Date().getFullYear() - +day.slice(0, 4) - (day.slice(5) > todayStr().slice(5) ? 1 : 0);
+  return n >= 1 ? (n === 1 ? 'a year ago' : n + ' years ago') : '';
+}
+
+/* ---------- links between pages: [[Title]] ----------
+   A link names a page by its title (a memory without one goes by its date), matched without
+   regard to case. Backlinks are worked out on the spot from every page's text. */
+const MEM_LINK = /\[\[([^\[\]\n]{1,120})\]\]/g;
+function docPageTitle(d) { return d.kind === 'memory' ? memTitle(d) : String(d.title || '').trim(); }
+function docByTitle(t) {
+  t = String(t || '').trim().toLowerCase(); if (!t) return null;
+  return DB.docs().find(d => docPageTitle(d).toLowerCase() === t) || null;
+}
+function docLinks(d) {
+  const out = new Set();
+  (d.blocks || []).forEach(b => { if (!isMediaBlk(b) && b.text) for (const m of String(b.text).matchAll(MEM_LINK)) out.add(m[1].trim().toLowerCase()); });
+  return out;
+}
+function docBacklinks(d) {
+  const t = docPageTitle(d).toLowerCase(); if (!t) return [];
+  return DB.docs().filter(x => x.id !== d.id && docLinks(x).has(t));
+}
+/* Text for the read view: escaped, with [[links]] as buttons and line breaks kept. */
+function memInline(text) {
+  const str = String(text || ''); let out = '', last = 0;
+  for (const m of str.matchAll(MEM_LINK)) {
+    out += escapeHtml(str.slice(last, m.index));
+    const t = m[1].trim(), d = docByTitle(t);
+    out += d ? `<button class="mem-link" data-memlink="${escapeHtml(d.id)}">${escapeHtml(t)}</button>`
+      : `<span class="mem-link missing" title="No page with this title yet">${escapeHtml(t)}</span>`;
+    last = m.index + m[0].length;
+  }
+  return (out + escapeHtml(str.slice(last))).replace(/\n/g, '<br>');
+}
+function memRelated(m) {
+  const ppl = new Set(memArr(m.people).map(x => x.toLowerCase())), pl = String(m.place || '').trim().toLowerCase();
+  return memList().filter(x => x.id !== m.id && ((pl && String(x.place || '').trim().toLowerCase() === pl) || memArr(x.people).some(q => ppl.has(q.toLowerCase()))))
+    .sort((a, b) => memDate(b).localeCompare(memDate(a))).slice(0, 6);
+}
+/* People, places and tags across memories, most used first: the filter chips and suggestions. */
+function memFacets(list) {
+  const f = { person: new Map(), place: new Map(), tag: new Map() };
+  const bump = (map, v) => { const k = v.toLowerCase(); const e = map.get(k); if (e) e.n++; else map.set(k, { v, n: 1 }); };
+  list.forEach(m => { memArr(m.people).forEach(v => bump(f.person, v)); if (String(m.place || '').trim()) bump(f.place, String(m.place).trim()); memArr(m.tags).forEach(v => bump(f.tag, v)); });
+  const top = map => [...map.values()].sort((a, b) => b.n - a.n || a.v.localeCompare(b.v));
+  return { person: top(f.person), place: top(f.place), tag: top(f.tag) };
+}
+function memMatches(m, q, f) {
+  if (f) {
+    const v = String(f.v || '').toLowerCase();
+    if (f.k === 'person' && !memArr(m.people).some(x => x.toLowerCase() === v)) return false;
+    if (f.k === 'place' && String(m.place || '').trim().toLowerCase() !== v) return false;
+    if (f.k === 'tag' && !memArr(m.tags).some(x => x.toLowerCase() === v)) return false;
+  }
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = [memTitle(m), m.place, memArr(m.people).join(' '), memArr(m.tags).join(' '), docText(m), memMedia(m).map(r => r.caption || '').join(' ')].join(' ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+
+/* ---------- the timeline ---------- */
+function memCardHTML(m) {
+  const cov = memCover(m), md = memMedia(m);
+  const np = md.filter(r => r.kind === 'photo').length, nv = md.filter(r => r.kind === 'video').length, na = md.filter(r => r.kind === 'voice').length;
+  const txt = docText(m).replace(MEM_LINK, '$1').trim();
+  return `<button class="mem-card" data-memopen="${escapeHtml(m.id)}">
+    <span class="mem-cover">${cov ? `<img src="${mediaUrl(cov, 't')}" alt="" loading="lazy" decoding="async">` : `<span class="mem-cover-blank" aria-hidden="true">${icon('image', 26)}</span>`}${nv ? `<span class="mvid-badge" aria-hidden="true">${icon('playFill', 12)}${nv}</span>` : ''}</span>
+    <span class="mem-card-body">
+      <span class="mem-card-t">${escapeHtml(memTitle(m))}</span>
+      ${String(m.title || '').trim() || m.place ? `<span class="mem-card-d">${[String(m.title || '').trim() ? memDateLong(memDate(m)) : '', m.place || ''].filter(Boolean).map(escapeHtml).join(' · ')}</span>` : ''}
+      ${memArr(m.people).length ? `<span class="mem-card-p">${escapeHtml(memArr(m.people).join(', '))}</span>` : ''}
+      ${txt ? `<span class="mem-card-s">${escapeHtml(txt.slice(0, 80))}${txt.length > 80 ? '…' : ''}</span>` : ''}
+      ${np + nv + na ? `<span class="mem-card-n">${[np && np + ' photo' + (np === 1 ? '' : 's'), nv && nv + ' video' + (nv === 1 ? '' : 's'), na && na + ' voice'].filter(Boolean).join(' · ')}</span>` : ''}
+    </span></button>`;
+}
+function memSorted(list) { return list.slice().sort((a, b) => memDate(b).localeCompare(memDate(a)) || String(b.updated || '').localeCompare(String(a.updated || ''))); }
+function memResultsHTML() {
+  const all = memList();
+  if (!all.length) return `<div class="empty">No memories yet. Start one with <b>New memory</b>, or <b>Import</b> a batch of photos and videos — they are grouped into one memory per day they were taken.</div>`;
+  const list = memSorted(all.filter(m => memMatches(m, memQ, memFilter)));
+  let otd = '';
+  if (!memQ && !memFilter) {
+    const md = todayStr().slice(5), yr = todayStr().slice(0, 4);
+    const back = memSorted(all.filter(m => memDate(m).slice(5) === md && memDate(m).slice(0, 4) < yr));
+    if (back.length) otd = `<div class="card mem-otd"><h2>On this day</h2><div class="mem-grid">${back.map(memCardHTML).join('')}</div></div>`;
+  }
+  if (!list.length) return otd + `<div class="empty">Nothing matches${memQ ? ' “' + escapeHtml(memQ) + '”' : ''}${memFilter ? ' with ' + escapeHtml(memFilter.v) : ''}.</div>`;
+  const years = new Map();
+  list.forEach(m => { const y = memDate(m).slice(0, 4), ym = memDate(m).slice(0, 7); if (!years.has(y)) years.set(y, new Map()); const mo = years.get(y); if (!mo.has(ym)) mo.set(ym, []); mo.get(ym).push(m); });
+  return otd + [...years].map(([y, mo]) => `<section class="mem-year"><h2 class="mem-year-h">${escapeHtml(y)}</h2>${[...mo].map(([ym, ms]) =>
+    `<h3 class="mem-month-h">${escapeHtml(monthLong(ym))}</h3><div class="mem-grid">${ms.map(memCardHTML).join('')}</div>`).join('')}</section>`).join('');
+}
+function memListHTML() {
+  const fc = memFacets(memList());
+  const chips = (k, arr, ico) => arr.slice(0, 10).map(x => `<button class="mem-chip${memFilter && memFilter.k === k && memFilter.v.toLowerCase() === x.v.toLowerCase() ? ' on' : ''}" data-memf="${k}" data-memv="${escapeHtml(x.v)}">${icon(ico, 14)}${escapeHtml(x.v)}</button>`).join('');
+  const facets = chips('person', fc.person, 'users') + chips('place', fc.place, 'pin') + chips('tag', fc.tag, 'tag');
+  return `<div class="card mem-top">
+      <div class="btn-row">
+        <button class="btn btn-primary" data-mem-new>＋ New memory</button>
+        ${mediaSupported() ? `<button class="btn btn-ghost" data-mem-import>${icon('image', 18)} Import</button>` : ''}
+      </div>
+      <div class="hint" style="margin-top:8px">A page for each moment worth keeping: the story, who was there and where, with its photos, videos and voice notes. Link pages with <b>[[</b>title<b>]]</b>.</div>
+    </div>
+    ${memList().length ? `<div class="mem-search"><input type="text" inputmode="search" enterkeyhint="search" autocomplete="off" id="mem-q" placeholder="Search memories, people, places…" value="${escapeHtml(memQ)}" aria-label="Search memories"></div>
+    ${facets ? `<div class="mem-chips">${memFilter ? `<button class="mem-chip clear" data-memf-clear aria-label="Clear the filter">${icon('x', 14)}${escapeHtml(memFilter.v)}</button>` : ''}${facets}</div>` : ''}` : ''}
+    <div id="mem-results">${memResultsHTML()}</div>`;
+}
+
+/* ---------- one memory: read ---------- */
+function memBlocksHTML(m) {
+  let out = '', gal = [], list = null;
+  const flushG = () => {
+    if (!gal.length) return;
+    const one = gal.length === 1;
+    out += `<div class="mem-gallery${one ? ' one' : ''}">${gal.map(r => r.kind === 'video' ? mediaTileHTML(r, 't', 'Video')
+      : `<button class="mthumb" data-mview="${escapeHtml(r.id)}" aria-label="Photo${r.caption ? ': ' + escapeHtml(r.caption) : ''}"><img src="${mediaUrl(r, one ? 'f' : 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>`;
+    gal.filter(r => r.caption).forEach(r => { if (one) out += `<div class="blk-cap">${escapeHtml(r.caption)}</div>`; });
+    gal = [];
+  };
+  const flushL = () => { if (list) { out += `<ul class="mem-ul">${list.join('')}</ul>`; list = null; } };
+  (m.blocks || []).forEach(b => {
+    if (b.t === 'i' || b.t === 'v') {
+      flushL(); const r = _media.get(b.mid);
+      if (r) gal.push(r);
+      else { flushG(); out += `<div class="blk-nopic">${!_mediaReady ? 'Loading…' : b.t === 'v' ? 'A video that stays on the phone it was added on — backups do not carry videos' : 'A photo that is not on this phone'}</div>`; }
+      return;
+    }
+    flushG();
+    if (b.t === 'a') { flushL(); const r = _media.get(b.mid); out += r ? `<div class="vlist">${voiceRowHTML(r, false)}</div>` : '<div class="blk-nopic">A voice note that is not on this phone</div>'; return; }
+    const txt = String(b.text || ''); if (!txt.trim()) return;   // an empty block says nothing in the read view
+    if (b.t === 'b') { (list = list || []).push(`<li>${memInline(txt)}</li>`); return; }
+    flushL();
+    if (b.t === 'h') out += `<h3 class="mem-h">${memInline(txt)}</h3>`;
+    else if (b.t === 'c') out += `<div class="mem-check${b.done ? ' done' : ''}"><span aria-hidden="true">${b.done ? '☑' : '☐'}</span> ${memInline(txt)}</div>`;
+    else out += `<p class="mem-p">${memInline(txt)}</p>`;
+  });
+  flushG(); flushL();
+  return out || `<div class="empty">Nothing here yet — tap <b>Edit</b> to tell the story and add photos.</div>`;
+}
+function memReadHTML(m) {
+  const cov = memCover(m), ppl = memArr(m.people), tags = memArr(m.tags), day = memDate(m), ago = memYearsAgo(day);
+  const chip = (k, v, ico) => `<button class="mem-chip" data-memf="${k}" data-memv="${escapeHtml(v)}">${icon(ico, 14)}${escapeHtml(v)}</button>`;
+  const out = [...docLinks(m)].map(t => docByTitle(t)).filter(Boolean), back = docBacklinks(m), rel = memRelated(m);
+  const pageBtn = d => `<button class="mem-linkrow" data-memlink="${escapeHtml(d.id)}">${icon(d.kind === 'memory' ? 'image' : 'pencil', 16)}<span>${escapeHtml(docPageTitle(d))}</span>${d.kind === 'memory' ? `<span class="hint">${escapeHtml(memDateLong(memDate(d)))}</span>` : ''}</button>`;
+  return `<div class="mem-page" data-mset="mem">
+    <div class="mem-bar"><button class="back-btn" data-mem-back>← All memories</button><button class="btn btn-ghost btn-sm" data-mem-edit>${icon('pencil', 16)} Edit</button></div>
+    ${cov ? `<button class="mem-hero" data-mview="${escapeHtml(cov.id)}" aria-label="Open the cover ${cov.kind === 'video' ? 'video' : 'photo'}"><img src="${mediaUrl(cov, cov.kind === 'photo' ? 'f' : 't')}" alt=""></button>` : ''}
+    <div class="card mem-sheet">
+      <h1 class="mem-title">${escapeHtml(memTitle(m))}</h1>
+      <div class="mem-props">
+        <div class="mem-prop"><span class="mem-pk">${icon('calendar', 15)}Date</span><span class="mem-pv">${escapeHtml(memDateLong(day))}${ago ? ` <span class="hint">· ${ago}</span>` : ''}</span></div>
+        ${m.place ? `<div class="mem-prop"><span class="mem-pk">${icon('pin', 15)}Place</span><span class="mem-pv">${chip('place', String(m.place).trim(), 'pin')}</span></div>` : ''}
+        ${ppl.length ? `<div class="mem-prop"><span class="mem-pk">${icon('users', 15)}People</span><span class="mem-pv">${ppl.map(v => chip('person', v, 'users')).join('')}</span></div>` : ''}
+        ${tags.length ? `<div class="mem-prop"><span class="mem-pk">${icon('tag', 15)}Tags</span><span class="mem-pv">${tags.map(v => chip('tag', v, 'tag')).join('')}</span></div>` : ''}
+      </div>
+      <div class="mem-body">${memBlocksHTML(m)}</div>
+    </div>
+    ${out.length ? `<div class="card mem-links"><h2>${icon('link', 16)} Links to</h2>${out.map(pageBtn).join('')}</div>` : ''}
+    ${back.length ? `<div class="card mem-links"><h2>${icon('link', 16)} Linked from</h2>${back.map(pageBtn).join('')}</div>` : ''}
+    ${rel.length ? `<div class="card mem-links"><h2>${icon('users', 16)} Same people or place</h2>${rel.map(pageBtn).join('')}</div>` : ''}
+  </div>`;
+}
+
+/* ---------- one memory: edit ---------- */
+function memLinkPickerHTML(m) {
+  const q = memLinkQ.trim().toLowerCase();
+  const pages = DB.docs().filter(d => d.id !== m.id && docPageTitle(d) && (!q || docPageTitle(d).toLowerCase().includes(q))).slice(0, 20);
+  return pages.map(d => `<button class="mem-linkrow" data-memlinkadd="${escapeHtml(d.id)}">${icon(d.kind === 'memory' ? 'image' : 'pencil', 16)}<span>${escapeHtml(docPageTitle(d))}</span></button>`).join('')
+    || '<div class="hint">No other memories or articles to link to yet.</div>';
+}
+function memEditHTML(m) {
+  const fc = memFacets(memList()), ppl = memArr(m.people).map(x => x.toLowerCase()), tg = memArr(m.tags).map(x => x.toLowerCase());
+  const sugg = (k, arr, have) => arr.filter(x => !have.includes(x.v.toLowerCase())).slice(0, 8)
+    .map(x => `<button class="mem-chip add" data-memadd="${k}" data-memv="${escapeHtml(x.v)}">＋ ${escapeHtml(x.v)}</button>`).join('');
+  const sp = sugg('people', fc.person, ppl), st = sugg('tags', fc.tag, tg);
+  return `<div class="mem-bar"><button class="back-btn" data-mem-done>← Done</button></div>
+  <div class="card mem-edit">
+    <input type="text" class="doc-title-input" data-doctitle="${escapeHtml(m.id)}" value="${escapeHtml(m.title || '')}" placeholder="What happened? (a title)" aria-label="Title">
+    <div class="mem-props-edit">
+      <label class="mem-pe"><span>${icon('calendar', 15)}Date</span><input type="date" data-memprop="date" value="${escapeHtml(memDate(m))}"></label>
+      <label class="mem-pe"><span>${icon('pin', 15)}Place</span><input type="text" data-memprop="place" value="${escapeHtml(m.place || '')}" placeholder="Where" maxlength="80" list="mem-places"></label>
+      <label class="mem-pe"><span>${icon('users', 15)}People</span><input type="text" data-memprop="people" value="${escapeHtml(memArr(m.people).join(', '))}" placeholder="Names, with commas between"></label>
+      ${sp ? `<div class="mem-chips">${sp}</div>` : ''}
+      <label class="mem-pe"><span>${icon('tag', 15)}Tags</span><input type="text" data-memprop="tags" value="${escapeHtml(memArr(m.tags).join(', '))}" placeholder="trip, family, first time…"></label>
+      ${st ? `<div class="mem-chips">${st}</div>` : ''}
+      <datalist id="mem-places">${fc.place.slice(0, 30).map(x => `<option value="${escapeHtml(x.v)}"></option>`).join('')}</datalist>
+    </div>
+    <div id="mem-blk-list" data-mset="doc" style="margin-top:10px">${(m.blocks || []).map(blockRow).join('') || '<div class="empty">Empty — add a block below 👇</div>'}</div>
+    <div class="blk-toolbar">
+      <button data-addblk="h">H Heading</button>
+      <button data-addblk="p">¶ Text</button>
+      <button data-addblk="c">☑ Check</button>
+      <button data-addblk="b">• Bullet</button>
+      <button data-mic="#blk-focus-target" id="mem-mic" aria-label="Dictate">🎤</button>
+      <button data-memlinkbtn aria-expanded="${memLinkOpen ? 'true' : 'false'}">${icon('link', 16)} Link</button>
+    </div>
+    ${memLinkOpen ? `<div class="mem-linkpick"><input type="text" inputmode="search" autocomplete="off" id="mem-link-q" placeholder="Find a memory or article…" value="${escapeHtml(memLinkQ)}" aria-label="Find a page to link"><div class="mem-linkpick-list" id="mem-link-list">${memLinkPickerHTML(m)}</div></div>` : ''}
+    ${docMediaActsHTML(m, memDate(m))}
+    <div class="hint" style="margin-top:8px">Photos, videos and voice notes stay on this phone. Backups keep the photos and voice notes, <b>not videos</b>.</div>
+    <div class="btn-row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-mem-del style="color:var(--bad)">🗑 Delete memory</button></div>
+  </div>`;
+}
+function memSaveProp(id, k, v) {
+  const ds = DB.docs(); const m = ds.find(x => x.id === id); if (!m) return false;
+  if (k === 'date') { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return false; m.date = v; }
+  else if (k === 'place') m.place = String(v || '').trim().slice(0, 80);
+  else if (k === 'people' || k === 'tags') m[k] = memWords(v);
+  else return false;
+  m.updated = new Date().toISOString();
+  return DB.saveDocs(ds);
+}
+function memNew(day) {
+  const ds = DB.docs(), id = 'mem' + Date.now() + Math.floor(Math.random() * 99);
+  ds.unshift({ id, kind: 'memory', title: '', date: day || todayStr(), place: '', people: [], tags: [],
+    blocks: [{ id: 'bk' + Date.now(), t: 'p', text: '' }], created: todayStr(), updated: new Date().toISOString() });
+  if (DB.saveDocs(ds) === false) { toast('Phone storage is full — the memory could not be made', true); return null; }
+  return id;
+}
+
+/* ---------- bulk import ----------
+   Many photos and videos at once, grouped by the day each was TAKEN: from a JPEG's EXIF date,
+   a video's own creation time, or failing those the file's last-modified time. Nothing is
+   uploaded anywhere; each file goes through the same path as one added by hand. */
+function exifTaken(buf) {
+  try {
+    const v = new DataView(buf);
+    if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+    let p = 2;
+    while (p + 4 <= v.byteLength) {
+      if (v.getUint8(p) !== 0xFF) return null;
+      const mk = v.getUint8(p + 1), len = v.getUint16(p + 2);
+      if (mk === 0xE1 && p + 10 <= v.byteLength && v.getUint32(p + 4) === 0x45786966) {   // "Exif"
+        const t = p + 10, le = v.getUint16(t) === 0x4949;
+        const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+        const ascii = (o, n) => { let s2 = ''; for (let i = 0; i < n && t + o + i < v.byteLength; i++) { const c = v.getUint8(t + o + i); if (!c) break; s2 += String.fromCharCode(c); } return s2; };
+        const ifd = (o, want) => {
+          const out = {}, n = u16(o);
+          for (let i = 0; i < n && t + o + 2 + i * 12 + 12 <= v.byteLength; i++) {
+            const e = o + 2 + i * 12, tag = u16(e);
+            if (want.includes(tag)) { const cnt = u32(e + 4); out[tag] = tag === 0x8769 ? u32(e + 8) : ascii(cnt > 4 ? u32(e + 8) : e + 8, cnt); }
+          }
+          return out;
+        };
+        const i0 = ifd(u32(4), [0x8769, 0x0132]);
+        const ex = i0[0x8769] ? ifd(i0[0x8769], [0x9003, 0x9004]) : {};
+        const str = ex[0x9003] || ex[0x9004] || i0[0x0132];
+        const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(str || '');
+        if (!m) return null;
+        const ms = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();   // EXIF has no zone: the camera's local time
+        return ms > Date.UTC(1990, 0, 1) && ms < Date.now() + 864e5 ? ms : null;
+      }
+      if (mk === 0xDA) return null;   // the image data starts; no EXIF before it
+      p += 2 + len;
+    }
+  } catch (e) {}
+  return null;
+}
+/* A video's creation time: the 'mvhd' box inside 'moov', in seconds since 1904 (UTC). Only box
+   headers are read, so a 2 GB file costs a few small reads. */
+function mvhdTaken(v) {
+  try {
+    let p = 0;
+    while (p + 16 <= v.byteLength) {
+      const size = v.getUint32(p), type = String.fromCharCode(v.getUint8(p + 4), v.getUint8(p + 5), v.getUint8(p + 6), v.getUint8(p + 7));
+      if (type === 'mvhd') {
+        const ver = v.getUint8(p + 8);
+        const secs = ver === 1 ? v.getUint32(p + 12) * 4294967296 + v.getUint32(p + 16) : v.getUint32(p + 12);
+        const ms = (secs - 2082844800) * 1000;
+        return secs && ms > Date.UTC(1990, 0, 1) && ms < Date.now() + 864e5 ? ms : null;
+      }
+      if (size < 8) return null;
+      p += size;
+    }
+  } catch (e) {}
+  return null;
+}
+async function mp4Taken(f) {
+  let off = 0;
+  for (let i = 0; i < 64 && off + 8 <= f.size; i++) {
+    const h = new DataView(await f.slice(off, off + 16).arrayBuffer());
+    let size = h.getUint32(0), hdr = 8;
+    const type = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+    if (size === 1 && h.byteLength >= 16) { size = h.getUint32(8) * 4294967296 + h.getUint32(12); hdr = 16; }
+    else if (size === 0) size = f.size - off;
+    if (size < hdr) return null;
+    if (type === 'moov') return mvhdTaken(new DataView(await f.slice(off + hdr, Math.min(off + size, off + hdr + 4096)).arrayBuffer()));
+    off += size;
+  }
+  return null;
+}
+async function mediaTakenAt(f) {
+  try {
+    if (/jpe?g/i.test(f.type || '') || /\.jpe?g$/i.test(f.name || '')) { const t = exifTaken(await f.slice(0, 262144).arrayBuffer()); if (t) return t; }
+    if (mediaIsVideo(f)) { const t = await mp4Taken(f); if (t) return t; }
+  } catch (e) {}
+  return f.lastModified || Date.now();
+}
+function memGroupByDay(items) {
+  const g = new Map();
+  items.slice().sort((a, b) => a.t - b.t).forEach(it => { const d = todayStr(new Date(it.t)); if (!g.has(d)) g.set(d, []); g.get(d).push(it); });
+  return [...g].map(([day, list]) => ({ day, items: list }));
+}
+function memImportInput() {
+  let i = document.getElementById('mem-import-input');
+  if (i) return i;
+  i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*,video/*'; i.multiple = true; i.hidden = true; i.id = 'mem-import-input';
+  i.addEventListener('change', () => { const fs = [...(i.files || [])]; i.value = ''; memImportPrepare(fs); });
+  document.body.appendChild(i);
+  return i;
+}
+async function memImportPrepare(files) {
+  files = files.filter(f => /^image\//.test(f.type || '') || mediaIsVideo(f));
+  if (!files.length) { toast('Those are not photos or videos', true); return; }
+  toast('Reading when each was taken…');
+  const items = [];
+  for (const f of files) items.push({ f, t: await mediaTakenAt(f) });
+  _memImport = { items, groups: memGroupByDay(items), mode: 'day', running: false, done: 0 };
+  curMem = null; memEdit = false;
+  if (docHost() === 'memories') { renderMemories(); window.scrollTo(0, 0); } else show('memories');
+}
+function memImportHTML() {
+  const im = _memImport, n = im.items.length;
+  const np = im.items.filter(x => !mediaIsVideo(x.f)).length, nv = n - np;
+  const vmb = Math.round(im.items.filter(x => mediaIsVideo(x.f)).reduce((a, x) => a + x.f.size, 0) / 1048576);
+  const cnt = list => { const v = list.filter(x => mediaIsVideo(x.f)).length, p2 = list.length - v; return [p2 && p2 + ' photo' + (p2 === 1 ? '' : 's'), v && v + ' video' + (v === 1 ? '' : 's')].filter(Boolean).join(', '); };
+  const into = im.mode === 'one' ? 'one memory' : im.groups.length + ' memor' + (im.groups.length === 1 ? 'y' : 'ies');
+  return `${im.running ? '' : '<div class="mem-bar"><button class="back-btn" data-memimp-cancel>← Cancel</button></div>'}
+  <div class="card mem-imp">
+    <h2>Import ${[np && np + ' photo' + (np === 1 ? '' : 's'), nv && nv + ' video' + (nv === 1 ? '' : 's')].filter(Boolean).join(' and ')}</h2>
+    <div class="hint">Taken on ${im.groups.length} day${im.groups.length === 1 ? '' : 's'}. Daylog reads the date each one was taken from the file itself, or when the file was last changed if it does not say.</div>
+    ${im.groups.length > 1 ? `<div class="seg-row" style="margin-top:10px">
+      <button class="seg-btn ${im.mode === 'day' ? 'on' : ''}" data-memimp-mode="day"${im.running ? ' disabled' : ''}>One memory per day</button>
+      <button class="seg-btn ${im.mode === 'one' ? 'on' : ''}" data-memimp-mode="one"${im.running ? ' disabled' : ''}>All in one memory</button></div>` : ''}
+    <ul class="mem-imp-days">${im.groups.map(g => `<li><b>${escapeHtml(memDateLong(g.day))}</b><span>${cnt(g.items)}</span></li>`).join('')}</ul>
+    ${nv ? `<div class="hint">The videos are kept exactly as recorded (${vmb} MB), on this phone only — backup files do not carry videos.</div>` : ''}
+    <button class="btn btn-primary" data-memimp-go style="margin-top:12px"${im.running ? ' disabled' : ''}>${im.running ? `Importing ${im.done} of ${n}…` : 'Import into ' + into}</button>
+  </div>`;
+}
+function memImportPaint() { const b = document.querySelector('[data-memimp-go]'); if (b && _memImport) b.textContent = `Importing ${_memImport.done} of ${_memImport.items.length}…`; }
+async function memImportRun() {
+  const im = _memImport; if (!im || im.running) return;
+  if (!mediaBigVideosOk(im.items.map(x => x.f))) return;
+  im.running = true; im.done = 0;
+  if (docHost() === 'memories') renderMemories();
+  const groups = im.mode === 'one' ? [{ day: im.groups[0].day, items: im.groups.flatMap(g => g.items) }] : im.groups;
+  const made = []; let saved = 0, vids = 0, bad = 0, full = false;
+  _mediaBusy++;
+  try {
+    for (const g of groups) {
+      const id = memNew(g.day); if (!id) { full = true; break; }
+      // the empty text block memNew starts with is not wanted above a gallery
+      const ds = DB.docs(), m = ds.find(x => x.id === id); m.blocks = []; DB.saveDocs(ds);
+      made.push(id);
+      for (const it of g.items) {
+        let rec;
+        try { rec = mediaIsVideo(it.f) ? await mediaVideoRecord(it.f, 'doc:' + id, g.day) : await mediaPhotoRecord(it.f, 'doc:' + id, g.day); }
+        catch (e) { bad++; im.done++; memImportPaint(); continue; }
+        rec.ts = it.t; rec.day = todayStr(new Date(it.t));   // when it was taken, not when it was imported
+        if (!(await mediaAdd(rec))) { full = true; break; }
+        docMediaBlock(id, rec); saved++; if (rec.kind === 'video') vids++;
+        im.done++; memImportPaint();
+      }
+      if (full) break;
+    }
+  } finally { _mediaBusy--; }
+  // a page whose every file failed is not left behind empty
+  const ds = DB.docs(), empty = new Set(made.filter(id => !((ds.find(x => x.id === id) || {}).blocks || []).length));
+  if (empty.size) DB.saveDocs(ds.filter(x => !empty.has(x.id)));
+  const kept = made.filter(id => !empty.has(id));
+  _memImport = null; curMem = kept.length === 1 ? kept[0] : null; memEdit = false;
+  if (docHost() === 'memories') { renderMemories(); window.scrollTo(0, 0); }
+  mediaIdleCheck();
+  if (saved) toast(`${mediaSavedText(saved - vids, vids)} into ${kept.length} memor${kept.length === 1 ? 'y' : 'ies'}`);
+  if (full) toast('Your phone ran out of space part-way — free some up and import the rest', true);
+  else if (bad) toast(bad === 1 ? 'One file could not be read and was skipped' : bad + ' files could not be read and were skipped', true);
+}
+
+/* ---------- the screen ---------- */
+function renderMemories() {
+  const sc = document.getElementById('s-memories'); if (!sc) return;
+  document.getElementById('screen-title').textContent = 'Memories';
+  const sub = document.getElementById('screen-sub');
+  if (_memImport) { sub.textContent = 'Import'; sc.innerHTML = memImportHTML(); return; }
+  const all = memList(), m = curMem && all.find(x => x.id === curMem);
+  if (curMem && !m) { curMem = null; memEdit = false; }
+  if (m && memEdit) {
+    sub.textContent = 'Editing · saves as you type';
+    sc.innerHTML = memEditHTML(m);
+    autoSizeAll(sc.querySelectorAll('.blk'));
+    enableDrag(document.getElementById('mem-blk-list'), ids => {
+      const ds = DB.docs(); const d = ds.find(x => x.id === curMem); if (!d) return;
+      d.blocks = ids.map(id => (d.blocks || []).find(b => b.id === id)).filter(Boolean);
+      d.updated = new Date().toISOString(); DB.saveDocs(ds); renderMemories();
+    });
+    return;
+  }
+  if (m) { sub.textContent = memDateLong(memDate(m)); sc.innerHTML = memReadHTML(m); voicePaint(); return; }
+  sub.textContent = all.length ? `${all.length} memor${all.length === 1 ? 'y' : 'ies'}` : 'Your life, kept';
+  sc.innerHTML = memListHTML();
+}
+/* A photo or video added, deleted or captioned redraws the memory — while editing, only when it
+   holds media, so typing elsewhere is never interrupted (the rule Write follows). */
+function memRefresh() {
+  const sc = document.getElementById('s-memories');
+  if (!sc || !sc.classList.contains('on') || (_memImport && _memImport.running)) return;
+  const m = curMem && memList().find(x => x.id === curMem);
+  if (memEdit && !(m && (m.blocks || []).some(isMediaBlk))) return;
+  const y = window.scrollY; renderMemories(); window.scrollTo({ top: y, behavior: 'instant' });
+}
+function memOpenPage(id) {
+  const d = DB.docs().find(x => x.id === id); if (!d) return;
+  if (d.kind === 'memory') { curMem = id; memEdit = false; if (docHost() === 'memories') { renderMemories(); window.scrollTo(0, 0); } else show('memories'); }
+  else { curDoc = id; show('write'); }
+}
+document.addEventListener('click', (ev) => {
+  const sc = document.getElementById('s-memories');
+  if (!sc || !sc.classList.contains('on') || !ev.target.closest) return;
+  const t = ev.target.closest('[data-mem-new],[data-mem-import],[data-memopen],[data-mem-back],[data-mem-edit],[data-mem-done],[data-mem-del],[data-memf],[data-memf-clear],[data-memlink],[data-memlinkbtn],[data-memlinkadd],[data-memadd],[data-memimp-cancel],[data-memimp-mode],[data-memimp-go]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.memNew !== undefined) { const id = memNew(); if (id) { curMem = id; memEdit = true; renderMemories(); window.scrollTo(0, 0); const ti = sc.querySelector('.doc-title-input'); if (ti) ti.focus(); } return; }
+  if (d.memImport !== undefined) { memImportInput().click(); return; }
+  if (d.memopen) { curMem = d.memopen; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memBack !== undefined) { curMem = null; memEdit = false; renderMemories(); return; }
+  if (d.memEdit !== undefined) { memEdit = true; memLinkOpen = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memDone !== undefined) { flushAutosave(); memEdit = false; memLinkOpen = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memDel !== undefined) {
+    const id = curMem, att = mediaList('doc:' + id, null).map(r => r.id);
+    if (!confirm(att.length ? `Delete this memory and its ${att.length} photo${att.length === 1 ? '' : 's'}, video${att.length === 1 ? '' : 's'} and voice notes? This cannot be undone.` : 'Delete this memory? This cannot be undone.')) return;
+    const drop = () => { const ok = DB.saveDocs(DB.docs().filter(x => x.id !== id)); curMem = null; memEdit = false; renderMemories(); savedToast(ok, 'Memory deleted'); };
+    if (!att.length) { drop(); return; }
+    mediaDelete(att).then(ok => { if (ok) drop(); });
+    return;
+  }
+  if (d.memf) { const f = { k: d.memf, v: d.memv }; memFilter = memFilter && memFilter.k === f.k && memFilter.v.toLowerCase() === f.v.toLowerCase() ? null : f; curMem = null; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memfClear !== undefined) { memFilter = null; renderMemories(); return; }
+  if (d.memlink) { memOpenPage(d.memlink); return; }
+  if (d.memlinkbtn !== undefined) { memLinkOpen = !memLinkOpen; memLinkQ = ''; renderMemories(); const q = document.getElementById('mem-link-q'); if (q) q.focus(); return; }
+  if (d.memlinkadd) {
+    const target = DB.docs().find(x => x.id === d.memlinkadd); if (!target || !curMem) return;
+    const ds = DB.docs(), m = ds.find(x => x.id === curMem); if (!m) return;
+    const link = '[[' + docPageTitle(target) + ']]';
+    const b = (m.blocks || []).find(x => x.id === lastBlk && !isMediaBlk(x));
+    if (b) b.text = (b.text ? b.text.replace(/\s+$/, '') + ' ' : '') + link;
+    else (m.blocks = m.blocks || []).push({ id: 'bk' + Date.now(), t: 'p', text: link });
+    m.updated = new Date().toISOString(); DB.saveDocs(ds);
+    memLinkOpen = false; renderMemories(); toast('Linked to ' + docPageTitle(target));
+    return;
+  }
+  if (d.memadd && curMem) {
+    const m = memList().find(x => x.id === curMem); if (!m) return;
+    memSaveProp(curMem, d.memadd, memArr(m[d.memadd]).concat(d.memv).join(', '));
+    const y = window.scrollY; renderMemories(); window.scrollTo({ top: y, behavior: 'instant' });
+    return;
+  }
+  if (d.memimpCancel !== undefined) { if (_memImport && !_memImport.running) { _memImport = null; renderMemories(); } return; }
+  if (d.memimpMode && _memImport && !_memImport.running) { _memImport.mode = d.memimpMode; renderMemories(); return; }
+  if (d.memimpGo !== undefined) { memImportRun(); return; }
+});
+document.addEventListener('input', (ev) => {
+  const sc = document.getElementById('s-memories');
+  if (!sc || !sc.classList.contains('on')) return;
+  if (ev.target.id === 'mem-q') { memQ = ev.target.value; const r = document.getElementById('mem-results'); if (r) r.innerHTML = memResultsHTML(); return; }
+  if (ev.target.id === 'mem-link-q') {
+    memLinkQ = ev.target.value;
+    const m = memList().find(x => x.id === curMem), l = document.getElementById('mem-link-list');
+    if (m && l) l.innerHTML = memLinkPickerHTML(m);
+    return;
+  }
+  const p = ev.target.closest && ev.target.closest('[data-memprop]');
+  if (p && curMem && p.dataset.memprop !== 'date') memSaveProp(curMem, p.dataset.memprop, p.value);
+});
+document.addEventListener('change', (ev) => {
+  const sc = document.getElementById('s-memories');
+  if (!sc || !sc.classList.contains('on')) return;
+  const p = ev.target.closest && ev.target.closest('[data-memprop]');
+  if (!p || !curMem) return;
+  memSaveProp(curMem, p.dataset.memprop, p.value);
+  // People and tags redraw so the suggestion chips follow; the date redraws the media row's day.
+  if (p.dataset.memprop !== 'place') { const y = window.scrollY; renderMemories(); window.scrollTo({ top: y, behavior: 'instant' }); }
 });
 
 /* ============================================================
@@ -6615,9 +7168,14 @@ function storageRows() {
   const days = Object.keys(DB.entries()).length; if (days) sub('logs', days + ' day' + (days === 1 ? '' : 's'));
   const tx = finTx().length; if (tx) sub('money', tx + ' record' + (tx === 1 ? '' : 's'));
   const tb = DB.timelog().length; if (tb) sub('time', tb + ' block' + (tb === 1 ? '' : 's'));
-  let pb = 0, pn = 0, vb = 0, vn = 0, vms = 0;
-  _media.forEach(r => { if (r.kind === 'photo') { pn++; pb += r.size || 0; } else { vn++; vb += r.size || 0; vms += r.dur || 0; } });
+  let pb = 0, pn = 0, vb = 0, vn = 0, vms = 0, xb = 0, xn = 0, xms = 0;
+  _media.forEach(r => {
+    if (r.kind === 'photo') { pn++; pb += r.size || 0; }
+    else if (r.kind === 'video') { xn++; xb += r.size || 0; xms += r.dur || 0; }
+    else { vn++; vb += r.size || 0; vms += r.dur || 0; }
+  });
   rows.push({ k: 'photos', l: 'Photos', c: '#6d8cff', bytes: pb, sub: pn ? pn + ' photo' + (pn === 1 ? '' : 's') : '' });
+  rows.push({ k: 'videos', l: 'Videos', c: '#f472b6', bytes: xb, sub: xn ? xn + ' video' + (xn === 1 ? '' : 's') + (xms ? ' · ' + fmtClipLen(xms) : '') + ' · not in backups' : '' });
   rows.push({ k: 'voice', l: 'Voice notes', c: '#4ad6c0', bytes: vb, sub: vn ? vn + ' note' + (vn === 1 ? '' : 's') + ' · ' + fmtClipLen(vms) : '' });
   if (_stCache > 0) rows.push({ k: 'app', l: 'App files', c: '#64748b', bytes: _stCache, sub: 'the offline copy of Daylog' });
   return { rows: rows.filter(r => r.bytes > 0).sort((a, b) => b.bytes - a.bytes), chars: t.chars };
@@ -6652,6 +7210,7 @@ function storagePageHTML() {
         : `<button class="btn btn-primary" id="st-shrink">Shrink ${ns} photo${ns === 1 ? '' : 's'}</button>`}
     </div>` : '') + `
     <div class="hint st-note">New photos are saved small (usually 100–300 KB each) and voice notes at about 180 KB a minute.
+      Videos are kept exactly as your camera made them, often 30–100 MB a minute, and stay on this phone only: <b>backup files do not carry videos</b>.
       Android's <b>Settings ▸ Apps ▸ Daylog</b> shows a bigger number than this page, because it also counts the app itself and its temporary files.
       <b>Clear storage</b> there deletes everything listed above, so export a backup first.</div>`;
 }
@@ -7126,7 +7685,7 @@ document.addEventListener('click', async (ev) => {
     _wiped = true; clearTimeout(pushTimer); _pushPending = null;
     const n = wipeEverything();
     const p = mediaTotals();
-    toast(n + ' items' + (p.photos + p.voice ? ` and ${p.photos + p.voice} photos/voice notes` : '') + ' erased. Daylog is empty.');
+    toast(n + ' items' + (p.photos + p.voice + p.videos ? ` and ${p.photos + p.voice + p.videos} photos, videos and voice notes` : '') + ' erased. Daylog is empty.');
     // The photo database must really go too. A flag survives the reload so a delete that was
     // blocked or slow is finished at the next start; the time limit means the reload always comes.
     try { localStorage.setItem('dp.mediaWipe', '1'); } catch (e) {}
@@ -7478,8 +8037,8 @@ function mediaOrphanCtxs() {
 /* An article's photos whose article is gone come back as a new article holding them. */
 function mediaRestoreDoc(ctx) {
   const id = ctx.slice(4), ds = DB.docs(); if (ds.some(d => d.id === id)) return true;
-  const pics = mediaList(ctx, null).filter(r => r.kind === 'photo');
-  ds.unshift({ id, title: 'Recovered photos', blocks: pics.map((r, i) => ({ id: 'bk' + Date.now() + i, t: 'i', mid: r.id, text: '' })),
+  const pics = mediaList(ctx, null);
+  ds.unshift({ id, title: 'Recovered photos', blocks: pics.map((r, i) => ({ id: 'bk' + Date.now() + i, t: mediaBlockType(r.kind), mid: r.id, text: '' })),
     created: todayStr(), updated: new Date().toISOString() });
   return DB.saveDocs(ds) !== false;
 }
@@ -7498,10 +8057,25 @@ function mediaDayCount(day) {
   _media.forEach(r => { if (r.day === day && r.ctx === 'log') { if (r.kind === 'photo') p++; else v++; } });
   return { p, v };
 }
+/* `bytes` is what a backup would carry: photos and voice notes. Videos are kept apart, because
+   no backup file carries them (see mediaForBackup). */
 function mediaTotals() {
-  let photos = 0, voice = 0, bytes = 0;
-  _media.forEach(r => { if (r.kind === 'photo') photos++; else voice++; bytes += r.size || 0; });
-  return { photos, voice, bytes };
+  let photos = 0, voice = 0, videos = 0, bytes = 0, vbytes = 0;
+  _media.forEach(r => {
+    if (r.kind === 'video') { videos++; vbytes += r.size || 0; return; }
+    if (r.kind === 'photo') photos++; else voice++;
+    bytes += r.size || 0;
+  });
+  return { photos, voice, videos, bytes, vbytes };
+}
+/* Photos and videos are the visual kinds: they share grids, the viewer and a memory's gallery. */
+function mediaVisual(r) { return !!r && (r.kind === 'photo' || r.kind === 'video'); }
+/* One grid tile. A video shows its still (when one could be made) with its length over it. */
+function mediaTileHTML(r, which, label) {
+  if (r.kind === 'video') {
+    return `<button class="mthumb mvid" data-mview="${escapeHtml(r.id)}" aria-label="${escapeHtml(label || 'Video')}${r.dur ? ', ' + fmtClipLen(r.dur) : ''}">${r.thumb ? `<img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async">` : ''}<span class="mvid-badge" aria-hidden="true">${icon('playFill', 13)}${r.dur ? fmtClipLen(r.dur) : ''}</span></button>`;
+  }
+  return `<button class="mthumb" data-mview="${escapeHtml(r.id)}" aria-label="${escapeHtml(label || 'Photo')}${r.caption ? ': ' + escapeHtml(r.caption) : ''}"><img src="${mediaUrl(r, which || 't')}" alt="" loading="lazy" decoding="async"></button>`;
 }
 function fmtBytes(n) {
   if (n < 1024) return n + ' B';
@@ -7616,43 +8190,107 @@ function mediaInputs() {
   if (document.getElementById('media-cam')) return;
   const mk = (id, extra) => {
     const i = document.createElement('input');
-    i.type = 'file'; i.accept = 'image/*'; i.id = id; i.hidden = true;
+    i.type = 'file'; i.accept = id === 'media-vcam' ? 'video/*' : id === 'media-pick' ? 'image/*,video/*' : 'image/*'; i.id = id; i.hidden = true;
     Object.assign(i, extra);
     i.addEventListener('change', () => { const fs = [...(i.files || [])]; i.value = ''; mediaTakeFiles(fs); });
     document.body.appendChild(i);
   };
   mk('media-cam', {}); document.getElementById('media-cam').setAttribute('capture', 'environment');
+  mk('media-vcam', {}); document.getElementById('media-vcam').setAttribute('capture', 'environment');
   mk('media-pick', { multiple: true });
 }
 function mediaPick(how, ctx, day) {
   if (!mediaSupported()) { toast('This browser cannot store photos', true); return; }
   mediaInputs();
   _mediaTarget = { ctx, day };
-  document.getElementById(how === 'camera' ? 'media-cam' : 'media-pick').click();
+  document.getElementById(how === 'camera' ? 'media-cam' : how === 'video' ? 'media-vcam' : 'media-pick').click();
+}
+function mediaIsVideo(f) { return /^video\//.test(f.type || '') || (!f.type && /\.(mp4|mov|m4v|3gp|webm|mkv)$/i.test(f.name || '')); }
+/* One clip this big is a real share of a phone's space, and it is kept as the camera made it. */
+function mediaBigVideosOk(files) {
+  const big = files.filter(f => mediaIsVideo(f) && f.size > VIDEO_BIG_MB * 1048576);
+  if (!big.length) return true;
+  const mb = Math.round(big.reduce((n, f) => n + f.size, 0) / 1048576);
+  return confirm(`${big.length === 1 ? 'This video is' : big.length + ' of these videos are'} ${mb} MB. Videos are kept exactly as recorded, on this phone only, and backups do not carry them.\n\nAdd ${big.length === 1 ? 'it' : 'them'}?`);
 }
 async function mediaTakeFiles(files) {
   const t = _mediaTarget; if (!t || !files.length) return;
-  const imgs = files.filter(f => /^image\//.test(f.type) || !f.type);
-  if (!imgs.length) { toast('That is not a photo', true); return; }
-  if (imgs.length > 1) toast(`Adding ${imgs.length} photos…`);
+  const imgs = files.filter(f => /^image\//.test(f.type) || mediaIsVideo(f) || !f.type);
+  if (!imgs.length) { toast('That is not a photo or a video', true); return; }
+  if (!mediaBigVideosOk(imgs)) return;
+  if (imgs.length > 1) toast(`Adding ${imgs.length}…`);
   const newNote = t.ctx === 'note:new' ? mediaNewNoteId() : null;
   const ctx = newNote ? 'note:' + newNote : t.ctx;
-  let saved = 0, bad = 0;
+  let saved = 0, bad = 0, vids = 0;
   _mediaBusy++;
   try {
     for (const f of imgs) {
       let rec;
-      try { rec = await mediaPhotoRecord(f, ctx, t.day); } catch (e) { bad++; continue; }
-      if (await mediaAdd(rec)) saved++; else break;      // out of space: stop, mediaAdd said so
-      if (ctx.indexOf('doc:') === 0) docPhotoBlock(ctx.slice(4), rec.id);
+      try { rec = mediaIsVideo(f) ? await mediaVideoRecord(f, ctx, t.day) : await mediaPhotoRecord(f, ctx, t.day); } catch (e) { bad++; continue; }
+      if (await mediaAdd(rec)) { saved++; if (rec.kind === 'video') vids++; } else break;      // out of space: stop, mediaAdd said so
+      if (ctx.indexOf('doc:') === 0) docMediaBlock(ctx.slice(4), rec);
       // The note exists from the FIRST saved photo, so an interruption cannot strand the rest.
       if (newNote && saved === 1) { mediaCommitNote(newNote); mediaAfterNote(); }
     }
   } finally { _mediaBusy--; }
   refreshMediaSlots();
   mediaIdleCheck();
-  if (saved) { buzz(8); toast(saved === 1 ? 'Photo saved' : saved + ' photos saved'); }
-  if (bad) toast(bad === 1 ? 'That photo could not be read — try a different one' : bad + ' photos could not be read', true);
+  if (saved) { buzz(8); toast(mediaSavedText(saved - vids, vids)); }
+  if (bad) toast(bad === 1 ? 'That file could not be read — try a different one' : bad + ' files could not be read', true);
+}
+
+function mediaSavedText(p, v) {
+  const bits = [];
+  if (p) bits.push(p === 1 ? '1 photo' : p + ' photos');
+  if (v) bits.push(v === 1 ? '1 video' : v + ' videos');
+  const t = bits.join(' and ') + ' saved';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/* ---------- videos ----------
+   Kept exactly as the camera or gallery made them: re-encoding on a phone would take minutes and
+   a lot of battery for a long clip. What is made here is a still for the tile (a frame near the
+   start), and its shape and length. A clip the WebView cannot decode (some HEVC files) is still
+   saved, with a plain tile, and plays wherever the phone can play it. */
+const VIDEO_BIG_MB = 300;
+let VIDEO_META_WAIT = 8000;   // a stuck decoder must not hold the save (tests shorten it)
+function mediaVideoMeta(blob) {
+  return new Promise(res => {
+    let done = false, url = null, t = null;
+    const v = document.createElement('video');
+    const end = out => {
+      if (done) return; done = true; clearTimeout(t);
+      try { v.removeAttribute('src'); } catch (e) {}
+      if (url) URL.revokeObjectURL(url);
+      res(out);
+    };
+    t = setTimeout(() => end({}), VIDEO_META_WAIT);
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.onerror = () => end({});
+    v.onloadedmetadata = () => {
+      const meta = { w: v.videoWidth || 0, h: v.videoHeight || 0, dur: isFinite(v.duration) ? Math.round(v.duration * 1000) : 0 };
+      v.onseeked = async () => {
+        try {
+          const f = mediaFit(meta.w || 320, meta.h || 180, 320);
+          const c = document.createElement('canvas'); c.width = f.w; c.height = f.h;
+          c.getContext('2d').drawImage(v, 0, 0, f.w, f.h);
+          let b = await new Promise(r => c.toBlob(r, 'image/webp', 0.6));
+          if (b && b.type !== 'image/webp') b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.7));
+          if (b && b.size) meta.thumb = b;
+        } catch (e) {}
+        end(meta);
+      };
+      try { v.currentTime = Math.min(0.5, (isFinite(v.duration) ? v.duration : 1) / 10); } catch (e) { end(meta); }
+    };
+    try { url = URL.createObjectURL(blob); v.src = url; } catch (e) { end({}); }
+  });
+}
+async function mediaVideoRecord(file, ctx, day) {
+  const meta = await mediaVideoMeta(file);
+  // The File itself is stored: IndexedDB keeps it on disk, where a copy would sit in memory.
+  const rec = { id: mediaId(), kind: 'video', mime: file.type || 'video/mp4', blob: file, day, ctx, ts: Date.now(), size: file.size };
+  ['w', 'h', 'dur', 'thumb'].forEach(k => { if (meta[k]) rec[k] = meta[k]; });
+  return rec;
 }
 
 /* ---------- voice notes ---------- */
@@ -7750,6 +8388,7 @@ async function voiceSave(r) {
   const ok = await mediaAdd({ id: mediaId(), kind: 'voice', mime: r.mime, blob, day: r.day, ctx: newNote ? 'note:' + newNote : r.ctx,
     ts: r.t0, dur: r.dur, size: blob.size });
   if (ok && newNote) { mediaCommitNote(newNote); mediaAfterNote(); }
+  if (ok && r.ctx.indexOf('doc:') === 0) { const rec = [..._media.values()].find(x => x.ts === r.t0 && x.ctx === r.ctx && x.kind === 'voice'); if (rec) docMediaBlock(r.ctx.slice(4), rec); }
   refreshMediaSlots();
   if (!ok) return;
   buzz(8);
@@ -7797,16 +8436,16 @@ function voicePaint() {
    Log screen around a half-typed journal. */
 function mediaSlot(ctx, day, opts) {
   opts = opts || {};
-  return `<div class="media-slot${opts.compact ? ' compact' : ''}" data-mctx="${escapeHtml(ctx)}" data-mday="${escapeHtml(day)}"${opts.compact ? ' data-mcompact="1"' : ''}>${mediaSlotHTML(ctx, day, opts)}</div>`;
+  return `<div class="media-slot${opts.compact ? ' compact' : ''}${opts.recOnly ? ' rec-only' : ''}" data-mctx="${escapeHtml(ctx)}" data-mday="${escapeHtml(day)}"${opts.compact ? ' data-mcompact="1"' : ''}${opts.recOnly ? ' data-mreconly="1"' : ''}>${mediaSlotHTML(ctx, day, opts)}</div>`;
 }
 function mediaSlotHTML(ctx, day, opts) {
   opts = opts || {};
+  if (opts.recOnly && !(_rec && _rec.ctx === ctx && _rec.day === day)) return '';   // empty unless recording here
   if (!mediaSupported()) return opts.compact ? '' : '<div class="hint">This browser cannot store photos or voice notes.</div>';
   if (!_mediaReady) return opts.compact ? '' : '<div class="hint">Loading…</div>';
   const items = mediaList(ctx, ctx === 'log' ? day : null);
-  const photos = items.filter(r => r.kind === 'photo'), voices = items.filter(r => r.kind === 'voice');
-  const grid = photos.length ? `<div class="mgrid">${photos.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo from ${escapeHtml(mediaWhen(r.ts))}${r.caption ? ': ' + escapeHtml(r.caption) : ''}">
-      <img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : '';
+  const photos = items.filter(mediaVisual), voices = items.filter(r => r.kind === 'voice');
+  const grid = photos.length ? `<div class="mgrid">${photos.map(r => mediaTileHTML(r, 't', (r.kind === 'video' ? 'Video' : 'Photo') + ' from ' + mediaWhen(r.ts))).join('')}</div>` : '';
   const vlist = voices.map(r => voiceRowHTML(r, true)).join('');
   const recHere = _rec && _rec.ctx === ctx && _rec.day === day;
   const recBar = recHere ? `<div class="vrec" role="status">
@@ -7816,6 +8455,7 @@ function mediaSlotHTML(ctx, day, opts) {
         <button class="btn btn-ghost" data-vrec-cancel>Discard</button>
         <button class="btn btn-primary" data-vrec-stop>${icon('check', 18)} Save</button>
       </div></div>` : '';
+  if (opts.recOnly) return recBar;   // a page's own blocks show its media; this slot only shows a recording in progress
   if (opts.compact) return grid + (vlist ? `<div class="vlist">${vlist}</div>` : '') + recBar;
   const empty = !items.length && !recHere
     ? `<div class="media-empty">A photo of something from today, or a voice note while it is fresh. They stay on this phone and are saved in your backup file.</div>` : '';
@@ -7841,7 +8481,7 @@ function refreshMediaSlots() {
   const hs = document.getElementById('s-history');
   if (hs && hs.classList.contains('on') && !histDay && histTab === 'photos') { const y = window.scrollY; renderHistory(); window.scrollTo({ top: y, behavior: 'instant' }); }
   document.querySelectorAll('.media-slot').forEach(s => {
-    s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact });
+    s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact, recOnly: !!s.dataset.mreconly });
   });
   voicePaint();
   const lc = document.getElementById('media-log-count');
@@ -7865,7 +8505,7 @@ let _mview = null;   // { ids, i }
 function mediaViewOpen(id, set) {
   const rec = _media.get(id); if (!rec) return;
   const ids = (set && set.length && set.includes(id)) ? set.slice()
-    : mediaList(rec.ctx, rec.ctx === 'log' ? rec.day : null).filter(r => r.kind === 'photo').map(r => r.id);
+    : mediaList(rec.ctx, rec.ctx === 'log' ? rec.day : null).filter(mediaVisual).map(r => r.id);
   _mview = { ids, i: Math.max(0, ids.indexOf(id)) };
   let el = document.getElementById('media-view');
   if (!el) { el = document.createElement('div'); el.id = 'media-view'; el.className = 'mview'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); document.body.appendChild(el); mediaSwipe(el); }
@@ -7877,16 +8517,20 @@ function mediaViewPaint() {
   const id = _mview.ids[_mview.i], rec = _media.get(id);
   if (!rec) { mediaViewClose(); return; }
   const n = _mview.ids.length;
-  const canShare = !!nativeSharePlugin() || !!navigator.canShare || !window.Capacitor;
-  el.setAttribute('aria-label', 'Photo ' + (_mview.i + 1) + ' of ' + n);
+  const vid = rec.kind === 'video';
+  // the Play app's share plugin takes images only; a video needs the next native build
+  const canShare = vid ? (!window.Capacitor || !!navigator.canShare) : (!!nativeSharePlugin() || !!navigator.canShare || !window.Capacitor);
+  el.setAttribute('aria-label', (vid ? 'Video ' : 'Photo ') + (_mview.i + 1) + ' of ' + n);
   el.innerHTML = `
     <div class="mview-top">
       <div class="mview-when"><b>${escapeHtml(prettyDate(rec.day))}</b><span>${escapeHtml(mediaWhen(rec.ts))}${n > 1 ? ' · ' + (_mview.i + 1) + ' of ' + n : ''}</span></div>
       <button class="mview-x" data-mview-close aria-label="Close">${icon('x', 22)}</button>
     </div>
-    <div class="mview-stage"><img class="mview-img" src="${mediaUrl(rec, 'f')}" alt="${escapeHtml(rec.caption || 'Photo')}"></div>
-    ${n > 1 ? `<button class="mview-nav prev" data-mview-step="-1" aria-label="Previous photo"${_mview.i === 0 ? ' disabled' : ''}>${icon('chevL', 26)}</button>
-      <button class="mview-nav next" data-mview-step="1" aria-label="Next photo"${_mview.i === n - 1 ? ' disabled' : ''}>${icon('chevR', 26)}</button>` : ''}
+    <div class="mview-stage">${vid
+      ? `<video class="mview-img mview-vid" src="${mediaUrl(rec, 'f')}"${rec.thumb ? ` poster="${mediaUrl(rec, 't')}"` : ''} controls playsinline preload="metadata" aria-label="${escapeHtml(rec.caption || 'Video')}"></video>`
+      : `<img class="mview-img" src="${mediaUrl(rec, 'f')}" alt="${escapeHtml(rec.caption || 'Photo')}">`}</div>
+    ${n > 1 ? `<button class="mview-nav prev" data-mview-step="-1" aria-label="Previous"${_mview.i === 0 ? ' disabled' : ''}>${icon('chevL', 26)}</button>
+      <button class="mview-nav next" data-mview-step="1" aria-label="Next"${_mview.i === n - 1 ? ' disabled' : ''}>${icon('chevR', 26)}</button>` : ''}
     <div class="mview-bar">
       <input class="mview-cap" type="text" maxlength="200" data-mcap="${rec.id}" placeholder="Add a caption…" value="${escapeHtml(rec.caption || '')}" aria-label="Caption">
       <div class="mview-acts">
@@ -7958,8 +8602,22 @@ async function mediaShareBlob(rec) {
     return b || rec.blob;
   } catch (e) { return rec.blob; }
 }
+function mediaVideoExt(mime) { return /quicktime/.test(mime) ? '.mov' : /webm/.test(mime) ? '.webm' : /3gpp/.test(mime) ? '.3gp' : '.mp4'; }
 async function mediaShare(id) {
   const rec = _media.get(id); if (!rec) return;
+  if (rec.kind === 'video') {
+    const name = 'daylog-' + rec.day + '-' + rec.id + mediaVideoExt(rec.mime || '');
+    try {
+      const f = new File([rec.blob], name, { type: rec.mime || 'video/mp4' });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    if (!window.Capacitor) {
+      const u = URL.createObjectURL(rec.blob), a = document.createElement('a'); a.href = u; a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(u), 60000);
+      toast('Saved to your downloads'); return;
+    }
+    toast('Sharing videos needs the next Daylog update from the Play Store', true); return;
+  }
   const blob = await mediaShareBlob(rec);
   const name = 'daylog-' + rec.day + '-' + rec.id + (blob.type === 'image/webp' ? '.webp' : '.jpg');
   const nat = nativeSharePlugin();
@@ -7981,16 +8639,17 @@ async function mediaShare(id) {
 }
 async function mediaConfirmDelete(id) {
   const rec = _media.get(id); if (!rec) return;
-  if (!confirm(rec.kind === 'photo' ? 'Delete this photo? This cannot be undone.' : 'Delete this voice note? This cannot be undone.')) return;
+  const what = rec.kind === 'photo' ? 'photo' : rec.kind === 'video' ? 'video' : 'voice note';
+  if (!confirm(`Delete this ${what}? This cannot be undone.`)) return;
   if (!(await mediaDelete(id))) return;
-  if (rec.ctx.indexOf('doc:') === 0) docDropBlocks(rec.ctx.slice(4), b => b.t === 'i' && b.mid === id);
+  if (rec.ctx.indexOf('doc:') === 0) docDropBlocks(rec.ctx.slice(4), b => isMediaBlk(b) && b.mid === id);
   if (_mview) {
     _mview.ids = _mview.ids.filter(x => x !== id);
     if (!_mview.ids.length) mediaViewClose();
     else { _mview.i = Math.min(_mview.i, _mview.ids.length - 1); mediaViewPaint(); }
   }
   refreshMediaSlots();
-  toast(rec.kind === 'photo' ? 'Photo deleted' : 'Voice note deleted');
+  toast(what.charAt(0).toUpperCase() + what.slice(1) + ' deleted');
 }
 document.addEventListener('click', (ev) => {
   const t = ev.target.closest && ev.target.closest('[data-madd],[data-mrec],[data-vrec-stop],[data-vrec-cancel],[data-vplay],[data-mview],[data-mdel],[data-mshare],[data-mview-close],[data-mview-step],[data-mview-day]');
@@ -8007,7 +8666,8 @@ document.addEventListener('click', (ev) => {
   if (d.vplay) { voiceToggle(d.vplay); return; }
   if (d.mview) {
     const set = t.closest('[data-mset]');
-    mediaViewOpen(d.mview, set ? [...set.querySelectorAll('[data-mview]')].map(x => x.dataset.mview) : null);
+    // once each: a memory's cover is also a tile in its gallery
+    mediaViewOpen(d.mview, set ? [...new Set([...set.querySelectorAll('[data-mview]')].map(x => x.dataset.mview))] : null);
     return;
   }
   if (d.mviewDay) { mediaViewClose(); dayOpen(d.mviewDay); return; }
@@ -8039,8 +8699,11 @@ async function mediaForBackup() {
   if (!mediaSupported()) return { items: [], skipped: 0, bytes: 0 };
   let all;
   try { all = await mediaReadAll(); } catch (e) { return { items: [], skipped: -1, bytes: 0 }; }
-  const items = []; let skipped = 0, bytes = 0;
+  const items = []; let skipped = 0, bytes = 0, videos = 0;
   for (const r of all) {
+    // A video can be hundreds of MB; as base64 inside one JSON string it would run the WebView
+    // out of memory. They stay on this phone, and every place that talks about backups says so.
+    if (r && r.kind === 'video') { videos++; continue; }
     try {
       const it = { id: r.id, kind: r.kind, mime: r.mime, day: r.day, ctx: r.ctx, ts: r.ts, data: await blobToB64(r.blob) };
       if (r.thumb) it.thumb = await blobToB64(r.thumb);
@@ -8048,7 +8711,7 @@ async function mediaForBackup() {
       items.push(it); bytes += r.size || 0;
     } catch (e) { skipped++; }
   }
-  return { items, skipped, bytes };
+  return { items, skipped, bytes, videos };
 }
 /* What goes into an export, decided BEFORE anything is read:
    - an old Play build with no file writer falls back to a copy-paste box, and a clipboard
@@ -8070,7 +8733,7 @@ async function mediaForExport() {
        Ask the database itself. */
     const onDisk = await Promise.race([mediaReadAll().catch(() => null), new Promise(r => setTimeout(() => r(null), 8000))]);
     if (!onDisk) return none('', -1);
-    if (!onDisk.length) return none();
+    if (!onDisk.some(r => r && r.kind !== 'video')) return none();   // nothing a backup carries
     await mediaLoad(); t = mediaTotals(); n = t.photos + t.voice;
     if (!n) return none('', -1);
   }
@@ -8222,7 +8885,7 @@ function wipeStageHTML() {
         and everything else Daylog holds on this phone.</div>
       <div class="hint" style="margin:8px 0">${lb
         ? `Your last backup was <b>${days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago'}</b>.`
-        : `<b>You have never exported a backup.</b>`} Anything logged since then is gone for good.</div>
+        : `<b>You have never exported a backup.</b>`} Anything logged since then is gone for good.${mediaTotals().videos ? ` <b>Your ${mediaTotals().videos} video${mediaTotals().videos === 1 ? '' : 's'} are in no backup</b> and go for good either way.` : ''}</div>
       <div class="btn-row">
         <button class="btn btn-primary btn-sm" id="wipe-export">⬇ Export a backup first</button>
         ${back}
@@ -8294,6 +8957,7 @@ async function exportData() {
   if (saveOk(r) && r !== 'copy' && !skipped.length && !(media.skipped < 0)) localStorage.setItem('dp.lastBackup', String(Date.now()));
   // Say so if the file is incomplete. A partial backup presented as a whole one is the failure
   // this app keeps having to unlearn — and here it would not be noticed until a restore.
+  const vids = mediaTotals().videos;
   if (saveOk(r) && skipped.length) {
     toast(`Backed up, but ${skipped.length} section(s) were unreadable and left out: ${skipped.join(', ')}`, true);
   } else if (saveOk(r) && media.note) {
@@ -8301,6 +8965,8 @@ async function exportData() {
   } else if (saveOk(r) && media.skipped) {
     toast(media.skipped < 0 ? 'Backed up, but your photos and voice notes could not be read and are NOT in this file'
       : `Backed up, but ${media.skipped} photo(s)/voice note(s) could not be read and were left out`, true);
+  } else if (saveOk(r) && vids) {
+    toast(`Backed up. Your ${vids} video${vids === 1 ? '' : 's'} stay${vids === 1 ? 's' : ''} on this phone only: backup files do not carry videos.`);
   }
   return r;
 }
@@ -13875,6 +14541,8 @@ const NAV_DEF = [
   // lifetime trophy case has nothing to do with the Range picker the other tabs share.
   { k: 'awards',   ico: 'star',     label: 'Awards', adv: true, blurb: 'A trophy case worked out from your own log.' },
   { k: 'write',    ico: 'pencil',   label: 'Write', adv: true, blurb: 'A distraction-free writing space.' },
+  // Not advanced: keeping memories is the reason many people open a journal at all (v254).
+  { k: 'memories', ico: 'image',    label: 'Memories', blurb: 'A page for each moment: the story, people, place, photos and videos.' },
   { k: 'search',   ico: 'search',   label: 'Search', adv: true, blurb: 'Search everything you have written.' },
   { k: 'history',  ico: 'history',  label: 'History', adv: true, blurb: 'Every day you have logged, in one list.' },
   { k: 'settings', ico: 'settings', label: 'Settings' },
@@ -14069,6 +14737,8 @@ function handleBack() {
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
   // 2) step back within a screen's sub-view first (mirror the on-screen "← back" buttons)
   if (cur === 'write' && curDoc) { curDoc = null; renderWrite(); return; }
+  if (cur === 'memories' && _memImport && !_memImport.running) { _memImport = null; renderMemories(); return; }
+  if (cur === 'memories' && curMem) { if (memEdit) { memEdit = false; memLinkOpen = false; } else curMem = null; renderMemories(); window.scrollTo(0, 0); return; }
   if (cur === 'plans' && curPlan) { curPlan = null; renderPlans(); return; }
   if (cur === 'gym' && gymView === 'day') { gymView = 'home'; renderGym(); return; }
   if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
@@ -14143,7 +14813,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
@@ -14190,6 +14860,7 @@ function navigateTo(name) {
   if (name === 'plans') curPlan = null;                     // Plans opens the list
   if (name === 'cal') { calSel = todayStr(); calMonth = calSel.slice(0, 7); }
   if (name === 'write') curDoc = null;                      // Write opens the article list
+  if (name === 'memories') { curMem = null; memEdit = false; memLinkOpen = false; }   // Memories opens the timeline
   if (name === 'history') histDay = null;                   // History opens the list of days
   _editFromHist = null; _dayFrom = null;
   /* Picking Settings — from the menu, a pinned tab or More — opens its HOME, not whichever
@@ -14268,6 +14939,11 @@ const ICONS = {
   x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   chevL:'<path d="m15 18-6-6 6-6"/>',
   chevR:'<path d="m9 18 6-6-6-6"/>',
+  video:'<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  pin:'<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  tag:'<path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><path d="M7 7h.01"/>',
   hardDrive:'<path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/><path d="M6 16h.01"/><path d="M10 16h.01"/>',
 };
 // section id → icon, and default-habit key → icon (custom items keep their emoji)

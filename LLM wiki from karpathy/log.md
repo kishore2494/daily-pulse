@@ -1,3 +1,16 @@
+## 2026-11-04 — Memories: a Notion-style page per moment, with videos (built, NOT deployed)
+
+Kishore: "I need this to be live documentation … document the memories that I have, photos,
+videos … like if we do this in notion or obsidian". Asked three questions; answers: inside
+Daylog; videos + a story per memory + a timeline + bulk import, Notion/Obsidian style; big files
+on the phone only. Built as features.md ▸ Memories describes: memory = a Write page with
+`kind:'memory'` and properties; shared block editor gains video and voice blocks; read view
+with cover, property chips, `[[links]]`, backlinks and "same people or place"; timeline with
+search, facets and On this day; bulk import grouped by the taken date (EXIF / MP4 `mvhd` /
+file date). Videos are kept as recorded and are NOT in backups (said everywhere it matters).
+Fixed on the way: the viewer counted a memory's cover twice. Verified in headless Chrome with
+real files; 1065 tests (UTC). Not deployed; no version bump yet.
+
 ## 2026-11-02 (01:25) — the sprint hit the weekly limit; what landed and what is parked
 
 Kishore: "now it was reseted don't use just finish what is in progress". Nothing new started.

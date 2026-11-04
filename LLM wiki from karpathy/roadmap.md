@@ -36,6 +36,17 @@
 - (Done v253: image block in Write; media on an existing note.)
 - Optionally export media as a SEPARATE file once libraries get big; the guard asks past ~35 MB.
 
+## Memories: next steps (from v254, 2026-11-04)
+- **Native video share/save:** `DaylogShare.shareImage` is image-only; add a file share that
+  streams from a path (not base64) — next native build. Also verify on a real phone that the
+  `capture` video input opens the camera in video mode (Capacitor's file chooser) and that a
+  long 4K clip stores and plays.
+- **Videos out of the phone, by choice:** Kishore chose phone-only; if he loses the phone the
+  videos go. Options to offer later: "Save all videos to a folder" (native), or Google Drive.
+- History's day page and the Log's "On this day" could list that day's memories.
+- HEIC photos keep no taken date (EXIF is read from JPEG only) — they fall back to the file date.
+- A memory's own date does not move its media's `day` when edited (media `day` = taken day).
+
 ## Native fixes found 2026-11-01 — DONE in build 119 (built, not uploaded)
 - **TimerNotifPlugin:** queue `{action, atMillis}` instead of one overwritten tag, so a Stop or
   Pause from the notification applies at the time it was tapped. Before 119 a Stop at 18:00 seen at

@@ -3157,6 +3157,112 @@
     }
   })();
 
+  // ---- v254: Memories — pages with properties, links, videos ----
+  (function () {
+    const keys = ['dp.docs', 'dp.navcfg'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const mSnap = new Map(_media), rdySnap = _mediaReady;
+    try {
+      // when a photo or video was taken
+      const exif = (str) => {   // a minimal JPEG: SOI, then APP1 with IFD0 -> Exif IFD -> DateTimeOriginal
+        const dt = [...str].map(c => c.charCodeAt(0)).concat([0]), b = [];
+        const u16 = n => [n & 255, n >> 8], u32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, n >>> 24];
+        const tiff = [0x49, 0x49, ...u16(42), ...u32(8), ...u16(1), ...u16(0x8769), ...u16(4), ...u32(1), ...u32(26), ...u32(0),
+          ...u16(1), ...u16(0x9003), ...u16(2), ...u32(dt.length), ...u32(44), ...u32(0), ...dt];
+        const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+        b.push(0xFF, 0xD8, 0xFF, 0xE1, (app1.length + 2) >> 8, (app1.length + 2) & 255, ...app1, 0xFF, 0xDA, 0, 2);
+        return new Uint8Array(b).buffer;
+      };
+      ok('EXIF: the date a photo was taken, in the camera\'s local time', exifTaken(exif('2024:05:12 09:15:00')) === new Date(2024, 4, 12, 9, 15, 0).getTime());
+      ok('…none in a JPEG without EXIF, junk, a future date or a zeroed one', exifTaken(new Uint8Array([0xFF, 0xD8, 0xFF, 0xDA, 0, 2]).buffer) === null
+        && exifTaken(new Uint8Array([1, 2, 3]).buffer) === null && exifTaken(exif('2099:01:01 00:00:00')) === null && exifTaken(exif('0000:00:00 00:00:00')) === null);
+      const mvhd = (ver, secs) => { const b = new DataView(new ArrayBuffer(ver ? 36 : 32)); b.setUint32(0, ver ? 36 : 32); [0x6d, 0x76, 0x68, 0x64].forEach((c, i) => b.setUint8(4 + i, c)); b.setUint8(8, ver);
+        if (ver) { b.setUint32(12, Math.floor(secs / 4294967296)); b.setUint32(16, secs % 4294967296); } else b.setUint32(12, secs); return b; };
+      const at = Date.UTC(2024, 4, 12, 10, 30) / 1000 + 2082844800;
+      ok('MP4: a video\'s creation time from its mvhd box (both versions)', mvhdTaken(mvhd(0, at)) === Date.UTC(2024, 4, 12, 10, 30) && mvhdTaken(mvhd(1, at)) === Date.UTC(2024, 4, 12, 10, 30));
+      ok('…none when the camera wrote zero', mvhdTaken(mvhd(0, 0)) === null);
+      const grp = memGroupByDay([{ t: new Date(2024, 4, 12, 23, 50).getTime() }, { t: new Date(2023, 11, 31, 8, 0).getTime() }, { t: new Date(2024, 4, 12, 0, 10).getTime() }]);
+      ok('files group by the local day they were taken, oldest first', grp.map(g => g.day + ':' + g.items.length).join() === '2023-12-31:1,2024-05-12:2', grp.map(g => g.day));
+      // properties
+      ok('people and tags: trimmed, de-duplicated without regard to case', JSON.stringify(memWords(' Asha, asha ,Ravi,, ')) === '["Asha","Ravi"]');
+      ok('…and read safely from another phone\'s junk', JSON.stringify(memArr(['a', 3, null, ' ', ' b '])) === '["a","b"]' && memArr('x').length === 0);
+      const A = { id: 'mA', kind: 'memory', title: 'Beach day', date: '2024-05-12', place: 'Goa', people: ['Asha', 'Ravi'], tags: ['trip'],
+        blocks: [{ id: 'b1', t: 'p', text: 'Better than [[New Year\'s Eve]] <b>really</b>' }, { id: 'b2', t: 'v', mid: 'gone' }], created: '2024-05-12', updated: '' };
+      const B = { id: 'mB', kind: 'memory', title: "New Year's Eve", date: '2023-12-31', place: 'goa ', people: [], tags: [], blocks: [], created: '2023-12-31', updated: '' };
+      const C = { id: 'mC', kind: 'memory', title: '', date: '2022-01-02', place: '', people: ['asha'], tags: [], blocks: [], created: '', updated: '' };
+      const W = { id: 'dW', title: 'Ideas', blocks: [{ id: 'w1', t: 'p', text: 'see [[beach day]] and [[Ideas]]' }], created: '2024-01-01', updated: '' };
+      localStorage.setItem('dp.docs', JSON.stringify([A, B, C, W]));
+      ok('a memory without a title goes by its date', memTitle(C) === memDateLong('2022-01-02') && /2022/.test(memTitle(C)));
+      ok('links: [[Title]] finds the page without regard to case', docByTitle("new year's eve").id === 'mB' && docByTitle('BEACH DAY').id === 'mA' && docByTitle('nope') === null);
+      ok('backlinks: every page that links here, articles included', docBacklinks(A).map(d => d.id).join() === 'dW' && docBacklinks(B).map(d => d.id).join() === 'mA');
+      ok('…but never the page itself, when it names itself', docBacklinks(W).length === 0);
+      const html = memInline("Better than [[New Year's Eve]] <b>x</b> and [[Nowhere]]\nnext <i>end</i>");
+      ok('read view text: links become buttons, unknown links are marked, HTML is escaped, lines kept',
+        /data-memlink="mB"/.test(html) && /mem-link missing/.test(html) && /&lt;b&gt;/.test(html) && !/<b>|<i>/.test(html) && /&lt;i&gt;/.test(html) && /<br>/.test(html), html);
+      ok('same people or place: case-insensitive, and not the page itself', memRelated(A).map(m => m.id).sort().join() === 'mB,mC');
+      ok('filter by person, place or tag; search across title, place, people, tags and text',
+        memMatches(A, '', { k: 'person', v: 'asha' }) && !memMatches(B, '', { k: 'person', v: 'asha' }) && memMatches(B, '', { k: 'place', v: 'Goa' })
+        && memMatches(A, 'goa really', null) && !memMatches(A, 'goa paris', null) && memMatches(A, 'trip', null));
+      const fc = memFacets(memList());
+      ok('facets count people across memories, merging case', fc.person[0].v === 'Asha' && fc.person[0].n === 2 && fc.place[0].n === 2, fc.person);
+      ok('saving properties: a bad date is refused, words are cleaned', memSaveProp('mA', 'date', '12/05/2024') === false && memSaveProp('mA', 'people', 'Ravi, Meera') !== false
+        && JSON.stringify(memList().find(m => m.id === 'mA').people) === '["Ravi","Meera"]' && memSaveProp('mA', 'evil', 'x') === false);
+      ok('the Sheet gets a memory\'s properties as its first line', /📍 Goa/.test(memPropsLine(A)) && /👥 Asha, Ravi/.test(memPropsLine(A)));
+      // blocks
+      ok('media blocks: i photo, v video, a voice', mediaBlockType('photo') === 'i' && mediaBlockType('video') === 'v' && mediaBlockType('voice') === 'a' && isMediaBlk({ t: 'a' }) && !isMediaBlk({ t: 'p' }));
+      ok('docMediaBlock adds a block once per file', docMediaBlock('mB', { id: 'vv1', kind: 'video' }) && docMediaBlock('mB', { id: 'vv1', kind: 'video' })
+        && memList().find(m => m.id === 'mB').blocks.filter(b => b.mid === 'vv1').length === 1 && memList().find(m => m.id === 'mB').blocks[0].t === 'v');
+      _mediaReady = true;
+      ok('a video block whose file is not here says where it is', /stays on the phone it was added on/.test(mediaBlockRow({ id: 'x', t: 'v', mid: 'gone' })));
+      ok('docText leaves media blocks out', docText(A) === A.blocks[0].text);
+      // totals: videos apart from what a backup carries
+      _media.clear();
+      _media.set('p1', { id: 'p1', kind: 'photo', size: 100, ctx: 'log', day: '2024-01-01' });
+      _media.set('v1', { id: 'v1', kind: 'video', size: 5000, dur: 3000, ctx: 'doc:mA', day: '2024-01-01' });
+      _media.set('a1', { id: 'a1', kind: 'voice', size: 10, ctx: 'log', day: '2024-01-01' });
+      const tt = mediaTotals();
+      ok('totals: videos counted apart, and not in the bytes a backup carries', tt.photos === 1 && tt.voice === 1 && tt.videos === 1 && tt.bytes === 110 && tt.vbytes === 5000, tt);
+      ok('Storage lists videos and says they are not in backups', storageRows().rows.some(r => r.k === 'videos' && /not in backups/.test(r.sub)));
+      ok('a video tile shows its length', /0:03/.test(mediaTileHTML(_media.get('v1'))) && /mvid/.test(mediaTileHTML(_media.get('v1'))));
+      // screens
+      navigateTo('write');
+      ok('Write lists articles, not memories', /Ideas/.test(document.getElementById('s-write').textContent) && !/Beach day/.test(document.getElementById('s-write').textContent));
+      navigateTo('memories');
+      const sc = document.getElementById('s-memories');
+      ok('Memories: a timeline by year, newest first', [...sc.querySelectorAll('.mem-year-h')].map(h => h.textContent).join() === '2024,2023,2022');
+      sc.querySelector('[data-memopen="mA"]').click();
+      ok('a memory opens to its read view: title, properties, linked text', /Beach day/.test(sc.querySelector('.mem-title').textContent) && !!sc.querySelector('[data-memlink="mB"]') && sc.querySelectorAll('.mem-prop').length === 4);
+      ok('…and lists the pages that link to it', /Ideas/.test([...sc.querySelectorAll('.mem-links')].map(c => c.textContent).join()));
+      sc.querySelector('[data-memlink="mB"]').click();
+      ok('a link opens the page it names', curMem === 'mB' && /New Year/.test(sc.querySelector('.mem-title').textContent));
+      const idbS = window.indexedDB; window.indexedDB = {};   // the media row needs storage; this suite has none
+      _mediaReady = false;   // storage still opening: the slot must not say "Loading…" under every page
+      sc.querySelector('[data-mem-edit]').click();
+      _mediaReady = true;
+      if (idbS === undefined) delete window.indexedDB; else window.indexedDB = idbS;
+      ok('the recording slot under the page is empty until a recording starts there', sc.querySelector('.media-slot.rec-only') && sc.querySelector('.media-slot.rec-only').innerHTML === '');
+      ok('Edit shows the properties and the block editor with photo, video, gallery and voice', !!sc.querySelector('[data-memprop="date"]') && !!sc.querySelector('#mem-blk-list')
+        && [...sc.querySelectorAll('[data-madd]')].map(b => b.dataset.madd).join() === 'camera,video,gallery' && !!sc.querySelector('[data-mrec][data-mctx="doc:mB"]'));
+      sc.querySelector('[data-addblk="p"]').click();
+      ok('the shared block editor adds to THIS memory', memList().find(m => m.id === 'mB').blocks.some(b => b.t === 'p'));
+      sc.querySelector('[data-memlinkbtn]').click();
+      const lb = memList().find(m => m.id === 'mB').blocks.find(b => b.t === 'p'); lastBlk = lb.id;
+      sc.querySelector('[data-memlinkadd="dW"]').click();
+      ok('Link inserts [[Title]] into the block last touched', /\[\[Ideas\]\]/.test(memList().find(m => m.id === 'mB').blocks.find(b => b.id === lb.id).text));
+      navigateTo('memories');
+      sc.querySelector('[data-memf="person"][data-memv="Ravi"]').click();
+      ok('a person chip filters the timeline', [...sc.querySelectorAll('[data-memopen]')].map(b => b.dataset.memopen).join() === 'mA');
+      memFilter = null;
+      ok('Memories is in the menu, not hidden, for an existing install too', (localStorage.setItem('dp.navcfg', JSON.stringify(NAV_DEF.filter(n => n.k !== 'memories'))), navCfg().some(n => n.k === 'memories' && !n.hidden)));
+    } finally {
+      window.toast = tSnap; _media.clear(); mSnap.forEach((v, k) => _media.set(k, v)); _mediaReady = rdySnap;
+      curMem = null; memEdit = false; memFilter = null; memLinkOpen = false;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

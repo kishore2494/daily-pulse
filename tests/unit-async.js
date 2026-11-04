@@ -318,7 +318,8 @@
         localStorage.setItem('dp.docs', JSON.stringify([{ id: 'docW1', title: 'Trip', blocks: [{ id: 'bkA', t: 'p', text: 'We drove north.' }], created: T, updated: '' }]));
         curDoc = 'docW1'; show('write');
         const acts = [...document.querySelectorAll('#s-write [data-madd]')];
-        ok('the article editor offers Camera and Photo for THAT article', acts.length === 2 && acts.every(b => b.dataset.mctx === 'doc:docW1'), acts.map(b => b.dataset.mctx));
+        ok('the article editor offers photo, video and gallery for THAT article, and a voice note', acts.map(b => b.dataset.madd).join() === 'camera,video,gallery' && acts.every(b => b.dataset.mctx === 'doc:docW1')
+          && document.querySelector('#s-write [data-mrec]').dataset.mctx === 'doc:docW1', acts.map(b => b.dataset.madd + '@' + b.dataset.mctx));
         _mediaTarget = { ctx: 'doc:docW1', day: T };
         await mediaTakeFiles([new File(['jpg1'], 'a.jpg', { type: 'image/jpeg' }), new File(['jpg2'], 'b.jpg', { type: 'image/jpeg' })]);
         let doc = DB.docs()[0];
@@ -508,6 +509,49 @@
         window.fetch = fSnap;
         if (setSnap != null) localStorage.setItem('dp.settings', setSnap); else localStorage.removeItem('dp.settings');
         if (entSnap != null) localStorage.setItem('dp.entries', entSnap); else localStorage.removeItem('dp.entries');
+      }
+    }
+    /* ---- v254: memories — bulk import, videos, and what a backup carries ---- */
+    {
+      const docsSnap = localStorage.getItem('dp.docs'), metaWait = VIDEO_META_WAIT, photoRecSnap = window.mediaPhotoRecord;
+      VIDEO_META_WAIT = 30;   // jsdom never decodes a video
+      // jsdom has no image decoder; the photo path itself is tested above
+      window.mediaPhotoRecord = async (f, ctx, day) => ({ id: mediaId(), kind: 'photo', mime: 'image/webp', blob: new Blob(['p']), day, ctx, ts: Date.now(), size: 1 });
+      try {
+        await mediaWipe(); await mediaLoad();
+        localStorage.setItem('dp.docs', '[]');
+        const mk = (name, type, when) => new File(['x'.repeat(10)], name, { type, lastModified: when });
+        const d1 = new Date(2024, 4, 12, 9, 0).getTime(), d2 = new Date(2024, 4, 12, 20, 0).getTime(), d3 = new Date(2023, 11, 31, 23, 0).getTime();
+        await memImportPrepare([mk('a.jpg', 'image/jpeg', d1), mk('b.mp4', 'video/mp4', d2), mk('c.jpg', 'image/jpeg', d3), mk('notes.txt', 'text/plain', d1)]);
+        ok('import: files are grouped by the day each was taken, oldest first, and a non-media file is left out',
+          !!_memImport && _memImport.groups.map(g => g.day + ':' + g.items.length).join() === '2023-12-31:1,2024-05-12:2', _memImport && _memImport.groups.map(g => g.day));
+        await memImportRun();
+        const ms = memSorted(memList());
+        ok('…one memory per day, dated that day', ms.map(m => m.date).join() === '2024-05-12,2023-12-31', ms.map(m => m.date));
+        ok('…holding its photo and video as blocks, in the order they were taken', ms[0] && ms[0].blocks.map(b => b.t).join('') === 'iv', ms[0] && ms[0].blocks);
+        const vid = ms[0] && memMedia(ms[0]).find(r => r.kind === 'video');
+        ok('…the video kept as the file itself, stamped when it was taken', !!vid && vid.mime === 'video/mp4' && vid.size === 10 && vid.ts === d2 && vid.ctx === 'doc:' + ms[0].id, vid && { mime: vid.mime, ts: vid.ts });
+        ok('…and it is really in the database', (await mediaReadAll()).some(r => r.kind === 'video'));
+        const bk = await mediaForBackup();
+        ok('a backup carries the photos and leaves the video out, and counts it', bk.items.length === 2 && bk.items.every(i => i.kind === 'photo') && bk.videos === 1, { n: bk.items.length, v: bk.videos });
+        await mediaDelete(memMedia(ms[0]).concat(memMedia(ms[1])).filter(r => r.kind === 'photo').map(r => r.id));
+        const ex2 = await mediaForExport();
+        ok('with only videos on the phone, an export carries no media and reports no failure', ex2.items.length === 0 && ex2.skipped === 0 && !ex2.note, ex2);
+        await memImportPrepare([mk('x.jpg', 'image/jpeg', d1), mk('y.jpg', 'image/jpeg', d3)]);
+        _memImport.mode = 'one'; await memImportRun();
+        ok('"All in one memory" makes one page, dated the first day', memList().length === 3 && memList().some(m => m.date === '2023-12-31' && m.blocks.length === 2), memList().map(m => m.date + ':' + m.blocks.length));
+        window.mediaPhotoRecord = async () => { throw new Error('unreadable'); };
+        await memImportPrepare([mk('bad.jpg', 'image/jpeg', d1)]); await memImportRun();
+        ok('an import whose every file fails leaves no empty memory behind', memList().length === 3, memList().length);
+        window.confirm = () => true;
+        curMem = ms[0].id; memEdit = true; show('memories');
+        document.querySelector('#s-memories [data-mem-del]').click();
+        for (let i = 0; i < 40 && memList().some(m => m.id === ms[0].id); i++) await sleep(25);
+        ok('deleting a memory deletes its video too', !memList().some(m => m.id === ms[0].id) && !_media.has(vid.id));
+      } finally {
+        VIDEO_META_WAIT = metaWait; window.mediaPhotoRecord = photoRecSnap; window.confirm = confSnap;
+        curMem = null; memEdit = false; _memImport = null;
+        if (docsSnap != null) localStorage.setItem('dp.docs', docsSnap); else localStorage.removeItem('dp.docs');
       }
     }
     if (mrSnap === undefined) delete window.MediaRecorder;

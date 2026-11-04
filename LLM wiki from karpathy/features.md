@@ -15,7 +15,8 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 | Habits | habits | renderHabits | dp.entries | streaks + 90-day heatmaps, built from HABITS (=visible `dp.habitcfg`) |
 | Stats | dash | renderDash | all | trends, Polymath Index, time analytics (v38), connections graph, weekly auto-review, wellbeing averages (DYNAMIC from deep-log config) |
 | Cal | cal | renderCal | dp.entries, dp.gym, dp.timelog, dp.events | month grid tinted by mood + dots; dated events with alarms |
-| Write | write | renderWrite | dp.docs | block editor: heading/text/checklist/bullet, dictation, drag |
+| Write | write | renderWrite | dp.docs | block editor: heading/text/checklist/bullet, dictation, drag; photo/video/voice blocks (v254); lists articles only |
+| Memories | memories | renderMemories | dp.docs (`kind:'memory'`) | v254 (unreleased): pages with date/place/people/tags, `[[links]]` + backlinks, timeline, bulk import, videos |
 | History | history | renderHistory | dp.entries | (hidden from nav by default; reachable via More) |
 | More | settings | renderSettings | dp.settings | sync, reminders, ntfy, data backup, feedback, **Customize** (renderCustom → `#s-custom`), guide link |
 
@@ -171,6 +172,51 @@ read-only page, as a sub-view of History (`histDay`, like `curDoc` in Write).
   the Log or History, and every `navigateTo`, forget `_dayFrom`.
 - Money rows use `hd-in`, not `.in`/`.out`. The Money screen's global `.in`/`.out` rules colour
   whole rows.
+
+## Memories (v254, built 2026-11-04, NOT deployed)
+
+Kishore asked for "live documentation" of his memories — photos, videos — "like Notion or
+Obsidian". Decided with him: **inside Daylog**; a memory holds videos, a story, a timeline and
+bulk import; big files stay **on the phone only** (no Drive, no compression).
+
+- **Model:** a memory is a Write page (`dp.docs`) with `kind:'memory'`, `date` (YYYY-MM-DD, the
+  day it happened), `place`, `people[]`, `tags[]`, `blocks`. So it syncs item by item like any
+  page (LIST_SYNC `docs`), is in backups, and reaches the Sheet's Articles tab (first line =
+  `memPropsLine`). Write's list filters memories out; search opens them on Memories.
+- **Blocks:** the shared editor now serves both screens (`docHost`/`docCurId`/`docRerender`).
+  Media blocks: `i` photo, `v` video, `a` voice (`isMediaBlk`, `mediaBlockType`,
+  `docMediaBlock`). `docMediaActsHTML` = Photo · Video · Gallery · Voice, with a rec-only media
+  slot that is empty unless a recording runs there.
+- **Read view** (Notion-style): cover (first photo/video still, or `m.cover`), title, property
+  rows (date + "N years ago", place/people/tags as filter chips), blocks with consecutive
+  photos/videos as a gallery, then **Links to**, **Linked from** (backlinks, articles included)
+  and **Same people or place**. `[[Title]]` matches a page title case-insensitively; an
+  untitled memory goes by its date (`memTitle`). `memInline` escapes everything else.
+- **Edit view:** title, date/place/people/tags (people and tags are comma lists, cleaned by
+  `memWords`; suggestion chips from other memories; places via a datalist), the block editor,
+  🔗 Link picker (inserts `[[Title]]` into the block last touched), Delete (media first).
+- **Timeline:** year → month, 2-column cards (cover, title, date, place, people, snippet,
+  counts), search over title/place/people/tags/text/captions, facet chips, and an "On this
+  day" strip (same MM-DD, earlier years).
+- **Bulk import** (`memImportPrepare` → `memImportRun`): many photos/videos at once, grouped by
+  the day each was **taken** — JPEG EXIF DateTimeOriginal (`exifTaken`), MP4/MOV `mvhd`
+  creation time (`mp4Taken` walks box headers only, so `moov` at the end costs a few reads),
+  else `lastModified`. "One memory per day" or "All in one memory"; progress on the button;
+  stops at a full disk; a page whose every file failed is removed. Media `ts`/`day` = taken.
+- **Videos** (`kind:'video'`): stored as the File itself (no re-encode; IDB keeps it on disk),
+  plus a 320px WebP still from a frame near the start, `w`/`h`/`dur` (`mediaVideoMeta`, gives
+  up after `VIDEO_META_WAIT` 8 s — an undecodable HEVC clip still saves, with a plain tile).
+  Over 300 MB asks first. Grids show a ▶ length badge; the viewer plays it (`<video controls>`).
+  Also allowed in the Log's and notes' gallery picker, and History ▸ Photos shows the Log's.
+  - **Not in backups:** `mediaForBackup` skips them (base64 of hundreds of MB would kill the
+    WebView) and counts them; export says "videos stay on this phone"; Storage has a Videos
+    row "not in backups"; Delete-everything warns; `mediaTotals().bytes` excludes them.
+  - **Share:** web = Web Share with files or a download; **the Play app cannot share a video
+    yet** (DaylogShare is image-only) — says so.
+- **Verified** in headless Chrome with real files (EXIF JPEGs, MP4s with `moov` at end and
+  start, a no-EXIF JPEG): 3 memories on the right days, stills + lengths, video plays in the
+  viewer, links/backlinks/filters/search, backup = photos only. 44 unit tests (sync + async).
+- **Open items:** roadmap.md ▸ Memories.
 
 ## Write ▸ photos (v253)
 
