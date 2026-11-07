@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v254';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v255';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -305,6 +305,8 @@ function savedToast(ok, msg) {
    then merges item by item. Recorded at save time, so no screen has to remember to do it. */
 const LIST_SYNC = ['tasks', 'notes', 'plans', 'projects', 'reminders', 'exercises', 'timeacts', 'events', 'docs', 'timebox', 'goals', 'finaccts', 'fintx', 'finmarks'];
 const LIST_DEL_KEEP = 90 * 864e5;   // long enough to reach every phone that syncs at all
+// The feedback box keeps its draft: Back or a tab switch used to wipe a long message.
+document.addEventListener('input', (ev) => { if (ev.target.id === 'fb-text') { try { localStorage.setItem('dp.fbDraft', ev.target.value.slice(0, 5000)); } catch (e) {} } });
 function listMeta(store) { const v = safeParse(localStorage.getItem(store), {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
 function listMetaSave(at, del) {
   [[at, 'dp.listAt'], [del, 'dp.listDel']].forEach(([m, store]) => {
@@ -667,10 +669,39 @@ document.addEventListener('click', (ev) => { const m = ev.target.closest('[data-
 let toastTimer;
 function toast(msg, isErr) {
   const t = document.getElementById('toast');
+  _undoFn = null;
   t.textContent = msg; t.className = 'toast show' + (isErr ? ' err' : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.className = 'toast', Math.min(7000, Math.max(2200, String(msg).length * 60)));   // long enough to read
 }
+
+/* A delete that happens on one tap gets an Undo instead of a confirm dialog: a task, a plan
+   step, a project step, a note, a timebox block. The toast stays up for 6 s and takes taps
+   only while it carries the button. */
+let _undoFn = null;
+function undoToast(msg, restore, label) {
+  const t = document.getElementById('toast');
+  t.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button" class="toast-undo">${escapeHtml(label || 'Undo')}</button>`;
+  t.className = 'toast show has-undo';
+  _undoFn = restore;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; _undoFn = null; }, 6000);
+}
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest || !ev.target.closest('.toast-undo')) return;
+  const f = _undoFn; _undoFn = null;
+  document.getElementById('toast').className = 'toast';
+  if (f) { f(); buzz(12); }
+});
+/* Put the removed items of `before` back into `cur` where they were, keeping every change
+   made to the others since (a tick on another task in those 6 seconds is not undone). */
+function restoreItems(cur, before, ids) {
+  const now = new Map((cur || []).map(x => [x.id, x])), was = new Set((before || []).map(x => x.id));
+  const out = (before || []).filter(x => ids.has(x.id) || now.has(x.id)).map(x => now.get(x.id) || x);
+  (cur || []).forEach(x => { if (!was.has(x.id)) out.push(x); });
+  return out;
+}
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* ---------- Streaks ---------- */
 /* A day counts as LOGGED only if something was actually recorded on it. An entry object can
@@ -1409,8 +1440,12 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w24',
+  v: 'w25',
   items: [
+    '↩️ <b>Undo</b> — deleting a task, a plan or project step, a note or a timebox block now shows an <b>Undo</b> button for a few seconds. So does hiding a card on the Log.',
+    '✅ <b>Tick habits on the Habits screen</b> — each habit has a <b>Mark done</b> button, and the grid now shows one column per week with today outlined. Tapping a ticked habit again unticks it (it used to mark it skipped); <b>Skip today</b> is on the message that follows.',
+    '🔎 <b>History and Search are in the menu</b>, and Search finds every word you type, anywhere in an entry (“landlord deposit” finds “argued with the landlord about the deposit”).',
+    '🧹 <b>Lots of small fixes</b> — the Today ring no longer starts at 22% before you have done anything, and counts a mood tap; a reminder you add for a time already past starts tomorrow instead of ringing at once; Stats shows the Mood tile in full again; Time lists every block so short ones can be fixed; renaming a memory keeps the links to it working; a memory or article left empty is not kept; Back closes a Money form instead of leaving the screen; Waves shows a Stop bar on every screen while it plays; and backups are now named daylog-backup-….json.',
     '🖼️ <b>Memories</b> — a new screen in the menu for the moments worth keeping. Each memory is a page: when it happened, where, who was there, tags, the story, and its photos, <b>videos</b> and voice notes. Link one page to another with <b>[[</b>its title<b>]]</b> and see what links back. Browse them year by year, search by person or place, and see what happened on this day in other years. <b>Import</b> a batch of photos and videos and they are sorted into one memory per day they were taken. Videos stay on this phone and are not in backup files.',
     '☁️ <b>Sync that tells you the truth</b> — if your Google Sheet cannot be reached, is offline, or answers with something Daylog cannot read, Sync now says which, instead of “Synced ✅”. If your Sheet still runs an older copy of the script, Settings ▸ Backup &amp; restore now says so and shows the three steps to update it (your link stays the same). And a backup restored on a new phone no longer rolls back edits you made since on your other phone.',
     '🔄 <b>Two phones, one set of lists</b> — notes, tasks, plans, events, articles and money now sync item by item. Something added on one phone is no longer lost when the other phone saves before it has seen it, and something deleted on one phone stays deleted on both. Update both phones to get it. <b>Using the Google Sheet?</b> Paste the script from the Sheet setup page again and redeploy it: a journal or note starting with “- ” showed as #ERROR! in the sheet, and a large sync could come back broken.',
@@ -1510,9 +1545,16 @@ function showWhatsNewPopup() {
   if (localStorage.getItem('dp.whatsnew') === WHATS_NEW.v) return;
   let m = document.getElementById('wn-pop');
   if (!m) { m = document.createElement('div'); m.id = 'wn-pop'; m.className = 'copy-modal'; document.body.appendChild(m); }
-  m.innerHTML = `<div class="copy-box">
-    <h2 class="h2-icon">${hicon('sparkle')}<span>What's new in Daylog</span></h2>
-    ${WHATS_NEW.items.map(i => `<div class="wn-item">${i}</div>`).join('')}
+  /* The list had grown to 60 items and 3,000 words with the only way out at the bottom, 13
+     screens down. Now: the newest few, the rest one tap away, and the box scrolls inside
+     itself so Got it, the ✕ and a tap outside always close it. */
+  const items = WHATS_NEW.items, FIRST = 4;
+  m.innerHTML = `<div class="copy-box wn-box">
+    <div class="wn-head"><h2 class="h2-icon">${hicon('sparkle')}<span>What's new in Daylog</span></h2>
+      <button type="button" class="wn-x" id="wn-x" aria-label="Close">✕</button></div>
+    <div class="wn-list">${items.slice(0, FIRST).map(i => `<div class="wn-item">${i}</div>`).join('')}
+      ${items.length > FIRST ? `<div class="wn-more" hidden>${items.slice(FIRST).map(i => `<div class="wn-item">${i}</div>`).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-sm wn-more-btn" id="wn-more">Earlier changes (${items.length - FIRST})</button>` : ''}</div>
     <div class="copy-actions" style="justify-content:flex-end;margin-top:6px">
       <button class="btn btn-ghost btn-sm" id="wn-tour">🎓 Take the tour</button>
       <button class="btn btn-primary btn-sm" id="wn-ok">Got it ✓</button>
@@ -1521,7 +1563,8 @@ function showWhatsNewPopup() {
 }
 document.addEventListener('click', (ev) => {
   const done = () => { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); const m = document.getElementById('wn-pop'); if (m) m.remove(); };
-  if (ev.target.closest && ev.target.closest('#wn-ok')) { done(); return; }
+  if (ev.target.closest && (ev.target.closest('#wn-ok') || ev.target.closest('#wn-x') || ev.target.id === 'wn-pop')) { done(); return; }
+  if (ev.target.closest && ev.target.closest('#wn-more')) { const x = document.querySelector('#wn-pop .wn-more'); if (x) x.hidden = false; ev.target.closest('#wn-more').remove(); return; }
   if (ev.target.closest && ev.target.closest('#wn-tour')) { done(); show('today'); startTour(); return; }
 });
 function openToday() { loadDraft(); renderToday(); }
@@ -1567,7 +1610,9 @@ function throwbackHTML() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'otd-hide') { ev.preventDefault();
-    setLogSecHidden('onthisday', true); toast('Hidden — Customize ▸ Log screen sections to bring it back'); renderToday(); return; }
+    setLogSecHidden('onthisday', true); renderToday();
+    undoToast('Hidden. Bring it back any time in Settings ▸ Customize', () => { setLogSecHidden('onthisday', false); if (document.getElementById('s-today').classList.contains('on')) renderToday(); });
+    return; }
   const tb = ev.target.closest && ev.target.closest('[data-throwback]');
   if (tb && !ev.target.closest('[data-mview]')) dayOpen(tb.dataset.throwback);
 });
@@ -1643,7 +1688,9 @@ function moodMeterHTML() {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target && ev.target.id === 'mm-hide') { ev.preventDefault();
-    setLogSecHidden('moodgrid', true); toast('Hidden — Customize ▸ Log screen sections to bring it back'); renderToday(); return; }
+    setLogSecHidden('moodgrid', true); renderToday();
+    undoToast('Hidden. Bring it back any time in Settings ▸ Customize', () => { setLogSecHidden('moodgrid', false); if (document.getElementById('s-today').classList.contains('on')) renderToday(); });
+    return; }
   const cell = ev.target.closest && ev.target.closest('[data-mm]');
   if (cell) {
     const [mv, evv] = cell.dataset.mm.split(',').map(Number);
@@ -1811,11 +1858,20 @@ function moodColor(m) {
 function todayCompletion(entry) {
   const en = entry || {};
   const parts = [];
-  const core = coreCfg().filter(f => !f.hidden);
-  core.forEach(f => { if (f.type === 'scale' || f.type === 'num' || f.type === 'bedwake')
-    parts.push(en[f.key] != null && en[f.key] !== ''); });
+  /* A new user who had done nothing saw "22% · 2 of 9": the 0 that Tasks done / Tasks planned
+     start at counted as filled in. And the mood grid — the main daily tap — moved nothing,
+     because the mood and energy fields it writes are hidden since the grid replaced them. */
+  const all = coreCfg(), core = all.filter(f => !f.hidden);
+  const grid = !logSecHidden('moodgrid') && all.some(f => f.key === 'mood') && all.some(f => f.key === 'energy');
+  if (grid) parts.push(en.mood != null && en.mood !== '');
+  core.forEach(f => {
+    if (grid && (f.key === 'mood' || f.key === 'energy')) return;
+    const v = en[f.key], set = v != null && v !== '';
+    if (f.type === 'num') parts.push(set && Number(v) !== 0);
+    else if (f.type === 'scale' || f.type === 'bedwake') parts.push(set);
+  });
   HABITS.forEach(h => parts.push(hVal(en, h.key) !== H_MISS));      // done OR skipped counts
-  parts.push(!!(en.journal || en.win || en.improve));
+  parts.push(!!(en.journal || en.wentWell || en.win || en.improve));
   const done = parts.filter(Boolean).length;
   return { done, total: parts.length || 1, pct: Math.round(done / (parts.length || 1) * 100) };
 }
@@ -1827,6 +1883,7 @@ function todayRingHTML() {
   const full = c.pct >= 100;
   const col = full ? 'var(--good)' : 'var(--accent)';
   const st = loggedStreak();
+  const past = logDate !== todayStr();   // editing an earlier day: no "today", streak or week lines
   return `<div class="card ring-card${full ? ' ring-full' : ''}">
     <svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of today logged">
       <circle cx="40" cy="40" r="${R}" class="ring-bg"/>
@@ -1835,10 +1892,12 @@ function todayRingHTML() {
       <text x="40" y="44" class="ring-txt">${c.pct}%</text>
     </svg>
     <div class="ring-side">
-      <div class="ring-head">${full ? "Today's complete" : 'Today so far'}</div>
+      ${past ? `<div class="ring-head">${full ? 'This day is complete' : 'This day'}</div>
+      <div class="hint">${c.done} of ${c.total} logged · ${escapeHtml(prettyDate(logDate))}</div>`
+      : `<div class="ring-head">${full ? "Today's complete" : 'Today so far'}</div>
       <div class="hint">${c.done} of ${c.total} logged${full ? ' — nice.' : ''}</div>
       ${st > 1 ? `<div class="ring-streak">${icon('flame', 14)} ${st}-day logging streak</div>` : ''}
-      ${weekLineHTML()}
+      ${weekLineHTML()}`}
     </div>
   </div>`;
 }
@@ -1982,7 +2041,8 @@ function showGoalEditor(key) {
 document.addEventListener('click', (ev) => {
   const ce2 = ev.target.closest && ev.target.closest('[data-cue-edit]');
   if (ce2) {
-    customPage = 'habits'; show('custom');            // show() renders synchronously
+    customPage = 'habits'; _customFrom = (document.querySelector('.screen.on') || {}).id === 's-habits' ? 'habits' : null;
+    show('custom');            // show() renders synchronously
     // Focus AFTER show(), because show() calls window.scrollTo(0,0) once the screen has
     // rendered — doing this inside renderCustom would be immediately undone.
     const i = document.querySelector(`[data-cfg-cue="${ce2.dataset.cueEdit}"]`);
@@ -2102,7 +2162,7 @@ function habitChipHTML(h) {
   // NOTE: no "skipped" text label — at 2-up on a 320px screen it overflowed the chip.
   // The ⤳ glyph, the dashed border and the greyscale already communicate it, and the
   // tap toast spells it out. Title attribute carries it for anyone unsure.
-  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="${sk?'Skipped — your streak is safe':'Tap: done → skip → clear'}">
+  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="${sk?'Skipped — your streak is safe. Tap to clear':'Tap to tick, tap again to untick'}">
     <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
     ${chipTextHTML(h)}${sk?'':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
 }
@@ -2286,9 +2346,15 @@ document.addEventListener('click', (ev) => {
       if (was !== H_DONE && now === H_DONE) buzz(24);
       refreshHabitChip(k); autosaveDraft(); return;
     }
-    // cycle: (nothing) -> done -> skipped -> (nothing).  Skipped keeps the streak alive.
+    /* Tap ticks, tap again unticks. It used to cycle done → SKIPPED → clear, so a tap to undo
+       a mis-tick marked the habit skipped (and counted the day as logged); skipping is now the
+       button on the toast that follows an untick. */
     const was = hVal(draft, k);
-    if (was === H_DONE) { draft.habits[k] = 0; buzz(12); toast('Skipped — your streak is safe'); }
+    if (was === H_DONE) {
+      delete draft.habits[k]; buzz(12);
+      const dr = draft;
+      undoToast('Unticked', () => { if (draft !== dr) return; draft.habits[k] = 0; habitTouch(k); refreshHabitChip(k); autosaveDraft(); toast('Skipped today. Your streak is safe'); }, 'Skip today');
+    }
     else if (was === H_SKIP) { delete draft.habits[k]; }
     else { draft.habits[k] = true; buzz(18); }
     habitTouch(k);
@@ -2847,11 +2913,19 @@ function setColor(id, col) {
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.id === 'task-add-btn') return addTask();
-  if (ev.target.id === 'clear-done') { DB.saveTasks(DB.tasks().filter(t=>!t.done)); renderTasks(); return; }
+  if (ev.target.id === 'clear-done') {
+    const before = DB.tasks(), ids = new Set(before.filter(t => t.done).map(t => t.id));
+    DB.saveTasks(before.filter(t => !t.done)); renderTasks();
+    undoToast(`Cleared ${plural(ids.size, 'done task')}`, () => { DB.saveTasks(restoreItems(DB.tasks(), before, ids)); renderTasks(); syncTodayTasks(); });
+    return; }
   const tg = ev.target.closest('[data-toggle]');
   if (tg) { const id = tg.dataset.toggle; const ts = DB.tasks(); const t = ts.find(x=>x.id===id); if(t){t.done=!t.done; t.doneDate=t.done?todayStr():null;} DB.saveTasks(ts); renderTasks(); syncTodayTasks(); return; }
   const dl = ev.target.closest('[data-del]');
-  if (dl) { DB.saveTasks(DB.tasks().filter(t=>t.id!==dl.dataset.del)); renderTasks(); syncTodayTasks(); return; }
+  if (dl) {
+    const before = DB.tasks(), ids = new Set([dl.dataset.del]);
+    DB.saveTasks(before.filter(t => t.id !== dl.dataset.del)); renderTasks(); syncTodayTasks();
+    undoToast('Task deleted', () => { DB.saveTasks(restoreItems(DB.tasks(), before, ids)); if (document.getElementById('s-tasks').classList.contains('on')) renderTasks(); syncTodayTasks(); });
+    return; }
   const pal = ev.target.closest('[data-palette]');
   if (pal) { const id = pal.dataset.palette; openColorId = (openColorId === id) ? null : id; rerenderList(); return; }
   const sc = ev.target.closest('[data-setcolor]');
@@ -2866,7 +2940,11 @@ document.addEventListener('click', (ev) => {
   const dn = ev.target.closest('[data-delnote]');
   if (dn) {
     const nid = dn.dataset.delnote, att = mediaList('note:' + nid, null).map(r => r.id);
-    if (!att.length) { DB.saveNotes(DB.notes().filter(n=>n.id!==nid)); renderNotes(); syncNotes(); return; }
+    if (!att.length) {
+      const before = DB.notes(), ids = new Set([nid]);
+      DB.saveNotes(before.filter(n => n.id !== nid)); renderNotes(); syncNotes();
+      undoToast('Note deleted', () => { DB.saveNotes(restoreItems(DB.notes(), before, ids)); if (document.getElementById('s-notes').classList.contains('on')) renderNotes(); syncNotes(); });
+      return; }
     if (!confirm(`Delete this note and its ${att.length} photo(s)/voice note(s)? This cannot be undone.`)) return;
     // Media FIRST: if that fails the note is still there to try again from, instead of the
     // pictures living on invisibly with nothing pointing at them.
@@ -3004,7 +3082,7 @@ function renderPlans() {
     document.getElementById('s-plans').innerHTML = `
       <div class="card">
         <div class="task-add">
-          <input type="text" id="plan-input" placeholder="New plan name… (e.g. Launch app)" autocomplete="off">
+          <input type="text" id="plan-input" placeholder="New plan, e.g. Goa trip" autocomplete="off">
           <button class="mic-ic" data-mic="#plan-input" title="speak">🎤</button>
           <button class="btn btn-primary btn-sm" id="plan-add-btn">Add</button>
         </div>
@@ -3071,8 +3149,21 @@ document.addEventListener('click', (ev) => {
   const pt = ev.target.closest('[data-planitem-toggle]');
   if (pt) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); const it = p && (p.items || []).find(i => i.id === pt.dataset.planitemToggle); if (it) { it.done = !it.done; DB.savePlans(ps); renderPlans(); } return; }
   const pid = ev.target.closest('[data-planitem-del]');
-  if (pid) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { p.items = (p.items || []).filter(i => i.id !== pid.dataset.planitemDel); DB.savePlans(ps); renderPlans(); } return; }
-  if (ev.target.id === 'plan-clear-done') { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { p.items = (p.items || []).filter(i => !i.done); DB.savePlans(ps); renderPlans(); } return; }
+  const planUndo = (planId, before, ids, msg) => undoToast(msg, () => {
+    const ps = DB.plans(), p = ps.find(x => x.id === planId); if (!p) return;
+    p.items = restoreItems(p.items, before, ids); DB.savePlans(ps);
+    if (document.getElementById('s-plans').classList.contains('on')) renderPlans();
+  });
+  if (pid) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { const before = (p.items || []).slice(), ids = new Set([pid.dataset.planitemDel]); p.items = before.filter(i => i.id !== pid.dataset.planitemDel); DB.savePlans(ps); renderPlans(); planUndo(p.id, before, ids, 'Step deleted'); } return; }
+  if (ev.target.id === 'plan-clear-done') { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); if (p) { const before = (p.items || []).slice(), ids = new Set(before.filter(i => i.done).map(i => i.id)); p.items = before.filter(i => !i.done); DB.savePlans(ps); renderPlans(); planUndo(p.id, before, ids, `Cleared ${plural(ids.size, 'done step')}`); } return; }
+});
+/* Enter / "Go" on the keyboard adds, in Projects and Time as it already did in Tasks and Plans. */
+const ENTER_ADDS = { 'pj-new-name': 'pj-create', 'pj-new-outcome': 'pj-create', 'pj-step-in': 'pj-step-add', 'pj-mile-in': 'pj-mile-add',
+  'pj-note-in': 'pj-note-add', 'pj-link-url': 'pj-link-add', 'pj-link-label': 'pj-link-add', 'tt-newact': 'tt-newact-add' };
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' || ev.isComposing || !ENTER_ADDS[ev.target.id] || ev.target.tagName === 'TEXTAREA') return;
+  const b = document.getElementById(ENTER_ADDS[ev.target.id]); if (!b) return;
+  ev.preventDefault(); b.click();
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.target.id === 'plan-input' && ev.key === 'Enter') addPlan();
@@ -3151,6 +3242,13 @@ function openGym() {
 }
 // Each day's ticks are independent: store keyed by "dayId/exerciseId".
 function dkey(dayId, exId) { return dayId + '/' + exId; }
+/* What you logged for this exercise the last time before this day — the number a regular
+   needs in front of them to know what to lift today. */
+function gymLastLog(k) {
+  const g = DB.gym(), ds = Object.keys(g).filter(d => d < gymDate).sort().reverse();
+  for (const d of ds) { const v = g[d] && g[d].log && g[d].log[k]; if (v && String(v).trim()) return String(v).trim().slice(0, 40); }
+  return '';
+}
 function exRow(ex) {
   const k = dkey(gymDayId, ex.id);
   const on = !!gymDraft.done[k];
@@ -3172,7 +3270,7 @@ function exRow(ex) {
       ${open ? `<div class="big">${anim}</div>` : ''}
       ${ex.tip ? `<div class="tip-box"><b>Form tip:</b> ${escapeHtml(ex.tip)}</div>` : ''}
       <div class="field"><label>Your reps / weight (optional)</label>
-        <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[k]||'')}" placeholder="e.g. 3 × 12 @ 40kg"></div>
+        <input type="text" data-ex-log="${ex.id}" value="${escapeHtml(gymDraft.log[k]||'')}" placeholder="${escapeHtml(gymLastLog(k) ? 'Last time: ' + gymLastLog(k) : 'e.g. 3 × 12 @ 40kg')}"></div>
       <a class="watch-btn" target="_blank" rel="noopener" href="${yt}">▶  Watch tutorial on YouTube</a>
     </div>
   </div>`;
@@ -3184,7 +3282,13 @@ function renderGym() {
   document.getElementById('s-gym').innerHTML = (gymView === 'day') ? gymDayHTML() : gymHomeHTML();
 }
 // HOME: 6 day labels (history-list style)
+function gymLastDayId() {   // the workout day ticked most recently before today's view
+  const g = DB.gym(), ds = Object.keys(g).filter(d => d < gymDate).sort().reverse();
+  for (const d of ds) { const on = Object.keys((g[d] && g[d].done) || {}).filter(k => g[d].done[k]); if (on.length) return on[0].split('/')[0]; }
+  return null;
+}
 function gymHomeHTML() {
+  const lastDay = gymLastDayId();
   const rows = gymDays().map(d => {
     const ex = cookedDayEx(d);
     const done = ex.filter(e => gymDraft.done[dkey(d.id, e.id)]).length;
@@ -3193,7 +3297,7 @@ function gymHomeHTML() {
     return `<div class="day-row" data-day="${d.id}">
       <div class="day-dot" style="background:${main.color}">${main.emoji}</div>
       <div class="day-info">
-        <div class="day-name">${escapeHtml(d.name)} · ${escapeHtml(main.name)}</div>
+        <div class="day-name">${escapeHtml(d.name)} · ${escapeHtml(main.name)}${d.id === lastDay ? ' <span class="day-last">last done</span>' : ''}</div>
         <div class="day-sub">🏃 Cardio · ${ab.emoji} ${escapeHtml(ab.name)}</div>
       </div>
       <div class="day-cnt">${done}/${ex.length}</div>
@@ -3209,6 +3313,7 @@ function gymHomeHTML() {
       </div>
     </div>
     <div class="card" style="padding:4px 16px">${rows}</div>
+    <button class="back-btn" id="gym-edit-plan">✎ Edit days &amp; exercises</button>
     <div style="height:14px"></div>`;
 }
 // DAY: that day's workouts on the next page
@@ -3233,20 +3338,22 @@ function gymDayHTML() {
       </div>
     </div>
     ${blockCards}
-    <button class="btn btn-primary" id="gym-save">Save workout</button>
+    <div class="hint" style="margin:0 4px 8px">Every tick and note saves by itself.</div>
+    <button class="btn btn-primary" id="gym-save">Finish workout</button>
     <div style="height:14px"></div>`;
 }
 document.addEventListener('click', async (ev) => {
   const grp = ev.target.closest('[data-day]');
   if (grp) { gymDayId = grp.dataset.day; gymView = 'day'; renderGym(); window.scrollTo(0, 0); return; }
   if (ev.target.id === 'gym-back') { gymView = 'home'; renderGym(); window.scrollTo(0, 0); return; }
+  if (ev.target.id === 'gym-edit-plan') { customPage = 'gym'; _customFrom = 'gym'; show('custom'); return; }
   const tg = ev.target.closest('[data-ex-toggle]');
   if (tg) { const k = dkey(gymDayId, tg.dataset.exToggle); gymDraft.done[k] = !gymDraft.done[k]; persistGym(true); renderGym(); return; }
   const op = ev.target.closest('[data-ex-open]');
   if (op) { const k = dkey(gymDayId, op.dataset.exOpen); if (openExr.has(k)) openExr.delete(k); else openExr.add(k); renderGym(); return; }
   if (ev.target.id === 'gym-save') {
     const entry = persistGym(false);
-    toast('Workout saved 💪');
+    toast('Workout done 💪');
     const sent = await syncEntry(gymDate, entry);
     if (sent) toast('Sent to your Sheet 📤');
     return;
@@ -3484,6 +3591,17 @@ function timelineHTML(dateStr) {
   return `<div class="tl-wrap" id="tl-wrap">${blocks}${nowLine}</div><div class="tl-ticks">${ticks}</div>`;
 }
 
+/* Every block as a row. On a phone a 5-minute block is 2px wide on the 24-hour bar, so
+   "tap a block to fix or delete it" was impossible for exactly the short blocks that most
+   often need fixing. */
+function segListHTML(dateStr) {
+  const clips = segsForDay(dateStr); if (!clips.length) return '';
+  const rows = clips.map(({ seg, a, b }) => { const act = actById(seg.act), run = seg.end == null;
+    return `<button type="button" class="seg-li${ttSelSeg === seg.id ? ' sel' : ''}" data-seg="${seg.id}">
+      <span class="dot" style="background:${act.color}"></span><span class="seg-li-t">${fmtClock(a)}–${run ? 'now' : fmtClock(b)}</span>
+      <span class="seg-li-n">${act.emoji || ''} ${escapeHtml(act.name)}</span><span class="seg-li-d">${fmtDur(b - a, true)}</span></button>`; }).join('');
+  return `<details class="seg-list"${ttSelSeg ? ' open' : ''}><summary>All blocks (${clips.length})</summary>${rows}</details>`;
+}
 function timeTotalsHTML(dateStr) {
   const totals = {};
   segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
@@ -3592,6 +3710,7 @@ function renderTime() {
       <div class="field"><label>Date</label><input type="date" id="tt-date" value="${ttDate}" max="${todayStr()}"></div>
       ${timelineHTML(ttDate)}
       <div class="tl-legend">${[...new Set(segsForDay(ttDate).map(x => x.seg.act))].map(id => { const a = actById(id); return `<span><span class="dot" style="background:${a.color}"></span>${a.emoji} ${escapeHtml(a.name)}</span>`; }).join('') || '<span class="hint">empty day</span>'}</div>
+      ${segListHTML(ttDate)}
       <div class="btn-row" style="margin-top:10px">
         <button class="btn btn-ghost btn-sm" id="tt-manual-toggle">${ttShowManual ? '✕ Cancel' : '＋ Add a block I forgot to track'}</button>
       </div>
@@ -3817,6 +3936,12 @@ document.addEventListener('click', (ev) => {
   if (ev.target.id === 'tt-stop') { stopRunning(); return; }
   const sg = ev.target.closest('[data-seg]');
   if (sg) { ttSelSeg = (ttSelSeg === sg.dataset.seg) ? null : sg.dataset.seg; renderTime(); return; }
+  const tw = ev.target.closest('#tl-wrap');
+  if (tw) {   // a tap between blocks picks the nearest one within ~16px
+    const x = ev.clientX; let best = null, bd = 17;
+    tw.querySelectorAll('[data-seg]').forEach(el => { const r = el.getBoundingClientRect(); const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (d < bd) { bd = d; best = el; } });
+    if (best) { ttSelSeg = best.dataset.seg; renderTime(); }
+    return; }
   if (ev.target.id === 'seg-close') { ttSelSeg = null; renderTime(); return; }
   if (ev.target.id === 'seg-del') {
     timelogForget(ttSelSeg);
@@ -3906,16 +4031,20 @@ function renderHabits() {
     const denom = Math.max(1, 30 - skipped);          // skipped days don't count against you
     const pct = Math.round(hits / denom * 100);
     const str = habitStrength(h.key);
-    const heat = days.map(d => {
+    /* One column per week, Monday on top, today outlined. It used to wrap 91 cells into rows
+       of whatever fitted (17 on a phone), so no column meant anything and today was lost. */
+    const lead = (new Date(days[0] + 'T12:00:00').getDay() + 6) % 7;
+    const heat = '<div class="cell pad"></div>'.repeat(lead) + days.map(d => {
       const v = hVal(e[d], h.key);
       const bg = v === H_DONE ? 'var(--good)' : v === H_SKIP ? '#a9b0c9' : 'var(--bg-input)';
-      return `<div class="cell" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
+      return `<div class="cell${d === todayStr() ? ' today' : ''}" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
     }).join('');
     return `<div class="card">
-      <h2>${h.emoji} ${escapeHtml(h.label)}
-        <span class="hint" style="float:right">🔥 ${st} day${st===1?'':'s'} · ${pct}% / 30d${skipped?` · ${skipped} skipped`:''}</span></h2>
+      <div class="hab-head"><h2>${h.emoji} ${escapeHtml(h.label)}</h2>${habTodayBtnHTML(h, e[todayStr()])}</div>
+      <div class="hint hab-sum">Done ${hits} of the last ${denom} day${denom === 1 ? '' : 's'}${st ? ` · 🔥 ${st}-day streak` : ''}${skipped ? ` · ${skipped} skipped` : ''}</div>
       ${cueLineHTML(h)}
-      <div class="heat">${heat}</div>
+      <div class="heat heat-wk" aria-label="Last 13 weeks, one column per week">${heat}</div>
+      <div class="heat-cap hint"><span>13 weeks ago</span><span>Today</span></div>
       <div class="strength-row" title="Weighted 13-day trend — one miss won't zero it, one day won't max it">
         <span class="hint">Strength</span>
         <div class="strength-bar"><i style="width:${str}%"></i></div>
@@ -3923,8 +4052,52 @@ function renderHabits() {
       </div>
     </div>`;
   }).join('');
-  document.getElementById('s-habits').innerHTML = sampleBannerHTML('these streaks') + cards;
+  /* The Habits screen used to be read-only: someone who opened it to tick today's workout
+     found heatmaps and nothing to tap, and with every habit hidden it was a blank page. */
+  const top = HABITS.length
+    ? `<div class="hab-top"><span class="hint">Tap a habit to tick today. It also shows on Log.</span><button class="btn btn-ghost btn-sm" id="hab-edit">Edit habits</button></div>`
+    : `<div class="card empty-card"><h2>No habits yet</h2><p class="hint">Pick a few things you want to do most days, like a walk, reading or no sugar. You tick them here or on Log.</p><button class="btn" id="hab-edit">Add a habit</button></div>`;
+  document.getElementById('s-habits').innerHTML = sampleBannerHTML('these streaks') + top + cards;
 }
+function habTodayBtnHTML(h, en) {
+  const v = hVal(en, h.key), g = goalFor(h.key);
+  const n = en && en.habits && typeof en.habits[h.key] === 'number' ? en.habits[h.key] : 0;
+  const lab = g ? (v === H_DONE ? `✓ ${n} today` : `+1 · ${n}${g.cmp === 'atmost' ? '' : '/' + g.n} today`)
+    : v === H_DONE ? '✓ Done today' : v === H_SKIP ? '⤳ Skipped today' : 'Mark done';
+  return `<button type="button" class="hab-today${v === H_DONE ? ' on' : v === H_SKIP ? ' skip' : ''}" data-hab-today="${h.key}" aria-pressed="${v === H_DONE}">${lab}</button>`;
+}
+/* Same cycle as the Log chip (nothing → done → skipped → nothing; a counter adds 1), written
+   straight to today's entry. The Log draft is reloaded when it is today's, so a later Log
+   autosave cannot write the old value back over this tap. */
+function habitTodayToggle(k) {
+  flushAutosave();
+  const d = todayStr();
+  const en = JSON.parse(JSON.stringify(DB.entry(d) || { habits: {} }));
+  if (!en.habits) en.habits = {};
+  const g = goalFor(k), was = hVal(en, k);
+  if (g) {
+    const cur = typeof en.habits[k] === 'number' ? en.habits[k] : (en.habits[k] === true ? g.n : 0);
+    en.habits[k] = (k in en.habits ? cur : 0) + 1;
+    if (was !== H_DONE && hVal(en, k) === H_DONE) buzz(24);
+  } else if (was === H_DONE) {
+    delete en.habits[k]; buzz(12);
+    undoToast('Unticked', () => { const e2 = JSON.parse(JSON.stringify(DB.entry(d) || { habits: {} })); e2.habits = e2.habits || {}; e2.habits[k] = 0;
+      e2.habitsAt = e2.habitsAt || {}; e2.habitsAt[k] = Date.now(); saveDraftNow(d, e2); if (logDate === d) loadDraft();
+      if (document.getElementById('s-habits').classList.contains('on')) renderHabits(); toast('Skipped today. Your streak is safe'); }, 'Skip today');
+  }
+  else if (was === H_SKIP) delete en.habits[k];
+  else { en.habits[k] = true; buzz(18); }
+  en.habitsAt = en.habitsAt || {}; en.habitsAt[k] = Date.now();
+  saveDraftNow(d, en);
+  if (logDate === d) loadDraft();
+  renderHabits();
+}
+document.addEventListener('click', (ev) => {
+  if (!document.getElementById('s-habits').classList.contains('on')) return;
+  const t = ev.target.closest('[data-hab-today]');
+  if (t) { habitTodayToggle(t.dataset.habToday); return; }
+  if (ev.target.closest('#hab-edit')) { customPage = 'habits'; _customFrom = 'habits'; show('custom'); }
+});
 
 /* ============================================================
    SCREEN: DASHBOARD
@@ -4080,15 +4253,20 @@ function computePatterns() {
       nextDay.push({ h, lift: avg(after) - avg(other), n, conf });
     } });
   nextDay.sort((a, b) => Math.abs(b.lift) - Math.abs(a.lift));
-  if (nextDay.length && Math.abs(nextDay[0].lift) >= 0.4 && nextDay[0].conf !== 'Low') {
-    const N = nextDay[0];
+  /* One habit must not show up as both "→ mood +1.8 tomorrow" and "drags your mood by 2.0":
+     when the same-day and next-day effects disagree, neither line is shown for it. */
+  const L0 = lifts.length && Math.abs(lifts[0].lift) >= 0.5 ? lifts[0] : null;
+  const N0 = nextDay.length && Math.abs(nextDay[0].lift) >= 0.4 && nextDay[0].conf !== 'Low' ? nextDay[0] : null;
+  const mixed = L0 && N0 && L0.h.key === N0.h.key && Math.sign(L0.lift) !== Math.sign(N0.lift);
+  if (N0 && !mixed) {
+    const N = N0;
     out.push({ ico: 'trending', w: 5,
       head: `${escapeHtml(N.h.label)} today → mood ${N.lift > 0 ? '+' : '−'}${Math.abs(N.lift).toFixed(1)} tomorrow`,
       sub: `The day <i>after</i> ${escapeHtml(N.h.label)}, your mood averages <b>${N.lift > 0 ? '+' : '−'}${Math.abs(N.lift).toFixed(1)}</b> vs other days (${N.n} days · ${N.conf.toLowerCase()} confidence). Next-day effects can't be explained by mood causing the habit.` });
   }
-  if (lifts.length && Math.abs(lifts[0].lift) >= 0.5) { const L = lifts[0];
-    out.push({ ico: 'flame', w: 5, head: `${escapeHtml(L.h.label)} ${L.lift > 0 ? 'lifts' : 'drags'} your mood by ${Math.abs(L.lift).toFixed(1)}`,
-      sub: `Across ${L.n} days, your mood runs <b>${L.lift > 0 ? '+' : '−'}${Math.abs(L.lift).toFixed(1)}</b> on ${escapeHtml(L.h.label)} days. ${L.lift > 0 ? 'Protect this habit.' : 'Worth a rethink.'}` }); }
+  if (L0 && !mixed) { const L = L0;
+    out.push({ ico: 'flame', w: 5, head: L.lift > 0 ? `${escapeHtml(L.h.label)} lifts your mood by ${Math.abs(L.lift).toFixed(1)}` : `Your mood runs ${Math.abs(L.lift).toFixed(1)} lower on ${escapeHtml(L.h.label)} days`,
+      sub: `Across ${L.n} days, your mood runs <b>${L.lift > 0 ? '+' : '−'}${Math.abs(L.lift).toFixed(1)}</b> on ${escapeHtml(L.h.label)} days. ${L.lift > 0 ? 'Protect this habit.' : 'That can mean the habit lands on harder days, not that it causes them.'}` }); }
 
   // 3 — mood momentum (least-squares trend over the last 14 logged days)
   const seq = dates.slice(-14).map(d => num(d, 'mood')).filter(v => v != null);
@@ -4420,7 +4598,7 @@ function exportCSV() {
   const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n\r]/.test(v) ? `"${v}"` : v; };
   let csv = cols.join(',') + '\n';
   dates.filter(d => !(e[d] && e[d].sample)).forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
-  saveFile('daily-pulse-' + todayStr() + '.csv', csv, 'text/csv');
+  saveFile('daylog-' + todayStr() + '.csv', csv, 'text/csv');
 }
 /* ---------- Obsidian-style connections graph ----------
    Nodes: days, topics, habits. Edges link each day to its topics + habits done,
@@ -4816,10 +4994,10 @@ function renderDash() {
 
   const patterns = computePatterns();
   const patternsCard = patterns.length
-    ? `<div class="card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span> <span class="hint">mined from your data · on-device</span></h2>
+    ? `<div class="card" id="patterns-card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span> <span class="hint">mined from your data · on-device</span></h2>
         ${patterns.map(p => `<div class="pat-row"><span class="pat-ico">${icon(p.ico, 18)}</span><div class="pat-txt"><div class="pat-head">${p.head}</div>${p.sub ? `<div class="pat-sub">${p.sub}</div>` : ''}</div></div>`).join('')}
       </div>`
-    : `<div class="card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span></h2>
+    : `<div class="card" id="patterns-card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span></h2>
         <div class="hint">Log about a week of days and your personal patterns appear here — your sleep sweet spot, which habits actually lift your mood, your peak focus hours. Computed on your phone, never uploaded.</div></div>`;
 
   const overviewHTML = `
@@ -5034,22 +5212,37 @@ function renderSearch() {
   document.getElementById('s-search').innerHTML = sampleBannerHTML('these results') + `
     <div class="card">
       <div class="task-add">
-        <input type="text" id="search-q" placeholder="Search journals, notes, photo captions… or #tag" autocomplete="off" value="${escapeHtml(searchQ)}">
+        <input type="text" id="search-q" inputmode="search" enterkeyhint="search" placeholder="Search journals, notes, memories… or #tag" autocomplete="off" value="${escapeHtml(searchQ)}">
+        <button type="button" class="btn btn-ghost search-x" id="search-clear" aria-label="Clear search"${searchQ ? '' : ' hidden'}>✕</button>
       </div>
     </div>
     <div id="search-results">${searchQ ? runSearch(searchQ) : '<div class="empty">Type at least 2 characters. Tip: search a <b>#tag</b> to see every day you mentioned it.</div>'}</div>`;
   const inp = document.getElementById('search-q');
   if (inp && !searchQ) setTimeout(() => inp.focus(), 50);
 }
+/* Search matches every WORD of the query, anywhere in the field: "landlord deposit" found
+   nothing in "Argued with landlord about the deposit" when the whole phrase had to match. */
+function searchWords(q) { return String(q || '').toLowerCase().split(/\s+/).filter(Boolean); }
 function snippet(text, q) {
-  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  text = String(text || '');
+  const words = searchWords(q), low = text.toLowerCase();
+  let i = -1; words.forEach(w => { const j = low.indexOf(w); if (j >= 0 && (i < 0 || j < i)) i = j; });
   if (i < 0) return escapeHtml(text.slice(0, 80));
-  const a = Math.max(0, i - 34), b = Math.min(text.length, i + q.length + 46);
-  return (a > 0 ? '…' : '') + escapeHtml(text.slice(a, i)) + '<b>' + escapeHtml(text.slice(i, i + q.length)) + '</b>' + escapeHtml(text.slice(i + q.length, b)) + (b < text.length ? '…' : '');
+  let a = Math.max(0, i - 34), b = Math.min(text.length, i + 110);
+  if (a > 0) { const sp = text.indexOf(' ', a); if (sp > -1 && sp < i) a = sp + 1; }          // start on a word
+  if (b < text.length) { const sp = text.lastIndexOf(' ', b); if (sp > i) b = sp; }            // end on a word
+  const part = text.slice(a, b), pl = part.toLowerCase(), on = new Array(part.length).fill(false);
+  words.forEach(w => { for (let k = pl.indexOf(w); k > -1; k = pl.indexOf(w, k + 1)) for (let z = k; z < k + w.length; z++) on[z] = true; });
+  let out = '', run = '', bold = false;
+  for (let z = 0; z <= part.length; z++) {
+    if (z === part.length || on[z] !== bold) { out += bold ? '<b>' + escapeHtml(run) + '</b>' : escapeHtml(run); run = ''; bold = on[z]; }
+    if (z < part.length) run += part[z];
+  }
+  return (a > 0 ? '…' : '') + out + (b < text.length ? '…' : '');
 }
 function runSearch(q) {
   q = q.trim(); if (q.length < 2) return '<div class="empty">Type at least 2 characters.</div>';
-  const ql = q.toLowerCase(); const hit = s => s && String(s).toLowerCase().includes(ql);
+  const words = searchWords(q); const hit = s => { if (!s) return false; const l = String(s).toLowerCase(); return words.every(w => l.includes(w)); };
   const groups = [];
   // Log entries — journal + all text fields
   const e = DB.entries();
@@ -5074,10 +5267,12 @@ function runSearch(q) {
   if (planRows.length) groups.push(['📋 Plans', planRows]);
   const docRows = [];
   DB.docs().forEach(dc => {
+    const props = dc.kind === 'memory' ? [dc.place, (dc.people || []).join(' '), (dc.tags || []).join(' ')].filter(Boolean).join(' · ') : '';
     const inTitle = hit(dc.title); const blk = (dc.blocks || []).find(b => hit(b.text));
+    if (!inTitle && !blk && props && hit(props)) docRows.push(`<div class="sr-row" data-sr="doc" data-id="${dc.id}"><span class="sr-when">${escapeHtml(docPageTitle(dc).slice(0, 14))}</span><span class="sr-snip">${snippet(props, q)}</span></div>`);
     if (inTitle || blk) docRows.push(`<div class="sr-row" data-sr="doc" data-id="${dc.id}"><span class="sr-when">${escapeHtml((dc.title || 'untitled').slice(0, 14))}</span><span class="sr-snip">${snippet(inTitle ? dc.title : blk.text, q)}</span></div>`);
   });
-  if (docRows.length) groups.push(['✍️ Articles', docRows]);
+  if (docRows.length) groups.push(['✍️ Articles & memories', docRows]);
   const evRows = DB.events().filter(x => hit(x.label)).map(x =>
     `<div class="sr-row" data-sr="event" data-d="${x.date}"><span class="sr-when">${x.date}${x.time ? ' ' + x.time : ''}</span><span class="sr-snip">${snippet(x.label, q)}</span></div>`);
   if (evRows.length) groups.push(['📌 Events', evRows]);
@@ -5098,6 +5293,7 @@ let _searchTimer;
 document.addEventListener('input', (ev) => {
   if (ev.target.id !== 'search-q') return;
   searchQ = ev.target.value;
+  const sx = document.getElementById('search-clear'); if (sx) sx.hidden = !searchQ;
   clearTimeout(_searchTimer);
   _searchTimer = setTimeout(() => { const r = document.getElementById('search-results'); if (r) r.innerHTML = searchQ.trim().length >= 2 ? runSearch(searchQ) : '<div class="empty">Type at least 2 characters.</div>'; }, 220);
 });
@@ -5105,6 +5301,7 @@ document.addEventListener('click', (ev) => {
   // tag chips in Stats → search that tag
   const tc = ev.target.closest('.tag-chip[data-searchtag]');
   if (tc) { searchQ = tc.dataset.searchtag; navigateTo('search'); return; }
+  if (ev.target.closest('#search-clear')) { searchQ = ''; renderSearch(); const i = document.getElementById('search-q'); if (i) i.focus(); return; }
   const row = ev.target.closest('.sr-row'); if (!row || !document.getElementById('s-search').classList.contains('on')) return;
   if (ev.target.closest('[data-mview]')) return;   // a caption hit's thumbnail opens the photo, not the day
   const kind = row.dataset.sr;
@@ -5162,7 +5359,7 @@ function renderHistory() {
     return `<div class="hist-item" data-hday="${d}" role="button" tabindex="0">
       <div><div class="hist-date">${prettyDate(d)}</div>
         <div class="hist-meta">${en.journal ? escapeHtml(en.journal.slice(0,46)) + (en.journal.length>46?'…':'') : '—'}</div></div>
-      <div class="hist-moods"><span class="pill">😊 ${en.mood||'–'}</span><span class="pill">⚡ ${en.energy||'–'}</span><span class="pill">✅ ${hc}/${HABITS.length}</span>${(() => { const c = mediaDayCount(d); return c.p + c.v ? `<span class="pill">${c.p ? '📷 ' + c.p : ''}${c.p && c.v ? ' ' : ''}${c.v ? '🎙 ' + c.v : ''}</span>` : ''; })()}</div>
+      <div class="hist-moods"><span class="pill">${moodFace(en.mood) || '😶'} ${en.mood||'–'}</span><span class="pill">⚡ ${en.energy||'–'}</span><span class="pill">✅ ${hc}/${HABITS.length}</span>${(() => { const c = mediaDayCount(d); return c.p + c.v ? `<span class="pill">${c.p ? '📷 ' + c.p : ''}${c.p && c.v ? ' ' : ''}${c.v ? '🎙 ' + c.v : ''}</span>` : ''; })()}</div>
       <span class="hist-go" aria-hidden="true">›</span>
     </div>`;
   }).join('');
@@ -5590,7 +5787,7 @@ document.addEventListener('click', (ev) => {
   }
   const od = host === 'write' && ev.target.closest('[data-opendoc]');
   if (od) { curDoc = od.dataset.opendoc; renderWrite(); window.scrollTo(0, 0); return; }
-  if (host === 'write' && ev.target.id === 'doc-back') { curDoc = null; renderWrite(); return; }
+  if (host === 'write' && ev.target.id === 'doc-back') { docDiscardIfEmpty(curDoc); curDoc = null; renderWrite(); return; }
   if (host === 'write' && ev.target.id === 'doc-del') {
     const did = curDoc, att = mediaList('doc:' + did, null).map(r => r.id);
     if (!confirm(att.length ? `Delete this whole article and its ${att.length} photo${att.length === 1 ? '' : 's'}? This cannot be undone.` : 'Delete this whole article?')) return;
@@ -5688,6 +5885,45 @@ function docPageTitle(d) { return d.kind === 'memory' ? memTitle(d) : String(d.t
 function docByTitle(t) {
   t = String(t || '').trim().toLowerCase(); if (!t) return null;
   return DB.docs().find(d => docPageTitle(d).toLowerCase() === t) || null;
+}
+/* Links point at a page's TITLE, so renaming a page — or giving an untitled memory (linked by
+   its date) a title — broke every link to it. When a title is settled, each [[old]] that
+   meant this page is rewritten to the new title. Not when another page still has the old
+   title: then those links were never only this page's. */
+function docRenameLinks(selfId, oldT, newT) {
+  oldT = String(oldT || '').trim(); newT = String(newT || '').trim();
+  if (!oldT || !newT || oldT.toLowerCase() === newT.toLowerCase()) return 0;
+  const ds = DB.docs(), low = oldT.toLowerCase();
+  if (ds.some(d => d.id !== selfId && docPageTitle(d).toLowerCase() === low)) return 0;
+  let n = 0;
+  ds.forEach(d => (d.blocks || []).forEach(b => {
+    if (isMediaBlk(b) || !b.text || b.text.indexOf('[[') < 0) return;
+    const t = b.text.replace(MEM_LINK, (all, x) => x.trim().toLowerCase() === low ? (n++, '[[' + newT + ']]') : all);
+    if (t !== b.text) { b.text = t; d.updated = new Date().toISOString(); }
+  }));
+  if (n) DB.saveDocs(ds);
+  return n;
+}
+let _titleWas = null;   // { id, t } — the page title when its title field got focus
+document.addEventListener('focusin', (ev) => {
+  const dt = ev.target.closest && ev.target.closest('[data-doctitle]'); if (!dt) return;
+  const d = DB.docs().find(x => x.id === dt.dataset.doctitle);
+  _titleWas = d ? { id: d.id, t: docPageTitle(d) } : null;
+});
+document.addEventListener('change', (ev) => {
+  const dt = ev.target.closest && ev.target.closest('[data-doctitle]'); if (!dt || !_titleWas || _titleWas.id !== dt.dataset.doctitle) return;
+  const d = DB.docs().find(x => x.id === dt.dataset.doctitle); if (!d) return;
+  docRenameLinks(d.id, _titleWas.t, docPageTitle(d)); _titleWas = { id: d.id, t: docPageTitle(d) };
+});
+/* A page made by "New" and left without a word, a property or a photo is not kept: every
+   curious tap on New used to leave a blank card behind in the timeline or the article list. */
+function docDiscardIfEmpty(id) {
+  const ds = DB.docs(), d = ds.find(x => x.id === id); if (!d) return false;
+  const empty = !String(d.title || '').trim() && !String(d.place || '').trim() && !(d.people || []).length && !(d.tags || []).length
+    && (d.blocks || []).every(b => !isMediaBlk(b) && !String(b.text || '').trim());
+  if (!empty) return false;
+  DB.saveDocs(ds.filter(x => x.id !== id));
+  return true;
 }
 function docLinks(d) {
   const out = new Set();
@@ -5880,7 +6116,9 @@ function memEditHTML(m) {
 }
 function memSaveProp(id, k, v) {
   const ds = DB.docs(); const m = ds.find(x => x.id === id); if (!m) return false;
-  if (k === 'date') { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return false; m.date = v; }
+  if (k === 'date') { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return false;
+    const was = docPageTitle(m); m.date = v;
+    if (!String(m.title || '').trim()) { const now = docPageTitle(m); m.updated = new Date().toISOString(); DB.saveDocs(ds); docRenameLinks(id, was, now); return true; } }
   else if (k === 'place') m.place = String(v || '').trim().slice(0, 80);
   else if (k === 'people' || k === 'tags') m[k] = memWords(v);
   else return false;
@@ -6099,9 +6337,11 @@ document.addEventListener('click', (ev) => {
   if (d.memNew !== undefined) { const id = memNew(); if (id) { curMem = id; memEdit = true; renderMemories(); window.scrollTo(0, 0); const ti = sc.querySelector('.doc-title-input'); if (ti) ti.focus(); } return; }
   if (d.memImport !== undefined) { memImportInput().click(); return; }
   if (d.memopen) { curMem = d.memopen; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
-  if (d.memBack !== undefined) { curMem = null; memEdit = false; renderMemories(); return; }
+  if (d.memBack !== undefined) { if (curMem) docDiscardIfEmpty(curMem); curMem = null; memEdit = false; renderMemories(); return; }
   if (d.memEdit !== undefined) { memEdit = true; memLinkOpen = false; renderMemories(); window.scrollTo(0, 0); return; }
-  if (d.memDone !== undefined) { flushAutosave(); memEdit = false; memLinkOpen = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memDone !== undefined) { flushAutosave(); memEdit = false; memLinkOpen = false;
+    if (curMem && docDiscardIfEmpty(curMem)) { curMem = null; toast('Nothing in it yet, so it was not kept'); }
+    renderMemories(); window.scrollTo(0, 0); return; }
   if (d.memDel !== undefined) {
     const id = curMem, att = mediaList('doc:' + id, null).map(r => r.id);
     if (!confirm(att.length ? `Delete this memory and its ${att.length} photo${att.length === 1 ? '' : 's'}, video${att.length === 1 ? '' : 's'} and voice notes? This cannot be undone.` : 'Delete this memory? This cannot be undone.')) return;
@@ -6189,17 +6429,18 @@ function cfgRow(kind, item, deletable) {
 }
 /* Customize is a HUB of cards; each opens its own sub-page (customPage). */
 let customPage = null;
+let _customFrom = null;   // the screen that opened a Customize page directly (Habits), so back returns there
 const CUSTOM_PAGES = [
   // Daily checklist removed — it's created/edited right on the Log home screen.
   { id: 'tabs',   ico: '🧭', label: 'Tabs & navigation',  sub: 'pin your bottom tabs + default' },
   { id: 'log',    ico: '📝', label: 'Log screen fields',  sub: 'mood, energy, sleep, reflections…' },
-  { id: 'logsec', ico: '🧩', label: 'Log screen sections', sub: 'reorder or hide every card' },
+  { id: 'logsec', ico: '📋', label: 'Log screen sections', sub: 'reorder or hide every card' },
   { id: 'habits', ico: '✅', label: 'Checklist habits',    sub: 'emoji, name, colour, counts & goals' },
   { id: 'sound',  ico: '🔔', label: 'Alarm sound',         sub: 'pick the tone your reminders ring with' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
-  { id: 'theme',  ico: '🎨', label: 'Theme colour',       sub: 'app accent colour' },
+  { id: 'theme',  ico: '🎨', label: 'Theme & dark mode',  sub: 'light, dark or black · accent colour' },
 ];
 function cfgSectionHTML(page) {
   if (page === 'theme') {
@@ -6351,7 +6592,7 @@ function renderCustom() {
   const page = CUSTOM_PAGES.find(p => p.id === customPage);
   document.getElementById('screen-title').textContent = page ? page.label : 'Customize';
   document.getElementById('screen-sub').textContent = 'Customize';
-  el.innerHTML = `<button class="back-btn" id="custom-back">← All settings</button>${cfgSectionHTML(customPage)}`;
+  el.innerHTML = `<button class="back-btn" id="custom-back">${_customFrom === 'habits' ? '← Back to Habits' : _customFrom === 'gym' ? '← Back to Gym' : '← Customize'}</button>${cfgSectionHTML(customPage)}`;
   if (customPage === 'habits') enableDrag(document.getElementById('cfg-habits'), ids => {
     const cfg = habitCfg(); saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
   });
@@ -6434,6 +6675,7 @@ document.addEventListener('click', (ev) => {
   if (!sc || !sc.classList.contains('on')) return;
   const cp = ev.target.closest('[data-custompage]');
   if (cp) { customPage = cp.dataset.custompage; renderCustom(); window.scrollTo(0, 0); return; }
+  if (ev.target.id === 'custom-back' && _customFrom) { const f = _customFrom; _customFrom = null; customPage = null; show(f); return; }
   if (ev.target.id === 'custom-back') { if (customPage) { customPage = null; renderCustom(); window.scrollTo(0, 0); } else show('settings'); return; }
   if (ev.target.id === 'cfg-add-habit') {
     const inp = document.getElementById('cfg-new-habit'); const raw = inp.value.trim(); if (!raw) return;
@@ -6779,7 +7021,7 @@ function pomoHTML(p) {
       <div class="pomo-controls">
         ${!run ? `<button class="btn btn-primary" data-pomo="start-focus">▶ Start focus</button>`
           : run.paused ? `<button class="btn btn-primary" data-pomo="resume">▶ Resume</button><button class="btn btn-ghost" data-pomo="reset">Reset</button>`
-          : `<button class="btn btn-ghost" data-pomo="pause">⏸ Pause</button><button class="btn btn-ghost" data-pomo="skip">⏭ Skip</button><button class="btn btn-ghost" data-pomo="reset">⏹</button>`}
+          : `<button class="btn btn-ghost" data-pomo="pause">⏸ Pause</button><button class="btn btn-ghost" data-pomo="skip">⏭ Skip</button><button class="btn btn-ghost" data-pomo="reset" aria-label="End this session">⏹ End</button>`}
       </div>
       <div class="pomo-done">🍅 <b>${pomoDoneToday(p)}</b> completed today</div>
     </div>
@@ -6789,10 +7031,10 @@ function pomoHTML(p) {
         <select data-pomo-act>${actOpts}</select></div>
       <div class="row2">
         <div class="field"><label>Focus (min)</label><input type="number" inputmode="numeric" data-pomo-cfg="focus" value="${p.cfg.focus}"></div>
-        <div class="field"><label>Short break</label><input type="number" inputmode="numeric" data-pomo-cfg="short" value="${p.cfg.short}"></div>
+        <div class="field"><label>Short break (min)</label><input type="number" inputmode="numeric" data-pomo-cfg="short" value="${p.cfg.short}"></div>
       </div>
       <div class="row2">
-        <div class="field"><label>Long break</label><input type="number" inputmode="numeric" data-pomo-cfg="long" value="${p.cfg.long}"></div>
+        <div class="field"><label>Long break (min)</label><input type="number" inputmode="numeric" data-pomo-cfg="long" value="${p.cfg.long}"></div>
         <div class="field"><label>Rounds → long break</label><input type="number" inputmode="numeric" data-pomo-cfg="rounds" value="${p.cfg.rounds}"></div>
       </div>
       <label class="ev-alarm-row"><input type="checkbox" data-pomo-cfg="auto" ${p.cfg.auto?'checked':''}> Auto-start the next phase</label>
@@ -6800,6 +7042,13 @@ function pomoHTML(p) {
     </div>`;
 }
 
+/* The add form always said 09:00–10:00, even at 22:38. It starts at the next half hour now
+   (capped at 23:00 so the hour-long default still ends today). */
+function tbNext(plus) {
+  const d = new Date(); let m = d.getHours() * 60 + d.getMinutes();
+  m = Math.min(23 * 60, Math.ceil((m + 1) / 30) * 30) + plus; m = Math.min(m, 23 * 60 + 59);
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
 function timeboxHTML() {
   const today = todayStr();
   const blocks = DB.timebox().filter(b => b.date === today).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
@@ -6824,8 +7073,8 @@ function timeboxHTML() {
     <div class="card">
       <h2>Add a block</h2>
       <div class="row2">
-        <div class="field"><label>Start</label><input type="time" id="tb-start" value="09:00"></div>
-        <div class="field"><label>End</label><input type="time" id="tb-end" value="10:00"></div>
+        <div class="field"><label>Start</label><input type="time" id="tb-start" value="${tbNext(0)}"></div>
+        <div class="field"><label>End</label><input type="time" id="tb-end" value="${tbNext(60)}"></div>
       </div>
       <div class="field"><label>What for?</label><input type="text" id="tb-label" placeholder="e.g. Deep work — report" autocomplete="off"></div>
       <div class="field"><label>Activity (optional — enables ▶ start)</label>
@@ -6864,7 +7113,15 @@ document.addEventListener('click', (ev) => {
     else if (a === 'pause') pomoPause();
     else if (a === 'resume') pomoResume();
     else if (a === 'skip') pomoAdvance();
-    else if (a === 'reset') pomoReset();
+    else if (a === 'reset') {
+      /* A running session ends on a second tap: one stray tap on ⏹ threw it away. */
+      const p = pomoState();
+      if (p.run && !p.run.paused && pc.dataset.armed !== '1') {
+        pc.dataset.armed = '1'; pc.textContent = 'Tap again to end'; pc.classList.add('armed');
+        setTimeout(() => { if (pc.isConnected) { pc.dataset.armed = ''; pc.textContent = '⏹ End'; pc.classList.remove('armed'); } }, 3000);
+        return; }
+      pomoReset();
+    }
     return; }
   if (ev.target.id === 'tb-add') {
     const start = document.getElementById('tb-start').value, end = document.getElementById('tb-end').value;
@@ -6883,14 +7140,19 @@ document.addEventListener('click', (ev) => {
       if (r && r.act === b.act && !r.pid) toast('▶ ' + actById(b.act).name + ' is already running'); else startAct(b.act); }
     return; }
   const td = ev.target.closest('[data-tb-del]');
-  if (td) { DB.saveTimebox(DB.timebox().filter(x => x.id !== td.dataset.tbDel)); scheduleTimeboxAlarms(); renderFocus(); return; }
+  if (td) {
+    const before = DB.timebox(), ids = new Set([td.dataset.tbDel]);
+    DB.saveTimebox(before.filter(x => x.id !== td.dataset.tbDel)); scheduleTimeboxAlarms(); renderFocus();
+    undoToast('Block removed', () => { DB.saveTimebox(restoreItems(DB.timebox(), before, ids)); scheduleTimeboxAlarms(); if (document.getElementById('s-focus').classList.contains('on')) renderFocus(); });
+    return; }
 });
 document.addEventListener('change', (ev) => {
   const pa = ev.target.closest('[data-pomo-act]');
   if (pa) { const p = pomoState(); p.cfg.act = pa.value; DB.savePomo(p); return; }
   const pcfg = ev.target.closest('[data-pomo-cfg]');
   if (pcfg) { const p = pomoState(); const k = pcfg.dataset.pomoCfg;
-    p.cfg[k] = (k === 'auto') ? pcfg.checked : Math.max(1, +pcfg.value || POMO_DEFAULTS[k]);
+    p.cfg[k] = (k === 'auto') ? pcfg.checked : Math.min(k === 'rounds' ? 12 : 240, Math.max(1, Math.round(+pcfg.value) || POMO_DEFAULTS[k]));
+    if (k !== 'auto' && String(pcfg.value) !== String(p.cfg[k])) pcfg.value = p.cfg[k];   // show what was saved, not what was typed
     DB.savePomo(p); return; }
 });
 /* 1-second tick to update the countdown while the Focus screen is open */
@@ -6925,7 +7187,22 @@ function saveWaveSettings(w) { const ok = safeSet('dp.waves', JSON.stringify(w))
 function wavesStop() {
   if (_waveNodes) { try { _waveNodes.oL.stop(); _waveNodes.oR.stop(); } catch (_) {} _waveNodes = null; }
   _wavePlaying = null; clearTimeout(_waveTimer); _waveTimer = null; _waveEndsAt = 0;
+  nowPillRefresh();
 }
+/* Waves kept playing after you left the screen, with nothing anywhere to say so or stop it
+   (Waves itself lives in the menu). A small bar above the bottom nav does both. */
+function nowPillRefresh() {
+  let el = document.getElementById('now-pill');
+  const p = _wavePlaying && WAVE_PRESETS.find(x => x.id === _wavePlaying);
+  if (!p || isOn('waves')) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'now-pill'; el.className = 'now-pill'; document.body.appendChild(el); }
+  el.innerHTML = `<button type="button" class="np-go" data-np-go>${p.emoji} ${escapeHtml(p.name)} waves playing</button><button type="button" class="np-stop" data-np-stop>■ Stop</button>`;
+}
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest) return;
+  if (ev.target.closest('[data-np-stop]')) { wavesStop(); return; }
+  if (ev.target.closest('[data-np-go]')) navigateTo('waves');
+});
 function wavesStart(preset) {
   const w = waveSettings();
   try {
@@ -6941,7 +7218,7 @@ function wavesStart(preset) {
   oL.connect(merger, 0, 0); oR.connect(merger, 0, 1);
   merger.connect(gain); gain.connect(ctx.destination);
   oL.start(); oR.start();
-  _waveNodes = { oL, oR, gain, merger }; _wavePlaying = preset.id;
+  _waveNodes = { oL, oR, gain, merger }; _wavePlaying = preset.id; nowPillRefresh();
   if (w.minutes > 0) { _waveEndsAt = Date.now() + w.minutes * 60000; _waveTimer = setTimeout(() => { wavesStop(); if (isOn('waves')) renderWaves(); toast('Waves ended'); }, w.minutes * 60000); }
   renderWaves();
 }
@@ -6956,7 +7233,7 @@ function renderWaves() {
       <span class="wave-emoji">${p.emoji}</span>
       <span class="wave-name">${p.name} <span class="wave-hz">${p.hz} Hz</span></span>
       <span class="wave-use">${p.use}</span>
-      <span class="wave-state">${on ? '⏸ Stop' : '▶ Play'}</span></button>`;
+      <span class="wave-state">${on ? '■ Stop' : '▶ Play'}</span></button>`;
   }).join('');
   const mins = [0, 10, 20, 30, 60];
   document.getElementById('s-waves').innerHTML = `
@@ -7043,7 +7320,7 @@ function renderCal() {
       <div class="txt">${escapeHtml(x.label)} ${x.alarm ? '⏰' : ''}</div>
       <button class="del" data-ev-del="${x.id}">×</button></div></div>`).join('');
   const pills = en ? `<div class="hist-moods" style="margin:8px 0">
-      <span class="pill">😊 ${en.mood || '–'}</span><span class="pill">⚡ ${en.energy || '–'}</span>
+      <span class="pill">${moodFace(en.mood) || '😶'} ${en.mood || '–'}</span><span class="pill">⚡ ${en.energy || '–'}</span>
       <span class="pill">✅ ${hc}/${HABITS.length}</span>${en.sleepHours ? `<span class="pill">😴 ${en.sleepHours}h</span>` : ''}</div>
       ${en.timeSummary ? `<div class="hint" style="margin-bottom:6px">⏱ ${escapeHtml(en.timeSummary)}</div>` : ''}
       ${en.journal ? `<div class="hint" style="margin-bottom:6px">📓 ${escapeHtml(en.journal.slice(0, 80))}${en.journal.length > 80 ? '…' : ''}</div>` : ''}`
@@ -7283,7 +7560,7 @@ function renderSettings() {
         own time, with no company and no funding behind it. There is no support team reading
         this — it comes straight to me, and it is genuinely how the app gets better. If
         something is confusing, broken, or missing, please tell me. Even one line helps.</div>
-      <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What would make this actually useful for you?" style="min-height:80px"></textarea></div>
+      <div class="field"><textarea id="fb-text" placeholder="What's confusing? What's missing? What would make this actually useful for you?" style="min-height:80px">${escapeHtml(localStorage.getItem('dp.fbDraft') || '')}</textarea></div>
       <div class="btn-row"><button class="btn btn-primary btn-sm" id="fb-send">Send feedback</button></div>
       <div class="hint" style="margin-top:8px">No account and no sign-in. This opens your mail
         app with the message ready to send — so it does need a mail app, and I will see the
@@ -7777,7 +8054,7 @@ async function generatePdfReport() {
   const wb = []; deepCfg().filter(s => !s.hidden).forEach(sec => (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(f.key); if (a != null) wb.push([f.label, fmt(a) + ' / 10']); }));
   if (wb.length) { heading('Wellbeing & focus (avg)'); wb.forEach(([l, r]) => row(l, r)); }
   doc.setFontSize(9); doc.setTextColor(150, 150, 168); doc.text('Generated by Daylog · private & offline · ' + APP_VERSION, M, H - 24);
-  const rr = await saveFile('daily-pulse-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
+  const rr = await saveFile('daylog-report-' + todayStr() + '.pdf', doc.output('blob'), 'application/pdf');
   // saveFile already told the user exactly what happened, including when it could not save
   // at all. A blanket "Report PDF ready 📄" on top of that was a flat contradiction, and the
   // notification promised a file that did not exist.
@@ -7869,6 +8146,7 @@ async function sendFeedback(text, contact) {
       return;
     }
     const ft = document.getElementById('fb-text'); if (ft) ft.value = '';
+    try { localStorage.removeItem('dp.fbDraft'); } catch (e) {}
     toast('Thank you! Feedback sent 💛');
     return;
   }
@@ -8846,7 +9124,8 @@ const BACKUP_EXCLUDED = [
   'sheetScript',                       // which script version this device's sync link answered with
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
-  'logsecMigrated', 'moodInputMigrated',   // one-shot migration markers
+  'logsecMigrated', 'moodInputMigrated', 'navmig255',   // one-shot migration markers
+  'fbDraft',                           // an unsent feedback message on this install
 ];
 /* Sections of the backup FILE that are not localStorage keys, so the BACKUP_KEYS loop cannot
    carry them; each has its own export and restore code. `_media` is the photos and voice notes
@@ -8950,7 +9229,7 @@ async function exportData() {
   // Await it, and only stamp the date if the file actually reached the user. Stamping
   // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
   // sheet — the single most dangerous lie this app could tell.
-  const r = await saveFile('daily-pulse-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
+  const r = await saveFile('daylog-backup-' + todayStr() + '.json', JSON.stringify(out, null, 2), 'application/json');
   // ...and not when the photos and voice notes could not be read: the delete flow trusts this date.
   // Not on 'copy' either: a textarea opened is not a file in the person's hands. And not when a
   // section was left out — "last backup: today" would then vouch for an incomplete file.
@@ -9217,12 +9496,17 @@ function checkReminders(catchUp) {
   if (nativeShell()) return;   // native app: AlarmManager + LocalNotifications own firing (no web double-ring)
   const now = new Date();
   const curMin = now.getHours() * 60 + now.getMinutes();
+  const setAt = (listMeta('dp.listAt') || {}).reminders || {};
   DB.reminders().forEach(r => {
     if (!r.enabled || !r.time) return;
     const [h, m] = r.time.split(':').map(Number);
     const remMin = h * 60 + m;
     const flag = 'dp.notified.' + r.id + '.' + todayStr();
     if (localStorage.getItem(flag)) return;
+    /* A reminder added or changed AFTER its time today starts tomorrow. Adding a 21:00
+       reminder at 22:46 (onboarding's default time, at night) rang a full-screen "MISSED"
+       alarm the moment it was saved. */
+    if (catchUp && curMin !== remMin && +setAt[r.id] > new Date(now).setHours(h, m, 0, 0)) { safeSet(flag, '1'); return; }
     // when open: fire at the exact minute. on reopen: fire anything due earlier today (still unacknowledged).
     const due = catchUp ? (curMin >= remMin) : (curMin === remMin);
     if (!due) return;
@@ -9352,7 +9636,7 @@ function exportReminderCalendar() {
       'END:VEVENT\r\n';
   });
   ics += 'END:VCALENDAR\r\n';
-  saveFile('daily-pulse-reminders.ics', ics, 'text/calendar;charset=utf-8');
+  saveFile('daylog-reminders.ics', ics, 'text/calendar;charset=utf-8');
 }
 
 /* ---------- Native alarms (Capacitor shell) ----------
@@ -12088,7 +12372,16 @@ const PJ_PRIO = { 3: 'High', 2: 'Normal', 1: 'Low' };
 const PJ_STALE_DAYS = 7;      // an active project untouched this long is flagged, not hidden
 const PJ_SPARK_WEEKS = 8;
 
-let pjOpen = null;            // project id shown in the detail view, or null for the list
+let pjOpen = null;
+/* Remove items from one list on the open project, with an Undo that puts them back. */
+function pjUndoable(kind, ids, msg) {
+  const pid = pjOpen, p0 = pjById(pid); if (!p0) return;
+  const before = (p0[kind] || []).slice();
+  pjMutate(pid, p => { p[kind] = (p[kind] || []).filter(x => !ids.has(x.id)); });
+  renderProjects();
+  undoToast(msg, () => { pjMutate(pid, p => { p[kind] = restoreItems(p[kind], before, ids); });
+    if (document.getElementById('s-projects').classList.contains('on')) renderProjects(); });
+}            // project id shown in the detail view, or null for the list
 let pjFilter = 'open';        // open | active | planning | paused | done | all
 let pjSort = 'smart';
 let pjAddOpen = false;
@@ -12175,7 +12468,7 @@ function pjHealth(p) {
   if (p.status === 'active' && openWork && idle != null && idle >= PJ_STALE_DAYS)
     return { k: 'stalled', label: `Untouched ${idle}d`, cls: 'warn' };
   if (p.status === 'active' && openWork && idle == null)
-    return { k: 'new', label: 'Not started', cls: 'mute' };
+    return { k: 'new', label: 'No activity yet', cls: 'mute' };   // it IS "In progress" — "Not started" contradicted that
   if (p.status === 'planning') return { k: 'planning', label: 'Planning', cls: 'mute' };
   return { k: 'on', label: 'On track', cls: 'ok' };
 }
@@ -12191,7 +12484,7 @@ function pjNeedsAttention() {
 
 /* ---- list ordering ---- */
 const PJ_SORTS = [
-  { k: 'smart',  label: 'Needs me' },
+  { k: 'smart',  label: 'Needs you' },
   { k: 'due',    label: 'Due date' },
   { k: 'hours',  label: 'Hours' },
   { k: 'prog',   label: 'Progress' },
@@ -12298,7 +12591,7 @@ function renderProjects() {
     </div>
 
     ${all.length ? `<div class="card" style="padding:12px 12px 8px">
-      <div class="seg-row">${tabs.map(t => `<button class="seg-btn ${pjFilter === t.k ? 'on' : ''}" data-pj-filter="${t.k}">${t.label}${counts[t.k] ? ` <span class="pj-c">${counts[t.k]}</span>` : ''}</button>`).join('')}</div>
+      <div class="seg-row pj-filter-row">${tabs.map(t => `<button class="seg-btn ${pjFilter === t.k ? 'on' : ''}" data-pj-filter="${t.k}">${t.label}${counts[t.k] ? ` <span class="pj-c">${counts[t.k]}</span>` : ''}</button>`).join('')}</div>
       <div class="pj-sort">Sort ${PJ_SORTS.map(s => `<button class="pj-sortb ${pjSort === s.k ? 'on' : ''}" data-pj-sort="${s.k}">${s.label}</button>`).join('')}</div>
     </div>` : ''}
 
@@ -12423,7 +12716,7 @@ document.addEventListener('click', (ev) => {
   const t = ev.target;
 
   const openB = t.closest('[data-pj-open]');
-  if (openB) { pjOpen = openB.dataset.pjOpen; navigateTo('projects'); return; }
+  if (openB) { const id = openB.dataset.pjOpen; navigateTo('projects'); pjOpen = id; renderProjects(); return; }
   if (t.id === 'pj-back') { pjOpen = null; renderProjects(); return; }
 
   const fb = t.closest('[data-pj-filter]');
@@ -12475,8 +12768,7 @@ document.addEventListener('click', (ev) => {
   const idel = t.closest('[data-pj-item-del]');
   if (idel) {
     const [kind, id] = idel.dataset.pjItemDel.split(':');
-    pjMutate(pjOpen, p => { p[kind] = (p[kind] || []).filter(x => x.id !== id); });
-    renderProjects(); return;
+    pjUndoable(kind, new Set([id]), kind === 'miles' ? 'Milestone deleted' : 'Step deleted'); return;
   }
   if (t.id === 'pj-mile-add' || t.id === 'pj-step-add') {
     const step = t.id === 'pj-step-add';
@@ -12497,7 +12789,7 @@ document.addEventListener('click', (ev) => {
     renderProjects(); return;
   }
   const ndel = t.closest('[data-pj-note-del]');
-  if (ndel) { pjMutate(pjOpen, p => { p.notes = p.notes.filter(n => n.id !== ndel.dataset.pjNoteDel); }); renderProjects(); return; }
+  if (ndel) { pjUndoable('notes', new Set([ndel.dataset.pjNoteDel]), 'Log entry deleted'); return; }
   if (t.id === 'pj-link-add') {
     let url = (document.getElementById('pj-link-url').value || '').trim();
     if (!url) return;
@@ -12507,7 +12799,7 @@ document.addEventListener('click', (ev) => {
     renderProjects(); return;
   }
   const ldel = t.closest('[data-pj-link-del]');
-  if (ldel) { pjMutate(pjOpen, p => { p.links = p.links.filter(l => l.id !== ldel.dataset.pjLinkDel); }); renderProjects(); return; }
+  if (ldel) { pjUndoable('links', new Set([ldel.dataset.pjLinkDel]), 'Link removed'); return; }
 
   const sw = t.closest('[data-pj-color]');
   if (sw) { pjMutate(pjOpen, p => p.color = sw.dataset.pjColor); renderProjects(); return; }
@@ -14536,15 +14828,16 @@ const NAV_DEF = [
   { k: 'gym',      ico: 'dumbbell', label: 'Gym', adv: true, blurb: 'Workout logging, sets and reps.' },
   { k: 'habits',   ico: 'flame',    label: 'Habits' },
   { k: 'dash',     ico: 'chart',    label: 'Stats',   primary: true },
-  { k: 'cal',      ico: 'calendar', label: 'Cal', adv: true, blurb: 'Your entries on a calendar.' },
+  { k: 'cal',      ico: 'calendar', label: 'Calendar', adv: true, blurb: 'Your entries on a calendar.' },
   // Awards moved OUT of Stats: a fifth tab pushed Health off the edge of a 360px row, and a
   // lifetime trophy case has nothing to do with the Range picker the other tabs share.
   { k: 'awards',   ico: 'star',     label: 'Awards', adv: true, blurb: 'A trophy case worked out from your own log.' },
   { k: 'write',    ico: 'pencil',   label: 'Write', adv: true, blurb: 'A distraction-free writing space.' },
   // Not advanced: keeping memories is the reason many people open a journal at all (v254).
   { k: 'memories', ico: 'image',    label: 'Memories', blurb: 'A page for each moment: the story, people, place, photos and videos.' },
-  { k: 'search',   ico: 'search',   label: 'Search', adv: true, blurb: 'Search everything you have written.' },
-  { k: 'history',  ico: 'history',  label: 'History', adv: true, blurb: 'Every day you have logged, in one list.' },
+  // Not advanced (v255): a journal with no visible way to reread or find what you wrote.
+  { k: 'search',   ico: 'search',   label: 'Search', blurb: 'Search everything you have written.' },
+  { k: 'history',  ico: 'history',  label: 'History', blurb: 'Every day you have logged, in one list.' },
   { k: 'settings', ico: 'settings', label: 'Settings' },
 ];
 function navCfg() {
@@ -14569,6 +14862,13 @@ function navCfg() {
      existing install stuck on the old word. Rename only the exact old default; anything the
      user typed themselves is left alone. */
   cfg.forEach(n => { if (n.k === 'settings' && (n.label === 'More' || n.label === 'More ⚙' || !n.label)) n.label = 'Settings'; });
+  cfg.forEach(n => { if (n.k === 'cal' && (n.label === 'Cal' || !n.label)) n.label = 'Calendar'; });
+  /* Once (v255): History and Search stopped being "advanced". An install that never chose to
+     show them gets them in the menu — the only way to reread or find an old entry. */
+  if (Array.isArray(v0) && localStorage.getItem('dp.navmig255') !== '1') {
+    cfg.forEach(n => { if ((n.k === 'history' || n.k === 'search') && n.hidden) n.hidden = false; });
+    try { localStorage.setItem('dp.navmig255', '1'); safeSet('dp.navcfg', JSON.stringify(cfg)); } catch (e) {}
+  }
   return cfg;
 }
 function saveNavCfg(cfg) { const ok = safeSet('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); return ok; }
@@ -14736,12 +15036,15 @@ function handleBack() {
   const onboard = document.getElementById('onboard'); if (onboard && onboard.classList.contains('on')) return;
   const cur = ((document.querySelector('.screen.on') || {}).id || 's-today').replace('s-', '');
   // 2) step back within a screen's sub-view first (mirror the on-screen "← back" buttons)
-  if (cur === 'write' && curDoc) { curDoc = null; renderWrite(); return; }
+  if (cur === 'write' && curDoc) { docDiscardIfEmpty(curDoc); curDoc = null; renderWrite(); return; }
   if (cur === 'memories' && _memImport && !_memImport.running) { _memImport = null; renderMemories(); return; }
-  if (cur === 'memories' && curMem) { if (memEdit) { memEdit = false; memLinkOpen = false; } else curMem = null; renderMemories(); window.scrollTo(0, 0); return; }
+  if (cur === 'memories' && curMem) { if (docDiscardIfEmpty(curMem)) curMem = null; else if (memEdit) { memEdit = false; memLinkOpen = false; } else curMem = null; renderMemories(); window.scrollTo(0, 0); return; }
   if (cur === 'plans' && curPlan) { curPlan = null; renderPlans(); return; }
   if (cur === 'gym' && gymView === 'day') { gymView = 'home'; renderGym(); return; }
+  if (cur === 'custom' && _customFrom) { const f = _customFrom; _customFrom = null; customPage = null; show(f); return; }
   if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
+  if (cur === 'money' && (mnAddOpen || mnAcctOpen || mnTxEdit || mnImport)) { mnAddOpen = false; mnAcctOpen = null; mnTxEdit = null; mnImport = null; renderMoney(); return; }
+  if (cur === 'projects' && pjOpen) { pjOpen = null; renderProjects(); window.scrollTo(0, 0); return; }
   if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   if (cur === 'settings' && settingsPage) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
   if (cur === 'history' && histDay) { histDayClose(); return; }
@@ -14819,8 +15122,11 @@ function show(name) {
   // must never survive navigating away and come back still armed.
   if (name !== 'settings') { try { wipeReset(); } catch (e) {} settingsPage = null; }
   if (name !== 'today') _editFromHist = null;          // "back to the day" only from the Log it opened
+  if (name !== 'custom') _customFrom = null;          // "back to Habits" only from the Customize page Habits opened
   if (name !== 'today' && name !== 'history') _dayFrom = null;
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
+  if (leaving) { const was = (document.querySelector('.screen.on') || {}).id;
+    try { if (was === 's-memories' && curMem) docDiscardIfEmpty(curMem); if (was === 's-write' && curDoc) docDiscardIfEmpty(curDoc); } catch (e) {} }
   if (leaving) { voiceSaveIfRecording(); voiceHalt(); }
   mediaViewClose();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
@@ -14829,6 +15135,7 @@ function show(name) {
   (RENDER[name] || (()=>{}))();
   if (sec) decorateHeaders(sec);   // swap leading header/menu emoji → clean icons app-wide
   renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)
+  try { nowPillRefresh(); } catch (e) {}
   window.scrollTo(0, 0);
 }
 document.addEventListener('click', (ev) => {
@@ -14862,6 +15169,8 @@ function navigateTo(name) {
   if (name === 'write') curDoc = null;                      // Write opens the article list
   if (name === 'memories') { curMem = null; memEdit = false; memLinkOpen = false; }   // Memories opens the timeline
   if (name === 'history') histDay = null;                   // History opens the list of days
+  if (name === 'projects') pjOpen = null;                   // Projects opens the list
+  _customFrom = null;
   _editFromHist = null; _dayFrom = null;
   /* Picking Settings — from the menu, a pinned tab or More — opens its HOME, not whichever
      sub-page was last open, and disarms a half-started delete. Done here and not in show():
@@ -14957,7 +15266,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'clock','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;
@@ -15055,10 +15364,9 @@ function renderOnboard() {
     <p class="ob-lead">Your whole life in one private tracker.</p>
     <div class="ob-privacy">🔒 <b>No Google account. No sign-up. No cloud.</b><br>Your data lives only on this phone — nothing is ever uploaded.</div>
     <div class="ob-points">
-      <div>🔒 <b>Private by design</b> — everything stays on your phone. No account, no cloud, no tracking.</div>
       <div>⏱ <b>Track anything</b> — habits, mood, your day hour-by-hour, gym, journal, plans.</div>
       <div>🎨 <b>Make it yours</b> — every habit, field, workout and tab is customizable.</div>
-      <div>📦 <b>One thing to know</b> — because it's fully private, your data lives ONLY on this phone. Export a backup now and then (More ▸ Your data) — uninstalling the app erases everything.</div>
+      <div>📦 <b>One thing to know</b> — because it's fully private, your data lives ONLY on this phone. Export a backup now and then (Settings ▸ Backup) — uninstalling the app erases everything.</div>
     </div>
     <button class="btn btn-primary" data-ob-next>Get started</button>
     <button class="ob-restore-link" data-ob-restore>Already used Daylog? <b>Restore your data</b> →</button>`;
@@ -15073,7 +15381,7 @@ function renderOnboard() {
     <p class="ob-lead">Two ways to bring your data onto this phone.</p>
     <div class="card" style="text-align:left">
       <b>From a backup file</b>
-      <p class="hint" style="margin:4px 0 10px">The <code>daily-pulse-backup-….json</code> you exported — Downloads, Drive, wherever you kept it.</p>
+      <p class="hint" style="margin:4px 0 10px">The <code>daylog-backup-….json</code> (or older <code>daily-pulse-backup-….json</code>) you exported — Downloads, Drive, wherever you kept it.</p>
       <button class="btn btn-primary" id="ob-restore-file-btn" style="width:100%">Choose the backup file</button>
       <input type="file" id="ob-restore-file" accept=".json,application/json" style="display:none">
     </div>
@@ -15095,7 +15403,7 @@ function renderOnboard() {
       <input type="text" id="ob-new-habit" placeholder="Add your own… (e.g. 🌅 Wake at 6)" autocomplete="off">
       <button class="btn btn-primary btn-sm" id="ob-add-habit">Add</button>
     </div>
-    <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>More ▸ Customize</b>.</p>
+    <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>Settings ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Next</button>`;
   if (obStep === 2) body = `
     <div class="ob-emoji">⏰</div>
@@ -15186,11 +15494,11 @@ document.addEventListener('click', (ev) => {
 const TOUR = [
   { s: 'today', t: '.mm-card', alt: '.mm-cell', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
   { s: 'today', t: '#log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
-  { s: 'today', t: '#health-sync', alt: '.h2-icon', h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
+  { s: 'today', t: '#health-sync', opt: true, h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
   { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
-  { s: 'dash', t: '.pat-row', alt: '.pm-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
-  { s: 'dash', t: '[data-dashtab="health"]', h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
-  { s: '__menu', t: '#drawer-more-toggle', alt: '.drawer-row', h: 'Everything else lives in Menu', b: 'Search your entire life, History, Gym, Calendar, Focus timers… and pin ANY of these to the bottom bar with “Edit this menu”.' },
+  { s: 'dash', t: '#patterns-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
+  { s: 'dash', t: '[data-dashtab="health"]', native: true, h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
+  { s: '__menu', t: '#drawer-more-toggle', alt: '.drawer-row', h: 'Everything else lives in Menu', b: 'History and Search to reread anything you wrote, Memories, and more under “More features”. Pin any of them to the bottom bar with “Edit this menu”.' },
   { s: 'today', t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
 ];
 let tourIdx = -1;
@@ -15201,7 +15509,10 @@ function endTour() {
   localStorage.setItem('dp.toured', '1');
 }
 function showTourStep() {
-  const st = TOUR[tourIdx];
+  let st = TOUR[tourIdx];
+  /* Health steps only in the Play app (the web build has no Health Connect), and a step whose
+     only target is missing is skipped rather than spotlighting whatever card came first. */
+  while (st && st.native && !window.Capacitor) st = TOUR[++tourIdx];
   if (!st) { endTour(); toast('Enjoy Daylog 🔥'); return; }
   if (st.s === '__menu') { try { openDrawer(); } catch (_) {} }
   else {
@@ -15213,6 +15524,7 @@ function showTourStep() {
   setTimeout(() => {
     let el = st.t ? document.querySelector(st.t) : null;
     if (!el && st.alt) el = document.querySelector(st.alt);
+    if (!el && st.opt) { tourIdx++; showTourStep(); return; }
     if (!el) { setTimeout(() => renderTourOverlay(st, null), 30); return; }
     try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); }
     catch (_) { try { el.scrollIntoView({ block: 'center' }); } catch (_) {} }
@@ -15308,6 +15620,7 @@ setTimeout(() => {
   try {
     /* Photos and voice notes count: they are the one thing nothing else can recreate, and
        someone who adds a photo a day for a week has more to lose than ten logged moods. */
+    if (sampleActive()) return;   // sample days are not something to lose
     const n = Object.keys(DB.entries()).length, m = mediaTotals(), pv = m.photos + m.voice;
     if (n < 10 && pv < 5) return;
     const last = +localStorage.getItem('dp.lastBackup') || 0;
@@ -15317,7 +15630,10 @@ setTimeout(() => {
     const stale = Date.now() - last > 14 * D || (pv >= 5 && newestMedia > last && Date.now() - last > 7 * D);
     if (stale && Date.now() - nudged > 7 * D) {
       localStorage.setItem('dp.backupNudge', String(Date.now()));
-      toast('💾 ' + (n ? n + ' days' : '') + (n && pv ? ' and ' : '') + (pv ? pv + ' photos/voice notes' : '') + ', no recent backup — export one in Settings ▸ Backup', true);
+      // Not the red error style, and one tap to act on it instead of a path to go and find.
+      if (document.getElementById('tour') || document.querySelector('#onboard.on')) return;
+      undoToast('💾 ' + (n ? n + ' days' : '') + (n && pv ? ' and ' : '') + (pv ? pv + ' photos/voice notes' : '') + ' with no recent backup',
+        () => { navigateTo('settings'); settingsPage = 'data'; renderSettings(); window.scrollTo(0, 0); }, 'Back up');
     }
   } catch (_) {}
 }, 2500);

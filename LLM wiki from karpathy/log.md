@@ -1,3 +1,44 @@
+## 2026-11-07 — v255: the real-user UX pass (built, tested, deploying)
+
+Kishore: "lots of UI and UX gaps … think like a real user", then "deploy and test it properly".
+Three auditor agents clicked through every screen at 360/390px, dark and light, new user and
+day-40 user (~45 findings). **Fixed in v255:**
+- **Undo** (`undoToast`, `restoreItems`) for task / plan-step / project-step / note / timebox
+  deletes, Clear completed, and hiding a Log card. A restore re-stamps the item newer than its
+  delete record, so sync keeps it. Time blocks have no undo (separate `timelogDel` tombstones).
+- **Habits screen**: "Mark done" per habit (`habitTodayToggle`, writes today's entry, reloads the
+  Log draft), "Edit habits", empty state, week-column heatmap with today outlined. Habit tap is
+  now tick ↔ untick; skip is the toast's "Skip today" (was done → SKIP → clear).
+- **Today ring**: default 0s no longer count; the mood grid counts (mood/energy are hidden fields).
+  Past-day edit says "This day", no streak/week lines.
+- **Nav**: History + Search not advanced (one-time `dp.navmig255` unhide for existing installs);
+  "Cal" → "Calendar". Fresh install now shows 9 destinations (test threshold raised to 9).
+- **Reminders**: catch-up skips a reminder whose `listAt` stamp is after its time today (adding a
+  21:00 reminder at 22:46 rang a MISSED alarm at once; web/PWA only).
+- **Stats**: storage `.st-row` CSS was unscoped and squashed the Mood tile to 18px — scoped to `.st-rows`.
+- **What's new**: 4 newest + "Earlier changes", list scrolls inside the box, ✕ and backdrop close.
+- **Search**: every word must match (not the phrase), whole-word snippets, all words bolded,
+  clear ✕; memories' place/people/tags searchable.
+- **Memories/Write**: `docRenameLinks` rewrites `[[old]]` on title change (and an untitled memory's
+  date change); `docDiscardIfEmpty` drops a page left blank on Back/Done/leaving.
+- **Back**: open project → list; Customize opened from Habits/Gym → back there; Money forms close.
+- **Smaller**: tour skips absent Health steps and targets `#patterns-card`; contradictory patterns
+  hidden; untyped inputs styled (`input:not([type])`); 44px hit areas on checkboxes/×/drag;
+  Enter adds in Projects/Time; Time "All blocks" list + nearest-block tap; Focus "⏹ End" needs two
+  taps, clamped values shown, (min) labels; Waves solid Stop + a "playing" bar on every screen;
+  timebox defaults to the next half hour; Gym "Finish workout", last reps as placeholder, "last done"
+  tag, Edit link; project "No activity yet"/"Needs you"; feedback draft kept; backup nudge is a
+  neutral toast with "Back up" (and never for sample data); exports named `daylog-*`; History mood
+  emoji matches the mood; onboarding says Settings ▸ not More ▸.
+Tests 1098 × 4 timezones (+31 new; 9/10 mutations caught). Both browser passes: no page errors,
+no sideways scroll.
+**Deferred (not done):** Log screen reorder (mood first, date in header); Stats jargon (r=…,
+Polymath, Range picker scope); inline edit of task/step text; one add/back pattern across
+Tasks/Plans/Projects; Tabs & navigation labelled controls; web/PWA history-based Back
+(popstate); imported memories' story block first; Money sticky Record + last-used category;
+Ask admitting ignored words; delete-everything counting memories/notes/money; timebox
+tomorrow/copy-yesterday; Settings Appearance row (Theme renamed "Theme & dark mode" only).
+
 ## 2026-11-04 — v254 DEPLOYED (Memories + every fix since v253)
 
 Kishore: "then pushed to live", then "try noww". Two deploy attempts failed on a GitHub outage

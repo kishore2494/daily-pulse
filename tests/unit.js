@@ -1764,8 +1764,10 @@
     localStorage.removeItem('dp.navcfg');
     const fresh = navCfg();
     const visible = fresh.filter(n => !n.hidden).map(n => n.k);
+    // 9 since v255: History and Search are core for a journal (4 in the bar, 5 in the menu).
     ok('a fresh install shows a handful of destinations, not nineteen',
-      visible.length <= 7, visible.join(','));
+      visible.length <= 9, visible.join(','));
+    ok('History and Search are visible on a fresh install', visible.includes('history') && visible.includes('search'));
     ok('the Log is always there', visible.includes('today'));
     ok('and Settings', visible.includes('settings'));
     ok('every hidden one is an advanced one, never a core screen',
@@ -2298,7 +2300,7 @@
       navigateTo('today');
       const chip = () => document.querySelector(`#s-today [data-habit="${h}"]`);
       if (goalFor(h)) ok('(first habit is a plain one)', true);
-      else { chip().click(); chip().click(); }             // done → skip → cleared
+      else chip().click();                                  // done → cleared (v255: one tap unticks)
       flushAutosave();
       ok('(un-ticked locally)', !(h in (DB.entry(T0).habits || {})) && DB.entry(T0).habitsAt[h] > olderTick[T0].habitsAt[h]);
       applyRemoteState({ touched: Date.now() + 5000, entries: olderTick });
@@ -3259,6 +3261,124 @@
       window.toast = tSnap; _media.clear(); mSnap.forEach((v, k) => _media.set(k, v)); _mediaReady = rdySnap;
       curMem = null; memEdit = false; memFilter = null; memLinkOpen = false;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
+  // ---- v255: UX pass — undo, habits screen, ring, search, reminders, links, empty pages ----
+  (function () {
+    const keys = ['dp.tasks', 'dp.plans', 'dp.notes', 'dp.docs', 'dp.entries', 'dp.reminders', 'dp.listAt', 'dp.listDel', 'dp.timebox', 'dp.navcfg', 'dp.navmig255', 'dp.logsec', 'dp.fbDraft'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const undo = () => document.querySelector('#toast .toast-undo');
+    try {
+      // restoreItems keeps other edits and puts the removed ones back in place
+      const before = [{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { id: 'c', v: 1 }];
+      const r = restoreItems([{ id: 'a', v: 2 }, { id: 'c', v: 1 }, { id: 'd', v: 1 }], before, new Set(['b']));
+      ok('restoreItems: the deleted item returns where it was, later edits and additions are kept',
+        r.map(x => x.id + x.v).join() === 'a2,b1,c1,d1', JSON.stringify(r));
+
+      // a task delete can be undone, and the restored task wins over its delete record
+      DB.saveTasks([{ id: 't1', text: 'one', done: false }, { id: 't2', text: 'two', done: true }]);
+      navigateTo('tasks');
+      document.querySelector('[data-del="t1"]').click();
+      ok('deleting a task offers Undo', DB.tasks().length === 1 && !!undo());
+      undo().click();
+      ok('Undo brings the task back', DB.tasks().map(t => t.id).join() === 't1,t2');
+      ok('…stamped newer than its delete, so sync keeps it', !((listMeta('dp.listDel').tasks || {}).t1) && (listMeta('dp.listAt').tasks || {}).t1 > 0);
+      document.getElementById('clear-done').click();
+      ok('Clear completed offers Undo too', DB.tasks().length === 1 && /Cleared 1 done task/.test(document.getElementById('toast').textContent));
+      undo().click();
+      ok('…and puts the done task back', DB.tasks().length === 2);
+      tSnap('plain');
+      ok('a plain toast drops the Undo button', !undo());
+
+      // plan steps
+      DB.savePlans([{ id: 'p1', name: 'Trip', items: [{ id: 'i1', text: 'tickets', done: false }, { id: 'i2', text: 'bags', done: true }] }]);
+      navigateTo('plans'); curPlan = 'p1'; renderPlans();
+      document.querySelector('[data-planitem-del="i1"]').click();
+      undo().click();
+      ok('a deleted plan step comes back with Undo', DB.plans()[0].items.map(i => i.id).join() === 'i1,i2');
+
+      // Habits screen: tick today without going to the Log
+      const h = HABITS.find(x => !goalFor(x.key)), T = todayStr();
+      localStorage.setItem('dp.entries', '{}');
+      navigateTo('habits');
+      const hb = () => document.querySelector(`#s-habits [data-hab-today="${h.key}"]`);
+      ok('every habit card has a "Mark done" button for today', !!hb() && /Mark done/.test(hb().textContent));
+      hb().click();
+      ok('tapping it ticks the habit for today', hVal(DB.entry(T), h.key) === H_DONE && hb().classList.contains('on'));
+      ok('…and the Log draft for today has it too, before the Log is even opened', logDate === T && hVal(draft, h.key) === H_DONE);
+      navigateTo('today');
+      ok('…and the Log shows it ticked', hVal(draft, h.key) === H_DONE);
+      navigateTo('habits'); hb().click();
+      ok('tapping again unticks, not skips', !(h.key in (DB.entry(T).habits || {})));
+      undo().click();
+      ok('"Skip today" on the toast marks it skipped', hVal(DB.entry(T), h.key) === H_SKIP);
+      ok('the heatmap is one column per week with today outlined', !!document.querySelector('#s-habits .heat-wk .cell.today'));
+
+      // the ring: zeros are not "logged", the mood grid counts
+      const zero = todayCompletion({ tasksDone: 0, tasksPlanned: 0, habits: {} });
+      ok('a fresh day with only the default zeros is 0% logged', zero.done === 0, JSON.stringify(zero));
+      if (!logSecHidden('moodgrid')) ok('a mood-grid tap moves the ring', todayCompletion({ mood: 7, energy: 6, habits: {} }).done === 1);
+
+      // search: every word, anywhere
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { journal: 'Argued with the landlord about the deposit today', habits: {} } }));
+      const sr = runSearch('landlord deposit');
+      ok('search matches every word, not the exact phrase', /1 result/.test(sr) && /<b>landlord<\/b>/.test(sr) && /<b>deposit<\/b>/.test(sr));
+      ok('a word that is not there finds nothing', /Nothing found/.test(runSearch('landlord cat')));
+      const stx = 'x'.repeat(20) + ' alphabetic betamax gammaray deltawing epsilon zeta eta theta landlord';
+      const first = snippet(stx, 'landlord').replace(/^…/, '').split(' ')[0];
+      ok('a snippet starts on a whole word', stx.split(' ').includes(first), first);
+
+      // reminders: one added after its time today does not ring until tomorrow
+      const now = new Date(), past = new Date(now.getTime() - 3600000);
+      if (past.getDate() === now.getDate()) {
+        const hhmm = String(past.getHours()).padStart(2, '0') + ':' + String(past.getMinutes()).padStart(2, '0');
+        const ns = nativeShell; window.nativeShell = () => false;
+        const fa = window.fireAlarm; let rang = 0; window.fireAlarm = () => { rang++; };
+        DB.saveReminders([{ id: 'rz', label: 'Log', time: hhmm, enabled: true, mode: 'alarm' }]);
+        localStorage.removeItem('dp.notified.rz.' + todayStr());
+        checkReminders(true);
+        ok('a reminder added after its time today does not ring at once', rang === 0 && !!localStorage.getItem('dp.notified.rz.' + todayStr()));
+        const at = listMeta('dp.listAt'); at.reminders.rz = past.getTime() - 60000; safeSet('dp.listAt', JSON.stringify(at));
+        localStorage.removeItem('dp.notified.rz.' + todayStr());
+        checkReminders(true);
+        ok('…but one set earlier and missed still rings on reopen', rang === 1);
+        window.nativeShell = ns; window.fireAlarm = fa;
+        localStorage.removeItem('dp.notified.rz.' + todayStr());
+      }
+
+      // links follow a rename; an empty new page is not kept
+      DB.saveDocs([{ id: 'dA', kind: 'memory', title: 'Goa', date: T, blocks: [{ id: 'b1', t: 'p', text: '' }] },
+        { id: 'dB', kind: 'memory', title: 'Plans', date: T, blocks: [{ id: 'b2', t: 'p', text: 'see [[goa]] and [[Elsewhere]]' }] }]);
+      ok('renaming a page rewrites the links to it', docRenameLinks('dA', 'Goa', 'Goa trip') === 1 && DB.docs().find(d => d.id === 'dB').blocks[0].text === 'see [[Goa trip]] and [[Elsewhere]]');
+      DB.saveDocs(DB.docs().concat([{ id: 'dC', kind: 'memory', title: 'Goa trip', date: T, blocks: [] }]));
+      ok('…but not when another page still has the old title', docRenameLinks('dA', 'Goa trip', 'Beach') === 0);
+      DB.saveDocs(DB.docs().concat([{ id: 'dE', kind: 'memory', title: '', date: T, people: [], tags: [], blocks: [{ id: 'b9', t: 'p', text: '  ' }] }]));
+      ok('a page with nothing in it is discarded', docDiscardIfEmpty('dE') && !DB.docs().some(d => d.id === 'dE'));
+      ok('a page with words is kept', !docDiscardIfEmpty('dB') && DB.docs().some(d => d.id === 'dB'));
+      navigateTo('memories');
+      document.querySelector('[data-mem-new]').click();
+      const n0 = memList().length;
+      document.querySelector('[data-mem-done]') && document.querySelector('[data-mem-done]').click();
+      ok('New then Done with nothing written leaves no blank memory behind', memList().length === n0 - 1);
+
+      // History and Search: visible for an existing install once, Cal is called Calendar
+      localStorage.setItem('dp.navcfg', JSON.stringify(NAV_DEF.map(n => Object.assign({}, n, n.k === 'history' || n.k === 'search' || n.k === 'cal' ? { hidden: true, label: n.k === 'cal' ? 'Cal' : n.label } : {}))));
+      localStorage.removeItem('dp.navmig255');
+      let nc = navCfg();
+      ok('an existing install gets History and Search back once', !nc.find(n => n.k === 'history').hidden && !nc.find(n => n.k === 'search').hidden);
+      ok('"Cal" is renamed Calendar, and a hidden screen stays hidden', nc.find(n => n.k === 'cal').label === 'Calendar' && nc.find(n => n.k === 'cal').hidden);
+      nc.find(n => n.k === 'history').hidden = true; localStorage.setItem('dp.navcfg', JSON.stringify(nc));
+      ok('…and only once: hiding History again sticks', navCfg().find(n => n.k === 'history').hidden);
+
+      // timebox default start is the next half hour
+      ok('the timebox form starts at the next half hour', /^\d\d:(00|30)$/.test(tbNext(0)) || tbNext(0) === '23:59');
+    } finally {
+      window.toast = tSnap;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      curPlan = null; curMem = null; memEdit = false;
       navigateTo('today');
     }
   })();
