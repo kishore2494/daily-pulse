@@ -598,5 +598,51 @@
     _mediaDbP = null; _media.clear(); _mediaReady = false;
     if (notesSnap != null) localStorage.setItem('dp.notes', notesSnap); else localStorage.removeItem('dp.notes');
   }
+
+  /* ---------- v257: Back in a browser / installed web app ----------
+     The real session history, walked with history.back(): jsdom fires popstate for
+     same-document entries the way a browser does, so this is the back gesture end to end. */
+  {
+    const ob = document.getElementById('onboard'), obWas = ob.classList.contains('on'), tSnap = window.toast;
+    const on = id => document.getElementById('s-' + id).classList.contains('on');
+    const exitOn = () => !!document.querySelector('#confirm-exit.on');
+    const at = () => (history.state || {}).dlBack;
+    const toasts = [];
+    try {
+      ob.classList.remove('on'); saveSheetClose(); shareSheetClose(); window.toast = m => toasts.push(m);
+      document.body.click(); await sleep(10);   // a tap tops the guards up
+      const len = history.length, top = at();
+      ok('browser Back: Daylog sits on its top guard entry', typeof top === 'number' && top >= 3, history.state);
+      navigateTo('settings'); settingsPage = 'data'; renderSettings();
+      history.back(); await until(() => settingsPage === null, 1000);
+      ok('browser Back leaves a Settings page for Settings home', on('settings') && settingsPage === null);
+      ok('…by spending one guard, never adding one', history.length === len && at() === top - 1, [history.length, len, history.state]);
+      openDrawer();
+      history.back(); await until(() => !document.getElementById('drawer').classList.contains('on'), 1000);
+      ok('browser Back closes the drawer', !document.getElementById('drawer').classList.contains('on') && on('settings'));
+      history.back(); await until(() => on(defaultTab()), 1000);
+      ok('browser Back from a tab goes to the home tab', on(defaultTab()));
+      history.back(); await until(exitOn, 1000);
+      ok('browser Back on the home tab asks before leaving', exitOn() && history.length === len);
+      history.back(); await until(() => !exitOn(), 1000);
+      ok('browser Back with the question open answers Stay', !exitOn());
+      document.body.click(); await sleep(10);
+      ok('a tap tops the guards back up, history the same length', at() === top && history.length === len, [history.state, history.length, len]);
+      // jsdom's tab starts on Daylog, like a launch from the home-screen icon: nothing before it
+      showExitConfirm(); document.querySelector('#confirm-exit [data-exit-yes]').click();
+      await until(() => at() === 0, 1000); await sleep(20);
+      ok('Exit with nothing before Daylog drops to its own entry and stays there', at() === 0 && !exitOn(), history.state);
+      ok('…telling them one more Back closes it', toasts.some(m => /once more/.test(m)), toasts);
+      document.body.click(); await sleep(10);
+      ok('…and a tap instead re-arms it, without growing history', at() === top && history.length === len, [history.state, history.length, len]);
+    } catch (e) {
+      fail++; R.push('FAIL the browser-Back block threw: ' + (e && e.stack || e));
+    } finally {
+      window.toast = tSnap;
+      if (obWas) ob.classList.add('on');
+      const ce = document.getElementById('confirm-exit'); if (ce) ce.classList.remove('on');
+      closeDrawer(); navigateTo('today');
+    }
+  }
   return { pass, fail, results: R };
 })();

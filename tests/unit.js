@@ -3740,6 +3740,100 @@
     }
   })();
 
+  // ---- v257: Back in a browser / installed web app (history guards + popstate) ----
+  // The history calls are stubbed so this block never moves the real session history; the async
+  // suite walks the real one with history.back().
+  (function () {
+    const H = history, goS = H.go, pushS = H.pushState, replS = H.replaceState, capSnap = window.Capacitor, tSnap = window.toast;
+    const ob = document.getElementById('onboard'), obWas = ob.classList.contains('on');
+    const on = id => document.getElementById('s-' + id).classList.contains('on');
+    const exitOn = () => !!document.querySelector('#confirm-exit.on');
+    const pop = n => window.dispatchEvent(new PopStateEvent('popstate', { state: n === null ? null : { dlBack: n } }));
+    let vars = null, gos = [], pushed = [], replaced = [], toasts = [];
+    try {
+      vars = [_hbAt, _hbTop, _hbLeaving];
+      ok('the web build keeps Back guards in history (no Capacitor here)', _hbOn === true && typeof (H.state || {}).dlBack === 'number', H.state);
+      H.go = d => gos.push(d); H.pushState = s => pushed.push(s); H.replaceState = s => replaced.push(s);
+      window.toast = m => toasts.push(m);
+      ob.classList.remove('on'); _hbLeaving = false;
+      saveSheetClose(); shareSheetClose();   // an earlier block leaves the save sheet open, and Back would close that first
+
+      navigateTo('settings'); settingsPage = 'data'; renderSettings();
+      _hbAt = 4; _hbTop = 6; pop(3);
+      ok('a popstate onto the guard below is Back: Settings page → Settings', on('settings') && settingsPage === null && _hbAt === 3);
+      pop(2);
+      ok('…and the next one goes to the home tab', on(defaultTab()) && _hbAt === 2);
+      openDrawer(); pop(3);
+      ok('a popstate onto a HIGHER guard is Forward and undoes nothing', document.getElementById('drawer').classList.contains('on') && _hbAt === 3);
+      closeDrawer();
+      _hbAt = 1; pushed = []; pop(0);
+      ok('spending the last guard asks before exiting…', exitOn());
+      ok('…and re-arms a full stack of guards', pushed.length === HB_DEPTH && pushed.every((s, i) => s.dlBack === i + 1) && _hbAt === HB_DEPTH && _hbTop === HB_DEPTH, pushed);
+      pushed = [];
+      pop(null);
+      ok('an entry we did not make (a # link) is adopted as the next guard', _hbAt === HB_DEPTH + 1 && _hbTop === HB_DEPTH + 1 && replaced.length && replaced[replaced.length - 1].dlBack === HB_DEPTH + 1 && exitOn(), replaced);
+
+      // Exit, when a page came before Daylog: back past all of our entries to it
+      _hbAt = _hbTop = HB_DEPTH;
+      Object.defineProperty(H, 'length', { value: HB_DEPTH + 4, configurable: true });
+      document.querySelector('#confirm-exit [data-exit-yes]').click();
+      ok('Exit goes back past every Daylog entry to the page before it', gos.length === 1 && gos[0] === -(HB_DEPTH + 1) && !exitOn() && _hbLeaving, gos);
+      openDrawer(); pop(HB_DEPTH - 1);
+      ok('…and the Back that follows is them leaving, not a step back', document.getElementById('drawer').classList.contains('on'));
+      closeDrawer();
+      // Exit, when Daylog is the first page (a home-screen launch): nothing to go back to
+      gos = []; _hbLeaving = false; _hbAt = _hbTop = HB_DEPTH;
+      Object.defineProperty(H, 'length', { value: HB_DEPTH + 1, configurable: true });
+      showExitConfirm(); document.querySelector('#confirm-exit [data-exit-yes]').click();
+      ok('with nothing before Daylog, Exit drops to its own entry', gos.length === 1 && gos[0] === -HB_DEPTH && _hbLeaving, gos);
+      ok('…and says one more Back closes it', /once more/.test(toasts.join('|')), toasts);
+      gos = []; _hbAt = 0; document.body.click();
+      ok('a tap instead of Back means they stayed: guards back on', !_hbLeaving && _hbAt === HB_DEPTH && pushed.length === HB_DEPTH, [_hbLeaving, _hbAt, pushed.length]);
+
+      // the welcome screens: no guards, and a Back there leaves rather than vanishing
+      ob.classList.add('on'); pushed = []; _hbAt = 0; hbTopUp();
+      ok('no guards are pushed while the welcome screens show', pushed.length === 0 && _hbAt === 0);
+      _hbAt = 3; _hbTop = HB_DEPTH; _hbLeaving = false; gos = [];
+      Object.defineProperty(H, 'length', { value: HB_DEPTH + 3, configurable: true });
+      pop(2);
+      ok('Back during onboarding (old guards from before a reload) leaves Daylog at once', gos.length === 1 && gos[0] === -3 && _hbLeaving, gos);
+      ob.classList.remove('on'); _hbLeaving = false;
+
+      // a reload must not stack more guards; a first load marks its entry and pushes them
+      pushed = []; replaced = [];
+      Object.defineProperty(H, 'state', { value: { dlBack: HB_DEPTH }, configurable: true });
+      hbSync();
+      ok('a reload on a guard entry reuses the guards (no growing pile)', pushed.length === 0 && replaced.length === 0 && _hbAt === HB_DEPTH);
+      Object.defineProperty(H, 'state', { value: { dlBack: 2 }, configurable: true });
+      hbSync();
+      ok('…and one lower in the stack tops up only what is missing', pushed.length === HB_DEPTH - 2 && pushed[0].dlBack === 3 && replaced.length === 0, pushed);
+      pushed = [];
+      Object.defineProperty(H, 'state', { value: null, configurable: true });
+      hbSync();
+      ok('a first load marks its own entry 0 and pushes the guards above it', replaced.length === 1 && replaced[0].dlBack === 0 && pushed.length === HB_DEPTH, [replaced, pushed.length]);
+      delete H.state;
+
+      // the Play app: Capacitor owns Back, Exit really exits, and history is never touched
+      let exited = 0; gos = [];
+      window.Capacitor = { Plugins: { App: { exitApp: () => { exited++; } } } };
+      showExitConfirm(); document.querySelector('#confirm-exit [data-exit-yes]').click();
+      ok('in the Play app Exit calls exitApp and leaves history alone', exited === 1 && gos.length === 0);
+      _hbOn = false; hbInit();
+      ok('…and the web guard is never installed there', _hbOn === false);
+      _hbOn = true;
+    } catch (e) {
+      ok('the Back-guard block ran', false, String(e && e.message || e));
+    } finally {
+      H.go = goS; H.pushState = pushS; H.replaceState = replS; window.toast = tSnap;
+      delete H.length; delete H.state;
+      if (capSnap === undefined) delete window.Capacitor; else window.Capacitor = capSnap;
+      if (vars) { _hbAt = vars[0]; _hbTop = vars[1]; _hbLeaving = vars[2]; }
+      const ce = document.getElementById('confirm-exit'); if (ce) ce.classList.remove('on');
+      if (obWas) ob.classList.add('on'); else ob.classList.remove('on');
+      closeDrawer(); navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
