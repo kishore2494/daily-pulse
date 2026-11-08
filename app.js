@@ -713,7 +713,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
    Deliberately conservative: a lone zero on an auto-mirrored counter is not content, and an
    all-false habits map is not content — but a SKIP (0) is, because choosing to skip is a
    choice you tapped. */
-const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt'];
+const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt', 'autoAt'];
 function entryHasContent(en) {
   if (!en) return false;
   for (const k of Object.keys(en)) {
@@ -1097,6 +1097,41 @@ function mergeHabits(a, b) {
   if (Object.keys(habitsAt).length) out.habitsAt = habitsAt;
   return out;
 }
+/* Fields other screens fill in on the day: the Time tracker's timeSummary, the Gym's workout
+   count and list. Writing one used to bump the day's updatedAt, and the day merge gives every
+   shared field to the newer updatedAt. So a phone that had not pulled yet (its running timer
+   re-summed on every return to the app, or one gym tick) made its OLD mood, journal and sleep
+   beat what had been typed on the other phone, and that went back up to both phones. The other
+   way round, a mood typed on a phone holding an old time summary carried that summary over the
+   other phone's newer one. These fields now carry their own stamps, autoAt[field], and leave
+   updatedAt alone: updatedAt is when the person last edited the day. */
+const ENTRY_AUTO = ['workoutsDone', 'workoutDetail', 'timeSummary'];
+function entryAutoSet(en, vals) {
+  const now = Date.now();
+  Object.keys(vals).forEach(k => {
+    if (en[k] === vals[k]) return;   // unchanged: a stamp of now would claim this copy is the newest
+    en[k] = vals[k];
+    (en.autoAt = Object.assign({}, objOf(en.autoAt)))[k] = now;
+  });
+  return en;
+}
+/* Per field, the newer stamp wins. An entry from an older app version has no stamps; its
+   updatedAt stands in, as for habits. A tie leaves what the day merge chose. */
+function mergeAuto(a, b, into) {
+  a = objOf(a); b = objOf(b);
+  const ta = objOf(a.autoAt), tb = objOf(b.autoAt), at = {};
+  const stamp = (e, t, k) => +t[k] || (k in e ? (Date.parse(e.updatedAt) || 1) : 0);
+  ENTRY_AUTO.forEach(k => {
+    const sa = stamp(a, ta, k), sb = stamp(b, tb, k), win = sa > sb ? a : sb > sa ? b : null;
+    if (win) { if (k in win) into[k] = win[k]; else delete into[k]; }
+  });
+  // in a's key order, so the same day with the same stamps is the same JSON (no push back and forth)
+  new Set([...Object.keys(ta), ...Object.keys(tb)]).forEach(k => {
+    if (+ta[k] || +tb[k]) at[k] = Math.max(stamp(a, ta, k), stamp(b, tb, k));
+  });
+  if (Object.keys(at).length) into.autoAt = at; else delete into.autoAt;
+  return into;
+}
 /* ---------- Gym days sync tick by tick ----------
    dp.gym merged as a union: a tick on either phone was kept, so un-ticking an exercise, or
    changing what you typed against it, came back from the other phone's older copy. Every save
@@ -1155,10 +1190,11 @@ function applyRemoteState(remote) {
   let remoteBehind = false;   // this phone holds something the Sheet's copy lacks
   const skippedSections = [];
 
-  // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields,
-  // but fields present on only one side are always kept — so a machine-generated
-  // partial write (timeSummary, gym workoutsDone) on a stale device can NEVER
-  // clobber another device's journal/mood/habits for that day. habits merge deeply.
+  // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields, but fields
+  // present on only one side are always kept. Habits merge per habit (mergeHabits), and the
+  // fields the Time tracker and the Gym fill in by their own stamps (mergeAuto), since writing
+  // them does not move updatedAt: a stale phone's time summary or gym tick must not carry its
+  // old mood and journal over the other phone's.
   if (remote.entries && !(typeof remote.entries === 'object' && !Array.isArray(remote.entries))) skippedSections.push('entries');
   else if (remote.entries) {
     const local = DB.entries();
@@ -1171,6 +1207,7 @@ function applyRemoteState(remote) {
       // per habit: the newest change wins, an un-tick included. A day with no habits on either
       // side gets none: an empty one added here made it differ from both phones' copies.
       if (l.habits || r.habits || l.habitsAt || r.habitsAt) Object.assign(merged, mergeHabits(l, r));
+      mergeAuto(l, r, merged);
       const ms = JSON.stringify(merged);
       if (ms !== JSON.stringify(l)) { local[d] = merged; changed = true; }
       if (ms !== JSON.stringify(r) && canonJSON(merged) !== canonJSON(r)) remoteBehind = true;
@@ -2704,9 +2741,11 @@ function saveDraftNow(date, d) {
   delete d.sample;   // a sample day you wrote in is yours now: "Clear sample" must not delete it
   d.tasks = tasksForDate(date);
   // Preserve fields owned by other flows (Gym writes workoutsDone/workoutDetail, Time writes
-  // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot.
+  // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot — and their
+  // stamps with them: the draft's copy is from when the day was opened, and an older stamp would
+  // let the other phone's older summary win the sync merge.
   const existing = DB.entry(date) || {};
-  ['workoutsDone', 'workoutDetail', 'timeSummary'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
+  [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
   const wrote = DB.putEntry(date, d);
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
@@ -3369,8 +3408,7 @@ function persistGym(silent, date, draft) {
   const doneIds = Object.keys(draft.done).filter(k => draft.done[k]);
   const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (draft.log[k] ? ` (${draft.log[k]})` : ''); }).join('; ');
   const entry = DB.entry(date) || { habits: {} };
-  entry.workoutsDone = doneIds.length; entry.workoutDetail = detail;
-  entry.updatedAt = new Date().toISOString();
+  entryAutoSet(entry, { workoutsDone: doneIds.length, workoutDetail: detail });   // not updatedAt: see ENTRY_AUTO
   DB.putEntry(date, entry);
   if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
   return entry;
@@ -3909,8 +3947,7 @@ function updateTimeSummary(dateStr) {
   const entry = DB.entry(dateStr) || { habits: {} };
   const summary = parts.join(' · ');
   if (entry.timeSummary === summary) return;     // nothing changed — skip the network call
-  entry.timeSummary = summary;
-  entry.updatedAt = new Date().toISOString();
+  entryAutoSet(entry, { timeSummary: summary });   // not updatedAt: see ENTRY_AUTO
   DB.putEntry(dateStr, entry);
   syncEntry(dateStr, entry);
 }
