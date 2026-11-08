@@ -55,7 +55,7 @@
     const d = addDays(t, -i), wToday = w[i];
     const steps    = wToday ? 9200 + (i % 5) * 420 : 4600 + (i % 6) * 300;
     const screenMin= wToday ? 175 + (i % 5) * 12 : 322 + (i % 7) * 14;
-    const sleepMin = Math.round((e[d].sleepHours || 7) * 60);
+    const sleepMin = Math.round(((e[d] && e[d].sleepHours) || 7) * 60);   // the one deleted gap day has no entry
     hs[d] = { steps, distanceKm: +(steps * 0.00072).toFixed(2), calories: 1750 + Math.round(steps * 0.06),
       sleepMin, exerciseMin: wToday ? 42 + (i % 4) * 6 : 11 + (i % 5),
       hr: 63 + (i % 9), screenMin, at: new Date().toISOString() };

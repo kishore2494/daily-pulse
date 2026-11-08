@@ -28,7 +28,7 @@ ICON = ROOT / "icons" / "icon-512.png"
 
 W, H = 1200, 630            # the size summary_large_image and og:image both want
 BG = (7, 11, 20)            # #070b14, the app's background
-TEAL = (74, 214, 192)       # #4ad6c0
+TEAL = (255, 138, 76)       # #ff8a4c — the sunrise orange of the v256 logo (was #4ad6c0)
 BLUE = (109, 140, 255)      # #6d8cff
 VIOLET = (143, 123, 255)    # #8f7bff
 

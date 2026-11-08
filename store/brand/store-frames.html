@@ -1,0 +1,145 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- Daylog Play Store frames, v256 brand. Render one frame per 1080x1920 viewport: store-frames.html?f=1..8, or ?f=fg for the 1024x500 feature graphic.
+     Every phone shows a REAL screen captured from the app (screens/*.png, made by the capture script in README.md). -->
+<style>
+@font-face { font-family: 'Sora'; font-weight: 600 800; src: url('../../fonts/self/sora.woff2') format('woff2'); }
+@font-face { font-family: 'DM Sans'; font-weight: 400 700; src: url('../../fonts/self/dm-sans.woff2') format('woff2'); }
+@font-face { font-family: 'Newsreader'; font-weight: 500 700; src: url('../../fonts/self/newsreader.woff2') format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-weight: 400 700; src: url('../../fonts/self/cormorant.woff2') format('woff2'); }
+@font-face { font-family: 'Bricolage Grotesque'; font-weight: 500 800; src: url('../../fonts/self/bricolage.woff2') format('woff2'); }
+@font-face { font-family: 'Fredoka'; font-weight: 400 700; src: url('../../fonts/self/fredoka.woff2') format('woff2'); }
+html, body { margin: 0; background: #111; }
+.f { position: relative; width: 1080px; height: 1920px; overflow: hidden; display: none; font-family: 'DM Sans', sans-serif; }
+.f.on { display: block; }
+.copy { position: absolute; left: 92px; right: 92px; top: 120px; z-index: 2; }
+.eyebrow { font: 700 26px/1 'DM Sans', sans-serif; letter-spacing: .22em; text-transform: uppercase; margin-bottom: 30px; display: flex; align-items: center; gap: 16px; }
+.eyebrow img { width: 46px; height: 46px; border-radius: 12px; }
+h1 { margin: 0; font-size: 104px; line-height: .98; letter-spacing: -3px; font-weight: 700; }
+.sub { margin-top: 30px; font-size: 38px; line-height: 1.32; max-width: 860px; }
+.phone { position: absolute; left: 50%; transform: translateX(-50%); top: 700px; width: 820px; padding: 20px; border-radius: 96px 96px 0 0;
+  background: #0b0b0e; box-shadow: 0 60px 120px rgba(0,0,0,.45), inset 0 0 0 3px rgba(255,255,255,.08); }
+.phone img { display: block; width: 100%; border-radius: 78px 78px 0 0; }
+.phone::before { content: ''; position: absolute; top: 44px; left: 50%; transform: translateX(-50%); width: 26px; height: 26px; border-radius: 50%; background: #0b0b0e; z-index: 2; box-shadow: inset 0 0 0 4px #1d1d22; }
+.glow { position: absolute; inset: 0; pointer-events: none; }
+
+/* 1 Paper: memories */
+.f1 { background: #f7f3ec; color: #2c2a26; }
+.f1 h1 { font-family: 'Newsreader', serif; font-weight: 600; letter-spacing: -2px; font-size: 112px; }
+.f1 .eyebrow { color: #a5653a; } .f1 .sub { color: #6b655c; }
+.f1 .glow { background: radial-gradient(60% 30% at 85% 8%, rgba(255,190,140,.35), transparent 70%); }
+/* 2 styles fan */
+.f2 { background: linear-gradient(160deg, #1d1f3e 0%, #0c0e21 60%, #120b1c 100%); color: #fff4e6; }
+.f2 h1 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; letter-spacing: -4px; }
+.f2 .eyebrow { color: #ffb36b; } .f2 .sub { color: #c9c6d8; }
+.f2 .glow { background: radial-gradient(50% 30% at 50% 78%, rgba(255,138,76,.35), transparent 70%); }
+.fan { position: absolute; top: 760px; left: 0; right: 0; height: 1200px; }
+.fan .phone { width: 430px; padding: 12px; border-radius: 58px; top: 0; }
+.fan .phone img { border-radius: 50px; }
+.fan .phone::before { top: 30px; width: 18px; height: 18px; }
+.fan .p1 { transform: translateX(-50%) translateX(-262px) rotate(-8deg); top: 100px; }
+.fan .p3 { transform: translateX(-50%) translateX(262px) rotate(8deg); top: 100px; }
+.fan .p2 { z-index: 2; }
+.tags { position: absolute; left: 40px; right: 40px; bottom: 64px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; z-index: 3; }
+.tags span { font: 600 27px/1 'DM Sans'; padding: 16px 22px; background: rgba(12,14,33,.72); border-radius: 999px; background: rgba(255,255,255,.1); color: #fff4e6; border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(8px); }
+/* 3 Bloom: habits */
+.f3 { background: #fff1e6; color: #3b2a24; }
+.f3 h1 { font-family: 'Fredoka', sans-serif; font-weight: 600; letter-spacing: -1px; }
+.f3 .eyebrow { color: #e0573e; } .f3 .sub { color: #7a6258; }
+.f3 .glow { background: radial-gradient(55% 30% at 0% 0%, rgba(255,170,130,.6), transparent 70%), radial-gradient(45% 25% at 100% 40%, rgba(200,180,255,.45), transparent 70%); }
+/* 4 Aurora: patterns */
+.f4 { background: #05060f; color: #f4f6ff; }
+.f4 h1 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; letter-spacing: -4px; }
+.f4 .eyebrow { color: #7de7f5; } .f4 .sub { color: #b3b9de; }
+.f4 .glow { background: radial-gradient(45% 25% at 15% 10%, rgba(34,211,238,.45), transparent 70%), radial-gradient(50% 30% at 95% 25%, rgba(168,85,247,.55), transparent 70%), radial-gradient(60% 30% at 50% 100%, rgba(244,114,182,.35), transparent 70%); filter: blur(10px); }
+/* 5 Luxe: time */
+.f5 { background: #0d0c0a; color: #f3ece0; }
+.f5 h1 { font-family: 'Cormorant Garamond', serif; font-weight: 600; letter-spacing: -1px; font-size: 118px; }
+.f5 .eyebrow { color: #d8bc85; } .f5 .sub { color: #b8ad99; }
+.f5 .glow { background: radial-gradient(70% 30% at 50% 0%, rgba(201,169,110,.25), transparent 70%); }
+.f5 .phone { box-shadow: 0 60px 120px rgba(0,0,0,.6), inset 0 0 0 3px rgba(201,169,110,.35); }
+/* 6 Midnight: mood */
+.f6 { background: linear-gradient(170deg, #121a33 0%, #070b14 70%); color: #eaeffa; }
+.f6 h1 { font-family: 'Sora', sans-serif; font-weight: 800; letter-spacing: -4px; }
+.f6 .eyebrow { color: #8fa6ff; } .f6 .sub { color: #93a0b8; }
+.f6 .glow { background: radial-gradient(45% 25% at 10% 5%, rgba(109,140,255,.35), transparent 70%), radial-gradient(40% 25% at 100% 30%, rgba(251,191,36,.18), transparent 70%); }
+/* 7 Paper dark: search */
+.f7 { background: #191919; color: #ececea; }
+.f7 h1 { font-family: 'Newsreader', serif; font-weight: 600; letter-spacing: -2px; font-size: 112px; }
+.f7 .eyebrow { color: #6fb0dc; } .f7 .sub { color: #a8a8a5; }
+/* 8 Midnight light: private */
+.f8 { background: linear-gradient(170deg, #f4f6fb 0%, #e7ecf8 100%); color: #101626; }
+.f8 h1 { font-family: 'Sora', sans-serif; font-weight: 800; letter-spacing: -4px; }
+.f8 .eyebrow { color: #3b5bdb; } .f8 .sub { color: #4a5570; }
+
+/* feature graphic 1024x500 */
+.fg { position: relative; width: 1024px; height: 500px; overflow: hidden; display: none; background: linear-gradient(120deg, #1d1f3e 0%, #0c0e21 55%, #170c1f 100%); color: #fff4e6; font-family: 'DM Sans'; }
+.fg.on { display: block; }
+.fg .glow { background: radial-gradient(40% 60% at 22% 50%, rgba(255,138,76,.32), transparent 70%), radial-gradient(35% 50% at 85% 100%, rgba(168,85,247,.3), transparent 70%); }
+.fg .brand { position: absolute; left: 64px; top: 92px; display: flex; flex-direction: column; gap: 22px; z-index: 2; }
+.fg .lockup { display: flex; align-items: center; gap: 22px; }
+.fg .lockup img { width: 108px; height: 108px; border-radius: 26px; box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+.fg .word { font: 800 92px/1 'Bricolage Grotesque'; letter-spacing: -3.5px; }
+.fg .tag { font: 500 30px/1.3 'DM Sans'; color: #e9e2f2; max-width: 470px; }
+.fg .tag b { color: #ffb36b; font-weight: 700; }
+.fg .pills { display: flex; gap: 10px; margin-top: 6px; }
+.fg .pills span { font: 600 17px/1 'DM Sans'; padding: 11px 15px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); }
+.fg .ph { position: absolute; width: 214px; padding: 7px; border-radius: 32px; background: #0b0b0e; box-shadow: 0 30px 60px rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.08); }
+.fg .ph img { display: block; width: 100%; border-radius: 26px; }
+.fg .q1 { left: 588px; top: 74px; transform: rotate(-8deg); }
+.fg .q2 { left: 700px; top: 40px; z-index: 2; }
+.fg .q3 { left: 812px; top: 74px; transform: rotate(8deg); }
+</style></head><body>
+
+<div class="f f1"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Memories</div>
+  <h1>Keep the days worth remembering.</h1>
+  <div class="sub">A page for every moment: the story, who was there, the place, and all its photos and videos.</div></div>
+  <div class="phone"><img src="screens/s1-memory.png"></div></div>
+
+<div class="f f2"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">New · Styles</div>
+  <h1>Five looks.<br>Pick yours.</h1>
+  <div class="sub">Not a colour swap. Each style has its own type, cards and feel.</div></div>
+  <div class="fan"><div class="phone p1"><img src="screens/s2-look-luxe.png"></div><div class="phone p2"><img src="screens/s2-look-aurora.png"></div><div class="phone p3"><img src="screens/s2-look-bloom.png"></div></div>
+  <div class="tags"><span>Midnight</span><span>Paper</span><span>Luxe</span><span>Aurora</span><span>Bloom</span></div></div>
+
+<div class="f f3"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Habits</div>
+  <h1>Tick it off.<br>Watch it grow.</h1>
+  <div class="sub">One tap a day. Every week becomes a column, every good day a green square.</div></div>
+  <div class="phone"><img src="screens/s3-habits.png"></div></div>
+
+<div class="f f4"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Your patterns</div>
+  <h1>See what really lifts your mood.</h1>
+  <div class="sub">Worked out from your own days, on your phone. Never uploaded.</div></div>
+  <div class="phone"><img src="screens/s4-patterns.png"></div></div>
+
+<div class="f f5"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Time tracker</div>
+  <h1>Your whole day, one tap at a time.</h1>
+  <div class="sub">Tap Work, then Gym, then Sleep. Your day draws itself on a 24-hour line.</div></div>
+  <div class="phone"><img src="screens/s5-time.png"></div></div>
+
+<div class="f f6"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Mood</div>
+  <h1>How do you actually feel?</h1>
+  <div class="sub">One square sets your mood and your energy. Then Daylog hands you the words for it.</div></div>
+  <div class="phone"><img src="screens/s6-mood.png"></div></div>
+
+<div class="f f7"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Search</div>
+  <h1>Find anything you ever wrote.</h1>
+  <div class="sub">Every journal, note and memory, searchable in a second. Even offline.</div></div>
+  <div class="phone"><img src="screens/s7-search.png"></div></div>
+
+<div class="f f8"><div class="glow"></div><div class="copy"><div class="eyebrow"><img src="daylog-icon-192.png">Private by design</div>
+  <h1>No account.<br>No cloud. No ads.</h1>
+  <div class="sub">Everything stays on your phone. Back it up to a file whenever you like.</div></div>
+  <div class="phone"><img src="screens/s8-private.png"></div></div>
+
+<div class="fg"><div class="glow"></div>
+  <div class="brand"><div class="lockup"><img src="daylog-icon-512.png"><div class="word">Daylog</div></div>
+    <div class="tag">Your private life log. Habits, mood, memories, in <b>five beautiful looks</b>.</div>
+    <div class="pills"><span>No account</span><span>Works offline</span><span>Free</span></div></div>
+  <div class="ph q1"><img src="screens/s2-look-luxe.png"></div><div class="ph q2"><img src="screens/s2-look-aurora.png"></div><div class="ph q3"><img src="screens/s2-look-bloom.png"></div>
+</div>
+
+<script>
+const f = new URLSearchParams(location.search).get('f') || '1';
+const el = f === 'fg' ? document.querySelector('.fg') : document.querySelector('.f' + f);
+if (el) el.classList.add('on');
+</script></body></html>

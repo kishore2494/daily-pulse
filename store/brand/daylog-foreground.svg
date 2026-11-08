@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Adaptive-icon FOREGROUND: transparent, the mark only. The launcher XML insets it 16.7%, and the background colour is #15172f. -->
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd36e"/><stop offset=".55" stop-color="#ff8a4c"/><stop offset="1" stop-color="#ff4f6d"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".52" r=".5"><stop offset="0" stop-color="#ff8a4c" stop-opacity=".5"/><stop offset=".6" stop-color="#ff6a5c" stop-opacity=".12"/><stop offset="1" stop-color="#ff6a5c" stop-opacity="0"/></radialGradient>
+  </defs>
+  <circle cx="256" cy="262" r="230" fill="url(#glow)"/>
+  <path d="M106 264 A150 150 0 0 1 406 264 Z" fill="url(#sun)"/>
+  <rect x="68" y="292" width="376" height="30" rx="15" fill="#fff4e6"/>
+  <rect x="122" y="354" width="268" height="30" rx="15" fill="#fff4e6" opacity=".72"/>
+  <rect x="176" y="416" width="160" height="30" rx="15" fill="#fff4e6" opacity=".44"/>
+</svg>

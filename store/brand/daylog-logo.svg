@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Daylog: a day rising over the lines of a log. Content sits inside the adaptive-icon safe circle (r≈205). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1f3e"/><stop offset="1" stop-color="#0c0e21"/></linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd36e"/><stop offset=".55" stop-color="#ff8a4c"/><stop offset="1" stop-color="#ff4f6d"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".52" r=".5"><stop offset="0" stop-color="#ff8a4c" stop-opacity=".5"/><stop offset=".6" stop-color="#ff6a5c" stop-opacity=".12"/><stop offset="1" stop-color="#ff6a5c" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="262" r="200" fill="url(#glow)"/>
+  <path d="M130 264 A126 126 0 0 1 382 264 Z" fill="url(#sun)"/>
+  <rect x="100" y="288" width="312" height="24" rx="12" fill="#fff4e6"/>
+  <rect x="144" y="340" width="224" height="24" rx="12" fill="#fff4e6" opacity=".72"/>
+  <rect x="188" y="392" width="136" height="24" rx="12" fill="#fff4e6" opacity=".44"/>
+</svg>
