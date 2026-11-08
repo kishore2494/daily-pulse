@@ -2347,6 +2347,118 @@
     }
   })();
 
+  // ---- two phones, one Sheet: what the Time tracker and the Gym fill in is not an edit of the day ----
+  /* Writing the time summary or a gym tick into the day bumped its updatedAt, and the sync gives
+     every shared field of a day to the newer updatedAt. So a phone that had not pulled yet
+     (re-summing a running timer on every return to the app, a gym tick) carried its OLD mood and
+     journal over what was typed on the other phone — on both phones. Each test runs both phones
+     through the real save, push and pull. */
+  (function () {
+    const PK = ['dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.touched', 'dp.gym', 'dp.gymAt'];
+    const keys = [...PK, 'dp.settings', 'dp.listAt', 'dp.listDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const D = '2026-01-05', d0 = dayStartMs(D), H = 3600000, now = Date.now();
+    const phones = {}; let on = null;
+    const held = () => { const s = {}; PK.forEach(k => { s[k] = localStorage.getItem(k); }); return s; };
+    const both = st => { phones.A = Object.assign({}, st); phones.B = Object.assign({}, st); on = null; };
+    const use = p => {   // pick up phone p; the one put down keeps what it holds
+      if (on) phones[on] = held();
+      on = p; PK.forEach(k => { const v = phones[p][k]; if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); });
+    };
+    const lastState = () => { const s = sent.filter(x => x.type === 'state').pop(); return s && JSON.parse(JSON.stringify(s)); };
+    const push = () => { clearTimeout(pushTimer); _pushPending = null; sent.length = 0; pushState(true); return lastState(); };   // what the Sheet then holds
+    const tick = () => { const t = Date.now(); while (Date.now() <= t) { /* "later" must be a later millisecond */ } };
+    const day = () => DB.entry(D) || {};
+    const start = (entry, timelog) => both({ 'dp.entries': JSON.stringify({ [D]: entry }), 'dp.timelog': JSON.stringify(timelog),
+      'dp.timelogDel': '{}', 'dp.touched': String(now - 2 * H), 'dp.gym': '{}', 'dp.gymAt': '{}' });
+    const typed = { mood: 3, journal: 'morning', habits: {}, updatedAt: new Date(now - 2 * H).toISOString() };
+    const blk1 = { id: 'tw1', act: 'work', start: d0 + 9 * H, end: d0 + 10 * H, upd: now - 3 * H };
+    const blk2 = { id: 'tw2', act: 'work', start: d0 + 11 * H, end: d0 + 12 * H, upd: now - 60000 };
+    try {
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+
+      // 1. B, not yet synced, re-sums its time after the mood and journal were typed on A
+      start(typed, [blk1]);
+      use('A'); const a1 = day(); a1.mood = 8; a1.journal = 'evening, typed on A'; saveDraftNow(D, a1); push();
+      tick(); use('B'); syncTimelogNow();
+      const sum1 = day().timeSummary;
+      ok('(B sums its time into the day, still holding the old mood)', !!sum1 && day().mood === 3, day());
+      const sheetB = push();
+      use('A'); sent.length = 0; applyRemoteState(sheetB);
+      ok('two phones: a time summary written on a phone that had not synced does not undo the mood and journal typed on the other',
+        day().mood === 8 && day().journal === 'evening, typed on A', day());
+      ok('…and that summary arrives', day().timeSummary === sum1, day());
+      use('B'); applyRemoteState(lastState());
+      ok('…and the phone that summed gets the typing, keeping its summary', day().mood === 8 && day().journal === 'evening, typed on A' && day().timeSummary === sum1, day());
+      const b1 = day(); use('A');
+      ok('…so both phones end with the same day', canonJSON(day()) === canonJSON(b1), [day(), b1]);
+
+      // 2. The other way round: typing on A, which holds an older summary, after B summed a newer one
+      start(typed, [blk1]);
+      use('A'); syncTimelogNow(); const sumOld = day().timeSummary; both(held());   // both phones synced, one block summed
+      tick(); use('B'); localStorage.setItem('dp.timelog', JSON.stringify([blk1, blk2])); syncTimelogNow();
+      const sumNew = day().timeSummary;
+      ok('(B tracked another hour: a new summary)', !!sumOld && !!sumNew && sumNew !== sumOld, [sumOld, sumNew]);
+      const sheetB2 = push();
+      tick(); use('A'); const a2 = day(); a2.mood = 9; saveDraftNow(D, a2);
+      sent.length = 0; applyRemoteState(sheetB2);
+      ok('two phones: typing on a phone that holds an older time summary does not carry it over the newer one', day().timeSummary === sumNew && day().mood === 9, day());
+      use('B'); applyRemoteState(lastState());
+      ok('…on the other phone either', day().timeSummary === sumNew && day().mood === 9, day());
+
+      // 3. A gym tick on B, not yet synced, after the journal was typed on A
+      start(typed, []);
+      use('A'); const a3 = day(); a3.journal = 'gym after work'; saveDraftNow(D, a3); push();
+      tick(); use('B'); persistGym(true, D, { done: { 'd1/e1': true }, log: {} });
+      ok('(B ticks an exercise into the day, still holding the old journal)', day().workoutsDone === 1 && day().journal === 'morning', day());
+      const sheetB3 = push();
+      use('A'); sent.length = 0; applyRemoteState(sheetB3);
+      ok('two phones: a gym tick on a phone that had not synced does not undo the journal typed on the other', day().journal === 'gym after work' && day().workoutsDone === 1, day());
+      use('B'); applyRemoteState(lastState());
+      ok('…and the phone that ticked gets the journal', day().journal === 'gym after work' && day().workoutsDone === 1, day());
+      const same = JSON.parse(JSON.stringify(day()));
+      same.autoAt = Object.keys(same.autoAt || {}).reverse().reduce((o, k) => { o[k] = same.autoAt[k]; return o; }, {});
+      localStorage.setItem('dp.touched', String(now + 10)); sent.length = 0;
+      applyRemoteState({ touched: now + 10, entries: { [D]: same } });
+      ok('the same day with its stamps in another order is not a difference (no push back and forth)',
+        Object.keys(same.autoAt).length === 2 && !sent.some(x => x.type === 'state'), sent.length);
+
+      // 4. A Log draft opened before the timer re-summed the day: its autosave keeps the new summary AND its stamp
+      start(typed, [blk1]);
+      use('B'); syncTimelogNow();
+      const opened = JSON.parse(JSON.stringify(day()));   // what loadDraft holds
+      tick(); localStorage.setItem('dp.timelog', JSON.stringify([blk1, blk2])); syncTimelogNow();
+      const t4 = (day().autoAt || {}).timeSummary, sum4 = day().timeSummary;
+      tick(); opened.mood = 6; saveDraftNow(D, opened);
+      ok('a Log autosave from a draft opened earlier keeps the newer time summary and its stamp',
+        !!t4 && day().timeSummary === sum4 && day().mood === 6 && (day().autoAt || {}).timeSummary === t4, [t4, day()]);
+      applyRemoteState({ touched: Date.now() + 5000, entries: { [D]: Object.assign({}, day(), { timeSummary: 'older, from A', autoAt: { timeSummary: t4 - 1 } }) } });
+      ok('…so the other phone\'s older summary does not win', day().timeSummary === sum4, day());
+
+      // mergeAuto, directly
+      const iso = t => new Date(t).toISOString(), N = Date.now();
+      let m = mergeAuto({ timeSummary: 'newer', autoAt: { timeSummary: N - 1000 }, updatedAt: iso(N - 9000) },
+        { timeSummary: 'older', autoAt: { timeSummary: N - 5000 }, updatedAt: iso(N) }, {});
+      ok('the newer summary wins, whichever phone edited the day last', m.timeSummary === 'newer' && m.autoAt.timeSummary === N - 1000, m);
+      m = mergeAuto({ workoutsDone: 2, autoAt: { workoutsDone: N - 5000 } }, { workoutsDone: 3, updatedAt: iso(N - 1000) }, {});
+      ok('a day from an older app version (no stamps): its updatedAt stands in', m.workoutsDone === 3 && m.autoAt.workoutsDone === N - 1000, m);
+      m = mergeAuto({ timeSummary: 'x', autoAt: { timeSummary: N - 5000 } }, { mood: 4, updatedAt: iso(N) }, { timeSummary: 'x', mood: 4 });
+      ok('a side that never had the field cannot drop it', m.timeSummary === 'x', m);
+      m = mergeAuto({ timeSummary: 's', updatedAt: iso(N) }, { timeSummary: 's', updatedAt: iso(N - 5) }, { timeSummary: 's' });
+      ok('days without stamps on either side gain none', !('autoAt' in m), m);
+      let threw = null; try { mergeAuto('junk', { autoAt: 'no', timeSummary: 'y' }, {}); mergeAuto({ autoAt: [1] }, null, {}); } catch (e) { threw = e; }
+      ok('a day in the wrong shape merges as having no stamps, rather than throwing', !threw, threw && threw.message);
+      ok('the stamps are not content: a day holding only them is not a logged day', !entryHasContent({ workoutsDone: 0, workoutDetail: '', autoAt: { workoutsDone: N } }));
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null; clearTimeout(timelogSyncTimer);
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: lists sync item by item (tasks, notes, money, …) ----
   (function () {
     const keys = ['dp.notes', 'dp.tasks', 'dp.fintx', 'dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.listAt', 'dp.listDel', 'dp.touched', 'dp.settings'];
