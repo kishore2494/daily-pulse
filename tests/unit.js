@@ -3420,6 +3420,151 @@
     }
   })();
 
+  /* ---- editing item text in place, and the timebox's Today / Tomorrow (real-user audit) ---- */
+  (function () {
+    const keys = ['dp.tasks', 'dp.plans', 'dp.projects', 'dp.timebox', 'dp.listAt', 'dp.listDel', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const field = host => host && host.querySelector('.inline-edit');
+    // tap the text, type, then finish the way a person would: Enter, Escape or tapping away
+    const edit = (sel, val, how) => {
+      const host = document.querySelector(sel); if (!host) { ok('the page has ' + sel, false); return null; }
+      host.click(); const f = field(host); if (!f) { ok('tapping ' + sel + ' opens a field', false); return null; }
+      f.value = val;
+      if (how === 'blur') f.blur(); else key(f, how || 'Enter');
+      return host;
+    };
+    const stamp = (list, id) => (listMeta('dp.listAt')[list] || {})[id] || 0;
+    // each part reports its own failure, so a missing feature fails its assertions, not the whole suite
+    const part = (name, fn) => { try { fn(); } catch (e) { ok(name + ' (threw)', false, String(e && e.message || e)); } };
+    const T = todayStr(), TM = addDays(T, 1), Y = addDays(T, -1);
+    const tb = () => DB.timebox(), on = d => tb().filter(b => b.date === d), sf = () => document.getElementById('s-focus');
+    try {
+      const st = DB.settings(); delete st.syncUrl; DB.saveSettings(st);   // no Sheet: nothing leaves the test
+      part('editing a task', () => {
+        localStorage.setItem('dp.listAt', '{}'); localStorage.setItem('dp.listDel', '{}');
+        DB.saveTasks([{ id: 'e1', text: 'buy mlik', done: false, created: todayStr() }, { id: 'e2', text: 'pay rnet', done: true, doneDate: todayStr(), created: todayStr() }]);
+        localStorage.setItem('dp.listAt', JSON.stringify({ tasks: { e1: 5, e2: 5 } }));
+        navigateTo('tasks');
+        const tx = id => DB.tasks().find(t => t.id === id).text;
+        const row1 = document.querySelector('#s-tasks [data-id="e1"]');
+        document.querySelector('[data-task-edit="e1"]').click();
+        const f1 = field(document.querySelector('[data-task-edit="e1"]'));
+        ok('tapping a task\'s text opens a field holding that text', !!f1 && f1.value === 'buy mlik' && document.activeElement === f1, f1 && f1.value);
+        f1.value = 'buy milk'; key(f1, 'Enter');
+        ok('Enter saves the corrected text', tx('e1') === 'buy milk', tx('e1'));
+        ok('…the row shows it, with the field gone', !field(row1) && /buy milk/.test(row1.textContent));
+        ok('…in place: the row is not re-rendered, so a tap on its ✓ or × right after still lands', document.querySelector('#s-tasks [data-id="e1"]') === row1);
+        ok('…and the edit is stamped, so it syncs item by item', stamp('tasks', 'e1') > 5 && stamp('tasks', 'e2') === 5, listMeta('dp.listAt').tasks);
+        edit('[data-task-edit="e1"]', 'something else', 'Escape');
+        ok('Escape puts the old text back and saves nothing', tx('e1') === 'buy milk' && /buy milk/.test(row1.textContent) && !field(row1));
+        edit('[data-task-edit="e1"]', '   ', 'Enter');
+        ok('an emptied field keeps the old text (the task is not deleted)', DB.tasks().length === 2 && tx('e1') === 'buy milk');
+        edit('[data-task-edit="e1"]', '  buy oat\n milk ', 'blur');
+        ok('tapping away saves too, trimmed, a pasted line break made a space', tx('e1') === 'buy oat milk', tx('e1'));
+        const hd = document.querySelector('[data-task-edit="e1"]'); hd.click(); field(hd).value = 'buy milk';
+        const hnd = document.querySelector('#s-tasks [data-id="e1"] [data-drag]');
+        hnd.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        ok('pressing a drag handle saves the open edit first (a handle keeps focus, so no blur would come)', tx('e1') === 'buy milk' && !field(hd), tx('e1'));
+        hnd.dispatchEvent(new Event('pointerup', { bubbles: true }));   // let the drag it started finish
+        edit('[data-task-edit="e2"]', 'pay rent', 'Enter');
+        const r2 = document.querySelector('#s-tasks [data-id="e2"]');
+        ok('a done task can be corrected and stays done (still struck through)', tx('e2') === 'pay rent' && DB.tasks().find(t => t.id === 'e2').done && r2.classList.contains('done'));
+        ok('the drag handle, ✓, colour and × are still separate from the text', !!document.querySelector('[data-id="e1"] [data-drag]') && !!document.querySelector('[data-toggle="e1"]') && !!document.querySelector('[data-palette="e1"]') && !!document.querySelector('[data-del="e1"]') && !document.querySelector('[data-task-edit="e1"] [data-toggle],[data-task-edit="e1"] [data-del]'));
+
+      });
+      part('editing a plan step', () => {
+        localStorage.setItem('dp.plans', JSON.stringify([{ id: 'pE', name: 'Trip', color: '', created: todayStr(), items: [{ id: 's1', text: 'tickts', done: false }, { id: 's2', text: 'bags', done: true }] }]));
+        localStorage.setItem('dp.listAt', JSON.stringify({ plans: { pE: 5 }, planFields: { pE: 5 }, planItems: { pE: { s1: 5, s2: 5 } } }));
+        navigateTo('plans'); curPlan = 'pE'; renderPlans();
+        edit('[data-planitem-edit="s1"]', 'tickets', 'Enter');
+        const its = () => DB.plans()[0].items;
+        ok('a plan step\'s text can be corrected in place', its()[0].text === 'tickets' && its().length === 2, its());
+        const A = listMeta('dp.listAt');
+        ok('…stamping that step only, not the plan\'s name or the other step', A.planItems.pE.s1 > 5 && A.planItems.pE.s2 === 5 && A.planFields.pE === 5, A);
+        edit('[data-planitem-edit="s2"]', '', 'Enter');
+        ok('…an emptied plan step keeps its text', its()[1].text === 'bags' && its()[1].done);
+        ok('the plan title is still its own field', !!document.querySelector('[data-planname="pE"]'));
+
+      });
+      part('editing a project step', () => {
+        DB.saveProjects([pjNorm({ id: 'pjE', name: 'Launch', steps: [{ id: 'st1', text: 'wirte copy', done: false, due: '' }],
+          miles: [{ id: 'm1', text: 'Beta', done: true, due: '2026-12-01' }] })]);
+        navigateTo('projects'); pjOpen = 'pjE'; renderProjects();
+        edit('[data-pj-edit="steps:st1"]', 'write copy', 'Enter');
+        ok('a project step\'s text can be corrected in place', pjById('pjE').steps[0].text === 'write copy', pjById('pjE').steps);
+        edit('[data-pj-edit="miles:m1"]', 'Beta with 10 testers', 'Enter');
+        const m1 = pjById('pjE').miles[0];
+        ok('…and a milestone\'s, keeping its date and its tick', m1.text === 'Beta with 10 testers' && m1.due === '2026-12-01' && m1.done, m1);
+        ok('…with the date still shown beside the new text', /Beta with 10 testers.*Dec/.test(document.querySelector('[data-pj-edit="miles:m1"]').textContent));
+        edit('[data-pj-edit="steps:st1"]', 'x'.repeat(300), 'Enter');
+        ok('…capped at 140 characters, as when it was added', pjById('pjE').steps[0].text.length === 140);
+        pjOpen = null;
+
+      });
+      part('timebox Today / Tomorrow', () => {
+        localStorage.setItem('dp.listAt', '{}');
+        DB.saveTimebox([
+          { id: 'y1', date: Y, start: '09:00', end: '10:00', label: 'Gym', act: '', alarm: true },
+          { id: 'y2', date: Y, start: '10:00', end: '11:00', label: 'Email', act: '', alarm: false },
+          { id: 'd1', date: T, start: '09:00', end: '10:00', label: 'gym ', act: 'work', alarm: true },
+        ]);
+        const c = tbCopyBlocks(tb(), Y, T);
+        ok('copying yesterday skips a block today already has (same start, end and name)', c.length === 1 && c[0].label === 'Email' && c[0].date === T && c[0].id !== 'y2', c);
+        ok('…and copies the rest with new ids', new Set(tbCopyBlocks(tb(), Y, TM).map(b => b.id)).size === 2 && tbCopyBlocks(tb(), Y, TM).every(b => !tb().some(x => x.id === b.id)));
+        focusMode = 'timebox'; tbDay = 0; tbEdit = null; show('focus');
+        ok('the timebox opens on Today, with a Tomorrow switch', /Today's plan/.test(sf().textContent) && !!sf().querySelector('[data-tb-day="1"]') && sf().querySelector('[data-tb-day="0"]').classList.contains('on'));
+        ok('Today offers "Copy yesterday\'s plan", counting only what is missing', /Copy yesterday's plan · 1 block/.test((document.getElementById('tb-copy') || {}).textContent || ''));
+        document.getElementById('tb-copy').click();
+        ok('…which copies it onto today', on(T).length === 2 && on(T).some(b => b.label === 'Email') && on(Y).length === 2);
+        ok('…and then has nothing left to copy, so the button goes', !document.getElementById('tb-copy'));
+        const undoB = document.querySelector('#toast .toast-undo'); if (undoB) undoB.click();
+        ok('Undo takes the copied blocks back off', on(T).length === 1 && on(T)[0].id === 'd1');
+        sf().querySelector('[data-tb-day="1"]').click();
+        ok('Tomorrow shows tomorrow\'s plan and date', /Tomorrow's plan/.test(sf().textContent) && sf().textContent.includes(prettyDate(TM)) && !sf().querySelector('[data-id="d1"]'));
+        ok('…its form starts at 09:00, not at the next half hour of tonight', document.getElementById('tb-start').value === '09:00');
+        document.getElementById('tb-label').value = 'Plan the week'; document.getElementById('tb-start').value = '00:00'; document.getElementById('tb-end').value = '23:59';   // covers now, whenever this runs
+        document.getElementById('tb-act').value = 'work';
+        document.getElementById('tb-add').click();
+        const nb = on(TM)[0] || {};
+        ok('a block added on Tomorrow is planned for tomorrow', on(TM).length === 1 && nb.label === 'Plan the week' && nb.start === '00:00', on(TM));
+        const nrow = sf().querySelector(`[data-id="${nb.id}"]`);
+        ok('…shown there, never as "now" and with no ▶ (that would start the timer today)', !!nrow && !nrow.classList.contains('live') && !nrow.querySelector('[data-tb-start]'));
+        ok('Tomorrow offers "Copy today\'s plan"', /Copy today's plan · 1 block/.test((document.getElementById('tb-copy') || {}).textContent || ''));
+        document.getElementById('tb-copy').click();
+        ok('…which copies today\'s blocks onto tomorrow, with new ids', on(TM).length === 2 && on(TM).some(b => b.label === 'gym ' && b.id !== 'd1') && on(T).length === 1);
+        sf().querySelector('[data-tb-day="0"]').click();
+        ok('Today still shows only today\'s blocks', on(T).length === 1 && !!sf().querySelector('[data-id="d1"]') && !sf().querySelector(`[data-id="${nb.id}"]`));
+
+      });
+      part('editing a timebox block', () => {
+        const d1 = () => tb().find(b => b.id === 'd1');
+        const listAt1 = stamp('timebox', 'd1');
+        sf().querySelector('.tb-main[data-tb-edit="d1"]').click();
+        ok('tapping a block opens it as a form with its start, end and name', document.getElementById('tb-e-start').value === '09:00' && document.getElementById('tb-e-end').value === '10:00' && document.getElementById('tb-e-label').value === 'gym ');
+        document.getElementById('tb-e-start').value = '07:30'; document.getElementById('tb-e-end').value = '08:15'; document.getElementById('tb-e-label').value = 'Run';
+        sf().querySelector('[data-tb-save="d1"]').click();
+        ok('Save changes the block in place (same id, same day, its activity and alarm kept)', d1().start === '07:30' && d1().end === '08:15' && d1().label === 'Run' && d1().date === T && d1().act === 'work' && d1().alarm === true, d1());
+        ok('…closes the form', !document.getElementById('tb-e-start') && /Run/.test(sf().querySelector('[data-id="d1"]').textContent));
+        ok('…and stamps the block so the edit syncs', stamp('timebox', 'd1') >= listAt1 && stamp('timebox', 'd1') > 0);
+        sf().querySelector('.tb-time[data-tb-edit="d1"]').click();
+        document.getElementById('tb-e-label').value = '  ';
+        sf().querySelector('[data-tb-save="d1"]').click();
+        ok('an emptied name keeps the old one', d1().label === 'Run');
+        sf().querySelector('.tb-main[data-tb-edit="d1"]').click();
+        document.getElementById('tb-e-label').value = 'nope'; key(document.getElementById('tb-e-label'), 'Escape');
+        ok('Escape closes the form without saving', d1().label === 'Run' && !document.getElementById('tb-e-label'));
+        sf().querySelector('.tb-main[data-tb-edit="d1"]').click();
+        document.getElementById('tb-e-label').value = 'Long run'; key(document.getElementById('tb-e-label'), 'Enter');
+        ok('Enter in the form saves', d1().label === 'Long run' && !document.getElementById('tb-e-label'));
+      });
+    } finally {
+      focusMode = 'pomo'; tbDay = 0; tbEdit = null; curPlan = null; pjOpen = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };

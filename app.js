@@ -2850,12 +2850,64 @@ async function syncTodayTasks() {
   syncEntry(d, entry);
 }
 
+/* Edit an item's text where it sits (real-user audit: fixing a typo in a task, plan step or
+   project step meant deleting it and typing it again). Tapping the text swaps it for a field;
+   Enter or leaving the field saves, Escape puts it back. An emptied field keeps the old text: a
+   blank item is never what anyone meant, and deleting has its own × with Undo.
+   The row is NOT re-rendered on save, only its text is changed in place: the tap that ends an
+   edit is often on the same row's ✓ or ×, and a re-render under that tap would swallow it.
+   `host` holds the text in a `.ie-t` span (badges beside it are put back untouched). */
+function inlineEdit(host, old, save, max) {
+  if (!host || host.querySelector('.inline-edit')) return;   // a tap inside the open field
+  const keep = [...host.childNodes];
+  /* A textarea that grows with the text, not a one-line input: at phone width a long task
+     showed only its last few words, and the row jumped from three lines to one. Enter still
+     saves; a pasted line break becomes a space, since an item is one line everywhere else. */
+  const inp = document.createElement('textarea');
+  inp.rows = 1; inp.className = 'inline-edit'; inp.value = old; inp.autocomplete = 'off';
+  inp.enterKeyHint = 'done'; inp.setAttribute('aria-label', 'Edit text');
+  if (max) inp.maxLength = max;
+  const fit = () => { inp.style.height = 'auto'; inp.style.height = (inp.scrollHeight + inp.offsetHeight - inp.clientHeight) + 'px'; };
+  inp.addEventListener('input', fit);
+  let over = false;
+  /* Every other tap moves focus, so blur saves. A drag handle does not: it cancels its
+     pointerdown, focus stays put, and the reorder re-renders the list over a field that never
+     saw a blur. So a press on a handle saves first. (Not every press: a touch that scrolls the
+     page also starts with pointerdown, and it should leave the field open.) */
+  const away = e => { if (e.target.closest && e.target.closest('[data-drag]')) end(true); };
+  document.addEventListener('pointerdown', away, true);
+  const end = commit => {
+    if (over) return; over = true;                  // Enter, then the blur it causes: save once
+    document.removeEventListener('pointerdown', away, true);
+    const v = inp.value.replace(/\s*[\r\n]+\s*/g, ' ').trim().slice(0, max || undefined);
+    if (document.activeElement === inp) inp.blur(); // a removed field never fires focusout (kbd-open)
+    host.replaceChildren(...keep);
+    if (!commit || !v || v === old) return;
+    const t = host.querySelector('.ie-t'); if (t) t.textContent = v;
+    save(v);
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); }
+  });
+  inp.addEventListener('blur', () => end(true));
+  host.replaceChildren(inp);
+  fit(); inp.focus();
+  inp.setSelectionRange(inp.value.length, inp.value.length);   // caret after the text, not before it
+}
+// Keyboard users reach the editable text with Tab; Enter or Space opens it as a tap does.
+document.addEventListener('keydown', (ev) => {
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('[data-task-edit],[data-planitem-edit],[data-pj-edit]')) {
+    ev.preventDefault(); ev.target.click(); }
+});
+const EDIT_ATTRS = 'role="button" tabindex="0" title="Tap to edit"';
+
 function taskRow(t, drag) {
   return `<div class="lrow ${t.done?'done':''}" data-id="${t.id}" style="${t.color?`border-left:3px solid ${colorHex(t.color)}`:''}">
     <div class="lrow-main">
       ${drag ? '<span class="drag-handle" data-drag>⠿</span>' : '<span class="drag-handle ghost"></span>'}
       <div class="check" data-toggle="${t.id}">✓</div>
-      <div class="txt">${escapeHtml(t.text)} ${(!t.done && t.created && t.created!==todayStr())?'<span class="carry">carried</span>':''}</div>
+      <div class="txt" data-task-edit="${t.id}" ${EDIT_ATTRS}><span class="ie-t">${escapeHtml(t.text)}</span> ${(!t.done && t.created && t.created!==todayStr())?'<span class="carry">carried</span>':''}</div>
       <button class="pal" data-palette="${t.id}" title="highlight color"${t.color?` style="background:${colorHex(t.color)};border-color:${colorHex(t.color)}"`:''}></button>
       <button class="del" data-del="${t.id}">×</button>
     </div>
@@ -2871,7 +2923,7 @@ function renderTasks() {
 
   document.getElementById('s-tasks').innerHTML = `
     <div class="card">
-      <h2>To-do <span class="hint">drag ⠿ priority · tap ◌ to color</span></h2>
+      <h2>To-do <span class="hint">drag ⠿ priority · tap text to edit · ◌ to color</span></h2>
       <div id="task-list">${open.length ? open.map(t=>taskRow(t,true)).join('') : '<div class="empty">No open tasks. Add one below 👇</div>'}</div>
       <div class="task-add">
         <input type="text" id="task-input" placeholder="Add a task…" autocomplete="off">
@@ -2918,6 +2970,11 @@ document.addEventListener('click', (ev) => {
     const before = DB.tasks(), ids = new Set(before.filter(t => t.done).map(t => t.id));
     DB.saveTasks(before.filter(t => !t.done)); renderTasks();
     undoToast(`Cleared ${plural(ids.size, 'done task')}`, () => { DB.saveTasks(restoreItems(DB.tasks(), before, ids)); renderTasks(); syncTodayTasks(); });
+    return; }
+  const te = ev.target.closest('[data-task-edit]');
+  if (te) { const id = te.dataset.taskEdit, t0 = DB.tasks().find(x => x.id === id); if (!t0) return;
+    inlineEdit(te, t0.text, v => { const ts = DB.tasks(), t = ts.find(x => x.id === id); if (!t) return;
+      t.text = v; DB.saveTasks(ts); syncTodayTasks(); });
     return; }
   const tg = ev.target.closest('[data-toggle]');
   if (tg) { const id = tg.dataset.toggle; const ts = DB.tasks(); const t = ts.find(x=>x.id===id); if(t){t.done=!t.done; t.doneDate=t.done?todayStr():null;} DB.saveTasks(ts); renderTasks(); syncTodayTasks(); return; }
@@ -3066,7 +3123,7 @@ function planItemRow(it) {
     <div class="lrow-main">
       <span class="drag-handle" data-drag>⠿</span>
       <div class="check" data-planitem-toggle="${it.id}">✓</div>
-      <div class="txt">${escapeHtml(it.text)}</div>
+      <div class="txt" data-planitem-edit="${it.id}" ${EDIT_ATTRS}><span class="ie-t">${escapeHtml(it.text)}</span></div>
       <button class="pal" data-palette="${it.id}" title="color"${it.color?` style="background:${colorHex(it.color)};border-color:${colorHex(it.color)}"`:''}></button>
       <button class="del" data-planitem-del="${it.id}">×</button>
     </div>
@@ -3111,7 +3168,7 @@ function renderPlans() {
       <div class="hint" style="margin-top:6px">${t?`${d}/${t} done`:'No steps yet'} ${progressBar(d, t)}</div>
     </div>
     <div class="card">
-      <h2>Checklist <span class="hint">drag ⠿ · tap ◌ to color · 🎤 to speak</span></h2>
+      <h2>Checklist <span class="hint">drag ⠿ · tap text to edit · ◌ to color</span></h2>
       <div id="plan-item-list">${items.length ? items.map(planItemRow).join('') : '<div class="empty">No steps yet. Add one below 👇</div>'}</div>
       <div class="task-add">
         <input type="text" id="plan-item-input" placeholder="Add a step…" autocomplete="off">
@@ -3147,6 +3204,13 @@ document.addEventListener('click', (ev) => {
   if (dp) { if (!confirm('Delete this whole plan and its checklist?')) return; DB.savePlans(DB.plans().filter(p => p.id !== dp.dataset.delplan)); renderPlans(); return; }
   if (ev.target.id === 'plan-back') { curPlan = null; renderPlans(); return; }
   if (ev.target.id === 'plan-item-add-btn') return addPlanItem();
+  const pe = ev.target.closest('[data-planitem-edit]');
+  if (pe) { const id = pe.dataset.planitemEdit, planId = curPlan;   // the plan as it was when the edit began
+    const step = pl => pl && (pl.items || []).find(i => i.id === id);
+    const it0 = step(DB.plans().find(x => x.id === planId)); if (!it0) return;
+    inlineEdit(pe, it0.text, v => { const ps = DB.plans(), it = step(ps.find(x => x.id === planId)); if (!it) return;
+      it.text = v; DB.savePlans(ps); });
+    return; }
   const pt = ev.target.closest('[data-planitem-toggle]');
   if (pt) { const ps = DB.plans(); const p = ps.find(x => x.id === curPlan); const it = p && (p.items || []).find(i => i.id === pt.dataset.planitemToggle); if (it) { it.done = !it.done; DB.savePlans(ps); renderPlans(); } return; }
   const pid = ev.target.closest('[data-planitem-del]');
@@ -7055,32 +7119,62 @@ function tbNext(plus) {
   m = Math.min(23 * 60, Math.ceil((m + 1) / 30) * 30) + plus; m = Math.min(m, 23 * 60 + 59);
   return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 }
+/* Timebox used to plan today only, so tomorrow could not be planned the night before.
+   tbDay is an offset (0 today, 1 tomorrow), not a date, so "Today" still means today after
+   midnight. tbEdit is the block whose row is open as a form. */
+let tbDay = 0, tbEdit = null;
+function tbShownDay() { const t = todayStr(); return tbDay ? addDays(t, 1) : t; }
+const tbKey = b => [b.start, b.end, String(b.label || '').trim().toLowerCase()].join('|');
+/* "Copy yesterday's plan": the blocks of `from` that `to` does not already have (same start,
+   end and label), as new blocks on `to` with their own ids. Tapping it twice, or after adding
+   some of them by hand, must not stack duplicates. */
+function tbCopyBlocks(all, from, to) {
+  const have = new Set(all.filter(b => b.date === to).map(tbKey)), base = Date.now();
+  return all.filter(b => b.date === from && !have.has(tbKey(b)))
+    .map((b, i) => Object.assign({}, b, { id: 'tb' + base + 'c' + i, date: to }));
+}
 function timeboxHTML() {
-  const today = todayStr();
-  const blocks = DB.timebox().filter(b => b.date === today).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+  const today = todayStr(), day = tbShownDay(), isToday = day === today;
+  const all = DB.timebox();
+  const blocks = all.filter(b => b.date === day).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+  const copyN = tbCopyBlocks(all, addDays(day, -1), day).length;
   const now = new Date(); const curMin = now.getHours() * 60 + now.getMinutes();
   const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
   const rows = blocks.map(b => {
+    if (b.id === tbEdit) return `<div class="tb-row tb-editing" data-id="${b.id}">
+      <div class="row2">
+        <div class="field"><label>Start</label><input type="time" id="tb-e-start" value="${escapeHtml(b.start)}"></div>
+        <div class="field"><label>End</label><input type="time" id="tb-e-end" value="${escapeHtml(b.end)}"></div>
+      </div>
+      <div class="field"><label>What for?</label><input type="text" id="tb-e-label" value="${escapeHtml(b.label)}" autocomplete="off" enterkeyhint="done"></div>
+      <div class="tb-e-btns"><button class="btn btn-primary btn-sm" data-tb-save="${b.id}">Save</button>
+        <button class="btn btn-ghost btn-sm" id="tb-e-cancel">Cancel</button></div>
+    </div>`;
     const act = b.act ? actById(b.act) : null;
-    const live = curMin >= toMin(b.start) && curMin < toMin(b.end);
+    const live = isToday && curMin >= toMin(b.start) && curMin < toMin(b.end);
+    // ▶ starts the timer now, so it is only offered on today's blocks
     return `<div class="tb-row ${live?'live':''}" data-id="${b.id}" style="${act?`border-left:3px solid ${act.color}`:''}">
-      <div class="tb-time">${b.start}<span>${b.end}</span></div>
-      <div class="tb-main"><div class="tb-label">${act?act.emoji+' ':''}${escapeHtml(b.label)} ${b.alarm?'⏰':''}</div>
+      <div class="tb-time" data-tb-edit="${b.id}">${b.start}<span>${b.end}</span></div>
+      <div class="tb-main" data-tb-edit="${b.id}" role="button" tabindex="0" aria-label="Edit ${escapeHtml(b.label)}, ${b.start} to ${b.end}"><div class="tb-label">${act?act.emoji+' ':''}${escapeHtml(b.label)} ${b.alarm?'⏰':''}</div>
         ${live?'<div class="tb-now">● now</div>':''}</div>
-      ${act ? `<button class="btn btn-ghost btn-sm" data-tb-start="${b.id}">▶</button>` : ''}
+      ${act && isToday ? `<button class="btn btn-ghost btn-sm" data-tb-start="${b.id}">▶</button>` : ''}
       <button class="del" data-tb-del="${b.id}">×</button>
     </div>`;
   }).join('');
   return `
     <div class="card">
-      <h2>Today's plan <span class="hint">${prettyDate(today)}</span></h2>
+      <div class="seg-row tb-days">${[["Today", 0], ["Tomorrow", 1]].map(([l, v]) =>
+        `<button class="seg-btn ${tbDay === v ? 'on' : ''}" data-tb-day="${v}" aria-pressed="${tbDay === v}">${l}</button>`).join('')}</div>
+      <h2>${isToday ? "Today's" : "Tomorrow's"} plan <span class="hint">${prettyDate(day)}</span></h2>
       <div id="tb-list">${blocks.length ? rows : '<div class="empty">No blocks planned. Add one below 👇</div>'}</div>
+      ${blocks.length ? '<div class="hint" style="margin-top:6px">Tap a block to change its time or name.</div>' : ''}
+      ${copyN ? `<button class="btn btn-ghost btn-sm" id="tb-copy" style="margin-top:10px">⧉ Copy ${isToday ? "yesterday's" : "today's"} plan · ${plural(copyN, 'block')}</button>` : ''}
     </div>
     <div class="card">
-      <h2>Add a block</h2>
+      <h2>Add a block${isToday ? '' : ' for tomorrow'}</h2>
       <div class="row2">
-        <div class="field"><label>Start</label><input type="time" id="tb-start" value="${tbNext(0)}"></div>
-        <div class="field"><label>End</label><input type="time" id="tb-end" value="${tbNext(60)}"></div>
+        <div class="field"><label>Start</label><input type="time" id="tb-start" value="${isToday ? tbNext(0) : '09:00'}"></div>
+        <div class="field"><label>End</label><input type="time" id="tb-end" value="${isToday ? tbNext(60) : '10:00'}"></div>
       </div>
       <div class="field"><label>What for?</label><input type="text" id="tb-label" placeholder="e.g. Deep work — report" autocomplete="off"></div>
       <div class="field"><label>Activity (optional — enables ▶ start)</label>
@@ -7098,13 +7192,19 @@ async function scheduleTimeboxAlarms() {
     const cancels = []; for (let i = 800; i < 831; i++) cancels.push({ id: i });
     await LN.cancel({ notifications: cancels });
     const now = Date.now(); let id = 800;
-    DB.timebox().filter(b => b.alarm && b.start).forEach(b => {
-      if (id > 830) return;
-      const at = new Date(b.date + 'T' + b.start + ':00');
-      if (isNaN(at.getTime()) || at.getTime() <= now) return;
-      LN.schedule({ notifications: [{ id: id++, smallIcon: NOTIF_ICON, title: '📦 ' + b.label, body: 'Time-box starting (' + b.start + ')',
-        schedule: { at, allowWhileIdle: true }, sound: 'default' }] });
-    });
+    /* Any future block rings, whatever its day, so tomorrow's plan rings tomorrow. Soonest
+       first: with tomorrow planned (or copied) as well there can be more future blocks than
+       the 31 ids, and the ones that miss out must be the furthest away, not whichever was
+       added last. */
+    DB.timebox().filter(b => b.alarm && b.start)
+      .map(b => ({ b, at: new Date(b.date + 'T' + b.start + ':00') }))
+      .filter(x => !isNaN(x.at.getTime()) && x.at.getTime() > now)
+      .sort((x, y) => x.at - y.at)
+      .forEach(({ b, at }) => {
+        if (id > 830) return;
+        LN.schedule({ notifications: [{ id: id++, smallIcon: NOTIF_ICON, title: '📦 ' + b.label, body: 'Time-box starting (' + b.start + ')',
+          schedule: { at, allowWhileIdle: true }, sound: 'default' }] });
+      });
   } catch (e) {}
 }
 
@@ -7136,8 +7236,35 @@ document.addEventListener('click', (ev) => {
     if (!label) { toast('Name the block', true); return; }
     if (!start || !end) { toast('Set start and end', true); return; }
     const tb = DB.timebox();
-    tb.push({ id: 'tb' + Date.now(), date: todayStr(), start, end, label, act, alarm });
-    const wrote9 = DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); savedToast(wrote9, 'Block added 📦'); return;
+    tb.push({ id: 'tb' + Date.now(), date: tbShownDay(), start, end, label, act, alarm });
+    const wrote9 = DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); savedToast(wrote9, tbDay ? 'Added to tomorrow 📦' : 'Block added 📦'); return;
+  }
+  const dy = ev.target.closest('[data-tb-day]');
+  if (dy) { tbDay = +dy.dataset.tbDay; tbEdit = null; renderFocus(); return; }
+  if (ev.target.id === 'tb-copy') {
+    const day = tbShownDay(), tb = DB.timebox(), add = tbCopyBlocks(tb, addDays(day, -1), day);
+    if (!add.length) { renderFocus(); return; }
+    const ok = DB.saveTimebox(tb.concat(add)); scheduleTimeboxAlarms(); renderFocus();
+    if (ok === false) { savedToast(ok); return; }
+    const ids = new Set(add.map(b => b.id));
+    undoToast(`Copied ${plural(add.length, 'block')}`, () => { DB.saveTimebox(DB.timebox().filter(b => !ids.has(b.id))); scheduleTimeboxAlarms();
+      if (document.getElementById('s-focus').classList.contains('on')) renderFocus(); });
+    return;
+  }
+  const ed = ev.target.closest('[data-tb-edit]');
+  if (ed) { tbEdit = ed.dataset.tbEdit; renderFocus(); return; }
+  if (ev.target.id === 'tb-e-cancel') { tbEdit = null; renderFocus(); return; }
+  const sv = ev.target.closest('[data-tb-save]');
+  if (sv) {
+    const start = document.getElementById('tb-e-start').value, end = document.getElementById('tb-e-end').value;
+    const label = (document.getElementById('tb-e-label').value || '').trim();
+    if (!start || !end) { toast('Set start and end', true); return; }
+    const tb = DB.timebox(), b = tb.find(x => x.id === sv.dataset.tbSave);
+    tbEdit = null;
+    if (!b) { renderFocus(); return; }   // deleted on another phone while the form was open
+    b.start = start; b.end = end; if (label) b.label = label;   // an emptied name keeps the old one
+    const ok = DB.saveTimebox(tb); scheduleTimeboxAlarms(); renderFocus(); savedToast(ok, 'Block updated');   // a moved start moves its alarm
+    return;
   }
   const ts = ev.target.closest('[data-tb-start]');
   if (ts) { const b = DB.timebox().find(x => x.id === ts.dataset.tbStart);
@@ -7151,6 +7278,16 @@ document.addEventListener('click', (ev) => {
     DB.saveTimebox(before.filter(x => x.id !== td.dataset.tbDel)); scheduleTimeboxAlarms(); renderFocus();
     undoToast('Block removed', () => { DB.saveTimebox(restoreItems(DB.timebox(), before, ids)); scheduleTimeboxAlarms(); if (document.getElementById('s-focus').classList.contains('on')) renderFocus(); });
     return; }
+});
+// The block edit form: Enter saves, Escape cancels; a block row opens with Enter/Space as with a tap.
+document.addEventListener('keydown', (ev) => {
+  const id = ev.target.id || '';
+  if (/^tb-e-(start|end|label)$/.test(id) && (ev.key === 'Enter' || ev.key === 'Escape') && !ev.isComposing) {
+    ev.preventDefault();
+    const b = ev.key === 'Enter' ? document.querySelector('[data-tb-save]') : document.getElementById('tb-e-cancel');
+    if (b) b.click(); return;
+  }
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.tb-main[data-tb-edit]')) { ev.preventDefault(); ev.target.click(); }
 });
 document.addEventListener('change', (ev) => {
   const pa = ev.target.closest('[data-pomo-act]');
@@ -12671,7 +12808,7 @@ function pjRenderDetail(el) {
       <div class="pj-add-h">Add a step</div>
       <div class="task-add"><input type="text" id="pj-step-in" placeholder="Next concrete thing to do…" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="pj-step-add">Add</button></div>
-      ${(p.steps || []).some(x => !x.done) ? `<div class="hint" style="margin-top:8px">Tap <b>↗</b> on any step to drop it into today's tasks.</div>` : ''}
+      ${(p.steps || []).some(x => !x.done) ? `<div class="hint" style="margin-top:8px">Tap a step's text to edit it, or <b>↗</b> to drop it into today's tasks.</div>` : ''}
     </div>
 
     <div class="card">
@@ -12714,7 +12851,7 @@ function pjItemRow(p, it, kind) {
   const done = !!it.done;
   return `<div class="pj-item ${done ? 'done' : ''}">
     <button class="pj-tick" data-pj-tick="${kind}:${it.id}" aria-label="${done ? 'mark not done' : 'mark done'}">${done ? '☑' : '☐'}</button>
-    <span class="pj-item-t">${escapeHtml(it.text)}${it.due ? ` <span class="pj-next-d">· ${shortDate(it.due)}</span>` : ''}</span>
+    <span class="pj-item-t" data-pj-edit="${kind}:${it.id}" ${EDIT_ATTRS}><span class="ie-t">${escapeHtml(it.text)}</span>${it.due ? ` <span class="pj-next-d">· ${shortDate(it.due)}</span>` : ''}</span>
     ${done ? '' : `<button class="pj-push" data-pj-push="${kind}:${it.id}" title="add to today's tasks">↗</button>`}
     <button class="del" data-pj-item-del="${kind}:${it.id}">×</button></div>`;
 }
@@ -12761,6 +12898,14 @@ document.addEventListener('click', (ev) => {
       if (it.done) { it.doneAt = Date.now(); buzz(10); } else delete it.doneAt;
     });
     renderProjects(); return;
+  }
+  const pe = t.closest('[data-pj-edit]');
+  if (pe) {
+    const [kind, id] = pe.dataset.pjEdit.split(':'), pid = pjOpen;
+    const it0 = ((pjById(pid) || {})[kind] || []).find(x => x.id === id); if (!it0) return;
+    // 140: the same cap a step or milestone is added with
+    inlineEdit(pe, it0.text, v => pjMutate(pid, p => { const it = (p[kind] || []).find(x => x.id === id); if (it) it.text = v; }), 140);
+    return;
   }
   const push = t.closest('[data-pj-push]');
   if (push) {
