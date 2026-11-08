@@ -1,3 +1,25 @@
+## 2026-11-09 (overnight) — new brand, Play Store set and landing page (committed, NOT uploaded/deployed)
+
+Kishore: "we need distribution… improve the logo and banners and images", then "do whatever you want
+to improve this system" before sleeping. Done:
+- **Logo:** a sunrise half-sun (amber→coral→rose) over three cream journal lines on deep ink
+  (`store/brand/daylog-logo.svg`). Replaced the heartbeat line (read as a health/ECG app). Installed as
+  `icons/icon-192/512/maskable-512.png` (web app, manifest, landing, favicon) and in `og-card.png`
+  (`tools/make-og-card.py` accent now #ff8a4c). Two rejected concepts: a fitness-style "day ring", a
+  document-icon "day page".
+- **Native launcher icon:** `store/brand/android-res/` (adaptive foreground per density, legacy + round,
+  background #15172F). NOT applied — copying it into daily-pulse-native needs a native build + upload.
+- **Play set** in `store/brand/out/`: play-icon-512, feature-graphic (1024×500), store-1..8 (1080×1920).
+  Each frame shows a real screen in one of the five styles, headline type matching that style;
+  generator `store/brand/store-frames.html`, captures in `store/brand/screens/`, how-to in its README.
+- **Listing text draft:** `store/listing-2026-11-08.md` (short 77, full 2,379, notes 389 chars). Title
+  change still Kishore's call.
+- **landing.html rebuilt** in the new brand (self-hosted fonts, real v256 screens as webp in `site/img/`,
+  same Play referrer campaigns and footer links). guide.html no longer calls Google Fonts.
+- Fixed `tools/seed-store-data.js` crashing on the gap day it deletes.
+**Kishore must:** upload the icon, feature graphic and 8 screenshots in Play Console (remove the August
+set); OK a native build for the launcher icon; say "deploy" for the web icon/landing to go live.
+
 ## 2026-11-08 — v256: five UI styles the user picks (DEPLOYED, tag web-v256)
 
 Kishore: "the UI was not rich and classy and not fancy… and let the users choose the UI too".

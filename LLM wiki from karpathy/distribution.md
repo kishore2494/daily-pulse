@@ -5,6 +5,8 @@ website's SEO pages, and people sharing things from inside the app. This page re
 wired up and the rules for adding more. The research behind it is in `store/aso-2026-11.md` and
 `store/distribution-plan-2026-11.md`, both proposals Kishore has not acted on yet.
 
+**Brand & store images (2026-11-09):** `store/brand/` — the sunrise logo, the Play icon, feature graphic and 8 screenshots in `out/`, and their generator. See its README.
+
 ## Install referrers: the naming scheme
 
 Every Play link carries `&referrer=` with URL-encoded UTM values, built in one place:
