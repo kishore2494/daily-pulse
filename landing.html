@@ -3,195 +3,256 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#070b14">
-<title>Daylog — Your whole life in one private tracker</title>
-<meta name="description" content="A private, offline life tracker: habits, mood, 24-hour time tracking, gym, journal, focus timers and more. No account. No cloud. Your data never leaves your phone.">
-<meta property="og:title" content="Daylog — private life tracker">
-<meta property="og:description" content="Habits, mood, 24h time tracking, gym, journal & focus — 100% private, works offline.">
+<meta name="theme-color" content="#0c0e21">
+<title>Daylog — your days, beautifully kept</title>
+<meta name="description" content="A private, offline life log: memories with photos, habits, mood, a 24-hour time tracker and insights from your own data. Five looks to choose from. No account, no cloud.">
+<meta property="og:title" content="Daylog — your days, beautifully kept">
+<meta property="og:description" content="Memories, habits, mood and time in one private, offline life log. Five looks. No account, no cloud.">
 <meta property="og:image" content="https://kishore2494.github.io/daily-pulse/og-card.png">
 <meta property="og:site_name" content="Daylog">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://kishore2494.github.io/daily-pulse/og-card.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- Fonts are self-hosted, like the app's: a page selling "no trackers" must not call Google Fonts on every visit. -->
 <style>
-  :root{
-    --bg:#070b14;--card:#141c2e;--border:#232f47;--hi:#31405f;--text:#eaeffa;--dim:#93a0b8;--faint:#5d6b85;
-    --accent:#6d8cff;--accent2:#8f7bff;--teal:#4ad6c0;--amber:#fbbf24;
-    --grad:linear-gradient(135deg,#6d8cff,#8f7bff);
-    --font-d:'Sora',system-ui,sans-serif;
+  @font-face { font-family: 'Bricolage Grotesque'; font-weight: 500 800; font-display: swap; src: url('fonts/self/bricolage.woff2') format('woff2'); }
+  @font-face { font-family: 'DM Sans'; font-weight: 400 700; font-display: swap; src: url('fonts/self/dm-sans.woff2') format('woff2'); }
+  @font-face { font-family: 'Newsreader'; font-weight: 500 700; font-display: swap; src: url('fonts/self/newsreader.woff2') format('woff2'); }
+  @font-face { font-family: 'Cormorant Garamond'; font-weight: 400 700; font-display: swap; src: url('fonts/self/cormorant.woff2') format('woff2'); }
+  @font-face { font-family: 'Fredoka'; font-weight: 400 700; font-display: swap; src: url('fonts/self/fredoka.woff2') format('woff2'); }
+  :root {
+    --ink: #0c0e21; --ink-2: #15172f; --ink-3: #1d1f3e; --line: rgba(255,255,255,.09); --line-2: rgba(255,255,255,.16);
+    --cream: #fff4e6; --dim: #c3bfd3; --faint: #9a96ad;
+    --sun: linear-gradient(180deg, #ffd36e, #ff8a4c 55%, #ff4f6d); --sun-x: linear-gradient(100deg, #ffc163, #ff8a4c 50%, #ff5a72);
+    --amber: #ffb36b;
+    --display: 'Bricolage Grotesque', 'DM Sans', system-ui, sans-serif;
   }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-  html{scroll-behavior:smooth;}
-  body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;
-    background-image:radial-gradient(50% 30% at 10% -4%,rgba(109,140,255,.18),transparent 60%),radial-gradient(45% 28% at 98% 6%,rgba(143,123,255,.12),transparent 60%),radial-gradient(60% 34% at 60% 108%,rgba(74,214,192,.08),transparent 62%);}
-  .wrap{max-width:1080px;margin:0 auto;padding:0 22px;}
-  a{color:inherit;text-decoration:none;}
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--ink); color: var(--cream); line-height: 1.55; overflow-x: hidden; }
+  body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(55% 40% at 18% 12%, rgba(255,138,76,.20), transparent 70%), radial-gradient(45% 35% at 92% 8%, rgba(168,85,247,.16), transparent 70%), radial-gradient(60% 40% at 50% 110%, rgba(255,79,109,.12), transparent 70%); }
+  a { color: inherit; text-decoration: none; }
+  img { display: block; max-width: 100%; height: auto; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px; }
 
-  /* nav */
-  header{position:sticky;top:0;z-index:30;backdrop-filter:blur(12px);background:rgba(7,11,20,.7);border-bottom:1px solid rgba(255,255,255,.06);}
-  .nav{display:flex;align-items:center;justify-content:space-between;height:62px;}
-  .brand{display:flex;align-items:center;gap:9px;font-family:var(--font-d);font-weight:800;font-size:18px;letter-spacing:-.3px;}
-  .brand .logo{width:30px;height:30px;border-radius:8px;background:var(--grad);display:grid;place-items:center;font-size:16px;box-shadow:0 4px 16px rgba(109,140,255,.4);}
-  .nav-links{display:flex;align-items:center;gap:26px;font-size:14.5px;color:var(--dim);font-weight:600;}
-  .nav-links a:hover{color:var(--text);}
-  .btn{font-family:var(--font-d);font-weight:700;font-size:14.5px;padding:11px 20px;border-radius:12px;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:8px;transition:transform .1s,filter .15s,box-shadow .2s;}
-  .btn:active{transform:scale(.96);}
-  .btn-primary{background:var(--grad);color:#fff;box-shadow:0 6px 22px rgba(109,140,255,.35);}
-  .btn-primary:hover{filter:brightness(1.08);}
-  .btn-ghost{background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--hi);}
-  @media(max-width:640px){.nav-links a:not(.btn){display:none;}}
+  header { position: sticky; top: 0; z-index: 30; background: rgba(12,14,33,.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 800 21px/1 var(--display); letter-spacing: -.6px; }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; }
+  .links { display: flex; align-items: center; gap: 26px; font-size: 15px; color: var(--dim); font-weight: 600; }
+  .links a:hover { color: var(--cream); }
+  .btn { display: inline-flex; align-items: center; gap: 9px; font: 700 15.5px/1 'DM Sans', sans-serif; padding: 15px 22px; border-radius: 14px; border: 0; cursor: pointer; transition: transform .12s, filter .15s; }
+  .btn:active { transform: scale(.97); }
+  .btn-sun { background: var(--sun-x); color: #1b0f0a; box-shadow: 0 10px 30px -8px rgba(255,120,80,.6); }
+  .btn-sun:hover { filter: brightness(1.06); }
+  .btn-ghost { background: rgba(255,255,255,.06); color: var(--cream); border: 1px solid var(--line-2); }
+  .btn-sm { padding: 11px 16px; font-size: 14px; border-radius: 12px; }
+  .btn svg { width: 18px; height: 18px; }
+  @media (max-width: 700px) { .links a:not(.btn) { display: none; } }
 
   /* hero */
-  .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:70px 0 40px;}
-  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#b9c8ff;background:rgba(109,140,255,.12);border:1px solid rgba(109,140,255,.3);padding:6px 13px;border-radius:999px;}
-  .hero h1{font-family:var(--font-d);font-size:52px;line-height:1.05;letter-spacing:-1.5px;margin:18px 0 14px;font-weight:800;
-    background:linear-gradient(96deg,#fff 30%,#b9c8ff 72%,#8fd8cd 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
-  .hero p.sub{font-size:18px;color:var(--dim);max-width:520px;}
-  .cta-row{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap;}
-  .trust{display:flex;gap:18px;flex-wrap:wrap;margin-top:26px;font-size:13.5px;color:var(--dim);}
-  .trust span{display:inline-flex;align-items:center;gap:7px;}
-  .trust b{color:var(--text);font-weight:600;}
-  /* phone */
-  .phone{justify-self:center;position:relative;width:270px;}
-  .phone::before{content:'';position:absolute;inset:-30px -30px;background:radial-gradient(circle at 50% 40%,rgba(109,140,255,.35),transparent 68%);z-index:-1;filter:blur(10px);}
-  .phone img{width:100%;border-radius:34px;border:8px solid #0d1424;box-shadow:0 30px 70px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.05);display:block;}
-  @media(max-width:820px){.hero{grid-template-columns:1fr;text-align:center;padding:44px 0 20px;}.hero h1{font-size:38px;}.hero p.sub{margin:0 auto;}.cta-row,.trust{justify-content:center;}.phone{margin-top:30px;width:240px;}}
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 30px; align-items: center; padding-top: 72px; padding-bottom: 40px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--amber); }
+  .eyebrow::before { content: ''; width: 22px; height: 2px; background: var(--sun-x); border-radius: 2px; }
+  h1 { font: 800 clamp(44px, 6.4vw, 76px)/.98 var(--display); letter-spacing: -2.6px; margin: 18px 0 20px; }
+  h1 em { font-style: normal; background: var(--sun-x); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { font-size: 19px; color: var(--dim); max-width: 520px; }
+  .cta { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
+  .trust { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .trust span { font-size: 14px; font-weight: 600; color: var(--dim); padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(255,255,255,.04); }
+  .fan { position: relative; height: 600px; }
+  .ph { position: absolute; width: 250px; padding: 8px; border-radius: 38px; background: #08080c; box-shadow: 0 40px 80px -20px rgba(0,0,0,.7), inset 0 0 0 1.5px rgba(255,255,255,.08); }
+  .ph img { border-radius: 31px; width: 100%; }
+  .fan .a { left: 4%; top: 70px; transform: rotate(-8deg); }
+  .fan .b { left: 50%; top: 0; transform: translateX(-50%); z-index: 2; width: 270px; }
+  .fan .c { right: 4%; top: 70px; transform: rotate(8deg); }
+  @media (max-width: 880px) {
+    .hero { grid-template-columns: 1fr; text-align: center; padding-top: 48px; padding-bottom: 10px; }
+    .sub { margin: 0 auto; } .cta, .trust { justify-content: center; } .eyebrow { justify-content: center; }
+    .fan { height: 470px; max-width: 460px; margin: 10px auto 0; width: 100%; }
+    .ph { width: 190px; border-radius: 30px; padding: 6px; } .ph img { border-radius: 25px; }
+    .fan .b { width: 210px; } .fan .a, .fan .c { top: 56px; }
+  }
 
-  /* sections */
-  section{padding:56px 0;}
-  .sec-head{text-align:center;max-width:640px;margin:0 auto 40px;}
-  .sec-head h2{font-family:var(--font-d);font-size:34px;letter-spacing:-.8px;font-weight:800;margin-bottom:12px;}
-  .sec-head p{color:var(--dim);font-size:16.5px;}
+  section { padding: 70px 0; }
+  .kicker { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--amber); margin-bottom: 14px; }
+  h2 { font: 800 clamp(32px, 4.4vw, 50px)/1.02 var(--display); letter-spacing: -1.6px; margin-bottom: 16px; }
+  .lead { font-size: 18px; color: var(--dim); max-width: 560px; }
 
-  /* features grid */
-  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
-  .feat{background:linear-gradient(180deg,rgba(255,255,255,.04),transparent 60%),var(--card);border:1px solid var(--border);border-top-color:var(--hi);border-radius:18px;padding:22px;transition:transform .15s,border-color .2s;}
-  .feat:hover{transform:translateY(-3px);border-color:var(--accent);}
-  .feat .ico{font-size:28px;}
-  .feat h3{font-family:var(--font-d);font-size:17px;font-weight:700;margin:12px 0 6px;letter-spacing:-.2px;}
-  .feat p{font-size:14px;color:var(--dim);}
-  .feat.star{border-color:rgba(109,140,255,.5);background:linear-gradient(180deg,rgba(109,140,255,.12),transparent 60%),var(--card);}
-  @media(max-width:820px){.feat-grid{grid-template-columns:repeat(2,1fr);}}
-  @media(max-width:520px){.feat-grid{grid-template-columns:1fr;}}
+  /* split rows */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .split.rev .text { order: 2; }
+  .split .shot { justify-self: center; }
+  .shot .ph { position: relative; width: 300px; }
+  .bullets { margin-top: 22px; display: grid; gap: 12px; }
+  .bullets div { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; color: var(--dim); }
+  .bullets b { color: var(--cream); }
+  .bullets i { flex: none; width: 24px; height: 24px; border-radius: 8px; background: rgba(255,138,76,.16); color: var(--amber); display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 13px; margin-top: 1px; }
+  @media (max-width: 880px) { .split { grid-template-columns: 1fr; gap: 34px; text-align: center; } .split.rev .text { order: 0; } .lead { margin: 0 auto; } .bullets { text-align: left; max-width: 460px; margin-left: auto; margin-right: auto; } .shot .ph { width: 250px; } }
 
-  /* screenshot gallery */
-  .shots{display:flex;gap:18px;overflow-x:auto;padding:10px 22px 24px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;}
-  .shots::-webkit-scrollbar{height:0;}
-  .shot{flex:0 0 auto;width:210px;scroll-snap-align:center;}
-  .shot img{width:100%;height:430px;object-fit:cover;object-position:top;border-radius:22px;border:6px solid #0d1424;box-shadow:0 18px 44px rgba(0,0,0,.5);display:block;}
-  .shot span{display:block;text-align:center;margin-top:10px;font-size:13px;color:var(--dim);font-weight:600;}
+  /* styles strip */
+  .styles { text-align: center; }
+  .styles .lead { margin: 0 auto; }
+  .strip { display: flex; gap: 18px; justify-content: center; margin-top: 44px; overflow-x: auto; padding: 6px 22px 22px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .strip::-webkit-scrollbar { display: none; }
+  .look { flex: 0 0 auto; width: 196px; scroll-snap-align: center; }
+  .look .ph { position: relative; width: 100%; padding: 6px; border-radius: 30px; }
+  .look .ph img { border-radius: 25px; }
+  .look b { display: block; margin-top: 14px; font-size: 22px; }
+  .look span { display: block; font-size: 14px; color: var(--faint); margin-top: 2px; }
+  .look.midnight b { font: 700 22px 'DM Sans'; } .look.paper b { font: 600 24px 'Newsreader', serif; } .look.luxe b { font: 600 27px 'Cormorant Garamond', serif; }
+  .look.aurora b { font: 800 22px var(--display); } .look.bloom b { font: 600 23px 'Fredoka', sans-serif; }
+  @media (max-width: 1100px) { .strip { justify-content: flex-start; } }
 
-  /* privacy banner */
-  .privacy{background:linear-gradient(135deg,rgba(52,211,153,.1),rgba(74,214,192,.05));border:1px solid rgba(74,214,192,.3);border-radius:24px;padding:44px 34px;text-align:center;}
-  .privacy .lock{font-size:44px;}
-  .privacy h2{font-family:var(--font-d);font-size:30px;letter-spacing:-.6px;margin:12px 0;}
-  .privacy p{color:var(--dim);max-width:560px;margin:0 auto;font-size:16px;}
+  /* grid of the rest */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+  .card { border: 1px solid var(--line); border-radius: 22px; padding: 24px; background: linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.015)); }
+  .card h3 { font: 700 19px/1.2 var(--display); letter-spacing: -.3px; margin: 14px 0 8px; }
+  .card p { font-size: 15px; color: var(--dim); }
+  .card .ico { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 21px; background: rgba(255,255,255,.06); }
+  @media (max-width: 880px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
 
-  /* final cta */
-  .final{text-align:center;background:linear-gradient(180deg,var(--card),rgba(20,28,46,.4));border:1px solid var(--border);border-radius:26px;padding:56px 30px;}
-  .final .fire{font-size:52px;filter:drop-shadow(0 8px 26px rgba(251,191,36,.4));}
-  .final h2{font-family:var(--font-d);font-size:36px;letter-spacing:-.8px;margin:14px 0 10px;font-weight:800;}
-  .final p{color:var(--dim);margin-bottom:26px;font-size:17px;}
-  .playpill{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--dim);border:1px dashed var(--hi);border-radius:12px;padding:11px 18px;}
+  .private { border-radius: 30px; padding: 56px 40px; text-align: center; border: 1px solid var(--line-2);
+    background: radial-gradient(60% 80% at 50% 0%, rgba(255,138,76,.16), transparent 70%), var(--ink-2); }
+  .private .lead { margin: 0 auto; }
+  .private ul { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 26px; }
+  .private li { font-weight: 600; font-size: 15px; padding: 11px 16px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(255,255,255,.04); }
 
-  footer{border-top:1px solid var(--border);padding:34px 0;margin-top:56px;color:var(--faint);font-size:13.5px;}
-  .foot-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;}
-  .foot-links{display:flex;gap:20px;}
-  .foot-links a:hover{color:var(--text);}
+  .final { text-align: center; padding-top: 90px; padding-bottom: 40px; }
+  .final img { width: 92px; height: 92px; border-radius: 24px; margin: 0 auto 26px; box-shadow: 0 24px 50px -10px rgba(255,120,80,.45); }
+  .final .lead { margin: 0 auto; }
+  .final .cta { justify-content: center; }
+
+  footer { border-top: 1px solid var(--line); padding: 34px 0; margin-top: 50px; color: var(--faint); font-size: 14px; }
+  .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  .foot .brand { font-size: 17px; color: var(--dim); } .foot .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 20px; }
+  .foot-links a:hover { color: var(--cream); }
+
+  .reveal { animation: rise .8s cubic-bezier(.2,.7,.2,1) both; }
+  .reveal.d2 { animation-delay: .12s; } .reveal.d3 { animation-delay: .24s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .reveal { animation: none; } html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
 
 <header><div class="wrap nav">
-  <a class="brand" href="#"><span class="logo">🔥</span> Daylog</a>
-  <nav class="nav-links">
-    <a href="#features">Features</a>
-    <a href="#screens">Screens</a>
-    <a href="#privacy">Privacy</a>
-    <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dheader">Get the app</a>
+  <a class="brand" href="#"><img src="icons/icon-192.png" alt="" width="34" height="34">Daylog</a>
+  <nav class="links">
+    <a href="#memories">Memories</a>
+    <a href="#styles">Styles</a>
+    <a href="#private">Privacy</a>
+    <a class="btn btn-sun btn-sm" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dheader">Get the app</a>
   </nav>
 </div></header>
 
-<main class="wrap">
-
-  <section class="hero">
+<main>
+  <div class="wrap hero">
     <div>
-      <span class="eyebrow">🔒 Private · offline · free</span>
-      <h1>Your whole life in one private tracker.</h1>
-      <p class="sub">Habits, mood, your day hour-by-hour, gym, journal, focus timers and more — all in one calm app. No account, no cloud. Your data never leaves your phone.</p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dhero">▶ Get it on Google Play</a>
+      <div class="eyebrow reveal">Private · offline · free</div>
+      <h1 class="reveal d2">Your days, <em>beautifully</em> kept.</h1>
+      <p class="sub reveal d3">Memories with photos, habits, mood and your day hour by hour, in one private life log. No account and no cloud: it all stays on your phone.</p>
+      <div class="cta reveal d3">
+        <a class="btn btn-sun" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dhero"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 2.8v18.4c0 .5.5.8 1 .6l15.6-9.2c.4-.3.4-.9 0-1.2L5 2.2c-.5-.2-1 .1-1 .6z"/></svg>Get it on Google Play</a>
         <a class="btn btn-ghost" href="index.html">Use it in your browser</a>
       </div>
-      <div class="trust">
-        <span>🔒 <b>No account</b></span>
-        <span>📴 <b>Works offline</b></span>
-        <span>🚫 <b>No ads or tracking</b></span>
-        <span>🎨 <b>Fully customizable</b></span>
+      <div class="trust reveal d3"><span>No account</span><span>Works offline</span><span>No ads or trackers</span><span>Five looks</span></div>
+    </div>
+    <div class="fan reveal d2" aria-hidden="true">
+      <div class="ph a"><img src="site/img/s2-look-luxe.webp" alt="" width="560" height="1213"></div>
+      <div class="ph b"><img src="site/img/s1-memory.webp" alt="" width="560" height="1213"></div>
+      <div class="ph c"><img src="site/img/s2-look-bloom.webp" alt="" width="560" height="1213"></div>
+    </div>
+  </div>
+
+  <section id="memories"><div class="wrap split">
+    <div class="text">
+      <div class="kicker">Memories</div>
+      <h2>Keep the days worth remembering.</h2>
+      <p class="lead">Give every moment its own page, the way you would in a notebook, with the story, the people and all the photos.</p>
+      <div class="bullets">
+        <div><i>1</i><span><b>A page per moment:</b> when it happened, where, who was there, tags, photos and videos.</span></div>
+        <div><i>2</i><span><b>Import a batch</b> of photos and Daylog sorts them into one memory per day they were taken.</span></div>
+        <div><i>3</i><span><b>Link pages together</b> and see what happened on this day in earlier years.</span></div>
       </div>
     </div>
-    <div class="phone"><img src="guide/img/today.png" alt="Daylog — daily log screen"></div>
-  </section>
+    <div class="shot"><div class="ph"><img src="site/img/s9-memtimeline.webp" alt="The Memories timeline" width="560" height="1213" loading="lazy"></div></div>
+  </div></section>
 
-  <section id="features">
-    <div class="sec-head">
-      <h2>Everything, in one place</h2>
-      <p>Most trackers do one thing. Daylog brings your habits, time, health and thoughts together — and lets you hide anything you don't use.</p>
-    </div>
-    <div class="feat-grid">
-      <div class="feat star"><div class="ico">⏱️</div><h3>24-hour time tracking</h3><p>Tap an activity to start, tap another to switch. See exactly where your day goes on a colour-coded timeline.</p></div>
-      <div class="feat"><div class="ico">✅</div><h3>Habits &amp; streaks</h3><p>A daily checklist with fire-streaks and 90-day heatmaps. Build the chain, keep it alive.</p></div>
-      <div class="feat"><div class="ico">📷</div><h3>Photos &amp; voice notes</h3><p>Add a photo of your day or record a voice note while it is fresh. They stay on your phone and go in your backup file.</p></div>
-      <div class="feat"><div class="ico">🍅</div><h3>Focus &amp; timeboxing</h3><p>A Pomodoro timer, a day planner and binaural beats for focus or sleep — with alarms that ring even when the app is closed.</p></div>
-      <div class="feat"><div class="ico">💪</div><h3>Gym companion</h3><p>A full workout split with animated form demos, per-set logging and muscle-group stats.</p></div>
-      <div class="feat"><div class="ico">📊</div><h3>Stats that mean something</h3><p>Trends, auto-insights, a weekly review and a Polymath Index across body, mind, work &amp; discipline.</p></div>
-      <div class="feat"><div class="ico">📆</div><h3>Calendar &amp; reminders</h3><p>A month tinted by your mood, dated events, and full-screen alarms that wake your phone.</p></div>
-      <div class="feat"><div class="ico">✍️</div><h3>Journal &amp; write</h3><p>Voice-to-text journaling plus a block editor for longer notes, checklists and articles.</p></div>
-      <div class="feat"><div class="ico">🎨</div><h3>Make it yours</h3><p>Rename, recolour, reorder or hide every habit, field, workout, tab and theme. It adapts to you.</p></div>
-    </div>
-  </section>
+  <section id="styles" class="styles"><div class="wrap">
+    <div class="kicker">Styles</div>
+    <h2>Five looks. Pick yours.</h2>
+    <p class="lead">Not a colour swap: each style has its own typeface, cards and feel. Change it any time.</p>
+  </div>
+  <div class="strip">
+    <div class="look midnight"><div class="ph"><img src="site/img/s2-look-midnight.webp" alt="Midnight style" width="560" height="1213" loading="lazy"></div><b>Midnight</b><span>Deep navy, glowing colour</span></div>
+    <div class="look paper"><div class="ph"><img src="site/img/s2-look-paper.webp" alt="Paper style" width="560" height="1213" loading="lazy"></div><b>Paper</b><span>Clean as a notebook page</span></div>
+    <div class="look luxe"><div class="ph"><img src="site/img/s2-look-luxe.webp" alt="Luxe style" width="560" height="1213" loading="lazy"></div><b>Luxe</b><span>Black and champagne gold</span></div>
+    <div class="look aurora"><div class="ph"><img src="site/img/s2-look-aurora.webp" alt="Aurora style" width="560" height="1213" loading="lazy"></div><b>Aurora</b><span>Northern lights, frosted glass</span></div>
+    <div class="look bloom"><div class="ph"><img src="site/img/s2-look-bloom.webp" alt="Bloom style" width="560" height="1213" loading="lazy"></div><b>Bloom</b><span>Soft cream and coral</span></div>
+  </div></section>
 
-  <section id="screens">
-    <div class="sec-head"><h2>See it in action</h2><p>Designed to feel calm and fast, not cluttered.</p></div>
-  </section>
-</main>
-<div class="shots">
-  <div class="shot"><img src="guide/img/photos.jpg" alt="Photos and voice notes on a day" loading="lazy"><span>Photos &amp; voice</span></div>
-  <div class="shot"><img src="guide/img/today.png" alt="Log"><span>Daily log</span></div>
-  <div class="shot"><img src="guide/img/time.png" alt="Time"><span>24h time tracking</span></div>
-  <div class="shot"><img src="guide/img/dash.png" alt="Stats"><span>Stats &amp; insights</span></div>
-  <div class="shot"><img src="guide/img/habits.png" alt="Habits"><span>Habits &amp; streaks</span></div>
-  <div class="shot"><img src="guide/img/cal.png" alt="Calendar"><span>Calendar</span></div>
-  <div class="shot"><img src="guide/img/gym.png" alt="Gym"><span>Gym</span></div>
-  <div class="shot"><img src="guide/img/write.png" alt="Write"><span>Journal &amp; write</span></div>
-</div>
-
-<main class="wrap">
-  <section id="privacy">
-    <div class="privacy">
-      <div class="lock">🔒</div>
-      <h2>Your data never leaves your phone</h2>
-      <p>No sign-up. No servers. No analytics or trackers. Everything you log lives only on your device — which also means it's yours to export as a backup anytime. Privacy isn't a setting here; it's the whole design.</p>
-    </div>
-  </section>
-
-  <section>
-    <div class="final">
-      <div class="fire">🔥</div>
-      <h2>Start tracking your pulse</h2>
-      <p>Free and private. Get it from Google Play, or use it right in your browser.</p>
-      <div class="cta-row" style="justify-content:center">
-        <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dfinal">▶ Get it on Google Play</a>
-        <a class="btn btn-ghost" href="index.html">Open in your browser</a>
+  <section><div class="wrap split rev">
+    <div class="text">
+      <div class="kicker">Habits</div>
+      <h2>Tick it off. Watch it grow.</h2>
+      <p class="lead">One tap a day, from the Log or the Habits screen. Every week becomes a column, every good day a green square.</p>
+      <div class="bullets">
+        <div><i>✓</i><span><b>Rest days don't break streaks.</b> Skip a day and your streak stays alive.</span></div>
+        <div><i>✓</i><span><b>A strength score</b> shows the trend, so one missed day never erases months.</span></div>
       </div>
     </div>
-  </section>
+    <div class="shot"><div class="ph"><img src="site/img/s3-habits.webp" alt="Habits with a weekly heatmap" width="560" height="1213" loading="lazy"></div></div>
+  </div></section>
+
+  <section><div class="wrap split">
+    <div class="text">
+      <div class="kicker">Your patterns</div>
+      <h2>See what really lifts your mood.</h2>
+      <p class="lead">Daylog finds your own patterns, worked out on your phone and never uploaded: your sleep sweet spot, which habit lifts tomorrow's mood, what heavy screen days cost you.</p>
+    </div>
+    <div class="shot"><div class="ph"><img src="site/img/s4-patterns.webp" alt="Patterns found in your own data" width="560" height="1213" loading="lazy"></div></div>
+  </div></section>
+
+  <section><div class="wrap">
+    <div class="kicker">And the rest</div>
+    <h2>Everything a day holds.</h2>
+    <div class="grid">
+      <div class="card"><div class="ico">⏱️</div><h3>24-hour time tracker</h3><p>Tap Work, then Gym, then Sleep. Your day draws itself on a timeline.</p></div>
+      <div class="card"><div class="ico">🙂</div><h3>Mood in one square</h3><p>One tap sets mood and energy, then Daylog hands you the words for it.</p></div>
+      <div class="card"><div class="ico">🔎</div><h3>Find anything</h3><p>Search every journal, note and memory in a second, even offline.</p></div>
+      <div class="card"><div class="ico">🍅</div><h3>Focus timer</h3><p>Pomodoro and timeboxing with alarms that ring even when the app is closed.</p></div>
+      <div class="card"><div class="ico">💪</div><h3>Gym log</h3><p>Your split, animated form demos and the reps you lifted last time.</p></div>
+      <div class="card"><div class="ico">₹</div><h3>Money, tasks, plans</h3><p>A simple money tracker, to-dos that roll over, plans and projects.</p></div>
+    </div>
+  </div></section>
+
+  <section id="private"><div class="wrap">
+    <div class="private">
+      <div class="kicker">Private by design</div>
+      <h2>No account. No cloud. No ads.</h2>
+      <p class="lead">Everything you log lives on your phone. Back it up to a file whenever you like; it is yours to keep and take anywhere.</p>
+      <ul><li>No sign-up</li><li>No servers</li><li>No analytics or trackers</li><li>Works offline</li><li>Nothing locked behind a paywall</li></ul>
+    </div>
+  </div></section>
+
+  <div class="wrap final">
+    <img src="icons/icon-512.png" alt="Daylog" width="92" height="92" loading="lazy">
+    <h2>Start keeping your days.</h2>
+    <p class="lead">Free and private. Get it on Google Play, or use it right in your browser.</p>
+    <div class="cta">
+      <a class="btn btn-sun" href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dfinal"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 2.8v18.4c0 .5.5.8 1 .6l15.6-9.2c.4-.3.4-.9 0-1.2L5 2.2c-.5-.2-1 .1-1 .6z"/></svg>Get it on Google Play</a>
+      <a class="btn btn-ghost" href="index.html">Open in your browser</a>
+    </div>
+  </div>
 </main>
 
-<footer><div class="wrap foot-row">
-  <div>🔥 Daylog · private, offline, yours.</div>
+<footer><div class="wrap foot">
+  <a class="brand" href="#"><img src="icons/icon-192.png" alt="" width="26" height="26">Daylog</a>
   <div class="foot-links">
     <a href="https://play.google.com/store/apps/details?id=io.github.kishore2494.dailypulse&amp;referrer=utm_source%3Dlanding%26utm_medium%3Dweb%26utm_campaign%3Dfooter">Google Play</a>
     <a href="index.html">Open app</a>
