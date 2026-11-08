@@ -30,9 +30,11 @@
    {"@type":"Question","name":"Can it track screen time automatically?","acceptedAnswer":{"@type":"Answer","text":"Yes — grant Usage access once and your daily screen time is tracked and charted automatically, and correlated with your mood."}},
    {"@type":"Question","name":"Is Daylog free?","acceptedAnswer":{"@type":"Answer","text":"Yes, Daylog is free on Google Play."}}]}
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <!-- Self-hosted, like the app: no call to Google Fonts from a page about a no-trackers app. -->
+  <style>
+    @font-face { font-family: 'DM Sans'; font-weight: 400 700; font-display: swap; src: url('fonts/self/dm-sans.woff2') format('woff2'); }
+    @font-face { font-family: 'Sora'; font-weight: 600 800; font-display: swap; src: url('fonts/self/sora.woff2') format('woff2'); }
+  </style>
   <style>
     :root{color-scheme:dark;--bg:#070b14;--card:#141c2e;--border:#232f47;--hi:#31405f;--text:#eaeffa;--dim:#93a0b8;--faint:#5d6b85;--accent:#6d8cff;--accent2:#8f7bff;--teal:#4ad6c0;}
     *{box-sizing:border-box;margin:0;padding:0;}
