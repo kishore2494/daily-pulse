@@ -15012,7 +15012,7 @@ function showExitConfirm() {
 document.addEventListener('click', (ev) => {
   const m = document.getElementById('confirm-exit'); if (!m || !m.classList.contains('on')) return;
   if (ev.target.closest('[data-exit-cancel]')) { m.classList.remove('on'); return; }
-  if (ev.target.closest('[data-exit-yes]')) { const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App; if (App && App.exitApp) App.exitApp(); else m.classList.remove('on'); }
+  if (ev.target.closest('[data-exit-yes]')) { const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App; if (App && App.exitApp) App.exitApp(); else { m.classList.remove('on'); hbLeave(); } }
 });
 function handleBack() {
   // 0) a ringing alarm owns the screen — back must never dismiss it or poke things behind it
@@ -15067,6 +15067,77 @@ function handleBack() {
   const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
   if (App && App.addListener) App.addListener('backButton', handleBack);
 })();
+
+/* ---------- Back in a browser or an installed web app ----------
+   The Play app hears Android's Back as Capacitor's backButton event. A browser tab, or Daylog
+   installed from Chrome, has no such event: Back is a history traversal, and with no history
+   entries of Daylog's own it left the app from any screen or open sheet, losing what was open.
+   So the web build keeps a few "guard" entries on top of its own entry (state { dlBack: n },
+   0 = Daylog's own). A Back lands on the guard below (popstate) and runs the same handleBack().
+
+   Several guards rather than one re-pushed after every Back: Chrome's history-manipulation
+   intervention marks the entries a page adds WITHOUT a user activation as skippable, and stops
+   honouring an old tap once a back/forward has happened. A single guard re-pushed inside
+   popstate would be skipped by the very next Back, which then closes Daylog — and two Backs in
+   a row (close the photo, then leave the memory) is the normal case. Entries added after a tap
+   are kept, so every tap tops the stack up and a run of Backs spends it. */
+const HB_DEPTH = 6;          // Backs in a row, no tap between; the longest usual run (photo, edit, memory, tab, home → exit question) is 5
+let _hbOn = false;           // the guard is in use (never in the Play app)
+let _hbAt = 0;               // which of our entries is current: 0 = Daylog's own, 1..n = guards
+let _hbTop = 0;              // the highest of our entries in the browser's history
+let _hbLeaving = false;      // Exit was chosen: the next Back is the person leaving, not a step back
+function hbTopUp() {
+  if (!_hbOn || _hbLeaving || _hbAt >= HB_DEPTH) return;
+  // The welcome screens have no Back of their own (handleBack ignores them): a first-time
+  // visitor's Back must still leave the site, as it always did, not vanish into guards.
+  if (document.querySelector('#onboard.on')) return;
+  try { while (_hbAt < HB_DEPTH) { history.pushState({ dlBack: _hbAt + 1 }, ''); _hbAt++; } } catch (e) {}   // Safari throws after ~100 pushes in 30 s
+  _hbTop = _hbAt;   // a push drops every entry after it
+}
+function hbSync() {   // where are we? at boot, and on a return from the back/forward cache
+  const s = history.state;
+  // A reload keeps our entries and their state: reuse them, or every reload would stack more.
+  if (s && typeof s.dlBack === 'number') { _hbAt = s.dlBack; _hbTop = Math.max(_hbAt, HB_DEPTH); }
+  else { try { history.replaceState({ dlBack: 0 }, ''); } catch (e) {} _hbAt = _hbTop = 0; }
+  hbTopUp();
+}
+function hbOnPop(ev) {
+  const s = ev.state, n = s && typeof s.dlBack === 'number' ? s.dlBack : null;
+  if (n === null) {   // an entry we did not make (an <a href="#"> adds one): count it as a guard
+    _hbTop = ++_hbAt;
+    try { history.replaceState({ dlBack: _hbAt }, ''); } catch (e) {}
+    return;
+  }
+  const back = n < _hbAt; _hbAt = n;
+  if (!back) { _hbLeaving = false; return; }   // Forward (desktop): nothing to undo, and they stayed
+  if (_hbLeaving) return;                      // they chose Exit, and this is them going
+  if (document.querySelector('#onboard.on')) { hbLeave(); return; }   // nothing to step back through yet
+  if (n === 0) hbTopUp();   // the last guard is spent: re-arm (Chrome may skip it until the next tap)
+  handleBack();
+}
+/* Exit on the web. No script can close a browser tab or an installed web app, so Exit goes
+   back past all of Daylog's entries to the page it was opened from. When Daylog IS the first
+   page (opened from its home-screen icon) there is nothing before it: drop to its own entry and
+   stay unarmed, so the next Back closes it the way Android closes any app at its first page. */
+function hbLeave() {
+  if (!_hbOn) return;
+  _hbLeaving = true;
+  if (history.length > _hbTop + 1) { history.go(-(_hbAt + 1)); return; }   // something came before Daylog
+  if (_hbAt > 0) history.go(-_hbAt);
+  toast('Go back once more to close Daylog');
+}
+function hbInit() {
+  if (window.Capacitor) return;   // the Play app: the backButton listener above owns Back
+  _hbOn = true;
+  hbSync();
+  document.addEventListener('click', () => {
+    _hbLeaving = false;        // a tap after Exit means they stayed (an Exit tap sets it again in its own, later handler)
+    hbTopUp();                 // now, so an Exit tap counts a full stack of guards
+    setTimeout(hbTopUp, 0);    // and after this tap's own handlers, which may have closed the welcome screens
+  }, true);
+  addEventListener('popstate', hbOnPop);
+  addEventListener('pageshow', (ev) => { if (ev.persisted) { _hbLeaving = false; hbSync(); } });
+}
 
 /* ---------- Theme: accent colour + light/dark MODE (device-local) ---------- */
 const THEMES = [
@@ -15718,6 +15789,9 @@ setTimeout(() => {
     }
   } catch (e) {}
 })();
+// Only now that ?go= and ?alarm= are gone from the URL: the guard entries copy the current URL,
+// and a guard still carrying ?alarm= would ring the alarm again on a reload.
+hbInit();
 pullState();   // multi-device: pull latest from your Sheet on open
 if ('serviceWorker' in navigator) {
   // If a service worker already controls this page, auto-reload once when a new
