@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v255';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v256';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1440,8 +1440,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w25',
+  v: 'w26',
   items: [
+    '✨ <b>Pick your style</b> — Daylog now comes in five looks, each with its own type, cards and colours: <b>Midnight</b> (the original), <b>Paper</b> (clean as a Notion page, light or dark), <b>Luxe</b> (black and champagne gold), <b>Aurora</b> (northern lights behind frosted glass) and <b>Bloom</b> (soft cream and coral). Try them in <b>Settings ▸ Style &amp; appearance</b>.',
     '↩️ <b>Undo</b> — deleting a task, a plan or project step, a note or a timebox block now shows an <b>Undo</b> button for a few seconds. So does hiding a card on the Log.',
     '✅ <b>Tick habits on the Habits screen</b> — each habit has a <b>Mark done</b> button, and the grid now shows one column per week with today outlined. Tapping a ticked habit again unticks it (it used to mark it skipped); <b>Skip today</b> is on the message that follows.',
     '🔎 <b>History and Search are in the menu</b>, and Search finds every word you type, anywhere in an entry (“landlord deposit” finds “argued with the landlord about the deposit”).',
@@ -6440,18 +6441,23 @@ const CUSTOM_PAGES = [
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
   { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
-  { id: 'theme',  ico: '🎨', label: 'Theme & dark mode',  sub: 'light, dark or black · accent colour' },
+  { id: 'theme',  ico: '🎨', label: 'Style & dark mode',  sub: 'Midnight, Paper, Luxe, Aurora, Bloom · light or dark' },
 ];
 function cfgSectionHTML(page) {
   if (page === 'theme') {
     const curAccent = DB.settings().accent || 'indigo';
     const curMode = DB.settings().mode || 'auto';
-    return `<div class="card"><h2>🌗 Appearance</h2>
+    const st = uiStyle();
+    return `<div class="card"><h2>✨ Style</h2>
+      <p class="hint" style="margin:-4px 0 12px">The whole look of the app: type, cards, colours and the bottom bar. Tap one to try it.</p>
+      ${stylePickerHTML()}</div>
+      ${st.mode ? `<div class="card"><h2>🌗 Light or dark</h2><p class="hint" style="margin:0">${st.name} is always ${st.mode}. Pick Midnight or Paper to choose light, dark or black.</p></div>`
+      : `<div class="card"><h2>🌗 Light or dark</h2>
       <div class="mode-row">${THEME_MODES.map(m => `<button class="mode-btn ${m.id === curMode ? 'on' : ''}" data-thememode="${m.id}">
-        <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>
-      <div class="card"><h2>🎨 Accent colour</h2>
+        <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>`}
+      ${st.id === 'midnight' ? `<div class="card"><h2>🎨 Accent colour</h2>
       <div class="theme-row">${THEMES.map(t => `<button class="theme-sw ${t.id === curAccent ? 'on' : ''}" data-theme="${t.id}"
-        style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div></div>`;
+        style="background:linear-gradient(135deg,${t.a},${t.b})"></button>`).join('')}</div></div>` : ''}`;
   }
   if (page === 'tabs') {
     const dt = defaultTab();
@@ -6592,7 +6598,7 @@ function renderCustom() {
   const page = CUSTOM_PAGES.find(p => p.id === customPage);
   document.getElementById('screen-title').textContent = page ? page.label : 'Customize';
   document.getElementById('screen-sub').textContent = 'Customize';
-  el.innerHTML = `<button class="back-btn" id="custom-back">${_customFrom === 'habits' ? '← Back to Habits' : _customFrom === 'gym' ? '← Back to Gym' : '← Customize'}</button>${cfgSectionHTML(customPage)}`;
+  el.innerHTML = `<button class="back-btn" id="custom-back">${_customFrom === 'habits' ? '← Back to Habits' : _customFrom === 'gym' ? '← Back to Gym' : _customFrom === 'settings' ? '← Settings' : '← Customize'}</button>${cfgSectionHTML(customPage)}`;
   if (customPage === 'habits') enableDrag(document.getElementById('cfg-habits'), ids => {
     const cfg = habitCfg(); saveHabitCfg(ids.map(id => cfg.find(h => h.key === id)).filter(Boolean)); renderCustom();
   });
@@ -7774,6 +7780,7 @@ function renderSettings() {
     ? `<button class="back-btn set-back" id="set-back">← All settings</button>${pg.html}`
     : `${C.alarmHealth}
     ${group('Make it yours',
+      row('id="open-style"', 'palette', 'Style &amp; appearance', `${uiStyle().name} · tap to change the look`) +
       row('id="open-custom"', 'sparkle', 'Customize', 'Tabs, habits, log fields, gym, theme') +
       row('data-set-page="widgets"', 'layers', 'Log screen', 'Show or hide the ring, mood grid and more'))}
     ${group('Reminders &amp; tracking',
@@ -7892,6 +7899,7 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (ev.target.closest('#open-custom')) { customPage = null; show('custom'); return; }
+  if (ev.target.closest('#open-style')) { customPage = 'theme'; _customFrom = 'settings'; show('custom'); return; }
   const sp = ev.target.closest('[data-set-page]');
   if (sp) { settingsPage = sp.dataset.setPage; renderSettings(); window.scrollTo(0, 0); return; }
   if (ev.target.closest('#set-back')) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
@@ -15069,6 +15077,54 @@ const THEMES = [
   { id: 'green',  a: '#34d399', b: '#4ade80' },
   { id: 'red',    a: '#f87171', b: '#fb7185' },
 ];
+/* UI styles (v256). Not colour swaps: each one is its own typeface, card shape, texture,
+   buttons and bottom bar, so people can pick the app they want to open every day. A style may
+   fix the light/dark mode (Luxe and Aurora are dark, Bloom is light); Midnight and Paper follow
+   the Light / Dark choice. The `pv` values only draw the picker's preview tiles. */
+const UI_STYLES = [
+  { id: 'midnight', name: 'Midnight', tag: 'The original. Deep navy and glowing colour.', mode: null, tc: { light: '#f4f6fb', dark: '#070b14' },
+    pv: { bg: '#070b14', card: '#141c2e', line: '#232f47', text: '#eaeffa', dim: '#93a0b8', grad: 'linear-gradient(135deg,#6d8cff,#8f7bff)', on: 'rgba(52,211,153,.18)', onB: 'rgba(52,211,153,.6)', font: "'Sora', sans-serif", r: 10, glow: 'radial-gradient(80% 60% at 20% 0%, rgba(109,140,255,.35), transparent 70%)' } },
+  { id: 'paper', name: 'Paper', tag: 'Clean as a Notion page. Ink on white, serif headings.', mode: null, tc: { light: '#ffffff', dark: '#191919' },
+    pv: { bg: '#ffffff', card: '#ffffff', line: '#e9e8e4', text: '#37352f', dim: '#787774', grad: '#2383e2', on: '#edf3ec', onB: '#cfe3cc', font: "'Newsreader', Georgia, serif", r: 5, glow: 'none' } },
+  { id: 'luxe', name: 'Luxe', tag: 'Black and champagne gold. Quiet, tailored, classy.', mode: 'dark', tc: { dark: '#0d0c0a' },
+    pv: { bg: '#0d0c0a', card: '#16130f', line: '#3a3224', text: '#f3ece0', dim: '#b5aa96', grad: 'linear-gradient(135deg,#e6cf9a,#b8925a)', on: 'rgba(201,169,110,.14)', onB: '#c9a96e', font: "'Cormorant Garamond', Georgia, serif", r: 3, glow: 'radial-gradient(70% 50% at 50% 0%, rgba(201,169,110,.22), transparent 70%)' } },
+  { id: 'aurora', name: 'Aurora', tag: 'Northern lights behind frosted glass.', mode: 'dark', tc: { dark: '#05060f' },
+    pv: { bg: '#05060f', card: 'rgba(255,255,255,.08)', line: 'rgba(255,255,255,.16)', text: '#f4f6ff', dim: '#aab0d6', grad: 'linear-gradient(120deg,#22d3ee,#a855f7 55%,#f472b6)', on: 'rgba(168,85,247,.22)', onB: 'rgba(168,85,247,.7)', font: "'Bricolage Grotesque', sans-serif", r: 14,
+      glow: 'radial-gradient(60% 50% at 15% 10%, rgba(34,211,238,.45), transparent 70%), radial-gradient(60% 50% at 90% 30%, rgba(168,85,247,.5), transparent 70%), radial-gradient(70% 50% at 50% 110%, rgba(244,114,182,.4), transparent 70%)' } },
+  { id: 'bloom', name: 'Bloom', tag: 'Soft cream and coral. Round, warm and friendly.', mode: 'light', tc: { light: '#fff6ee' },
+    pv: { bg: '#fff6ee', card: '#ffffff', line: '#f6dcc8', text: '#3b2a24', dim: '#7a6258', grad: 'linear-gradient(135deg,#ff8a65,#ff5f8f)', on: '#e3f7ee', onB: '#9fdcc2', font: "'Fredoka', sans-serif", r: 16,
+      glow: 'radial-gradient(60% 50% at 0% 0%, rgba(255,182,150,.55), transparent 70%), radial-gradient(50% 40% at 100% 40%, rgba(200,180,255,.45), transparent 70%)' } },
+];
+function uiStyle() { const id = DB.settings().style; return UI_STYLES.find(x => x.id === id) || UI_STYLES[0]; }
+function stylePickerHTML() {
+  const cur = uiStyle().id;
+  return `<div class="style-grid">${UI_STYLES.map(st => { const v = st.pv;
+    return `<button type="button" class="style-tile${st.id === cur ? ' on' : ''}" data-uistyle="${st.id}" aria-pressed="${st.id === cur}">
+      <span class="st-prev" style="background:${v.glow === 'none' ? '' : v.glow + ','}${v.bg};color:${v.text}">
+        <span class="st-h" style="font-family:${v.font}">Today</span>
+        <span class="st-card" style="background:${v.card};border-color:${v.line};border-radius:${v.r}px">
+          <span class="st-l" style="background:${v.dim}"></span><span class="st-l s" style="background:${v.dim}"></span>
+          <span class="st-chips"><span style="background:${v.on};border-color:${v.onB};border-radius:${Math.min(v.r, 8)}px"></span><span style="border-color:${v.line};border-radius:${Math.min(v.r, 8)}px"></span></span>
+        </span>
+        <span class="st-btn" style="background:${v.grad};border-radius:${st.id === 'bloom' ? 99 : v.r}px"></span>
+      </span>
+      <span class="st-name" style="font-family:${v.font}">${st.name}${st.id === cur ? ' <span class="st-tick">✓</span>' : ''}</span>
+      <span class="st-tag">${st.tag}</span>
+    </button>`; }).join('')}</div>`;
+}
+function setUiStyle(id) {
+  if (!UI_STYLES.some(x => x.id === id)) return;
+  const s = DB.settings(); s.style = id; DB.saveSettings(s); applyTheme();
+}
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-uistyle]'); if (!t) return;
+  setUiStyle(t.dataset.uistyle); buzz(14);
+  if (document.querySelector('#onboard.on')) { renderOnboard(); return; }
+  const on = document.querySelector('.screen.on'); const k = on ? on.id.replace('s-', '') : '';
+  if (RENDER[k]) RENDER[k]();
+  if (on) decorateHeaders(on);
+  toast(uiStyle().name + ' style on');
+});
 const THEME_MODES = [
   { id: 'auto',  label: 'Auto (system)',  chip: 'linear-gradient(135deg,#f4f6fb 50%,#141c2e 50%)' },
   { id: 'light', label: 'Light',           chip: '#f4f6fb' },
@@ -15085,10 +15141,15 @@ function applyTheme() {
   // dimming/force-darkening a light page while the system is in dark mode.
   const _pref = DB.settings().mode || 'auto';
   const _sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const _mode = _pref === 'auto' ? (_sysDark ? 'navy' : 'light') : _pref;
+  const _st = uiStyle();
+  let _mode = _pref === 'auto' ? (_sysDark ? 'navy' : 'light') : _pref;
+  if (_st.mode === 'dark' && _mode === 'light') _mode = 'navy';       // the style decides
+  if (_st.mode === 'light') _mode = 'light';
   document.documentElement.setAttribute('data-mode', _mode);
+  document.documentElement.setAttribute('data-style', _st.id);
   // keep the Android status bar in step with the theme
-  const _tc = { light: '#f4f6fb', navy: '#070b14', black: '#000000' }[_mode] || '#f4f6fb';
+  const _tc = _st.id !== 'midnight' ? (_mode === 'light' ? _st.tc.light : _st.tc.dark) || '#f4f6fb'
+    : { light: '#f4f6fb', navy: '#070b14', black: '#000000' }[_mode] || '#f4f6fb';
   const _meta = document.querySelector('meta[name="theme-color"]'); if (_meta) _meta.setAttribute('content', _tc);
   // Tell the WebView we handle theming ourselves — otherwise system dark mode
   // force-darkens the light theme (auto-inversion; found on MIUI/POCO).
@@ -15096,6 +15157,8 @@ function applyTheme() {
   const _cs = document.querySelector('meta[name="color-scheme"]'); if (_cs) _cs.setAttribute('content', _mode === 'light' ? 'light' : 'dark');
   const t = THEMES.find(x => x.id === (DB.settings().accent || 'indigo')) || THEMES[0];
   const r = document.documentElement.style;
+  // Accent colours belong to Midnight; every other style brings its own palette.
+  if (_st.id !== 'midnight') { ['--accent', '--grad-accent', '--glow-accent'].forEach(p => r.removeProperty(p)); return; }
   r.setProperty('--accent', t.a);
   r.setProperty('--grad-accent', `linear-gradient(135deg, ${t.a} 0%, ${t.b} 100%)`);
   r.setProperty('--glow-accent', `0 6px 22px ${t.a}52`);
@@ -15235,6 +15298,7 @@ const ICONS = {
   plus:'<path d="M12 5v14"/><path d="M5 12h14"/>',
   dot:'<circle cx="12" cy="12" r="4"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/>',
+  palette:'<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/>',
   bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   trash:'<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
@@ -15393,6 +15457,11 @@ function renderOnboard() {
     </div>
     <button class="ob-restore-link" data-ob-restore-back>← Start fresh instead</button>`;
   if (obStep === 1) body = `
+    <h1>Pick your look</h1>
+    <p class="ob-lead">Five styles, each its own app. Tap to try one. You can change it any time in Settings.</p>
+    ${stylePickerHTML()}
+    <button class="btn btn-primary" data-ob-next>Next</button>`;
+  if (obStep === 2) body = `
     <h1>Pick your daily habits</h1>
     <p class="ob-lead">Tap to keep or drop, or add your own.</p>
     <div class="habits ob-grid">${habitCfg().map(h => `
@@ -15405,7 +15474,7 @@ function renderOnboard() {
     </div>
     <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>Settings ▸ Customize</b>.</p>
     <button class="btn btn-primary" data-ob-next>Next</button>`;
-  if (obStep === 2) body = `
+  if (obStep === 3) body = `
     <div class="ob-emoji">⏰</div>
     <h1>Never miss a day</h1>
     ${/* This used to read "People who set a daily reminder keep their streak 3x longer."
@@ -15421,7 +15490,7 @@ function renderOnboard() {
     <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
   el.innerHTML = `<div class="ob-inner">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
-    <div class="ob-dots">${[0, 1, 2].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+    <div class="ob-dots">${[0, 1, 2, 3].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
 }
 document.addEventListener('click', (ev) => {
   const el = document.getElementById('onboard');
@@ -15461,7 +15530,7 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
-    if (obStep < 2) { obStep++; renderOnboard(); return; }
+    if (obStep < 3) { obStep++; renderOnboard(); window.scrollTo(0, 0); const ob = document.getElementById('onboard'); if (ob) ob.scrollTop = 0; return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
     if (obHideA.size) {

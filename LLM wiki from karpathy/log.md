@@ -1,3 +1,20 @@
+## 2026-11-08 — v256: five UI styles the user picks (built, tested, NOT deployed)
+
+Kishore: "the UI was not rich and classy and not fancy… and let the users choose the UI too".
+Added `UI_STYLES` + `<html data-style>`: **Midnight** (unchanged default), **Paper** (Notion-like:
+ink on white / Notion dark, Newsreader serif headings, flat hairline cards; follows light/dark),
+**Luxe** (warm black + champagne gold, Cormorant Garamond, uppercase tracked labels/buttons, 3px
+radius; always dark), **Aurora** (animated aurora behind glass cards, Bricolage Grotesque, 24px
+radius; always dark; motion off under prefers-reduced-motion), **Bloom** (cream + coral, Fredoka,
+pill buttons, floating rounded bottom bar; always light). Picker with live preview tiles in
+Settings ▸ "Style & appearance" (new first row), Customize ▸ "Style & dark mode", and a new
+onboarding step 1 "Pick your look" (onboarding is now 4 steps). Accent colours apply to Midnight
+only (`applyTheme` removes the inline accent vars otherwise). Fonts self-hosted in fonts/self
+(+167 KB, precached — check-release requires it). Rules: a style may FORCE the mode
+(`mode: 'dark'|'light'`); hard-coded Midnight light fixes still apply under data-mode=light.
+Tests 1110 × 4 timezones (+12); all 20 screens × 5 styles: no overflow, no page errors.
+Play listing (public): 100+ downloads, 5.0★ from 10 reviews (2026-11-08).
+
 ## 2026-11-07 — v255: the real-user UX pass (built, tested, deploying)
 
 Kishore: "lots of UI and UX gaps … think like a real user", then "deploy and test it properly".
