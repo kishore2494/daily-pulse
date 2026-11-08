@@ -1,4 +1,4 @@
-## 2026-11-08 — v256: five UI styles the user picks (built, tested, NOT deployed)
+## 2026-11-08 — v256: five UI styles the user picks (DEPLOYED, tag web-v256)
 
 Kishore: "the UI was not rich and classy and not fancy… and let the users choose the UI too".
 Added `UI_STYLES` + `<html data-style>`: **Midnight** (unchanged default), **Paper** (Notion-like:
