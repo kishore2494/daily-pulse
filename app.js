@@ -4434,6 +4434,53 @@ function pearson(pairs) {
   if (vx <= 0 || vy <= 0) return null;
   return Math.max(-1, Math.min(1, cov / Math.sqrt(vx * vy)));
 }
+/* Plain words for a correlation. Stats used to print "weak ↘ opposite · r=-0.05 · 40d" —
+   a sentence only a statistician can read. A real-user audit asked what "r" was, so the row
+   now names the strength in words and says which way it goes as an everyday sentence.
+   x: how "more of this" reads as the start of "On days …"; y: [rises, falls] as the end, with
+   ~ where "a little " goes for a slight link. Keys are the entry and health-store fields the
+   two Stats correlation lists actually pair. */
+const CORR_SAY = {
+  sleepHours:    { x: 'you sleep more', y: ['you tend to sleep ~more', 'you tend to sleep ~less'] },
+  sleepMin:      { x: 'you sleep more' },
+  mood:          { y: ['your mood tends to be ~higher', 'your mood tends to be ~lower'] },
+  energy:        { x: 'you have more energy', y: ['your energy tends to be ~higher', 'your energy tends to be ~lower'] },
+  deepWorkHours: { x: 'you do more deep work', y: ['you tend to do ~more deep work', 'you tend to do ~less deep work'] },
+  steps:         { x: 'you walk more' },
+  screenMin:     { x: 'you spend more time on your phone' },
+  exerciseMin:   { x: 'you are more active' },
+  hr:            { x: 'your heart rate is higher' },
+  calories:      { x: 'you burn more calories' },
+};
+/* r → { level, say }. The cut-offs are the conventional small/medium/large ones (0.1/0.3/0.6),
+   with one honesty guard on top: below about 1/√n a correlation is what chance alone throws up
+   on that many days, so 5 days at r=0.4 reads "no clear link yet", not "a clear link". */
+function corrWords(r, n, kx, ky) {
+  const mag = Math.abs(r);
+  const flat = mag < 0.1, early = !flat && mag < 1 / Math.sqrt(Math.max(1, n));
+  const noise = flat || early;
+  const level = flat ? 'no clear link' : early ? 'no clear link yet'
+    : mag >= 0.6 ? 'a strong link' : mag >= 0.3 ? 'a clear link' : 'a slight link';
+  const X = CORR_SAY[kx], Y = CORR_SAY[ky];
+  const say = noise ? ''
+    : (X && X.x && Y && Y.y) ? `On days ${X.x}, ${Y.y[r >= 0 ? 0 : 1].replace('~', mag < 0.3 ? 'a little ' : '')}`
+    : `They tend to move ${r >= 0 ? 'together' : 'in opposite directions'}`;
+  return { level, noise, say: say && `${say} (${n} days compared).` };
+}
+/* Correlation rows for Connected insights (Overview) and Health ↔ You, from
+   [label, r, days, xKey, yKey]. Findings come first, strongest first, each with its everyday
+   sentence; pairs with no clear link sink to the bottom as one quiet line with no bar, because
+   a bar drawn from noise looks like a finding and a sentence under each one tripled the card. */
+function corrRowsHTML(items) {
+  return items.map(([label, r, n, kx, ky]) => ({ label, r, w: corrWords(r, n, kx, ky) }))
+    .sort((a, b) => (a.w.noise - b.w.noise) || (Math.abs(b.r) - Math.abs(a.r)))
+    .map(({ label, r, w }) => w.noise
+      ? `<div class="corr-row quiet"><span class="name">${label}</span><span class="corr-val">${w.level}</span></div>`
+      : `<div class="corr-row"><span class="name">${label}</span>
+      <span class="corr-bar"><span class="corr-fill ${r >= 0 ? 'pos' : 'neg'}" style="width:${Math.round(Math.abs(r) * 100)}%"></span></span>
+      <span class="corr-val">${w.level}</span>
+      <span class="corr-say">${w.say}</span></div>`);
+}
 /* Polymath Index — one 0-100 score/day from 5 pillars. Missing metrics are skipped,
    so even a light day scores fairly (only what you logged counts). */
 function polymath(e) {
@@ -4766,7 +4813,7 @@ function timeStatsHTML(days) {
   if (scrollAvg != null) tIns.push(`📱 Scrolling eats <b>${fmtDur(scrollAvg)}</b> a day${workAvg && scrollAvg > workAvg / 2 ? ' — more than half your work time 👀' : ''}.`);
 
   return `
-    <div class="card"><h2>⏱ Time analysis <span class="hint">last ${days.length} days</span></h2>
+    <div class="card"><h2>⏱ Time analysis <span class="hint">${days.length === 1 ? 'today' : `last ${days.length} days`}</span></h2>
       <div class="stat-grid">
         <div class="stat"><div class="v">${Math.round(tracked / 3600000)}h</div><div class="l">tracked</div></div>
         <div class="stat"><div class="v">${coverage}%</div><div class="l">of time covered</div></div>
@@ -4800,12 +4847,17 @@ function bestHabitStreak(key) {
 }
 let dashRange = 7;
 let dashTab = 'overview';
+let dashMore = false;      // the Overview's "More stats" fold — in-memory, like dashTab / dashRange
 function renderDash() {
   document.getElementById('screen-title').textContent = 'Stats';
   document.getElementById('screen-sub').textContent = 'Your trends & analysis';
   const e = DB.entries();
   const N = dashRange;
   const days = []; for (let i = N - 1; i >= 0; i--) days.push(addDays(todayStr(), -i));
+  /* Every card that follows the Range picker says so in these exact words, which are also the
+     picker's own option text; every card that does not names its own period instead. The
+     audit found a picker reading "Last 7 days" over cards quietly showing 14, 30 or all days. */
+  const perLab = N === 1 ? 'today' : `last ${N} days`;
   const series = key => days.map(d => ({ x: d, y: e[d] && e[d][key] != null && e[d][key] !== '' ? +e[d][key] : null }));
 
   const allDates = Object.keys(e);
@@ -4894,19 +4946,15 @@ function renderDash() {
     .map(d => [e[d][kx], e[d][ky]])
     .filter(([x, y]) => x != null && x !== '' && y != null && y !== '' && !isNaN(+x) && !isNaN(+y))
     .map(([x, y]) => [+x, +y]);
-  const corrRows = [];
+  const corrItems = [];
   [['sleepHours', 'mood', '😴 Sleep → Mood'], ['sleepHours', 'energy', '😴 Sleep → Energy'],
    ['deepWorkHours', 'mood', '🎯 Deep work → Mood'], ['energy', 'deepWorkHours', '⚡ Energy → Deep work']]
   .forEach(([kx, ky, label]) => {
     const ps = pairsOf(kx, ky); if (ps.length < 5) return;   // need enough days to be honest
     const r = pearson(ps); if (r == null) return;
-    const mag = Math.abs(r);
-    const strength = mag >= 0.6 ? 'strong' : mag >= 0.3 ? 'moderate' : 'weak';
-    const dir = r >= 0 ? '↗ together' : '↘ opposite';
-    corrRows.push(`<div class="corr-row"><span class="name">${label}</span>
-      <span class="corr-bar"><span class="corr-fill ${r >= 0 ? 'pos' : 'neg'}" style="width:${Math.round(mag * 100)}%"></span></span>
-      <span class="corr-val">${strength} ${dir} · r=${r.toFixed(2)} · ${ps.length}d</span></div>`);
+    corrItems.push([label, r, ps.length, kx, ky]);
   });
+  const corrRows = corrRowsHTML(corrItems);
   const wMood = condAvg(d => e[d].habits && e[d].habits.workout, 'mood');
   const nMood = condAvg(d => e[d].habits && !e[d].habits.workout, 'mood');
   if (wMood != null && nMood != null && allDates.length >= 5)
@@ -4916,14 +4964,16 @@ function renderDash() {
   // periods and does not paint more screen time green — so the placeholder copy, which used
   // to promise "week-over-week trends" here, had to change with it.
   const deepInsightsCard = corrRows.length ? `<div class="card">
-      <h2>🔗 Connected insights <span class="hint">how your metrics move together</span></h2>
+      <h2>🔗 Connected insights <span class="hint">all time · what rises and falls together</span></h2>
       ${corrRows.join('')}
     </div>` : (allDates.length < 5 ? '<div class="card"><h2>🔗 Connected insights</h2><div class="hint">Log ~5 days and this unlocks: how sleep drives your mood, workout effects, and what your screen time costs you.</div></div>' : '');
 
   const woSeries = days.map(d => ({ x: d, y: e[d] && e[d].workoutsDone!=null && e[d].workoutsDone!=='' ? +e[d].workoutsDone : null }));
 
   // ---- Polymath Index ----
-  const pmSeries = days.map(d => { const p = e[d] ? polymath(e[d]) : null; return { x: d, y: p ? p.total : null }; });
+  // The chart follows the card's own 30 days, not the Range picker: the score, the pillars and
+  // the header all said "last 30 days" while the bars under them quietly showed the picker's 7.
+  const pmSeries = last30.map(d => { const p = e[d] ? polymath(e[d]) : null; return { x: d, y: p ? p.total : null }; });
   const pm30 = last30.map(d => e[d] ? polymath(e[d]) : null).filter(Boolean);
   // null, not 0. A brand-new user opening Stats was shown a hard "0/100" hero, which reads
   // as "you scored zero" rather than "nothing logged yet" — the worst possible first
@@ -4942,12 +4992,17 @@ function renderDash() {
 
   // ---------- three tabbed views (simplify + separate time vs checklist) ----------
   const RANGES = [[1, 'Today'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [90, 'Last 3 months']];
+  /* The note under the picker is what makes it honest: only the cards that say perLab follow
+     it, and every other card names its own period. On Overview the picker also sits directly
+     above those cards rather than above a hero, patterns and Polymath that never change with
+     it — changing it there used to change nothing on screen. */
   const rangeRow = `<div class="range-row">
       <label for="dash-range" class="range-lab">${icon('calendar', 14)} Range</label>
       <select id="dash-range" class="range-select">
         ${RANGES.map(([v, l]) => `<option value="${v}" ${dashRange === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
-    </div>`;
+    </div>
+    <div class="hint range-note">Applies to cards marked “${perLab}”. Other cards name their own period.</div>`;
 
   // ---- Auto-collected productivity: pomodoros / tasks done / words written ----
   const pomoHist = safeParse(localStorage.getItem('dp.pomohist'), {});
@@ -4964,9 +5019,9 @@ function renderDash() {
   const tasksSeries = days.map(d => ({ x: d, y: (e[d] && e[d].tasksDone != null && e[d].tasksDone !== '') ? +e[d].tasksDone : null }));
   const tasksDoneTotal = days.reduce((s, d) => s + ((e[d] && +e[d].tasksDone) || 0), 0);
   const autoCards = [
-    pomoTotal ? `<div class="card"><h2>🍅 Focus sessions <span class="hint">auto · last ${N} days · ${pomoTotal} total${focusMin ? ' · ' + fmtH(focusMin / 60) : ''}</span></h2>${barChart(pomoSeries, '#f87171')}</div>` : '',
-    tasksDoneTotal ? `<div class="card"><h2>✅ Tasks completed <span class="hint">auto · last ${N} days · ${tasksDoneTotal} total</span></h2>${barChart(tasksSeries, '#34d399')}</div>` : '',
-    wordsTotal ? `<div class="card"><h2>✍️ Words written <span class="hint">auto from journal+reflections · ${wordsTotal.toLocaleString()} total</span></h2>${barChart(wordsSeries, '#8b9dff')}</div>` : '',
+    pomoTotal ? `<div class="card"><h2>🍅 Focus sessions <span class="hint">auto · ${perLab} · ${pomoTotal} total${focusMin ? ' · ' + fmtH(focusMin / 60) : ''}</span></h2>${barChart(pomoSeries, '#f87171')}</div>` : '',
+    tasksDoneTotal ? `<div class="card"><h2>✅ Tasks completed <span class="hint">auto · ${perLab} · ${tasksDoneTotal} total</span></h2>${barChart(tasksSeries, '#34d399')}</div>` : '',
+    wordsTotal ? `<div class="card"><h2>✍️ Words written <span class="hint">auto from journal+reflections · ${perLab} · ${wordsTotal.toLocaleString()} total</span></h2>${barChart(wordsSeries, '#8b9dff')}</div>` : '',
   ].join('');
 
   // ---- Best days in range (real, dated highlights) ----
@@ -4977,7 +5032,7 @@ function renderDash() {
   const bTracked = bestOf(d => { const ms = segsForDay(d).reduce((s, x) => s + (x.b - x.a), 0); return ms > 0 ? ms : null; });
   const bestRow = (label, best, fmt) => best ? `<div class="wow-row"><span class="name">${label}</span><span class="wow-vals">${fmt(best.v)}</span><span class="hint">${prettyDate(best.d).replace(/, \d{4}$/, '')}</span></div>` : '';
   const bestDaysCard = (bMood || bFocus || bSteps || bTracked) ? `<div class="card">
-      <h2>🏅 Best days <span class="hint">in this range</span></h2>
+      <h2>🏅 Best days <span class="hint">${perLab}</span></h2>
       ${bestRow('😊 Best mood', bMood, v => v + '/10')}
       ${bestRow('🎯 Most deep work', bFocus, v => fmtH(v))}
       ${bestRow('👟 Most steps', bSteps, v => Math.round(v).toLocaleString())}
@@ -4989,13 +5044,13 @@ function renderDash() {
   days.forEach(d => { const j = (e[d] && e[d].journal) || ''; (j.match(/#[\p{L}\d_]+/gu) || []).forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }); });
   const topTags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const tagsCard = topTags.length ? `<div class="card">
-      <h2>#️⃣ Your topics <span class="hint">from journal #tags · this range</span></h2>
+      <h2>#️⃣ Your topics <span class="hint">from journal #tags · ${perLab}</span></h2>
       <div class="tag-cloud">${topTags.map(([t, n]) => `<button class="tag-chip" data-searchtag="${escapeHtml(t)}">${escapeHtml(t)} <b>${n}</b></button>`).join('')}</div>
     </div>` : '';
 
   const patterns = computePatterns();
   const patternsCard = patterns.length
-    ? `<div class="card" id="patterns-card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span> <span class="hint">mined from your data · on-device</span></h2>
+    ? `<div class="card" id="patterns-card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span> <span class="hint">from all your history · on-device</span></h2>
         ${patterns.map(p => `<div class="pat-row"><span class="pat-ico">${icon(p.ico, 18)}</span><div class="pat-txt"><div class="pat-head">${p.head}</div>${p.sub ? `<div class="pat-sub">${p.sub}</div>` : ''}</div></div>`).join('')}
       </div>`
     : `<div class="card" id="patterns-card"><h2 class="h2-icon">${hicon('lightbulb')}<span>Your patterns</span></h2>
@@ -5019,6 +5074,10 @@ function renderDash() {
         const a = meanOf(arr.slice(half)), b = meanOf(arr.slice(0, half));
         return (a == null || b == null) ? null : a - b; };
       const mS = sparkOf('mood', 14), eS = sparkOf('energy', 14), pS = pmSparkOf(14);
+      /* The tile VALUES are the same 14 days as the line under them. They used to be all-time
+         averages (Mood, Energy) and a 30-day one (Polymath) sitting over a note that said
+         "Last 14 days" — three periods in one row, one of them labelled. */
+      const mean1 = (a, dec) => { const m = meanOf(a); return m == null ? '–' : m.toFixed(dec); };
       const st = loggedStreak();
       return `<div class="card ov-hero-card">
         <div class="ov-hero">
@@ -5030,11 +5089,11 @@ function renderDash() {
         </div>
         <div class="ov-ctx">Best <b>${longestLoggedStreak()}</b> · <b>${contentDates(e).length}</b> days logged all time</div>
         <div class="st-row">
-          ${statTile({ cls: 'mood',  label: 'Mood',     value: avg('mood'),   spark: mS, delta: deltaOf(mS), upGood: true, eps: 0.15 })}
-          ${statTile({ cls: 'nrg',   label: 'Energy',   value: avg('energy'), spark: eS, delta: deltaOf(eS), upGood: true, eps: 0.15 })}
-          ${statTile({ cls: 'poly',  label: 'Polymath', value: pmAvg == null ? '–' : pmAvg, spark: pS, delta: deltaOf(pS), upGood: true, eps: 1, dec: 0 })}
+          ${statTile({ cls: 'mood',  label: 'Mood',     value: mean1(mS, 1), spark: mS, delta: deltaOf(mS), upGood: true, eps: 0.15 })}
+          ${statTile({ cls: 'nrg',   label: 'Energy',   value: mean1(eS, 1), spark: eS, delta: deltaOf(eS), upGood: true, eps: 0.15 })}
+          ${statTile({ cls: 'poly',  label: 'Polymath', value: mean1(pS, 0), spark: pS, delta: deltaOf(pS), upGood: true, eps: 1, dec: 0 })}
         </div>
-        <div class="hint st-note">Last 14 days · the arrow compares this week with the one before.</div>
+        <div class="hint st-note">Averages for the last 14 days · the arrow compares this week with the one before · Polymath is your day scored out of 100, explained below.</div>
       </div>`;
     })()}
 
@@ -5048,6 +5107,21 @@ function renderDash() {
           ? 'log a few days and this fills in'
           : `latest day: ${latestPm}${typeof latestPm === 'number' ? '/100' : ''}`}</div></div>
       </div>
+      ${/* The audit's user saw "Polymath" on every Stats visit and was never told what it is.
+           This says what polymath() actually computes, pillar by pillar — if that function
+           changes, this copy has to change with it (a unit test pins the five names). */''}
+      <details class="pm-what">
+        <summary>What is this?</summary>
+        <p>Your day, scored out of 100. It is the average of five parts, each built from what you logged that day:</p>
+        <ul>
+          <li><b>💪 Body</b> — sleep (8 hours scores full marks), sleep quality, energy, water, workouts and healthy food</li>
+          <li><b>🧠 Mind</b> — mood, happiness, focus, clarity, motivation and meditation, plus low stress and anxiety</li>
+          <li><b>💼 Work</b> — deep work (4 hours scores full marks), how productive and satisfying it felt, and tasks done out of tasks planned</li>
+          <li><b>📚 Learning</b> — reading, study and project habits, topics, and code written</li>
+          <li><b>🔥 Discipline</b> — the share of your habits you ticked (skipped ones don't count)</li>
+        </ul>
+        <p>Anything you left blank is skipped, not counted as zero, so a light day is not marked down. The big number is your average over the last 30 days.</p>
+      </details>
       ${barChart(pmSeries, '#8b9dff', { max: 100 })}
       <div style="margin-top:10px">${pmBars}</div>
     </div>
@@ -5060,10 +5134,10 @@ function renderDash() {
 
     ${(() => { const r = coachReview(); return r ? `<div class="card"><h2>🧑‍🏫 Weekly review <span class="hint">last 7 days</span></h2>${r.map(l => `<div class="rev rev-${l.k}">${l.t}</div>`).join('')}</div>` : ''; })()}
 
-    <div class="card"><h2>😊 Mood <span class="hint">last ${N} days</span></h2>${barChart(series('mood'), '#6d8cff', { max: 10 })}</div>
-    <div class="card"><h2>⚡ Energy <span class="hint">last ${N} days</span></h2>${barChart(series('energy'), '#4ad6c0', { max: 10 })}</div>
+    ${rangeRow}
 
-    ${deepInsightsCard}
+    <div class="card"><h2>😊 Mood <span class="hint">${perLab}</span></h2>${barChart(series('mood'), '#6d8cff', { max: 10 })}</div>
+    <div class="card"><h2>⚡ Energy <span class="hint">${perLab}</span></h2>${barChart(series('energy'), '#4ad6c0', { max: 10 })}</div>
 
     ${bestDaysCard}
 
@@ -5071,16 +5145,28 @@ function renderDash() {
 
     ${tagsCard}
 
-    ${insights.length ? `<div class="card"><h2>💡 Insights</h2>
-      ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''}
+    ${deepInsightsCard}
 
-    <div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>
-
-    ${bestEfforts()}
-    ${yearPixelsHTML()}`;
+    ${(() => {
+      /* Overview ran to ~5,700px on a phone. These four are the reference end of it — the
+         Insights card repeats what Your patterns says better, and the graph, records and year
+         mosaic are things you visit, not read daily — so they fold behind one toggle instead
+         of being cut. The summary names what is inside, so nothing is hidden by surprise. */
+      const more = [
+        ['quick insights', insights.length ? `<div class="card"><h2>💡 Insights <span class="hint">all time</span></h2>
+      ${insights.map(t=>`<div style="font-size:13.5px;color:var(--text-dim);padding:7px 0;border-bottom:1px solid var(--border);line-height:1.5">${t}</div>`).join('')}</div>` : ''],
+        ['journal graph', `<div class="card"><h2>🕸️ Connections <span class="hint">your journal graph</span></h2><div id="graph-wrap">${graphSVG()}</div></div>`],
+        ['best ever', bestEfforts()],
+        ['year in pixels', yearPixelsHTML()],
+      ].filter(([, h]) => h);
+      return `<details class="dash-more" id="dash-more"${dashMore ? ' open' : ''}>
+        <summary><span class="dash-more-t">More stats</span><span class="hint">${more.map(m => m[0]).join(' · ')}</span></summary>
+        ${more.map(m => m[1]).join('')}
+      </details>`;
+    })()}`;
 
   const timeHTML = `
-    <div class="card"><div class="stat-grid">
+    <div class="card"><h2>📊 Overall <span class="hint">all your history</span></h2><div class="stat-grid">
       <div class="stat"><div class="v">${avg('sleepHours')}</div><div class="l">avg sleep h</div></div>
       <div class="stat"><div class="v">${avg('deepWorkHours')}</div><div class="l">avg deep work h</div></div>
       <div class="stat"><div class="v">${gymStreak()}</div><div class="l">💪 gym streak</div></div>
@@ -5089,12 +5175,12 @@ function renderDash() {
 
     ${timeStatsHTML(days) || '<div class="card"><div class="empty">No time tracked in this range. Start a stopwatch on the Time tab.</div></div>'}
 
-    <div class="card"><h2>😴 Sleep <span class="hint">hours · last ${N} days</span></h2>${barChart(series('sleepHours'), '#a78bfa')}</div>
-    <div class="card"><h2>🎯 Deep work <span class="hint">hours · last ${N} days</span></h2>${barChart(series('deepWorkHours'), '#fbbf24')}</div>
+    <div class="card"><h2>😴 Sleep <span class="hint">hours · ${perLab}</span></h2>${barChart(series('sleepHours'), '#a78bfa')}</div>
+    <div class="card"><h2>🎯 Deep work <span class="hint">hours · ${perLab}</span></h2>${barChart(series('deepWorkHours'), '#fbbf24')}</div>
 
-    <div class="card"><h2>🏋️ Workout volume <span class="hint">exercises/day · last ${N} days</span></h2>${barChart(woSeries, '#34d399')}</div>
+    <div class="card"><h2>🏋️ Workout volume <span class="hint">exercises/day · ${perLab}</span></h2>${barChart(woSeries, '#34d399')}</div>
 
-    <div class="card"><h2>💪 Gym breakdown <span class="hint">sessions per group · ${totalWorkouts} total</span></h2>
+    <div class="card"><h2>💪 Gym breakdown <span class="hint">sessions per group · all time · ${totalWorkouts} total</span></h2>
       ${gymBars || '<div class="empty">No workouts logged yet.</div>'}</div>`;
 
   const checkHTML = `
@@ -5117,7 +5203,7 @@ function renderDash() {
           <span class="wow-delta up">best ${x.best}</span></div>`).join('')}</div>`;
     })()}
 
-    ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">out of 10</span></h2>${scaleBars}</div>` : ''}
+    ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">all time · out of 10</span></h2>${scaleBars}</div>` : ''}
 
     ${numAvgRows ? `<div class="card"><h2>🔢 Tracked numbers <span class="hint">all-time average</span></h2>${numAvgRows}</div>` : ''}
 
@@ -5136,13 +5222,13 @@ function renderDash() {
   const hChart = (key, label, color, fmtAvg) => {
     const s = hSeries(key); if (!s.some(p => p.y != null)) return '';
     const a = hAvg(key);
-    return `<div class="card"><h2>${label} <span class="hint">last ${N} days${a != null ? ' · avg ' + fmtAvg(a) : ''}</span></h2>${barChart(s, color)}</div>`;
+    return `<div class="card"><h2>${label} <span class="hint">${perLab}${a != null ? ' · avg ' + fmtAvg(a) : ''}</span></h2>${barChart(s, color)}</div>`;
   };
   // health ↔ mood/energy correlations across ALL days both exist
   const hPairs = (hkey, ekey) => Object.keys(hstore)
     .filter(d => hstore[d][hkey] != null && e[d] && e[d][ekey] != null && e[d][ekey] !== '')
     .map(d => [+hstore[d][hkey], +e[d][ekey]]);
-  const hCorrRows = [];
+  const hCorrItems = [];
   [['screenMin', 'mood', '📱 Screen time → Mood'], ['steps', 'mood', '👟 Steps → Mood'],
    ['steps', 'energy', '👟 Steps → Energy'], ['exerciseMin', 'energy', '🏃 Active mins → Energy'],
    ['sleepMin', 'mood', '😴 Sleep → Mood'], ['sleepMin', 'energy', '😴 Sleep → Energy'],
@@ -5155,13 +5241,11 @@ function renderDash() {
   .forEach(([hk, ek, label]) => {
     const ps = hPairs(hk, ek); if (ps.length < 5) return;
     const r = pearson(ps); if (r == null) return;
-    const mag = Math.abs(r);
-    hCorrRows.push(`<div class="corr-row"><span class="name">${label}</span>
-      <span class="corr-bar"><span class="corr-fill ${r >= 0 ? 'pos' : 'neg'}" style="width:${Math.round(mag * 100)}%"></span></span>
-      <span class="corr-val">${mag >= 0.6 ? 'strong' : mag >= 0.3 ? 'moderate' : 'weak'} ${r >= 0 ? '↗' : '↘'} · r=${r.toFixed(2)} · ${ps.length}d</span></div>`);
+    hCorrItems.push([label, r, ps.length, hk, ek]);
   });
+  const hCorrRows = corrRowsHTML(hCorrItems);
   const scAvg = hAvg('screenMin'), dwAvg = (() => { const v = days.map(d => e[d] && e[d].deepWorkHours).filter(x => x != null && x !== '' && !isNaN(+x)); return v.length ? v.reduce((a, b) => a + +b, 0) / v.length : null; })();
-  const screenVsWork = (scAvg != null && dwAvg > 0) ? `<div class="corr-note">📱 Screen time averages <b>${fmtMin(Math.round(scAvg))}</b>/day — <b>${(scAvg / 60 / dwAvg).toFixed(1)}×</b> your deep work (${fmtH(dwAvg)}).</div>` : '';
+  const screenVsWork = (scAvg != null && dwAvg > 0) ? `<div class="corr-note">📱 Screen time averages <b>${fmtMin(Math.round(scAvg))}</b>/day — <b>${(scAvg / 60 / dwAvg).toFixed(1)}×</b> your deep work (${fmtH(dwAvg)}) · ${perLab}.</div>` : '';
   const sampleOn = !!localStorage.getItem('dp.sampleMeta');
   const sampleBar = sampleOn ? `<div class="card sample-bar"><span>👀 Showing <b>sample data</b> — a preview of auto-tracking.</span><button class="btn btn-ghost btn-sm" id="hc-sample-clear">Clear sample</button></div>` : '';
   const healthHTML = !at.on
@@ -5186,7 +5270,7 @@ function renderDash() {
     ${at.calories ? hChart('calories', '🔥 Calories', '#f87171', v => Math.round(v) + ' kcal') : ''}
     ${at.workouts ? hChart('exerciseMin', '🏃 Active minutes', '#4ad6c0', v => fmtMin(Math.round(v))) : ''}
     ${at.sleep ? hChart('sleepMin', '😴 Sleep (auto)', '#a78bfa', v => fmtMin(Math.round(v))) : ''}
-    ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You</h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}
+    ${(hCorrRows.length || screenVsWork) ? `<div class="card"><h2>🔗 Health ↔ You <span class="hint">all synced days</span></h2>${hCorrRows.join('')}${screenVsWork}</div>` : ''}
     ${(!sampleOn && hDays < 5) ? '<button class="btn btn-ghost btn-sm" id="hc-sample">👀 Preview with sample data</button>' : ''}`);
 
   const TABS = [['overview', icon('chart', 15) + ' Overview'], ['time', icon('clock', 15) + ' Time'], ['check', icon('check', 15) + ' Checklist'], ['health', icon('heart', 15) + ' Health']];
@@ -5196,8 +5280,13 @@ function renderDash() {
   const body = { overview: overviewHTML, time: timeHTML, check: checkHTML, health: healthHTML }[dashTab] || overviewHTML;
   document.getElementById('s-dash').innerHTML = sampleBannerHTML('these trends') + `
     <div class="seg-row">${TABS.map(([k, l]) => `<button class="seg-btn ${dashTab===k?'on':''}" data-dashtab="${k}">${l}</button>`).join('')}</div>
-    ${dashTab === 'check' ? '' : rangeRow}
+    ${/* Overview carries the picker inside its body, above the cards it drives */''}
+    ${dashTab === 'time' || dashTab === 'health' ? rangeRow : ''}
     ${body}`;
+  // 'toggle' does not bubble, so the delegated click handlers cannot see it. Remember the fold
+  // so changing the Range (which re-renders) does not snap "More stats" shut under the reader.
+  const more = document.getElementById('dash-more');
+  if (more) more.addEventListener('toggle', () => { dashMore = more.open; });
 }
 
 /* ============================================================
@@ -10903,7 +10992,11 @@ function vsPastHTML() {
     // the arrow follows the NUMBER, the colour follows dir — they are not the same thing
     const cls = (level || m.dir === 0) ? 'flat' : (((m.dir > 0) === (d > 0)) ? 'up' : 'down');
     const chip = level ? 'level' : `${d > 0 ? '▲' : '▼'} ${m.fmt(Math.abs(d))}`;
-    const cov = (a.n === b.n && a.n === p.n) ? '' : ` · ${a.n}d vs ${b.n}d`;
+    /* Spelled out: "5d vs 7d" read as a unit nobody uses. And only when it says something new —
+       the hero line and the Days logged row already give each window's logged days, so a metric
+       logged on every one of them repeating "5 vs 7 days logged" just pushed rows to wrap. */
+    const cov = ((a.n === b.n && a.n === p.n) || (a.n === c.logged(A) && b.n === c.logged(B))) ? ''
+      : `<span class="vs-cov">${a.n} vs ${b.n} days logged</span>`;
     rows.push({ m, a, b, d, level, cls, chip,
       html: `<div class="wow-row"><span class="name">${m.label}</span>
         <span class="wow-vals">${m.fmt(a.v)} <span class="hint">vs ${m.fmt(b.v)}${cov}</span></span>

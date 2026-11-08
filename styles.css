@@ -249,6 +249,13 @@ textarea { resize: vertical; min-height: 64px; }
 }
 .pm-out { font-size: 17px; font-weight: 600; color: var(--text-dim); letter-spacing: 0; -webkit-text-fill-color: var(--text-dim); }
 .pm-meta { font-size: 13px; font-weight: 600; }
+/* "What is this?" under the Polymath score — same disclosure shape as .sync-what, so the tap
+   target is a real 44px row and the copy reads at body size, not hint size. */
+.pm-what > summary { font-size: 12.5px; font-weight: 700; color: var(--accent-ink); cursor: pointer;
+  min-height: 44px; display: flex; align-items: center; }
+.pm-what p, .pm-what ul { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 0 0 8px; }
+.pm-what ul { padding-left: 18px; }
+.pm-what li { margin-bottom: 4px; }
 .rev { font-size: 13.5px; color: var(--text-dim); padding: 9px 0 9px 12px; border-bottom: 1px solid var(--border); line-height: 1.5; border-left: 3px solid transparent; }
 .rev:last-child { border-bottom: none; }
 .rev b { color: var(--text); }
@@ -871,6 +878,19 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .range-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .range-lab { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 .range-select { flex: 1; max-width: 220px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 14.5px; }
+/* Says which cards the Stats Range picker drives. Outside a .card, so it sets its own ink. */
+.range-note { margin: 0 2px 14px; font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+/* Stats ▸ Overview "More stats" fold: a card-shaped summary row with the arrow pinned right,
+   and the list of what is inside on its own line so it can wrap at 320px. */
+.dash-more > summary { list-style: none; position: relative; display: flex; flex-direction: column; align-items: flex-start;
+  justify-content: center; gap: 2px; min-height: 56px; padding: 11px 44px 11px 16px; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); cursor: pointer; }
+.dash-more > summary::-webkit-details-marker { display: none; }
+.dash-more > summary::after { content: '▾'; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+  font-size: 15px; color: var(--text-dim); transition: transform .2s; }
+.dash-more[open] > summary::after { transform: translateY(-50%) rotate(180deg); }
+.dash-more-t { font-family: var(--font-display); font-weight: 650; font-size: 14.5px; }
+.dash-more > summary .hint { font-size: 12px; color: var(--text-dim); }
 .chart-x { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 2px; padding: 0 2px; }
 
 /* ---------- v81: full-width sleep/deep-work pickers (Log layout fix) ---------- */
@@ -936,13 +956,21 @@ body.kbd-open .nav { transform: translateY(120%); pointer-events: none; }
 .corr-fill { display: block; height: 100%; border-radius: 999px; }
 .corr-fill.pos { background: linear-gradient(90deg, var(--accent), #4ad6c0); }
 .corr-fill.neg { background: linear-gradient(90deg, #f87171, #fb923c); }
-.corr-val { flex: 0 0 auto; font-size: 10.5px; color: var(--text-faint); max-width: 110px; text-align: right; }
+/* The strength is a readable label now ("a clear link"), not a footnote of r-values, so it is
+   body-ish size in the dim ink; the everyday sentence takes its own full line under the row. */
+.corr-val { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--text-dim); text-align: right; }
+.corr-say { flex: 1 0 100%; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+.corr-row.quiet .name { flex: 1 1 auto; color: var(--text-dim); }
+.corr-row.quiet .corr-val { font-weight: 400; }
 .corr-note { font-size: 13px; color: var(--text-dim); padding: 8px 0 2px; line-height: 1.5; }
 .wow-head { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 4px; }
 .wow-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); }
 .wow-row:last-child { border-bottom: none; }
 .wow-row .name { flex: 1; font-size: 13.5px; }
 .wow-vals { font-size: 13px; font-weight: 600; }
+/* You vs you: "3 vs 7 days logged" sits on its own line under the values, so a long note
+   never pushes the change chip off the row at 320-360px. */
+.wow-vals .vs-cov { display: block; text-align: right; font-size: 11.5px; }
 .wow-delta { flex: 0 0 auto; font-size: 12px; font-weight: 700; border-radius: 8px; padding: 3px 8px; }
 .wow-delta.up { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .wow-delta.down { color: var(--bad-ink); background: color-mix(in srgb, #f87171 14%, transparent); }

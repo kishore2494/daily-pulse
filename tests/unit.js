@@ -175,6 +175,17 @@
   localStorage.setItem('dp.entries', JSON.stringify({ [todayStr()]: { mood: 7 } }));
   const vThin = vsPastHTML();
   ok('vs degrades honestly on a thin log', /more day/.test(vThin) && !/wow-row/.test(vThin));
+  // Coverage is spelled out ("4 vs 7 days logged", never "4d vs 7d"), and only when a metric
+  // was logged on fewer days than the window's logged days — otherwise it repeats the hero line.
+  const VC = {};
+  // mood (the hero) every day; energy skipped on 3 of the last 7, so only its row needs the note
+  for (let i = 1; i <= 14; i++) VC[addDays(todayStr(), -i)] = Object.assign({ mood: 7, habits: {} }, (i > 4 && i <= 7) ? {} : { energy: 6 });
+  localStorage.setItem('dp.entries', JSON.stringify(VC));
+  const vCov = vsPastHTML();
+  ok('vs spells coverage out in days logged', /4 vs 7 days logged/.test(vCov), (vCov.match(/vs-cov">[^<]*/) || [])[0]);
+  ok('vs never writes "4d vs 7d"', !/\d+d vs \d+d/.test(vCov));
+  ok('vs stays quiet when a metric was logged every logged day',
+     (vCov.match(/days logged<\/span>/g) || []).length === 1, (vCov.match(/days logged<\/span>/g) || []).length);
   vsMode = vSnapMode;
   if (vSnapE != null) localStorage.setItem('dp.entries', vSnapE); else localStorage.removeItem('dp.entries');
   if (vSnapT != null) localStorage.setItem('dp.timelog', vSnapT); else localStorage.removeItem('dp.timelog');
@@ -202,6 +213,58 @@
      statTile({ cls: 'mood', label: 'M', value: '–', spark: [] }).indexOf('>–<') !== -1);
   ok('a missing value shows no delta at all',
      !/st-delta/.test(statTile({ cls: 'mood', label: 'M', value: '–', spark: [], delta: 2 })));
+
+  // ---- Stats in plain words (real-user audit: "what is r=?", "what is Polymath?") ----
+  const cwS = corrWords(0.72, 40, 'sleepHours', 'mood');
+  ok('a big r on plenty of days is "a strong link"', cwS.level === 'a strong link', cwS.level);
+  ok('…and says which way in an everyday sentence',
+     cwS.say === 'On days you sleep more, your mood tends to be higher (40 days compared).', cwS.say);
+  ok('a medium r is "a clear link"', corrWords(0.4, 40, 'sleepHours', 'mood').level === 'a clear link');
+  const cwL = corrWords(0.2, 40, 'sleepHours', 'energy');
+  ok('a small r is "a slight link" and says "a little"', cwL.level === 'a slight link' && /tends to be a little higher/.test(cwL.say), cwL);
+  const cwN = corrWords(-0.5, 40, 'screenMin', 'mood');
+  ok('a negative r reads as the opposite direction', /more time on your phone, your mood tends to be lower/.test(cwN.say), cwN.say);
+  ok('a reversed pair keeps its own wording', /you have more energy, you tend to do less deep work/.test(corrWords(-0.4, 30, 'energy', 'deepWorkHours').say));
+  ok('a near-zero r is "no clear link", with no sentence to over-read', (() => { const w = corrWords(-0.05, 40, 'sleepHours', 'mood'); return w.level === 'no clear link' && w.noise && !w.say; })());
+  // r=0.4 on 5 days is what chance alone throws up — it must not be sold as a finding
+  ok('a few days is "no clear link yet", not "a clear link"', corrWords(0.4, 5, 'sleepHours', 'mood').level === 'no clear link yet');
+  const crH = corrRowsHTML([['A', 0.05, 30, 'sleepHours', 'mood'], ['B', -0.7, 30, 'sleepHours', 'mood'], ['C', 0.35, 30, 'sleepHours', 'mood']]).join('');
+  ok('correlation rows never print r=', !/r=/.test(crH), crH.slice(0, 120));
+  ok('findings come first, strongest first, no-link last', crH.indexOf('>B<') < crH.indexOf('>C<') && crH.indexOf('>C<') < crH.indexOf('>A<'));
+  ok('a no-link row draws no bar', /corr-row quiet"><span class="name">A</.test(crH) && (crH.match(/corr-bar/g) || []).length === 2);
+  // the explainer has to describe what polymath() really returns
+  const pmKeys = Object.keys(polymath({ mood: 7, sleepHours: 8 }) || {});
+  ok('polymath still has the five parts the explainer names',
+     ['body', 'mind', 'work', 'learning', 'discipline'].every(k => pmKeys.indexOf(k) !== -1), pmKeys);
+  {
+    const sE = localStorage.getItem('dp.entries'), sR = dashRange, sT = dashTab, sM = dashMore;
+    const SE = {};
+    for (let i = 0; i < 20; i++) { const sl = 5 + (i % 4); SE[addDays(todayStr(), -i)] = { sleepHours: sl, mood: sl, energy: 6 + (i % 2), deepWorkHours: 2 + (i % 3), habits: {} }; }
+    localStorage.setItem('dp.entries', JSON.stringify(SE));
+    const dashOf = (tab, range) => { dashTab = tab; if (range) dashRange = range; renderDash(); return document.getElementById('s-dash').innerHTML; };
+    const ov = dashOf('overview', 7);
+    ok('Stats overview prints no r= anywhere', !/r=-?\d/.test(ov));
+    ok('Connected insights speaks in plain words', /On days you sleep more, your mood tends to be higher/.test(ov));
+    ok('Polymath has a "What is this?" explainer', /class="pm-what"/.test(ov) && /What is this\?/.test(ov)
+       && ['Body', 'Mind', 'Work', 'Learning', 'Discipline'].every(p => ov.indexOf(' ' + p + '</b>') !== -1));
+    ok('the Range picker says which cards it drives', /Applies to cards marked “last 7 days”/.test(ov));
+    ok('the hero states its own period', /Averages for the last 14 days/.test(ov));
+    ok('cards that ignore the picker name their own period',
+       /Connected insights <span class="hint">all time/.test(ov) && /Your patterns<\/span> <span class="hint">from all your history/.test(ov));
+    ok('the Range picker sits above the cards it drives, under the ones it does not',
+       ov.indexOf('id="dash-range"') > ov.indexOf('pm-card') && ov.indexOf('id="dash-range"') < ov.indexOf('Mood <span class="hint">last 7 days'));
+    ok('the overview renders one Range picker', (ov.match(/id="dash-range"/g) || []).length === 1);
+    ok('Time and Health keep the picker at the top', ['time', 'health'].every(t => (dashOf(t).match(/id="dash-range"/g) || []).length === 1));
+    ok('Checklist has no picker (nothing there follows it)', !/id="dash-range"/.test(dashOf('check')));
+    dashMore = false;
+    const ovT = dashOf('overview', 1);
+    ok('a one-day range reads "today", not "last 1 days"', /Mood <span class="hint">today</.test(ovT) && !/last 1 days/.test(ovT));
+    ok('"More stats" folds the reference cards, closed by default', /<details class="dash-more" id="dash-more">/.test(ovT) && /id="graph-wrap"/.test(ovT));
+    dashMore = true;
+    ok('…and stays open across a re-render once opened', /id="dash-more" open/.test(dashOf('overview', 7)));
+    if (sE != null) localStorage.setItem('dp.entries', sE); else localStorage.removeItem('dp.entries');
+    dashRange = sR; dashTab = sT; dashMore = sM;
+  }
 
   // ---- Notifications: one icon, and a live timer ----
   ok('there is a single notification icon constant', NOTIF_ICON === 'ic_stat_daylog');
