@@ -554,6 +554,38 @@
         if (docsSnap != null) localStorage.setItem('dp.docs', docsSnap); else localStorage.removeItem('dp.docs');
       }
     }
+    /* Timebox alarms ring for tomorrow's plan too (the Today / Tomorrow switch) */
+    {
+      const tbSnap = localStorage.getItem('dp.timebox'), capSnap3 = window.Capacitor;
+      const sched = [];
+      window.Capacitor = { Plugins: { LocalNotifications: { cancel: async () => {}, schedule: async (o) => { sched.push(...o.notifications); } } } };
+      const TM = addDays(T, 1), atOf = (d, hm) => new Date(d + 'T' + hm + ':00').getTime();
+      try {
+        localStorage.setItem('dp.timebox', '[]');
+        focusMode = 'timebox'; tbDay = 1; tbEdit = null; show('focus');
+        document.getElementById('tb-label').value = 'Plan the week'; document.getElementById('tb-start').value = '08:00'; document.getElementById('tb-end').value = '09:00';
+        document.getElementById('tb-alarm').checked = true;
+        document.getElementById('tb-add').click();
+        await until(() => sched.length > 0);
+        ok('a block added on Tomorrow gets its alarm, at 08:00 tomorrow', sched.length === 1 && new Date(sched[0].schedule.at).getTime() === atOf(TM, '08:00') && /Plan the week/.test(sched[0].title), sched.map(n => [n.title, String(n.schedule.at)]));
+        const b = DB.timebox()[0];
+        tbEdit = b.id; renderFocus();
+        document.getElementById('tb-e-start').value = '07:15';
+        sched.length = 0; document.querySelector('[data-tb-save]').click();
+        await until(() => sched.length > 0);
+        ok('…and editing its start moves the alarm', sched.length === 1 && new Date(sched[0].schedule.at).getTime() === atOf(TM, '07:15'), sched.map(n => String(n.schedule.at)));
+        // more future blocks than the 31 reserved ids: the soonest get them, whatever order they were added in
+        const far = []; for (let i = 0; i < 31; i++) far.push({ id: 'f' + i, date: addDays(T, 20), start: '10:' + String(i).padStart(2, '0'), end: '11:00', label: 'far ' + i, alarm: true });
+        localStorage.setItem('dp.timebox', JSON.stringify(far.concat([{ id: 'soon', date: TM, start: '06:00', end: '07:00', label: 'soon', alarm: true }])));
+        sched.length = 0; await scheduleTimeboxAlarms();
+        ok('with more than 31 future blocks, tomorrow\'s still rings (the furthest one misses out)', sched.length === 31 && sched.some(n => n.title === '📦 soon') && !sched.some(n => n.title === '📦 far 30'), sched.length);
+        ok('…and every alarm id stays in the timebox range', sched.every(n => n.id >= 800 && n.id <= 830));
+      } finally {
+        window.Capacitor = capSnap3; if (window.Capacitor === undefined) delete window.Capacitor;
+        focusMode = 'pomo'; tbDay = 0; tbEdit = null;
+        if (tbSnap != null) localStorage.setItem('dp.timebox', tbSnap); else localStorage.removeItem('dp.timebox');
+      }
+    }
     if (mrSnap === undefined) delete window.MediaRecorder;
     delete navigator.mediaDevices;
   } catch (e) {

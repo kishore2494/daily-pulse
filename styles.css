@@ -342,6 +342,16 @@ textarea { resize: vertical; min-height: 64px; }
 .lrow .del { background: none; border: none; cursor: pointer; flex: 0 0 auto; padding: 2px 3px; color: var(--text-faint); font-size: 18px; }
 .lrow .pal { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; border: 2px dashed var(--text-faint); background: transparent; cursor: pointer; padding: 0; }
 .lrow.dragging { background: var(--bg-elev); border-radius: 10px; box-shadow: var(--shadow); position: relative; }
+/* Item text you tap to edit (tasks, plan steps, project steps). The padding grows the hit area
+   to the row's height and the equal negative margin keeps the row exactly where it was. */
+.lrow .txt[role=button], .pj-item-t[role=button] { cursor: text; padding: 10px 0; margin: -10px 0; border-radius: 6px; }
+.lrow .txt[role=button]:focus-visible, .pj-item-t[role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The field that replaces it: same size text, plain colour even on a struck-through done item.
+   inline-block, not block: a done row's line-through reaches into block children, never into an
+   inline-block. min-height 0 undoes the app-wide 64px textarea, so one line is one line high. */
+.inline-edit { display: inline-block; vertical-align: top; width: 100%; min-width: 0; min-height: 0; box-sizing: border-box;
+  font: inherit; line-height: 1.4; color: var(--text); background: var(--bg-input); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 7px 9px; resize: none; overflow: hidden; }
 .drag-handle { flex: 0 0 auto; color: var(--text-faint); font-size: 17px; cursor: grab; padding: 2px 4px; user-select: none; line-height: 1; }
 .drag-handle.ghost { visibility: hidden; }
 .note-text { flex: 1; min-width: 0; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 9px; padding: 9px 11px; font-size: 14px; font-family: inherit; resize: none; overflow: hidden; line-height: 1.4; }
@@ -641,6 +651,14 @@ code { background: var(--bg-input); padding: 2px 6px; border-radius: 5px; font-s
 .tb-now { font-size: 11px; color: var(--accent-ink); font-weight: 700; margin-top: 2px; }
 .tb-row .del { background: none; border: none; color: var(--text-faint); font-size: 18px; cursor: pointer; flex: 0 0 auto; padding: 0 3px; }
 .tb-row .btn-sm { flex: 0 0 auto; padding: 7px 12px; }
+/* Today / Tomorrow: two halves, not the scrolling chip row other seg-rows are */
+.tb-days { margin-bottom: 12px; }
+.tb-days .seg-btn { flex: 1 1 0; min-width: 0; }
+/* A block opens for editing on a tap anywhere on its time or name, so both fill the row's height */
+.tb-row [data-tb-edit] { align-self: stretch; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+.tb-row [data-tb-edit]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.tb-row.tb-editing { display: block; padding: 12px 4px; }
+.tb-e-btns { display: flex; gap: 8px; margin-top: 4px; }
 
 /* ---------- v55: enlarge small icon-button tap targets (audit low-sev) ----------
    Keeps the visual icons ~the same; expands the tappable hit area toward 44px. */
@@ -1819,6 +1837,8 @@ input[type="range"] { height: 30px; }
 /* Tap targets: every one of these was measured under 44px by tools/evals and is fixed here,
    not argued with. The two `.del` rules are scoped so the app-wide small × is untouched. */
 .pj-item > .del, .pj-note-h > .del { min-width: 44px; min-height: 44px; flex: 0 0 auto; }
+/* …and the plain × every other list has: with no reset they drew as the browser's grey button */
+.pj-item > .del, .pj-note-h > .del { background: none; border: none; color: var(--text-faint); font-size: 18px; cursor: pointer; }
 .pj-head input.pj-title-in { min-height: 44px; }
 .pj-head input.pj-out-in { min-height: 44px; padding-bottom: 3px; }
 #pj-back { min-height: 44px; }
