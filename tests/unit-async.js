@@ -528,7 +528,7 @@
         await memImportRun();
         const ms = memSorted(memList());
         ok('…one memory per day, dated that day', ms.map(m => m.date).join() === '2024-05-12,2023-12-31', ms.map(m => m.date));
-        ok('…holding its photo and video as blocks, in the order they were taken', ms[0] && ms[0].blocks.map(b => b.t).join('') === 'iv', ms[0] && ms[0].blocks);
+        ok('…holding an empty story block first, then its photo and video in the order they were taken', ms[0] && ms[0].blocks.map(b => b.t).join('') === 'piv' && ms[0].blocks[0].text === '', ms[0] && ms[0].blocks);
         const vid = ms[0] && memMedia(ms[0]).find(r => r.kind === 'video');
         ok('…the video kept as the file itself, stamped when it was taken', !!vid && vid.mime === 'video/mp4' && vid.size === 10 && vid.ts === d2 && vid.ctx === 'doc:' + ms[0].id, vid && { mime: vid.mime, ts: vid.ts });
         ok('…and it is really in the database', (await mediaReadAll()).some(r => r.kind === 'video'));
@@ -539,7 +539,7 @@
         ok('with only videos on the phone, an export carries no media and reports no failure', ex2.items.length === 0 && ex2.skipped === 0 && !ex2.note, ex2);
         await memImportPrepare([mk('x.jpg', 'image/jpeg', d1), mk('y.jpg', 'image/jpeg', d3)]);
         _memImport.mode = 'one'; await memImportRun();
-        ok('"All in one memory" makes one page, dated the first day', memList().length === 3 && memList().some(m => m.date === '2023-12-31' && m.blocks.length === 2), memList().map(m => m.date + ':' + m.blocks.length));
+        ok('"All in one memory" makes one page, dated the first day', memList().length === 3 && memList().some(m => m.date === '2023-12-31' && m.blocks.map(b => b.t).join('') === 'pii'), memList().map(m => m.date + ':' + m.blocks.map(b => b.t).join('')));
         window.mediaPhotoRecord = async () => { throw new Error('unreadable'); };
         await memImportPrepare([mk('bad.jpg', 'image/jpeg', d1)]); await memImportRun();
         ok('an import whose every file fails leaves no empty memory behind', memList().length === 3, memList().length);

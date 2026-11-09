@@ -2079,6 +2079,9 @@ input[type="range"] { height: 30px; }
 #mn-csv { min-height: 44px; font-size: 13px; }
 /* Primary actions in the money forms; .btn-sm alone is 38px. */
 #mn-save, #mn-add-cancel, #mn-imp-go, #mn-imp-cancel, #mn-a-save, #mn-a-cancel { min-height: 44px; }
+/* Money's record form: every field keeps its gap, also the last of a row, which on a phone sits
+   straight above the next field rather than at the end of the form */
+.mn-add .pj-row2 > .field { margin-bottom: 16px; }
 
 /* ---------- v220: money charts ---------- */
 /* Series colours reuse the already-validated tokens; in/out reuse the status inks, because
@@ -2160,7 +2163,12 @@ input[type="range"] { height: 30px; }
 .ask-chip:hover { border-color: var(--accent); }
 .ask-sug-h { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
   color: var(--text-faint); margin-bottom: 9px; }
-.ask-thread { display: flex; flex-direction: column; gap: 10px; }
+.ask-thread { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+/* Clear sits with the answers it clears, not alone in a card of its own */
+.ask-thread-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -4px 2px 8px; }
+.ask-thread-h .ask-sug-h { margin: 0; }
+.ask-thread-h .btn { min-height: 40px; padding: 6px 14px; }
+.ask-note { color: var(--warn-ink); font-weight: 600; }
 .ask-turn { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; }
 .ask-q { font-size: 13px; color: var(--text-faint); margin-bottom: 9px; padding-bottom: 8px;
   border-bottom: 1px solid var(--border); }
@@ -2627,6 +2635,31 @@ input[type="range"] { height: 30px; }
 @media (min-width: 720px) { .mem-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .mem-top .btn, .mem-bar .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .mem-bar { min-height: 48px; }
+/* Memory editor: photos and videos are tiles side by side, text blocks stay full width, so a
+   30-photo import is a few rows instead of 30 screens. Row gaps go on the tiles, not the list,
+   so the spacing between text blocks is what it always was. */
+.mem-blk-list { display: flex; flex-wrap: wrap; column-gap: 6px; align-items: flex-start; }
+.mem-blk-list > * { flex: 0 0 100%; min-width: 0; }
+.mem-blk-list > .mem-tile { flex: 0 0 calc((100% - 18px) / 4); position: relative; padding: 0; margin: 3px 0; }
+@media (min-width: 560px) { .mem-blk-list > .mem-tile { flex-basis: calc((100% - 30px) / 6); } }
+.mem-tile .mthumb, .mem-tile .blk-nopic { display: block; width: 100%; aspect-ratio: 1; }
+.mem-tile .blk-nopic { display: grid; place-items: center; padding: 4px; font-size: 11px; line-height: 1.25; }
+.mem-tile .mvid-badge { left: 4px; bottom: 4px; }
+.mem-blk-list .mem-tile .drag-handle, .mem-blk-list .mem-tile .del {
+  position: absolute; top: 3px; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0;
+  display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: 13px; opacity: 1; line-height: 1; }
+.mem-blk-list .mem-tile .drag-handle { left: 3px; cursor: grab; }
+.mem-blk-list .mem-tile .del { right: 3px; font-size: 15px; }
+.mem-tile.dragging { z-index: 6; opacity: .85; }
+/* The add-block toolbar rides along at the bottom of the screen while the page is longer than
+   it, just above the tab bar (or the keyboard, when the tab bar hides for it). */
+.mem-edit .blk-toolbar.mem-tools { position: sticky; bottom: calc(72px + var(--safe-bottom)); z-index: 5;
+  margin: 12px -8px 0; padding: 10px 8px; border-radius: 12px; background: var(--bg-card);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, .18); }
+:root[data-style="bloom"] .mem-edit .blk-toolbar.mem-tools { bottom: calc(80px + var(--safe-bottom)); }
+:root body.kbd-open .mem-edit .blk-toolbar.mem-tools { bottom: 0; }
+.mem-blk-list .blk { scroll-margin-bottom: 150px; }
 
 /* ---------- Habits screen: tick today, week-column heatmap (v255) ---------- */
 .hab-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 10px; }
