@@ -1,3 +1,12 @@
+## 2026-11-09 (morning) — v257 built: overnight helper work merged (NOT deployed)
+
+Five worktree helpers, each reviewed, merged, tested (1276 × 4 timezones, all checks, every screen × 5 styles clean):
+- **Sync:** Time tracker / Gym fields carry their own `autoAt` stamps (`ENTRY_AUTO`, `entryAutoSet`, `mergeAuto`) and no longer bump `updatedAt` — a stale phone's timer/gym tick could overwrite the other phone's mood and journal. (`fix-time` branch had no real fix; written fresh.)
+- **Stats:** plain words instead of `r=`, "N vs M days logged", Polymath explained, every card names its period, "More stats" fold.
+- **Inline edit** of task / plan-step / project-step text (`inlineEdit`); **Timebox** Today/Tomorrow, copy plan, edit block, alarms soonest-first.
+- **Web Back:** history guard stack (`hbInit`, 6 guards, `popstate` → `handleBack`), web-only; Exit goes back past Daylog. Verify on a real phone browser.
+- **Memories** import starts with a story block, tile grid + sticky toolbar in edit; **Money** Record on top, category from note/last used (`finGuessCat`); **Ask** names ignored words, filters money by note.
+
 ## 2026-11-09 (overnight) — new brand, Play Store set and landing page (committed, NOT uploaded/deployed)
 
 Kishore: "we need distribution… improve the logo and banners and images", then "do whatever you want

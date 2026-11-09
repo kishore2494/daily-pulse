@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v256';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v257';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1488,8 +1488,11 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w26',
+  v: 'w27',
   items: [
+    '🌅 <b>A new look for Daylog</b> — a new app icon, and a lot of small things made easier: tap a task, plan step or project step to fix its text; plan tomorrow in Timebox (or copy yesterday\'s plan); Stats now explains itself in plain words; and Back works inside the app in your browser too.',
+    '📝 <b>Memories and Money</b> — an imported memory starts with a place for the story, and its photos sit in a compact grid while you edit. Money\'s Record button is at the top, and the category follows your note (Netflix → Subscriptions). Ask now says when it could not use a word in your question.',
+    '🔄 <b>Two phones stay in step</b> — a running timer or a gym tick on one phone no longer overwrites the mood and journal you typed on the other.',
     '✨ <b>Pick your style</b> — Daylog now comes in five looks, each with its own type, cards and colours: <b>Midnight</b> (the original), <b>Paper</b> (clean as a Notion page, light or dark), <b>Luxe</b> (black and champagne gold), <b>Aurora</b> (northern lights behind frosted glass) and <b>Bloom</b> (soft cream and coral). Try them in <b>Settings ▸ Style &amp; appearance</b>.',
     '↩️ <b>Undo</b> — deleting a task, a plan or project step, a note or a timebox block now shows an <b>Undo</b> button for a few seconds. So does hiding a card on the Log.',
     '✅ <b>Tick habits on the Habits screen</b> — each habit has a <b>Mark done</b> button, and the grid now shows one column per week with today outlined. Tapping a ticked habit again unticks it (it used to mark it skipped); <b>Skip today</b> is on the message that follows.',
