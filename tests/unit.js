@@ -1700,6 +1700,96 @@
     if (aS != null) localStorage.setItem('dp.finaccts', aS); else localStorage.removeItem('dp.finaccts');
   })();
 
+  // ---- Money's record form on top with an honest category; Ask says what it left out ----
+  (function () {
+    const keys = ['dp.finaccts', 'dp.fintx', 'dp.fincats'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const prev = { tab: mnTab, open: mnAddOpen, ym: mnYm, log: askLog.slice() };
+    try {
+      const T = todayStr(), ym = finYm(T), [y, mo] = ym.split('-').map(Number);
+      const lastYm = finYm(todayStr(new Date(y, mo - 2, 1)));
+      localStorage.removeItem('dp.fincats');
+      localStorage.setItem('dp.finaccts', JSON.stringify([{ id: 'bk', name: 'Bank', kind: 'bank', opening: 0, since: addDays(T, -90) }]));
+      localStorage.setItem('dp.fintx', '[]');
+      ok('with no history a new record starts on "Other", not on Food & dining', mnDefaultCat('out') === 'otherout' && mnDefaultCat('in') === 'otherin');
+      localStorage.setItem('dp.fintx', JSON.stringify([
+        { id: 'f1', d: ym + '-01', a: 850000, dir: 'in', ac: 'bk', c: 'salary', n: 'Salary' },
+        { id: 'f2', d: ym + '-01', a: 64900, dir: 'out', ac: 'bk', c: 'subs', n: 'Netflix' },
+        { id: 'f3', d: ym + '-01', a: 340000, dir: 'out', ac: 'bk', c: 'grocery', n: 'Big basket' },
+        { id: 'f4', d: lastYm + '-15', a: 11900, dir: 'out', ac: 'bk', c: 'subs', n: 'Spotify' },
+        { id: 'f5', d: ym + '-01', a: 25000, dir: 'out', ac: 'bk', c: 'food', n: 'Chai Point' },
+        { id: 'f6', d: ym + '-01', a: 30000, dir: 'out', ac: 'bk', c: 'health', n: 'Apollo' },
+      ]));
+      ok('…and then on the category used last, in that direction', mnDefaultCat('out') === 'health' && mnDefaultCat('in') === 'salary');
+      ok('a note suggests its category: a known name', finGuessCat('Netflix', 'out') === 'subs' && finGuessCat('uber to airport', 'out') === 'transport');
+      ok('…a category the note names', finGuessCat('groceries', 'out') === 'grocery' && finGuessCat('Electricity bill', 'out') === 'home');
+      ok('…what the same note got last time', finGuessCat('chai point', 'out') === 'food');
+      ok('…in the right direction only, and nothing rather than a guess', finGuessCat('Netflix', 'in') === null && finGuessCat('money for mum', 'out') === null && finGuessCat('qwerty', 'out') === null);
+      const fx = localStorage.getItem('dp.fintx');
+      localStorage.setItem('dp.fintx', JSON.stringify([{ id: 'g1', d: ym + '-01', a: 100, dir: 'out', ac: 'bk', c: 'food', n: 'Netflix' },
+        { id: 'g2', d: ym + '-01', a: 100, dir: 'out', ac: 'bk', c: 'fun', n: 'Swiggy' }]));
+      ok('…a past "Food & dining" (what the picker used to open on) does not outvote a name that says otherwise', finGuessCat('netflix', 'out') === 'subs');
+      ok('…but any other past choice does', finGuessCat('swiggy', 'out') === 'fun');
+      localStorage.setItem('dp.fintx', fx);
+      // the screen
+      mnTab = 'over'; mnAddOpen = false; mnYm = null; renderMoney();
+      const el = document.getElementById('s-money');
+      ok('Overview: "Record money in or out" comes first, above net worth and the charts',
+        !!(document.getElementById('mn-add-open').compareDocumentPosition(el.querySelector('.mn-worth')) & Node.DOCUMENT_POSITION_FOLLOWING));
+      mnTab = 'tx'; renderMoney();
+      ok('…and first on Money in/out', !!(document.getElementById('mn-add-open').compareDocumentPosition(el.querySelector('.mn-mhead')) & Node.DOCUMENT_POSITION_FOLLOWING));
+      mnTab = 'over'; mnAddOpen = 'out'; renderMoney();
+      const cat = () => document.getElementById('mn-cat'), note = document.getElementById('mn-note');
+      ok('the form opens at the top, on the last category used', !!(cat().compareDocumentPosition(el.querySelector('.mn-worth')) & Node.DOCUMENT_POSITION_FOLLOWING) && cat().value === 'health', cat().value);
+      note.value = 'Netflix'; note.dispatchEvent(new Event('input', { bubbles: true }));
+      ok('typing the note picks its category, and says so', cat().value === 'subs' && /note/.test(document.getElementById('mn-cat-why').textContent));
+      note.value = 'zzz'; note.dispatchEvent(new Event('input', { bubbles: true }));
+      ok('…and drops the guess when the note stops matching', cat().value === 'health' && document.getElementById('mn-cat-why').textContent === '');
+      cat().value = 'fun'; cat().dispatchEvent(new Event('change', { bubbles: true }));
+      note.value = 'groceries'; note.dispatchEvent(new Event('input', { bubbles: true }));
+      ok('a category picked by hand stays picked', cat().value === 'fun');
+      document.getElementById('mn-amt').value = '250';
+      document.getElementById('mn-save').click();
+      ok('…and is the one saved', (finTx().slice(-1)[0] || {}).c === 'fun' && (finTx().slice(-1)[0] || {}).n === 'groceries');
+      localStorage.setItem('dp.fintx', JSON.stringify(finTx().slice(0, -1)));
+
+      // Ask: a word the answer did not use is said out loud, or answered from the records
+      const flat = r => r.lines.join(' ');
+      const nf = askRun('how much did I spend on netflix');
+      ok('Ask: "spend on netflix" answers from the Netflix records', /netflix/i.test(nf.title) && flat(nf).includes(finFmt(64900, { noPaise: true })) && !nf.ignored.length, nf);
+      ok('…not with the whole month', !flat(nf).includes(finFmt(finMonth(ym).out, { compact: true, noPaise: true })));
+      const gr = askRun('how much did I spend on groceries');
+      ok('…a category name works the same way', flat(gr).includes(finFmt(340000, { noPaise: true })));
+      const sp = askRun('how much did I spend on spotify');
+      ok('…a word recorded only in another month says so, then gives what there is', /Nothing on “spotify”/.test(flat(sp)) && flat(sp).includes(finFmt(11900, { noPaise: true })));
+      const zz = askRun('how much did I spend on hoverboards');
+      ok('…a word nothing mentions is named up front, before the month', /ask-note/.test(zz.lines[0]) && /“hoverboards”/.test(zz.lines[0])
+        && flat(zz).includes(finFmt(finMonth(ym).out, { compact: true, noPaise: true })));
+      const wk = askRun('how much did I spend yesterday');
+      ok('…a time it cannot narrow to is named too', wk.ignored.join() === 'yesterday' && /ask-note/.test(wk.lines[0]) && /“yesterday”/.test(wk.lines[0]), wk.ignored);
+      const lm = askRun('how much did I spend last month');
+      ok('"last month" answers last month', flat(lm).includes(escapeHtml(mnMonthLabel(lastYm))) && !lm.ignored.length, lm);
+      const sl = askRun('how is my sleep in paris');
+      ok('any skill: a leftover word is flagged', sl.ignored.join() === 'paris' && /ask-note/.test(sl.lines[0]));
+      ok('no example question gets flagged', ASK_SKILLS.every(sk => !askRun(sk.ex).lines.some(l => /ask-note/.test(l))),
+        ASK_SKILLS.map(sk => sk.id + ':' + askRun(sk.ex).ignored.join('+')).filter(s => !/:$/.test(s)).join());
+      const everyday = ['where did my money go this month', 'how much have i spent', 'how much did I spend in total', 'what is my current streak', 'how is my sleep lately'];
+      const noted = q => askRun(q).lines.some(l => /ask-note/.test(l));
+      ok('…nor everyday wording', !everyday.some(noted), everyday.filter(noted));
+      // the Clear button sits with the answers
+      askLog = []; askSubmit('how much did I spend on hoverboards');
+      const clr = document.getElementById('ask-clear');
+      ok('Clear sits in the answers\' header, not alone in a card', !!clr && !clr.closest('.card') && !!clr.closest('.ask-thread-h'));
+      ok('…and the "can\'t break out" line is shown', !!document.querySelector('#s-ask .ask-note'));
+      clr.click();
+      ok('…and still clears', askLog.length === 0 && !document.getElementById('ask-clear'));
+    } finally {
+      window.toast = tSnap; mnTab = prev.tab; mnAddOpen = prev.open; mnYm = prev.ym; askLog = prev.log;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+    }
+  })();
+
   /* ---- MENU: Settings is named Settings, and sits last ---- */
   (function () {
     const nS = localStorage.getItem('dp.navcfg');
@@ -3261,6 +3351,61 @@
       window.toast = tSnap; _media.clear(); mSnap.forEach((v, k) => _media.set(k, v)); _mediaReady = rdySnap;
       curMem = null; memEdit = false; memFilter = null; memLinkOpen = false;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
+  // ---- Memories editor: the story first, photos as tiles, the toolbar within reach ----
+  (function () {
+    const dSnap = localStorage.getItem('dp.docs'), tSnap = window.toast; window.toast = () => {};
+    const mSnap = new Map(_media), rdySnap = _mediaReady, lbSnap = lastBlk, ucSnap = URL.createObjectURL;
+    URL.createObjectURL = () => 'blob:test';   // jsdom has none; a tile only needs a src
+    try {
+      // dropping a dragged block: a plain list is unchanged, a tile is passed by its middle
+      const wide = { top: 100, bottom: 140, height: 40, left: 0, width: 300 }, tile = { top: 100, bottom: 170, height: 70, left: 80, width: 70 };
+      ok('drag in a plain list: before a row when above its middle, wherever the finger is across', dragBefore(wide, 290, 110, 0) && !dragBefore(wide, 5, 130, 0));
+      ok('drag among tiles: level with a tile, its horizontal middle decides', dragBefore(tile, 100, 120, 300) && !dragBefore(tile, 140, 120, 300));
+      ok('…above its row it is before, below its row it is not', dragBefore(tile, 290, 90, 300) && !dragBefore(tile, 5, 200, 300));
+      ok('…and a full-width text row among the tiles keeps the plain rule', dragBefore(wide, 290, 110, 300) && !dragBefore(wide, 5, 130, 300));
+      // where the toolbar puts a new block
+      const P = id => ({ id, t: 'p', text: '' }), I = id => ({ id, t: 'i', mid: id });
+      lastBlk = null;
+      ok('a new block on an imported page goes above its photos, not under them', memAddIndex({ blocks: [P('s'), I('g1'), I('g2')] }) === 1);
+      ok('…at the top of a page that is only photos', memAddIndex({ blocks: [I('g1'), I('g2')] }) === 0 && memAddIndex({ blocks: [] }) === 0);
+      ok('…at the end when the page ends in writing', memAddIndex({ blocks: [P('s'), I('g1'), P('t')] }) === 3);
+      lastBlk = 's';
+      ok('…and right after the block you were writing in', memAddIndex({ blocks: [P('s'), P('t'), I('g1')] }) === 1);
+      lastBlk = 'elsewhere';
+      ok('…a block on another page does not count', memAddIndex({ blocks: [P('s'), I('g1')] }) === 1);
+      // the edit view
+      _mediaReady = true;
+      _media.set('tp1', { id: 'tp1', kind: 'photo', blob: new Blob(['x']), ctx: 'doc:mT', day: '2024-05-12' });
+      _media.set('tv1', { id: 'tv1', kind: 'video', blob: new Blob(['x']), dur: 4000, ctx: 'doc:mT', day: '2024-05-12' });
+      localStorage.setItem('dp.docs', JSON.stringify([{ id: 'mT', kind: 'memory', title: '', date: '2024-05-12', place: '', people: [], tags: [],
+        blocks: [P('s1'), P('s2'), I('tp1'), { id: 'tv1', t: 'v', mid: 'tv1' }, { id: 'ta1', t: 'a', mid: 'gone' }], created: '2024-05-12', updated: '' }]));
+      navigateTo('memories'); curMem = 'mT'; memEdit = true; renderMemories();
+      const sc = document.getElementById('s-memories'), list = sc.querySelector('#mem-blk-list');
+      const tiles = [...list.querySelectorAll('.mem-tile')];
+      ok('in the editor, photos and videos are tiles, each still with its drag handle and delete',
+        tiles.map(t => t.dataset.id).join() === 'tp1,tv1' && tiles.every(t => t.querySelector('[data-drag]') && t.querySelector('[data-blkdel="' + t.dataset.id + '"]')), tiles.map(t => t.dataset.id));
+      ok('…a voice note keeps its full-width row', !!list.querySelector('.blk-row.blk-photo[data-id="ta1"]') && !list.querySelector('.mem-tile[data-id="ta1"]'));
+      const tas = [...list.querySelectorAll('textarea[data-blk]')];
+      ok('the first text block asks for the story; later ones keep the usual prompt', tas[0].placeholder === 'Tell the story…' && tas[1].placeholder !== 'Tell the story…', tas.map(t => t.placeholder));
+      ok('the add-block toolbar is the sticky one', !!sc.querySelector('.blk-toolbar.mem-tools [data-addblk="p"]'));
+      lastBlk = null;
+      sc.querySelector('.mem-tools [data-addblk="b"]').click();
+      ok('tapping Bullet with nothing chosen puts it above the photos the page ends with',
+        memList().find(m => m.id === 'mT').blocks.map(b => b.t).join('') === 'ppbiva', memList().find(m => m.id === 'mT').blocks.map(b => b.t).join(''));
+      lastBlk = 's1';
+      sc.querySelector('.mem-tools [data-addblk="h"]').click();
+      ok('…and a block added while writing goes right after that block', memList().find(m => m.id === 'mT').blocks.map(b => b.t).join('') === 'phpbiva');
+      sc.querySelector('[data-mem-done]').click();
+      ok('the read view is unchanged: the empty story says nothing, the photos stay a gallery', !sc.querySelector('.mem-tile') && !!sc.querySelector('.mem-gallery'));
+    } finally {
+      window.toast = tSnap; URL.createObjectURL = ucSnap; _mediaUrls.delete('tp1:t'); _mediaUrls.delete('tp1:f');
+      _media.clear(); mSnap.forEach((v, k) => _media.set(k, v)); _mediaReady = rdySnap; lastBlk = lbSnap;
+      curMem = null; memEdit = false;
+      if (dSnap != null) localStorage.setItem('dp.docs', dSnap); else localStorage.removeItem('dp.docs');
       navigateTo('today');
     }
   })();

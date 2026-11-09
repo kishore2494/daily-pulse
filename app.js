@@ -179,23 +179,25 @@ function autoSizeAll(list) {
   const hs = all.map(t => t.scrollHeight);
   all.forEach((t, i) => { t.style.height = hs[i] + 'px'; });
 }
-function enableDrag(listEl, onReorder) {
+function enableDrag(listEl, onReorder, opts) {
   if (!listEl) return;
+  const grid = !!(opts && opts.grid);
   listEl.querySelectorAll('[data-drag]').forEach(handle => {
     handle.style.touchAction = 'none';
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const row = handle.closest('[data-id]'); if (!row) return;
-      const id = row.dataset.id, startY = e.clientY; let lastY = startY;
+      const id = row.dataset.id, startY = e.clientY, startX = e.clientX; let lastY = startY, lastX = startX;
       row.classList.add('dragging');
       try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-      const move = (ev) => { lastY = ev.clientY; row.style.transform = `translateY(${ev.clientY - startY}px)`; };
+      const move = (ev) => { lastY = ev.clientY; lastX = ev.clientX;
+        row.style.transform = grid ? `translate(${ev.clientX - startX}px, ${ev.clientY - startY}px)` : `translateY(${ev.clientY - startY}px)`; };
       const up = () => {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', up);
         const others = Array.from(listEl.querySelectorAll('[data-id]')).filter(r => r !== row);
         let target = others.length;
-        for (let i = 0; i < others.length; i++) { const r = others[i].getBoundingClientRect(); if (lastY < r.top + r.height / 2) { target = i; break; } }
+        for (let i = 0; i < others.length; i++) { const r = others[i].getBoundingClientRect(); if (dragBefore(r, lastX, lastY, grid ? listEl.clientWidth : 0)) { target = i; break; } }
         const ids = others.map(r => r.dataset.id); ids.splice(target, 0, id);
         row.classList.remove('dragging'); row.style.transform = '';
         onReorder(ids);
@@ -204,6 +206,15 @@ function enableDrag(listEl, onReorder) {
       handle.addEventListener('pointerup', up);
     });
   });
+}
+/* Does a drop at (x, y) land before the row whose box is r? In a plain list, when the finger is
+   above the row's middle. A list with tiles side by side (listW given: a memory's photos) reads
+   like a page: a tile narrower than half the list is passed by its horizontal middle when the
+   finger is level with it, and is "before" outright when the finger is above its whole row.
+   Full-width rows keep the plain rule, so text blocks between the tiles move as they always did. */
+function dragBefore(r, x, y, listW) {
+  if (!listW || r.width >= listW / 2) return y < r.top + r.height / 2;
+  return y < r.top || (y < r.bottom && x < r.left + r.width / 2);
 }
 
 
@@ -5673,10 +5684,10 @@ function docHost() {
 }
 function docCurId() { const h = docHost(); return h === 'memories' ? (memEdit ? curMem : null) : h === 'write' ? curDoc : null; }
 function docRerender() { if (docHost() === 'memories') renderMemories(); else renderWrite(); }
-function blockRow(b) {
+function blockRow(b, ph) {
   if (isMediaBlk(b)) return mediaBlockRow(b);
   const ta = `<textarea class="blk blk-${b.t}" data-blk="${b.id}" rows="1"
-    placeholder="${b.t === 'h' ? 'Heading…' : b.t === 'c' ? 'To-do…' : b.t === 'b' ? 'Point…' : 'Write… (or tap 🎤 and speak)'}">${escapeHtml(b.text || '')}</textarea>`;
+    placeholder="${escapeHtml(ph || (b.t === 'h' ? 'Heading…' : b.t === 'c' ? 'To-do…' : b.t === 'b' ? 'Point…' : 'Write… (or tap 🎤 and speak)'))}">${escapeHtml(b.text || '')}</textarea>`;
   return `<div class="blk-row ${b.t === 'c' && b.done ? 'done' : ''}" data-id="${b.id}">
     <span class="drag-handle" data-drag>⠿</span>
     ${b.t === 'c' ? `<div class="check" data-blkcheck="${b.id}">✓</div>` : b.t === 'b' ? '<span class="blk-bullet">•</span>' : ''}
@@ -5765,12 +5776,13 @@ function writeRefresh() {
   if (curDoc && !(d && (d.blocks || []).some(isMediaBlk))) return;
   const y = window.scrollY; renderWrite(); window.scrollTo({ top: y, behavior: 'instant' });
 }
-function addBlock(type, afterId) {
+function addBlock(type, afterId, index) {
   const ds = DB.docs(); const d = ds.find(x => x.id === docCurId()); if (!d) return null;
   d.blocks = d.blocks || [];
   const blk = { id: 'bk' + Date.now() + Math.floor(Math.random() * 99), t: type, text: '' };
   if (type === 'c') blk.done = false;
-  const at = afterId ? d.blocks.findIndex(b => b.id === afterId) + 1 : d.blocks.length;
+  const at = index != null ? Math.max(0, Math.min(index, d.blocks.length))
+    : afterId ? d.blocks.findIndex(b => b.id === afterId) + 1 : d.blocks.length;
   d.blocks.splice(at, 0, blk);
   d.updated = new Date().toISOString();
   DB.saveDocs(ds); docRerender();
@@ -5799,7 +5811,8 @@ document.addEventListener('click', (ev) => {
   }
   const cur = docCurId(); if (!cur) return;
   const ab = ev.target.closest('[data-addblk]');
-  if (ab) { addBlock(ab.dataset.addblk); return; }
+  if (ab) { const m = host === 'memories' && memList().find(x => x.id === cur);
+    addBlock(ab.dataset.addblk, null, m ? memAddIndex(m) : null); return; }
   const bc = ev.target.closest('[data-blkcheck]');
   if (bc) { const ds = DB.docs(); const d = ds.find(x => x.id === cur);
     const b = d && (d.blocks || []).find(z => z.id === bc.dataset.blkcheck);
@@ -6083,6 +6096,37 @@ function memLinkPickerHTML(m) {
   return pages.map(d => `<button class="mem-linkrow" data-memlinkadd="${escapeHtml(d.id)}">${icon(d.kind === 'memory' ? 'image' : 'pencil', 16)}<span>${escapeHtml(docPageTitle(d))}</span></button>`).join('')
     || '<div class="hint">No other memories or articles to link to yet.</div>';
 }
+/* A memory's blocks while editing. Photos and videos are thumbnails side by side: as full-width
+   blocks, an imported page of 30 photos was 30 screens tall with the writing toolbar below all
+   of them. Each tile keeps its ⠿ and ×, so it still moves among the text and deletes as before.
+   The first text block asks for the story. The read view is not touched. */
+function memEditBlocksHTML(m) {
+  const bl = m.blocks || [];
+  if (!bl.length) return '<div class="empty">Empty — add a block below 👇</div>';
+  const first = bl.find(b => !isMediaBlk(b));
+  return bl.map(b => b.t === 'i' || b.t === 'v' ? memTileRow(b)
+    : blockRow(b, b === first && b.t === 'p' ? 'Tell the story…' : '')).join('');
+}
+function memTileRow(b) {
+  const r = _media.get(b.mid), what = b.t === 'v' ? 'video' : 'photo';
+  const body = r ? mediaTileHTML(r, 't', b.t === 'v' ? 'Video' : 'Photo')
+    : `<div class="blk-nopic">${!_mediaReady ? 'Loading…' : 'Not on this phone'}</div>`;
+  return `<div class="blk-row mem-tile" data-id="${escapeHtml(b.id)}">${body}
+    <span class="drag-handle" data-drag aria-hidden="true">⠿</span>
+    <button class="del" data-blkdel="${escapeHtml(b.id)}" aria-label="Remove ${what}">×</button>
+  </div>`;
+}
+/* Where a block added from a memory's toolbar goes: after the block you were last writing in,
+   or else above any photos the page ends with. It used to be the very end, so on an imported
+   page the writing landed under the whole gallery. */
+function memAddIndex(m) {
+  const bl = m.blocks || [];
+  const at = bl.findIndex(b => b.id === lastBlk && !isMediaBlk(b));
+  if (at >= 0) return at + 1;
+  let i = bl.length;
+  while (i > 0 && isMediaBlk(bl[i - 1])) i--;
+  return i;
+}
 function memEditHTML(m) {
   const fc = memFacets(memList()), ppl = memArr(m.people).map(x => x.toLowerCase()), tg = memArr(m.tags).map(x => x.toLowerCase());
   const sugg = (k, arr, have) => arr.filter(x => !have.includes(x.v.toLowerCase())).slice(0, 8)
@@ -6100,8 +6144,8 @@ function memEditHTML(m) {
       ${st ? `<div class="mem-chips">${st}</div>` : ''}
       <datalist id="mem-places">${fc.place.slice(0, 30).map(x => `<option value="${escapeHtml(x.v)}"></option>`).join('')}</datalist>
     </div>
-    <div id="mem-blk-list" data-mset="doc" style="margin-top:10px">${(m.blocks || []).map(blockRow).join('') || '<div class="empty">Empty — add a block below 👇</div>'}</div>
-    <div class="blk-toolbar">
+    <div id="mem-blk-list" class="mem-blk-list" data-mset="doc" style="margin-top:10px">${memEditBlocksHTML(m)}</div>
+    <div class="blk-toolbar mem-tools">
       <button data-addblk="h">H Heading</button>
       <button data-addblk="p">¶ Text</button>
       <button data-addblk="c">☑ Check</button>
@@ -6264,9 +6308,10 @@ async function memImportRun() {
   _mediaBusy++;
   try {
     for (const g of groups) {
+      // memNew starts the page with one empty text block, and it stays FIRST: the place to tell
+      // the story, above the photos. Without it an imported page was only photos, with nowhere
+      // obvious to write.
       const id = memNew(g.day); if (!id) { full = true; break; }
-      // the empty text block memNew starts with is not wanted above a gallery
-      const ds = DB.docs(), m = ds.find(x => x.id === id); m.blocks = []; DB.saveDocs(ds);
       made.push(id);
       for (const it of g.items) {
         let rec;
@@ -6280,8 +6325,8 @@ async function memImportRun() {
       if (full) break;
     }
   } finally { _mediaBusy--; }
-  // a page whose every file failed is not left behind empty
-  const ds = DB.docs(), empty = new Set(made.filter(id => !((ds.find(x => x.id === id) || {}).blocks || []).length));
+  // a page whose every file failed is not left behind empty (its blank story block is not content)
+  const ds = DB.docs(), empty = new Set(made.filter(id => !((ds.find(x => x.id === id) || {}).blocks || []).some(isMediaBlk)));
   if (empty.size) DB.saveDocs(ds.filter(x => !empty.has(x.id)));
   const kept = made.filter(id => !empty.has(id));
   _memImport = null; curMem = kept.length === 1 ? kept[0] : null; memEdit = false;
@@ -6308,7 +6353,7 @@ function renderMemories() {
       const ds = DB.docs(); const d = ds.find(x => x.id === curMem); if (!d) return;
       d.blocks = ids.map(id => (d.blocks || []).find(b => b.id === id)).filter(Boolean);
       d.updated = new Date().toISOString(); DB.saveDocs(ds); renderMemories();
-    });
+    }, { grid: true });
     return;
   }
   if (m) { sub.textContent = memDateLong(memDate(m)); sc.innerHTML = memReadHTML(m); voicePaint(); return; }
@@ -13541,7 +13586,7 @@ function mnOverviewHTML() {
   const maxCat = top.length ? m.byCat[top[0]] : 0;
   const months = finRecentMonths(6);
 
-  return `
+  return `${mnQuickAddHTML()}
   <div class="card mn-worth">
     <div class="mn-worth-top">
       <div>
@@ -13599,37 +13644,105 @@ function mnOverviewHTML() {
         <div class="mn-blbl">${months[i].slice(5)}</div></div>`).join('');
     })()}</div>
     <div class="mn-legend"><span><i class="bin"></i>in</span><span><i class="bout"></i>out</span></div>
-  </div>` : ''}
-
-  ${mnQuickAddHTML()}`;
+  </div>` : ''}`;
 }
 
-/* ---- quick add, shared by Overview and the ledger ---- */
+/* ---- the category a new record starts on ----
+   The picker used to open on "Food & dining" every time, so anything saved without touching it
+   — groceries, Netflix — was quietly filed as food. It now opens on the category you used last
+   in that direction, or on "Other" when there is no history, which says plainly nobody chose. */
+function mnDefaultCat(dir) {
+  const ok = new Set(finCats().filter(c => c.dir === dir).map(c => c.id)), tx = finTx();
+  for (let i = tx.length - 1; i >= 0; i--) if (tx[i].dir === dir && ok.has(tx[i].c)) return tx[i].c;
+  return dir === 'in' ? 'otherin' : 'otherout';
+}
+/* Common names that say which category a note belongs to. Checked in this order, so "Amazon
+   Prime" is a subscription before it is shopping. Kept short: a wrong guess is visible and
+   one tap to fix, but a long list guesses wrong more often. */
+const FIN_HINTS = [
+  ['subs', ['netflix', 'spotify', 'prime', 'hotstar', 'youtube', 'icloud', 'subscription']],
+  ['grocery', ['grocery', 'groceries', 'supermarket', 'vegetables', 'veggies', 'fruits', 'milk', 'bigbasket', 'blinkit', 'zepto', 'dmart', 'instamart']],
+  ['food', ['swiggy', 'zomato', 'restaurant', 'lunch', 'dinner', 'breakfast', 'cafe', 'coffee', 'pizza', 'snacks']],
+  ['transport', ['uber', 'ola', 'rapido', 'petrol', 'diesel', 'fuel', 'metro', 'bus', 'train', 'taxi', 'cab', 'auto', 'parking', 'toll']],
+  ['home', ['rent', 'electricity', 'wifi', 'internet', 'broadband', 'maintenance', 'bill', 'bills']],
+  ['health', ['doctor', 'pharmacy', 'medicine', 'medicines', 'hospital', 'dentist']],
+  ['fun', ['movie', 'movies', 'cinema', 'concert', 'party']],
+  ['edu', ['course', 'book', 'books', 'udemy', 'coursera', 'tuition']],
+  ['gift', ['gift', 'donation', 'charity']],
+  ['shopping', ['amazon', 'flipkart', 'myntra', 'clothes', 'shoes']],
+  ['salary', ['salary', 'payroll']],
+  ['freelance', ['freelance', 'invoice', 'client']],
+  ['refund', ['refund', 'cashback']],
+  ['returns', ['dividend', 'interest']],
+];
+const FIN_NAME_SKIP = new Set(['money', 'going', 'other', 'side', 'spending', 'income']);
+function finStem(w) { return w.length > 4 && /ies$/.test(w) ? w.slice(0, -3) + 'y' : w.length > 3 && /s$/.test(w) ? w.slice(0, -1) : w; }
+/* A category for a note, or null rather than a guess. Your own history first (the category the
+   same note got last time), then a category whose name the note uses, then FIN_HINTS. One
+   exception: a past "Food & dining" does not outvote a name that says otherwise, because that
+   is what the picker used to open on, so a Netflix filed under it was never a choice. */
+function finGuessCat(note, dir) {
+  const n = String(note || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (n.length < 3 || (dir !== 'in' && dir !== 'out')) return null;
+  const cats = finCats().filter(c => c.dir === dir), ok = new Set(cats.map(c => c.id)), tx = finTx();
+  const words = n.split(/[^a-z0-9]+/).filter(w => w.length >= 3), stems = words.map(finStem);
+  let named = null;
+  for (const c of cats) {
+    if (c.id === 'otherout' || c.id === 'otherin') continue;
+    const name = String(c.name || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !FIN_NAME_SKIP.has(w));
+    if (name.some(w => stems.includes(finStem(w)))) { named = c.id; break; }
+  }
+  if (!named) for (const [id, list] of FIN_HINTS) if (ok.has(id) && words.some(w => list.includes(w))) { named = id; break; }
+  for (let i = tx.length - 1; i >= 0; i--) {
+    const t = tx[i];
+    if (t.dir === dir && ok.has(t.c) && String(t.n || '').trim().toLowerCase().replace(/\s+/g, ' ') === n) {
+      if (t.c === 'food' && named && named !== 'food') break;
+      return t.c;
+    }
+  }
+  return named;
+}
+/* Typing the note re-picks the category until you pick one yourself. */
+function mnNoteInput(el) {
+  const sel = document.getElementById('mn-cat'), why = document.getElementById('mn-cat-why');
+  if (!sel || sel.dataset.picked) return;
+  const dir = mnAddOpen === 'in' ? 'in' : 'out', g = finGuessCat(el.value, dir);
+  sel.value = g || mnDefaultCat(dir);
+  if (why) why.textContent = g ? 'picked from the note' : '';
+}
+
+/* ---- quick add, shared by Overview and the ledger, at the top of both: it is the thing done
+   every day, and at the foot of the Overview it sat a long scroll below the charts ---- */
 function mnQuickAddHTML() {
   const accts = finAccts().filter(a => !a.archived && finKind(a.kind).mode === 'tx');
   if (!accts.length) return `<div class="card"><div class="empty">Add a bank, cash or card account to record money in and out.</div></div>`;
   if (!mnAddOpen) return `<div class="card"><button class="btn btn-primary" id="mn-add-open" style="width:100%">＋ Record money in or out</button></div>`;
   const dir = mnAddOpen === true ? 'out' : mnAddOpen;
   const cats = finCats().filter(c => c.dir === (dir === 'in' ? 'in' : 'out'));
-  return `<div class="card">
+  const cat0 = dir === 'xfer' ? '' : mnDefaultCat(dir);
+  const acctOpts = accts.map(a => `<option value="${a.id}">${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('');
+  return `<div class="card mn-add">
     <h2>Record ${dir === 'xfer' ? 'a transfer' : dir === 'in' ? 'money in' : 'money out'}</h2>
     <div class="seg-row" style="margin-bottom:11px">
       ${[['out', 'Money out'], ['in', 'Money in'], ['xfer', 'Transfer']].map(([k, l]) =>
         `<button class="seg-btn ${dir === k ? 'on' : ''}" data-mn-dir="${k}">${l}</button>`).join('')}
     </div>
-    <div class="field"><label>Amount</label>
-      <input type="text" id="mn-amt" inputmode="decimal" placeholder="e.g. 450 or 1.2k" autocomplete="off"></div>
     <div class="pj-row2">
-      <div class="field"><label>${dir === 'xfer' ? 'From' : 'Account'}</label>
-        <select id="mn-acct">${accts.map(a => `<option value="${a.id}">${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('')}</select></div>
-      ${dir === 'xfer'
-        ? `<div class="field"><label>To</label><select id="mn-to">${accts.map(a => `<option value="${a.id}">${finKind(a.kind).ico} ${escapeHtml(a.name)}</option>`).join('')}</select></div>`
-        : `<div class="field"><label>Category</label><select id="mn-cat">${cats.map(c => `<option value="${c.id}">${c.ico} ${escapeHtml(c.name)}</option>`).join('')}</select></div>`}
-    </div>
-    <div class="pj-row2">
-      <div class="field"><label>Date</label><input type="date" id="mn-date" value="${todayStr()}" max="${todayStr()}"></div>
+      <div class="field"><label>Amount</label>
+        <input type="text" id="mn-amt" inputmode="decimal" placeholder="e.g. 450 or 1.2k" autocomplete="off"></div>
       <div class="field"><label>Note <span class="hint">optional</span></label><input type="text" id="mn-note" placeholder="e.g. Netflix" autocomplete="off"></div>
     </div>
+    ${dir === 'xfer'
+      ? `<div class="pj-row2">
+          <div class="field"><label>From</label><select id="mn-acct">${acctOpts}</select></div>
+          <div class="field"><label>To</label><select id="mn-to">${acctOpts}</select></div>
+        </div>
+        <div class="field"><label>Date</label><input type="date" id="mn-date" value="${todayStr()}" max="${todayStr()}"></div>`
+      : `<div class="field"><label>Category <span class="hint" id="mn-cat-why" aria-live="polite"></span></label><select id="mn-cat">${cats.map(c => `<option value="${c.id}"${c.id === cat0 ? ' selected' : ''}>${c.ico} ${escapeHtml(c.name)}</option>`).join('')}</select></div>
+        <div class="pj-row2">
+          <div class="field"><label>Account</label><select id="mn-acct">${acctOpts}</select></div>
+          <div class="field"><label>Date</label><input type="date" id="mn-date" value="${todayStr()}" max="${todayStr()}"></div>
+        </div>`}
     <div class="pj-btns"><button class="btn btn-primary btn-sm" id="mn-save">Save</button>
       <button class="btn btn-ghost btn-sm" id="mn-add-cancel">Cancel</button></div>
   </div>`;
@@ -14075,8 +14188,11 @@ document.addEventListener('click', (ev) => {
   }
 });
 
+document.addEventListener('input', (ev) => { if (ev.target.id === 'mn-note') mnNoteInput(ev.target); });
 document.addEventListener('change', (ev) => {
   const t = ev.target;
+  // a category picked by hand stays picked: the note no longer moves it
+  if (t.id === 'mn-cat') { t.dataset.picked = '1'; const w = document.getElementById('mn-cat-why'); if (w) w.textContent = ''; return; }
   if (t.id === 'mn-f-acct') { mnFilter.acct = t.value; renderMoney(); return; }
   if (t.id === 'mn-f-cat') { mnFilter.cat = t.value; renderMoney(); return; }
   if (t.id === 'mn-cur') {
@@ -14435,6 +14551,7 @@ const ASK_SKILLS = [
     id: 'streak',
     pats: [/\bstreak\b/i, /\bin a row\b/i, /how many days.*(logged|straight)/i],
     ex: 'What is my streak?',
+    uses: ['days', 'day', 'current', 'longest', 'logged', 'logging', 'total', 'week', 'weeks', 'weekly'],
     run() {
       const cur = loggedStreak(), best = longestLoggedStreak(), total = contentDates().length;
       if (!total) return { empty: 'You have not logged a day yet — log today and this starts working.' };
@@ -14452,27 +14569,44 @@ const ASK_SKILLS = [
     id: 'money-month',
     pats: [/(where|what).*(money|spend|spent|go)/i, /how much.*(spend|spent)/i, /\b(spending|expenses|outgoings)\b/i],
     ex: 'Where did my money go?',
-    run() {
+    uses: ['month', 'income', 'saved', 'savings', 'kept', 'category', 'categories'],
+    /* "how much did I spend on netflix" used to get the whole month under "This month", as if
+       the question had been answered. A word the question leaves over (ctx.words) is looked up
+       in what you recorded — notes and category names — and answered from those records when
+       it is there; when it is not, the answer says so before giving the month. */
+    run(ctx) {
       if (!finAccts().length) return { empty: 'No accounts set up yet — add one on the Money screen and this starts working.' };
-      const ym = finYm(todayStr()), m = finMonth(ym);
-      if (!m.in && !m.out) return { empty: `Nothing recorded for ${mnMonthLabel(ym)} yet.` };
+      const q = String((ctx && ctx.q) || ''), words = (ctx && ctx.words) || [];
+      const prev = /\b(last|previous) month\b/i.test(q);
+      const ym = prev ? finYm(todayStr(new Date(+todayStr().slice(0, 4), +todayStr().slice(5, 7) - 2, 1))) : finYm(todayStr());
+      const used = prev ? words.filter(w => w === 'last' || w === 'previous') : [];
+      const subj = words.filter(w => !used.includes(w) && !ASK_TIME.test(w));
+      const lines = [];
+      if (subj.length) {
+        const hits = {}; subj.forEach(w => { hits[w] = finTxAbout(w); });
+        const found = subj.filter(w => hits[w].length), missing = subj.filter(w => !hits[w].length);
+        used.push(...subj);
+        if (found.length) return askMoneyAbout(found, missing, hits, ym, used);
+        lines.push(`<span class="ask-note">I can't break out ${askQuote(missing)} yet — nothing you recorded mentions ${missing.length === 1 ? 'it' : 'them'}. Here is your month overall.</span>`);
+      }
+      const m = finMonth(ym);
+      if (!m.in && !m.out) return { empty: `Nothing recorded for ${mnMonthLabel(ym)} yet.`, used, lines };
       const cats = Object.keys(m.byCat).sort((a, b) => m.byCat[b] - m.byCat[a]);
-      const lines = [
-        `In ${escapeHtml(mnMonthLabel(ym))}: <b>${finFmt(m.in, { compact: true, noPaise: true })}</b> in, <b>${finFmt(m.out, { compact: true, noPaise: true })}</b> out, <b>${finFmt(m.net, { compact: true, noPaise: true })}</b> kept.`,
-      ];
+      lines.push(`In ${escapeHtml(mnMonthLabel(ym))}: <b>${finFmt(m.in, { compact: true, noPaise: true })}</b> in, <b>${finFmt(m.out, { compact: true, noPaise: true })}</b> out, <b>${finFmt(m.net, { compact: true, noPaise: true })}</b> kept.`);
       if (m.rate != null) lines.push(`That is <b>${m.rate}%</b> of what came in.`);
-      else lines.push(`No income recorded this month, so there is no savings rate to work out.`);
+      else lines.push(`No income recorded ${prev ? 'that' : 'this'} month, so there is no savings rate to work out.`);
       cats.slice(0, 5).forEach(c => {
         lines.push(`${finCat(c).ico} ${escapeHtml(finCat(c).name)} — <b>${finFmt(m.byCat[c], { noPaise: true })}</b>`);
       });
       if (cats.length > 5) lines.push(`<span class="ask-dim">+${cats.length - 5} smaller categories on the Money screen.</span>`);
-      return { title: 'This month', lines };
+      return { title: prev ? mnMonthLabel(ym) : 'This month', lines, used };
     },
   },
   {
     id: 'money-compare',
     pats: [/(ahead|behind|compared?).*(last month|previous month)/i, /(more|less).*than last month/i, /\bvs last month\b/i],
     ex: 'Am I spending more than last month?',
+    uses: ['spend', 'spent', 'spending', 'month', 'day'],
     run() {
       if (!finTx().length) return { empty: 'No transactions recorded yet.' };
       const ym = finYm(todayStr());
@@ -14500,6 +14634,7 @@ const ASK_SKILLS = [
     id: 'networth',
     pats: [/net worth/i, /how much.*(do i have|am i worth|saved up)/i, /\b(assets?|owe|debt)\b/i],
     ex: 'What is my net worth?',
+    uses: ['worth', 'own', 'owed', 'account', 'accounts', 'balance', 'balances', 'money', 'total'],
     run() {
       if (!finAccts().length) return { empty: 'No accounts set up yet — add one on the Money screen.' };
       const w = finSplitWorth();
@@ -14518,6 +14653,7 @@ const ASK_SKILLS = [
     id: 'subs',
     pats: [/subscription/i, /recurring/i, /\bpaying for\b/i],
     ex: 'What subscriptions am I paying for?',
+    uses: ['subscriptions', 'pay', 'paying', 'charges', 'monthly', 'months'],
     run() {
       const rec = finRecurring();
       if (!rec.length) return { empty: 'Nothing repeating across 3+ months yet. Add a note like “Netflix” when you record a charge and repeats get easier to spot.' };
@@ -14531,6 +14667,7 @@ const ASK_SKILLS = [
     id: 'sleep',
     pats: [/\bsleep\b/i, /\bslept\b/i, /\bbed ?time\b/i, /how.*rest/i],
     ex: 'How is my sleep?',
+    uses: ['nights', 'night', 'hours', 'average', 'usual', 'last', 'recent', 'recently', 'lately', 'week', 'days'],
     run() {
       const e = DB.entries(), hs = (typeof healthStore === 'function' ? healthStore() : {}) || {};
       const vals = [];
@@ -14562,6 +14699,7 @@ const ASK_SKILLS = [
     id: 'mood',
     pats: [/\bmood\b/i, /how.*(feel|felt)/i, /\bhappy|happier|sad\b/i, /\benergy\b/i],
     ex: 'How has my mood been?',
+    uses: ['feeling', 'average', 'usual', 'last', 'recent', 'recently', 'lately', 'week', 'days'],
     run() {
       const e = DB.entries();
       const pick = k => Object.keys(e).filter(d => e[d][k] != null && e[d][k] !== '').map(d => [d, +e[d][k]]);
@@ -14584,6 +14722,7 @@ const ASK_SKILLS = [
     id: 'habits',
     pats: [/\bhabits?\b/i, /how.*consistent/i, /\bchecklist\b/i],
     ex: 'How are my habits doing?',
+    uses: ['strength', 'streak', 'streaks', 'strong', 'strongest', 'weak', 'weakest'],
     run() {
       const cfg = (typeof habitCfg === 'function' ? habitCfg() : []).filter(h => !h.hidden);
       if (!cfg.length) return { empty: 'No habits set up — add some in Customize ▸ Checklist habits.' };
@@ -14605,6 +14744,7 @@ const ASK_SKILLS = [
     id: 'time',
     pats: [/\btime\b.*(go|spent|spend)/i, /where.*(my )?(day|hours|time)/i, /how (long|much time)/i],
     ex: 'Where does my time go?',
+    uses: ['spend', 'spent', 'tracked', 'hours', 'activity', 'activities', 'last', 'days', 'weeks'],
     run() {
       const log = DB.timelog().filter(s => s.end != null);
       if (!log.length) return { empty: 'No time blocks tracked yet — start a timer on the Time screen.' };
@@ -14631,6 +14771,7 @@ const ASK_SKILLS = [
     id: 'patterns',
     pats: [/\bpattern/i, /what.*(affects?|impacts?|makes? me)/i, /\binsight/i, /tell me something/i, /what have you (noticed|learned|found)/i],
     ex: 'What patterns have you found?',
+    uses: ['found', 'noticed', 'learned', 'shows', 'show', 'correlations'],
     run() {
       const p = computePatterns() || [];
       const fin = (typeof finPatterns === 'function' ? finPatterns() : []) || [];
@@ -14648,6 +14789,7 @@ const ASK_SKILLS = [
     id: 'best',
     pats: [/\bbest\b/i, /\brecord/i, /personal best/i, /\bmost\b.*(ever|steps|i)/i],
     ex: 'What are my records?',
+    uses: ['personal', 'best', 'ever', 'highest', 'longest', 'steps', 'sleep', 'focus', 'mood', 'habits', 'screen', 'active'],
     run() {
       /* Computed here rather than reused from bestEfforts(), which returns rendered HTML
          rather than data — the same floor (3+ days of a measure) so the two never disagree. */
@@ -14676,6 +14818,7 @@ const ASK_SKILLS = [
     id: 'week',
     pats: [/this week/i, /how.*(week|going)/i, /\bweekly\b/i, /how am i doing/i],
     ex: 'How is this week going?',
+    uses: ['week', 'logged', 'days', 'spending', 'doing'],
     run() {
       const r = (typeof coachReview === 'function' ? coachReview() : null);
       const e = DB.entries();
@@ -14693,6 +14836,7 @@ const ASK_SKILLS = [
     id: 'awards',
     pats: [/\bawards?\b/i, /\btroph/i, /\bbadges?\b/i, /what.*unlock/i],
     ex: 'What awards am I close to?',
+    uses: ['close', 'closest', 'next', 'unlocked', 'earned', 'unlock'],
     run() {
       const list = (typeof awardList === 'function' ? awardList() : []) || [];
       if (!list.length) return { empty: 'Nothing in the trophy case yet.' };
@@ -14712,6 +14856,71 @@ const ASK_SKILLS = [
     },
   },
 ];
+
+/* ---- what a question asks that its answer does not cover ----
+   The router picks a skill from a few words, so the rest of the question was dropped without a
+   word: "how much did I spend on netflix" answered the month as a whole, confidently. Words
+   that carry no subject (ASK_STOP), the skill's own words (its patterns, example and `uses`) and
+   words the answer itself mentions are accounted for; whatever is left is said out loud. */
+const ASK_STOP = new Set(('a an the i im ive id me my mine myself you your we our us is am are was were be been being ' +
+  'do does did done doing have has had having how what whats where when which who why can could would should will ' +
+  'to of on in at for from by with about into over and or but so than then this that these those it its there their ' +
+  'they them up out off all any some much many more most less very really just also get got tell show give see know ' +
+  'let please thanks thank hey hi ok okay now so far yet ever still if not no like data daylog app ' +
+  'total overall altogether everything anything things thing stuff').split(' '));
+const ASK_TIME = /^(today|tonight|yesterday|tomorrow|daily|weekly|monthly|yearly|weekends?|weekdays?|weeks?|months?|years?|days?|nights?|mornings?|evenings?|last|previous|past|recent|recently|lately|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|june?|july?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4})$/;
+function askVocab(sk) {
+  if (!sk._vocab) {
+    const src = sk.pats.map(p => p.source.replace(/\\[a-z]/gi, ' ')).join(' ') + ' ' + sk.ex + ' ' + (sk.uses || []).join(' ');
+    sk._vocab = [...new Set(src.toLowerCase().match(/[a-z]+/g) || [])];
+  }
+  return sk._vocab;
+}
+// "habit" is the skill's "habits", "trophies" its "troph": a shared start of 4+ letters is the same word
+function askSameWord(w, v) { return w === v || (v.length >= 4 && w.startsWith(v)) || (w.length >= 4 && v.startsWith(w)); }
+function askLeftover(q, sk) {
+  const words = String(q || '').toLowerCase().replace(/['’]/g, '').match(/[a-z0-9]+/g) || [];
+  const vocab = askVocab(sk);
+  return [...new Set(words)].filter(w => w.length > 1 && !ASK_STOP.has(w) && !vocab.some(v => askSameWord(w, v)));
+}
+function askQuote(ws) { return ws.slice(0, 4).map(w => '“' + escapeHtml(w) + '”').join(ws.length === 2 ? ' or ' : ', '); }
+
+/* Money records a question word is about: the word starts a word of the record's note ("netflix"
+   finds "Netflix family plan") or names its category ("groceries" finds Groceries). Transfers
+   move your own money, so they are never spending on anything. */
+function finTxAbout(word) {
+  const st = finStem(String(word || '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+  if (st.length < 3) return [];
+  const key = st.length >= 6 ? st.slice(0, -1) : st;   // so "grocery" also finds "groceries"
+  const re = new RegExp('(^|[^a-z0-9])' + key, 'i');
+  const cats = new Set(finCats().filter(c => c.id === st ||
+    String(c.name || '').toLowerCase().split(/[^a-z0-9]+/).some(x => x.length >= 3 && finStem(x) === st)).map(c => c.id));
+  return finTx().filter(t => t.dir !== 'xfer' && (re.test(String(t.n || '')) || cats.has(t.c)));
+}
+/* The answer for words that did match records: their totals in the month asked about — or, when
+   that month has none, across everything recorded — and the records themselves. */
+function askMoneyAbout(found, missing, hits, ym, used) {
+  const from = ym + '-01', to = finMonthEnd(ym), label = escapeHtml(mnMonthLabel(ym));
+  const lines = [], shown = new Map();
+  const sum = (list, dir) => list.filter(t => t.dir === dir).reduce((s, t) => s + t.a, 0);
+  found.forEach(w => {
+    const all = hits[w], inM = all.filter(t => t.d >= from && t.d <= to), list = inM.length ? inM : all;
+    const o = sum(list, 'out'), i = sum(list, 'in'), n = list.length;
+    const money = [o && `<b>${finFmt(o, { noPaise: true })}</b> out`, i && `<b>${finFmt(i, { noPaise: true })}</b> in`].filter(Boolean).join(' and ');
+    const recs = `across <b>${n}</b> record${n === 1 ? '' : 's'}`;
+    if (inM.length) lines.push(`“${escapeHtml(w)}” in ${label}: ${money} ${recs}.`);
+    else lines.push(`Nothing on “${escapeHtml(w)}” in ${label}. In everything you have recorded: ${money} ${recs}, the last on ${shortDate(list.map(t => t.d).sort().pop())}.`);
+    list.forEach(t => shown.set(t.id, t));
+  });
+  const recs = [...shown.values()].sort((a, b) => (b.d > a.d ? 1 : b.d < a.d ? -1 : 0));
+  recs.slice(0, 6).forEach(t => {
+    const c = finCat(t.c);
+    lines.push(`${c.ico} ${shortDate(t.d)} · ${escapeHtml(t.n || c.name)} — <b>${t.dir === 'in' ? '+' : ''}${finFmt(t.a, { noPaise: true })}</b>`);
+  });
+  if (recs.length > 6) lines.push(`<span class="ask-dim">+${recs.length - 6} more in Money ▸ Money in/out.</span>`);
+  if (missing.length) lines.push(`<span class="ask-dim">Nothing you recorded mentions ${askQuote(missing)}, so ${missing.length === 1 ? 'it is' : 'they are'} not in this answer.</span>`);
+  return { title: 'Money on ' + found.map(w => '“' + w + '”').join(' and '), lines, used };
+}
 
 /* The router. Scores each skill by how many of its patterns match, longest-match wins ties.
    Deliberately dumb and inspectable — a wrong answer confidently given is the failure mode
@@ -14741,9 +14950,15 @@ function askRun(q) {
     };
   }
   try {
-    const r = sk.run();
-    if (r.empty) return { title: 'Nothing to show yet', lines: [r.empty], skill: sk.id };
-    return Object.assign({ skill: sk.id }, r);
+    const words = askLeftover(q, sk);
+    let r = sk.run({ q: String(q || ''), words });
+    r = r.empty ? { title: 'Nothing to show yet', lines: (r.lines || []).concat([r.empty]), used: r.used }
+      : Object.assign({}, r, { lines: r.lines.slice() });
+    const said = (r.title + ' ' + r.lines.join(' ')).replace(/<[^>]+>/g, ' ').toLowerCase();
+    const unused = words.filter(w => !(r.used || []).includes(w) && !new RegExp('(^|[^a-z0-9])' + w).test(said));
+    if (unused.length) r.lines.unshift(`<span class="ask-note">I can't break out ${askQuote(unused)} yet, so this answer does not use ${unused.length === 1 ? 'it' : 'them'}.</span>`);
+    delete r.used;
+    return Object.assign({ skill: sk.id, ignored: unused }, r);
   } catch (e) {
     /* A broken skill must say so rather than render half an answer as if it were complete. */
     return { title: 'Something went wrong', lines: [`I could not work that out — this is a bug, not your data.`], skill: sk.id, failed: true };
@@ -14780,8 +14995,9 @@ function renderAsk() {
       </div>
     </div>
 
-    ${thread ? `<div class="ask-thread">${thread}</div>
-      <div class="card"><button class="btn btn-ghost btn-sm" id="ask-clear" style="width:100%">Clear</button></div>` : ''}
+    ${thread ? `<div class="ask-thread-h"><span class="ask-sug-h">Answers · not saved</span>
+        <button class="btn btn-ghost btn-sm" id="ask-clear">Clear</button></div>
+      <div class="ask-thread">${thread}</div>` : ''}
 
     <div class="card">
       <div class="ask-sug-h">${askLog.length ? 'Ask something else' : 'Try one of these'}</div>
