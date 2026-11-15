@@ -3909,3 +3909,252 @@ body.kbd-open .nav { transform: translateY(calc(100% + 40px)); }
 .ml-more { display: block; width: 100%; min-height: 44px; margin-top: 6px; border: 0; background: none; color: var(--accent-ink); font: 700 13px/1 var(--font-ui); cursor: pointer; }
 .ml-rd.past:not(.on) { background: transparent; }
 .ml-rd.past:not(.on) b { color: var(--text-dim); }
+
+/* ===== Log hero round 2 =====
+   The top of the Log is ONE panel (app.js ▸ logHeroHTML): greeting, the day chip (#log-date),
+   the ring and the day's numbers, the streak at its foot. "On this day" is a strip of small
+   mood-tinted cards; an empty Tasks section is one "+ Add a task" row.
+   The panel's look is a handful of tokens (--hx-*) set per style below; everything inside it
+   reads them, so a style restyles the whole hero by setting tokens only.
+   Paint order: .lhero itself is NOT positioned, so its glow paints under the cards that follow
+   (gotchas.md ▸ CSS); only its inner layer (.lh-in) is, and that never leaves its own box.
+   Motion: transform/opacity only — one slow drift (paused off screen), the ring's own sweep. */
+.lhero {
+  --hx-r: 28px;
+  --hx-base: linear-gradient(160deg, #1e2860 0%, #131a44 46%, #0a0f2a 100%);
+  --hx-m1: color-mix(in srgb, var(--accent) 58%, transparent);
+  --hx-m2: rgba(167, 139, 250, .5);
+  --hx-m3: color-mix(in srgb, var(--accent-2) 34%, transparent);
+  --hx-ink: #f5f7ff; --hx-dim: rgba(226, 232, 255, .76); --hx-faint: rgba(226, 232, 255, .58);
+  --hx-line: rgba(255, 255, 255, .10);
+  --hx-tile: rgba(255, 255, 255, .07); --hx-tile-ring: rgba(255, 255, 255, .10); --hx-tile-on: rgba(255, 255, 255, .13);
+  --hx-chip: rgba(255, 255, 255, .10); --hx-chip-ring: rgba(255, 255, 255, .16);
+  --hx-edge: inset 0 0 0 1px rgba(255, 255, 255, .09), inset 0 1px 0 rgba(255, 255, 255, .16);
+  --hx-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 26px 50px -26px color-mix(in srgb, var(--accent) 80%, transparent), 0 30px 60px -36px rgba(0, 0, 0, .85);
+  --hx-name: color-mix(in srgb, var(--accent) 72%, #ffffff);
+  --hx-streak: #fdba74; --hx-ok: #6ee7b7;
+  --hx-back-bg: #ffffff; --hx-back-ink: #111833;
+  --gc-sleep: #b4bcff; --gc-work: #6ee7d3; --gc-other: #fcd38d;
+  --ring-track: rgba(255, 255, 255, .11);
+  margin: calc(var(--safe-top) + 10px - var(--tb-h, 76px)) 0 18px;
+  border-radius: var(--hx-r); background: var(--hx-base); box-shadow: var(--hx-shadow); color: var(--hx-ink);
+}
+/* Midnight light: the same night-sky panel, floating on the light page with a softer, coloured lift */
+:root[data-style="midnight"][data-mode="light"] .lhero {
+  --hx-shadow: 0 2px 4px rgba(15, 23, 42, .12), 0 24px 44px -22px color-mix(in srgb, var(--accent) 70%, transparent), 0 36px 60px -40px rgba(15, 23, 42, .5);
+}
+.lh-in { position: relative; isolation: isolate; overflow: hidden; border-radius: inherit; padding: 16px 16px 14px; }
+/* the living mesh, inside the panel */
+/* (the layer is 140% x 160% of the panel: 26% 22% lands top-left, 80% 16% top-right, 30% 76% behind the ring) */
+.lh-in::before { content: ''; position: absolute; z-index: -1; inset: -30% -20%; pointer-events: none;
+  background:
+    radial-gradient(34% 30% at 26% 24%, var(--hx-m1), transparent 72%),
+    radial-gradient(32% 30% at 80% 18%, var(--hx-m2), transparent 72%),
+    radial-gradient(30% 26% at 30% 74%, var(--hx-m3), transparent 72%);
+  animation: lh-drift 22s ease-in-out infinite alternate; will-change: transform; }
+html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
+/* the glass edge: a hairline and a top highlight, over everything */
+.lh-in::after { content: ''; position: absolute; z-index: 2; inset: 0; border-radius: inherit; box-shadow: var(--hx-edge); pointer-events: none; }
+
+/* header: eyebrow date + day chip, then the greeting */
+/* (.lh-head, not .lh-top: round 1 puts .lh-top on <html> while the hero is on screen) */
+.lh-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; }
+.lhero .lh-date { min-width: 0; color: var(--hx-dim); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:root[data-style] .lhero .gl-date { flex: 0 0 auto; margin: 0; min-height: 40px; padding: 0 12px 0 11px; gap: 6px; border: 0;
+  background: var(--hx-chip); box-shadow: inset 0 0 0 1px var(--hx-chip-ring); color: var(--hx-ink); font-size: 13.5px; font-weight: 650; }
+.lhero .gl-date .gl-caret { color: var(--hx-dim); font-size: 10px; }
+.lhero .gl-date:focus-within { box-shadow: inset 0 0 0 1.5px var(--hx-ink), 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+.lhero .lh-greet { margin-top: 8px; color: var(--hx-ink); }
+:root[data-style] .lhero .lh-name { color: var(--hx-name); }
+.lh-pastline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; font-size: 13px; color: var(--hx-dim); }
+.lh-back { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--hx-back-bg); color: var(--hx-back-ink);
+  font: 700 13px/1 var(--font-ui); cursor: pointer; transition: transform .18s var(--ease-out, ease); }
+.lh-back:active { transform: scale(.95); }
+
+/* body: ring + numbers, Apple Fitness style */
+.lh-body { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+.lhero .ring-card { flex: 0 0 auto; flex-direction: column; gap: 7px; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+.lhero .ring-wrap, .lhero .ring { width: 104px; height: 104px; }
+.lhero .ring-txt { fill: var(--hx-ink); font-size: 18px; }
+.lhero .ring-full .ring-txt { fill: var(--hx-ok); }
+.lhero .ring-head { display: none; font-size: 17px; color: var(--hx-ink); }
+.lhero .ring-cap { font-size: 12px; font-weight: 500; color: var(--hx-dim); text-align: center; white-space: nowrap; }
+.lhero .ring-cap b { color: var(--hx-ink); font-weight: 700; }
+/* ring but no numbers (sleep and deep work both hidden): the ring's words sit beside it */
+.lhero.no-tiles .ring-card { flex-direction: row; gap: 16px; }
+.lhero.no-tiles .ring-side { text-align: left; }
+.lhero.no-tiles .ring-head { display: block; }
+.lhero.no-tiles .ring-cap { text-align: left; font-size: 13px; margin-top: 3px; }
+
+.lh-tiles { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.lhero.no-ring .lh-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lhero.no-ring .lh-tiles > :only-child { grid-column: 1 / -1; }
+:root[data-style] .lhero .gl-tile { position: relative; min-height: 0; gap: 0; padding: 10px 30px 10px 12px; border: 0; border-radius: 16px;
+  background: var(--hx-tile); box-shadow: inset 0 0 0 1px var(--hx-tile-ring); color: var(--hx-ink); }
+.lhero .gl-tile[data-gl="sleepHours"] { --gc: var(--gc-sleep); }
+.lhero .gl-tile[data-gl="deepWorkHours"] { --gc: var(--gc-work); }
+/* a quiet chevron says "tap to change" */
+.lhero .gl-tile::after { content: ''; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -4px;
+  border: solid var(--hx-faint); border-width: 1.6px 1.6px 0 0; transform: rotate(45deg); opacity: .8; transition: transform .25s var(--ease-out, ease); }
+:root[data-style] .lhero .gl-tile.on { background: var(--hx-tile-on); box-shadow: inset 0 0 0 1.5px var(--gc, var(--hx-ink)); }
+.lhero .gl-tile.on::after { transform: rotate(135deg); }
+.lhero .gl-l { gap: 5px; font-size: 12px; font-weight: 700; letter-spacing: .01em; color: var(--gc, var(--gc-other)); }
+.lhero .gl-l .req { color: inherit; }
+.lhero .gl-v { margin-top: 3px; font-size: 26px; font-weight: 750; letter-spacing: -.8px; line-height: 1.05; color: var(--hx-ink); }
+.gl-v small { font-size: .62em; font-weight: 650; letter-spacing: 0; margin: 0 .08em 0 .04em; opacity: .78; }
+.lhero .gl-tile.empty .gl-v { color: var(--hx-faint); }
+.lhero .gl-s { margin-top: 2px; font-size: 11px; color: var(--hx-faint); }
+.lhero .gl-tile:active { transform: scale(.97); }
+
+/* foot: streak + week, one quiet line */
+.lh-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 14px; padding-top: 11px;
+  border-top: 1px solid var(--hx-line); font-size: 12.5px; color: var(--hx-dim); }
+.lh-foot:empty { display: none; }
+.lhero .lh-streak { display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 0; background: none; font-size: 12.5px; font-weight: 700; color: var(--hx-streak); }
+.lhero .ring-week { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--hx-dim); }
+.lhero .ring-week.ok { color: var(--hx-ok); }
+.lhero .ring-week b { color: var(--hx-ink); font-weight: 700; }
+.lhero .ring-week.ok b { color: inherit; }
+
+/* the top bar steps fully aside while the hero is on screen: its flame badge is in the hero's foot,
+   and taps fall through to the day chip under it */
+.topbar .streak-badge { transition: opacity .2s ease, transform .3s var(--ease-out, ease); }
+:root.lh-top .topbar { pointer-events: none; }
+:root.lh-top .topbar .streak-badge { opacity: 0; transform: translateY(-6px) scale(.92); }
+
+/* the pickers for a tapped number open as a card right under the hero */
+.card.gl-edit { margin-top: 0; padding-top: 16px; animation: lh2-in .35s var(--ease-out, ease) both; }
+@keyframes lh2-in { from { opacity: 0; transform: translate3d(0, -8px, 0); } }
+
+/* Customize ▸ main fields that stay form fields (1-10 scales, plain numbers) */
+.card.core-more { padding-top: 16px; }
+.card.core-more > :first-child { margin-top: 0; }
+
+/* ---------- On this day: a strip of small mood-tinted cards ---------- */
+.otd-strip-wrap { margin: 0 0 4px; }
+.otd-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; }
+.otd-title { display: inline-flex; align-items: center; gap: 7px; font: 700 12px/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.otd-title .ic { color: var(--accent-ink); }
+#otd-hide { padding: 10px 4px; font-size: 12.5px; color: var(--text-faint); text-decoration: none; }
+.otd-strip { display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+  margin: 0 -16px; padding: 2px 16px 12px; scroll-padding: 0 16px; scrollbar-width: none; }
+.otd-strip::-webkit-scrollbar { display: none; }
+.otd-c { --oc: var(--text-faint); position: relative; flex: 0 0 min(74%, 280px); min-width: 0; scroll-snap-align: start;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--oc) var(--otd-t1, 24%), var(--bg-card)) 0%, color-mix(in srgb, var(--oc) var(--otd-t2, 6%), var(--bg-card)) 58%, var(--bg-card) 100%);
+  box-shadow: var(--shadow-card); transition: transform .18s var(--ease-out, ease); }
+.otd-one .otd-c { flex-basis: 100%; }
+.otd-c:active { transform: scale(.98); }
+.otd-open { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 100%; padding: 12px 14px 13px; border: 0; background: none;
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.otd-c.has-pic .otd-open { padding-right: 74px; }
+.otd-when { display: inline-flex; align-items: center; gap: 7px; font: 700 14px/1.2 var(--font-display); letter-spacing: -.2px; }
+.otd-when::before { content: ''; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--oc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--oc) 22%, transparent); }
+.otd-date { margin: 2px 0 0 15px; font-size: 11.5px; color: var(--text-faint); }
+.otd-nums { display: flex; gap: 14px; margin-top: 9px; }
+.otd-n { display: inline-flex; align-items: baseline; gap: 4px; font-size: 11.5px; color: var(--text-dim); }
+.otd-n b { font: 750 19px/1 var(--font-display); letter-spacing: -.4px; color: var(--text); }
+.otd-n:first-child b { color: color-mix(in srgb, var(--oc) 55%, var(--text)); }
+.otd-q { display: block; width: 100%; margin-top: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 12.5px; font-style: italic; color: var(--text-dim); }
+.otd-pic { position: absolute; top: 12px; right: 12px; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 0 0 2px var(--bg-card), 0 6px 14px -6px rgba(0, 0, 0, .45); }
+.otd-pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+:where(:root[data-style="midnight"]) .otd-c { border-color: transparent; box-shadow: var(--elev); }
+:root[data-style="midnight"] .otd-c { border-radius: 18px; }
+
+/* ---------- Tasks with none yet: one "+ Add a task" row that opens up ---------- */
+.card.task-slim { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; padding: 6px 8px 6px 10px; }
+.tsl-row { display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 48px; cursor: text; }
+.tsl-ico { flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-ink); transition: transform .3s var(--ease-spring, ease); }
+:root[data-style] .task-slim #log-task-input { flex: 1 1 auto; min-width: 0; height: 46px; padding: 0; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none; outline: none; font-size: 15px; font-weight: 600; color: var(--text); }
+.task-slim #log-task-input::placeholder { color: var(--text-dim); opacity: 1; }
+.task-slim #log-task-add { min-height: 40px; min-width: 64px; transition: opacity .2s ease, transform .25s var(--ease-out, ease); }
+/* collapsed (empty, not focused): just the row; the Add button shows once there is something to add */
+.task-slim:not(:focus-within):has(#log-task-input:placeholder-shown) #log-task-add { opacity: 0; transform: scale(.85); pointer-events: none; }
+.tsl-hint { grid-column: 1 / -1; display: none; padding: 0 4px 9px 43px; font-size: 12px; line-height: 1.4; color: var(--text-faint); }
+.task-slim:focus-within .tsl-hint { display: block; animation: lh2-in .3s var(--ease-out, ease) both; }
+.task-slim:focus-within .tsl-ico { transform: rotate(90deg); }
+:root[data-style] .card.task-slim:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent); }
+
+/* ---------- the other styles: tokens only, plus a few finishes ---------- */
+:root[data-style="paper"] .lhero {
+  --hx-r: 10px; --hx-base: linear-gradient(180deg, #ffffff, #fbfaf8);
+  --hx-m1: rgba(35, 131, 226, .12); --hx-m2: rgba(144, 101, 176, .11); --hx-m3: rgba(15, 123, 108, .09);
+  --hx-ink: var(--text); --hx-dim: var(--text-dim); --hx-faint: var(--text-faint); --hx-line: var(--border);
+  --hx-tile: #f7f6f3; --hx-tile-ring: var(--border); --hx-tile-on: #f1f0ec;
+  --hx-chip: #ffffff; --hx-chip-ring: var(--border-hi);
+  --hx-edge: inset 0 0 0 1px var(--border);
+  --hx-shadow: 0 1px 2px rgba(15, 15, 15, .04), 0 14px 32px -20px rgba(15, 15, 15, .22);
+  --hx-name: var(--text); --hx-streak: var(--warn-ink); --hx-ok: var(--good-ink);
+  --hx-back-bg: var(--text); --hx-back-ink: #ffffff;
+  --gc-sleep: #6940a5; --gc-work: #0f7b6c; --gc-other: #9a6a10;
+  --ring-track: #efeeea;
+}
+:root[data-style="paper"]:not([data-mode="light"]) .lhero {
+  --hx-base: linear-gradient(180deg, #232323, #1f1f1f); --hx-m1: rgba(82, 156, 202, .14); --hx-m2: rgba(154, 109, 215, .12); --hx-m3: rgba(77, 171, 154, .1);
+  --hx-tile: #2a2a2a; --hx-tile-on: #303030; --hx-chip: #2a2a2a;
+  --hx-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 32px -20px rgba(0, 0, 0, .7);
+  --hx-back-ink: #191919; --gc-sleep: #b494d8; --gc-work: #6bc19f; --gc-other: #d9a84a; --ring-track: #2f2f2f;
+}
+:root[data-style="paper"] .lhero .gl-tile { border-radius: 6px; }
+:root[data-style="paper"] .lhero .gl-v { font-weight: 600; letter-spacing: -.3px; }
+
+:root[data-style="luxe"] .lhero {
+  --hx-r: 6px; --hx-base: linear-gradient(165deg, #1a1611 0%, #100e0b 60%, #0b0a08 100%);
+  --hx-m1: rgba(201, 169, 110, .26); --hx-m2: rgba(236, 215, 165, .12); --hx-m3: rgba(184, 138, 154, .10);
+  --hx-ink: #f3ece0; --hx-dim: #c3b8a3; --hx-faint: #998e79; --hx-line: rgba(201, 169, 110, .2);
+  --hx-tile: rgba(201, 169, 110, .06); --hx-tile-ring: rgba(201, 169, 110, .2); --hx-tile-on: rgba(201, 169, 110, .12);
+  --hx-chip: rgba(201, 169, 110, .08); --hx-chip-ring: rgba(201, 169, 110, .4);
+  --hx-edge: inset 0 0 0 1px rgba(201, 169, 110, .34), inset 0 1px 0 rgba(236, 215, 165, .18);
+  --hx-shadow: 0 2px 6px rgba(0, 0, 0, .5), 0 28px 56px -30px rgba(201, 169, 110, .38);
+  --hx-name: var(--accent-ink); --hx-streak: #e3c27e; --hx-ok: #a9d1ae;
+  --hx-back-bg: var(--grad-accent); --hx-back-ink: #1b150b;
+  --gc-sleep: #dcc08a; --gc-work: #a9c9b4; --gc-other: #dcc08a;
+  --ring-track: rgba(201, 169, 110, .14);
+}
+:root[data-style="luxe"] .lhero .gl-tile, :root[data-style="luxe"] .lhero .gl-date, :root[data-style="luxe"] .lh-back { border-radius: 3px; }
+:root[data-style="luxe"] .lhero .gl-v { font-weight: 600; font-size: 30px; letter-spacing: 0; }
+:root[data-style="luxe"] .lhero .gl-l, :root[data-style="luxe"] .otd-title { letter-spacing: .14em; text-transform: uppercase; font-size: 10.5px; }
+:root[data-style="luxe"] .otd-c { --otd-t1: 13%; --otd-t2: 4%; border-radius: 4px; border-color: rgba(201, 169, 110, .22); }
+
+:root[data-style="aurora"] .lhero {
+  --hx-r: 30px; --hx-base: linear-gradient(155deg, #171a3a 0%, #0e1028 55%, #0a0b1e 100%);
+  --hx-m1: rgba(34, 211, 238, .40); --hx-m2: rgba(168, 85, 247, .50); --hx-m3: rgba(244, 114, 182, .34);
+  --hx-tile: rgba(255, 255, 255, .08); --hx-tile-ring: rgba(255, 255, 255, .14); --hx-tile-on: rgba(255, 255, 255, .15);
+  --hx-edge: inset 0 0 0 1px rgba(255, 255, 255, .14), inset 0 1px 0 rgba(255, 255, 255, .22);
+  --hx-shadow: 0 2px 6px rgba(0, 0, 0, .4), 0 30px 60px -30px rgba(168, 85, 247, .7);
+  --hx-name: #d8ccff; --gc-sleep: #a5f3fc; --gc-work: #f9a8d4;
+}
+
+:root[data-style="bloom"] .lhero {
+  --hx-r: 30px; --hx-base: linear-gradient(160deg, #fff4ea 0%, #ffe6d9 55%, #ffdcd2 100%);
+  --hx-m1: rgba(255, 138, 101, .46); --hx-m2: rgba(255, 95, 143, .30); --hx-m3: rgba(120, 214, 180, .48);
+  --hx-ink: #3b2a24; --hx-dim: #6a5147; --hx-faint: #7f675c; --hx-line: rgba(200, 120, 90, .2);
+  --hx-tile: rgba(255, 255, 255, .62); --hx-tile-ring: rgba(255, 255, 255, .9); --hx-tile-on: #ffffff;
+  --hx-chip: rgba(255, 255, 255, .7); --hx-chip-ring: rgba(255, 255, 255, .95);
+  --hx-edge: inset 0 0 0 1px rgba(255, 255, 255, .7);
+  --hx-shadow: 0 2px 4px rgba(170, 90, 50, .08), 0 26px 50px -26px rgba(255, 111, 89, .6);
+  --hx-name: var(--accent-ink); --hx-streak: #b8461f; --hx-ok: var(--good-ink);
+  --hx-back-bg: var(--grad-accent); --hx-back-ink: #ffffff;
+  --gc-sleep: #7457d0; --gc-work: #1d7c58; --gc-other: #a35a00;
+  --ring-track: rgba(255, 255, 255, .7);
+}
+:root[data-style="bloom"] .lhero .gl-v { font-weight: 600; letter-spacing: 0; }
+:root[data-style="bloom"] .otd-c { border-color: transparent; border-radius: 20px; }
+
+@media (max-width: 380px) {
+  .lhero .ring-wrap, .lhero .ring { width: 92px; height: 92px; }
+  .lh-body { gap: 12px; }
+  .lhero .gl-v { font-size: 24px; }
+  :root[data-style] .lhero .gl-tile { padding-right: 26px; }
+  .lhero .gl-tile::after { right: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lh-in::before, .card.gl-edit, .task-slim:focus-within .tsl-hint { animation: none !important; }
+  .lhero .gl-tile::after, .tsl-ico, .topbar .streak-badge { transition: none; }
+}
+/* ===== end Log hero round 2 ===== */

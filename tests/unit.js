@@ -3988,10 +3988,12 @@
     try {
       navigateTo('today');
       const sc = document.getElementById('s-today');
-      ok('the Log shows the date as a pill, not a full-width field', !!sc.querySelector('.glance .gl-date #log-date'));
-      ok('sleep and deep work are big figures, pickers closed', sc.querySelectorAll('.gl-tile').length >= 1 && !sc.querySelector('.glance [data-bed]') && !sc.querySelector('.glance [data-dur-h]'));
+      // round 2: the date pill and the figures live in the Log hero, not a card of their own
+      ok('the Log shows the date as a pill, not a full-width field', !!sc.querySelector('.lhero .gl-date #log-date'));
+      ok('sleep and deep work are big figures, pickers closed', sc.querySelectorAll('.lhero .gl-tile').length >= 1 && !sc.querySelector('.lhero [data-bed]') && !sc.querySelector('.lhero [data-dur-h]') && !sc.querySelector('.gl-edit'));
       const t = sc.querySelector('[data-gl]'); const k = t.dataset.gl; t.click();
       ok('tapping a figure opens its pickers', !!document.querySelector(`#s-today .gl-edit`) && document.querySelector(`#s-today [data-gl="${k}"]`).classList.contains('on'));
+      ok('…in a card right under the hero', (document.querySelector('#s-today .lhero') || {}).nextElementSibling === document.querySelector('#s-today .gl-edit'));
       document.querySelector(`#s-today [data-gl="${k}"]`).click();
       ok('tapping again closes them', !document.querySelector('#s-today .gl-edit'));
       setLogSecHidden('deep', true);
@@ -4002,6 +4004,79 @@
       ok('turning it on shows the Deep log on the Log screen', !logSecHidden('deep'));
     } finally {
       window.toast = tSnap; _glanceOpen = null; customPage = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
+  // ---- Log hero round 2: one hero panel, the past-day chip, the On-this-day strip, the slim Tasks row ----
+  (function () {
+    const keys = ['dp.logsec', 'dp.entries', 'dp.tasks'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const ldSnap = logDate;
+    try {
+      const T = todayStr();
+      localStorage.removeItem('dp.logsec');
+      logDate = T; navigateTo('today');
+      const sc = () => document.getElementById('s-today');
+      const hero = () => sc().querySelector('.lhero');
+      ok('the Log opens with one hero panel', !!hero() && sc().firstElementChild === hero());
+      ok('…holding the ring, the day chip and the numbers', !!hero().querySelector('.ring-card svg.ring') && !!hero().querySelector('.lh-chip #log-date') && hero().querySelectorAll('.gl-tile[data-gl]').length >= 1);
+      ok('…the chip says Today', hero().querySelector('.lh-chip-t').textContent.trim() === 'Today');
+      ok('the ring is no longer a card of its own', !sc().querySelector('.card.ring-card') && sc().querySelectorAll('.ring-card').length === 1);
+
+      // ring hidden: the hero stays first, with no ring and no week line; chip and numbers stay
+      setLogSecHidden('ring', true); renderToday();
+      ok('ring hidden: the hero is still first, with no ring', !!hero() && sc().firstElementChild === hero() && !sc().querySelector('.ring-card') && hero().classList.contains('no-ring'));
+      ok('…the day chip and the numbers are still there', !!hero().querySelector('#log-date') && hero().querySelectorAll('.gl-tile[data-gl]').length >= 1);
+      ok('…and the week line goes with the ring', !hero().querySelector('.ring-week'));
+      setLogSecHidden('ring', false);
+      // the ring moved to the bottom of the order: still shown once, in the hero
+      const cfg = logSecCfg(); cfg.push(cfg.splice(cfg.findIndex(x => x.id === 'ring'), 1)[0]); saveLogSec(cfg); renderToday();
+      ok('a reordered ring still shows once, in the hero', sc().querySelectorAll('.ring-card').length === 1 && !!hero().querySelector('.ring-card'));
+      localStorage.removeItem('dp.logsec');
+
+      // a past day: the chip shows that day, the greeting says so, one tap goes back
+      const y = addDays(T, -1), d3 = addDays(T, -3);
+      const pick = d => { const ld = document.getElementById('log-date'); ld.value = d; ld.dispatchEvent(new Event('change', { bubbles: true })); };
+      pick(y);
+      ok('a past day: the chip shows that day', logDate === y && hero().querySelector('.lh-chip-t').textContent.trim() === prettyDate(y));
+      ok('…and the greeting says you are editing it', hero().querySelector('.lh-greet').textContent.trim() === 'Editing yesterday' && hero().classList.contains('lh-past'), hero().querySelector('.lh-greet').textContent);
+      pick(d3);
+      const wd = new Date(d3 + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' });
+      ok('…three days back it names the weekday', hero().querySelector('.lh-greet').textContent.trim() === 'Editing ' + wd && /3 days ago/.test(hero().querySelector('.lh-date').textContent), hero().querySelector('.lh-greet').textContent);
+      ok('…and the date input points at that day', document.getElementById('log-date').value === d3);
+      sc().querySelector('[data-lh-today]').click();
+      ok('"Back to today" returns to today', logDate === T && !hero().classList.contains('lh-past') && !/Editing/.test(hero().querySelector('.lh-greet').textContent));
+
+      // On this day: a strip of small mood-tinted cards, one clipped line of quote each
+      const e = DB.entries();
+      e[addDays(T, -7)] = { mood: 8, energy: 7, journal: 'A long quiet walk by the lake, then pancakes with everyone. '.repeat(4), habits: {} };
+      e[addDays(T, -30)] = { mood: 3, energy: 4, journal: 'Rough one.', habits: {} };
+      delete e[addDays(T, -90)];
+      e[addDays(T, -365)] = { mood: 6, habits: {} };
+      localStorage.setItem('dp.entries', JSON.stringify(e));
+      const box = document.createElement('div'); box.innerHTML = throwbackHTML();
+      const cards = box.querySelectorAll('.otd-strip .otd-c');
+      ok('On this day is a strip of small cards, not a tall card', cards.length === 3 && !box.querySelector('.card') && !!box.querySelector('#otd-hide'), cards.length);
+      ok('…each opens its day', [...cards].every(c => !!c.querySelector('[data-throwback]')) && cards[0].querySelector('[data-throwback]').dataset.throwback === addDays(T, -7));
+      ok('…tinted by that day\'s mood', (cards[0].getAttribute('style') || '').includes(moodColor(8)) && (cards[1].getAttribute('style') || '').includes(moodColor(3)));
+      ok('…says when, with the mood and energy numbers', /A week ago/.test(cards[0].textContent) && /8\s*mood/.test(cards[0].querySelector('.otd-nums').textContent) && /7\s*energy/.test(cards[0].querySelector('.otd-nums').textContent));
+      ok('…and the quote is one line, clipped by CSS rather than cut short', !!cards[0].querySelector('.otd-q') && cards[0].querySelector('.otd-q').textContent.length > 140);
+      setLogSecHidden('onthisday', true);
+      ok('…hiding it still hides it', throwbackHTML() === '');
+      setLogSecHidden('onthisday', false);
+
+      // Tasks with none yet: one slim "+ Add a task" row
+      localStorage.setItem('dp.tasks', '[]'); renderToday();
+      const slim = sc().querySelector('.task-slim');
+      ok('no tasks: Tasks is one slim "Add a task" row', !!slim && !!slim.querySelector('#log-task-input') && !!slim.querySelector('#log-task-add') && !sc().querySelector('.task-summary') && !/No tasks yet/.test(sc().textContent));
+      slim.querySelector('#log-task-input').value = 'Call the bank';
+      slim.querySelector('#log-task-add').click();
+      ok('…adding one turns it into the Tasks card with its counts', DB.tasks().length === 1 && DB.tasks()[0].text === 'Call the bank' && !sc().querySelector('.task-slim') && !!sc().querySelector('.task-summary'));
+    } finally {
+      window.toast = tSnap; logDate = ldSnap;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
       navigateTo('today');
     }
