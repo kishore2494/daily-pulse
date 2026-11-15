@@ -1,3 +1,15 @@
+## 2026-11-15 — everything Daylog moved into one folder: ~/Documents/p/daylog/
+
+Kishore wants one folder to open in Claude and run several sessions on. Moved `daily-pulse-app`,
+`daily-pulse-native`, `daily-pulse-android`, `daylog-native-backup` into `~/Documents/p/daylog/`
+(names unchanged), the `.aab/.apk` builds into `daylog/builds/`, the device test reports into
+`daylog/docs/`. Updated hard-coded paths: native `build.gradle` signing (keystore), `daylog-native-backup/sync.sh`
+SRC_ROOT, `tools/test-alarm.sh`, README, backups.md, play-store.md, KEYSTORE.md, the old TWA files.
+`git worktree repair` run; the five merged 2026-11-09 helper worktrees removed (branches kept).
+New `daylog/CLAUDE.md` = folder map + commands + rules; Claude memory seeded at
+`~/.claude/projects/-Users-kishore-Documents-p-daylog/memory/`; permissions copied to `daylog/.claude/`.
+Verified after the move: 1282 tests, all checks, Gradle signing config resolves.
+
 ## 2026-11-15 — v258 + native 120: alarm Fix page, Deep log switch, whole-day health, Log glance card
 
 Kishore reported: full-screen alarm always "off", Deep log missing, screen time lower than the phone's,

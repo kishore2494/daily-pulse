@@ -15,7 +15,7 @@ Works on **phone + desktop** as an installable app (PWA). No app store needed.
 
 ## 1) Try it on your Mac right now
 ```bash
-cd "/Users/kishore/Documents/p/daily-pulse-app"
+cd "/Users/kishore/Documents/p/daylog/daily-pulse-app"
 python3 -m http.server 8077
 ```
 Open <http://127.0.0.1:8077> in Chrome. To install as a desktop app:

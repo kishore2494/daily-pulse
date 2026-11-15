@@ -29,8 +29,8 @@ touched `app.js` and reading its `APP_VERSION`.
 ## The one real risk: the upload keystore
 
 ```
-/Users/kishore/Documents/p/daily-pulse-android/android.keystore       2,784 bytes
-/Users/kishore/Documents/p/daily-pulse-android/keystore-password.txt
+/Users/kishore/Documents/p/daylog/daily-pulse-android/android.keystore       2,784 bytes
+/Users/kishore/Documents/p/daylog/daily-pulse-android/keystore-password.txt
 alias: dailypulse
 ```
 

@@ -26,7 +26,7 @@ SDK=$(adb -s "$D" shell getprop ro.build.version.sdk | tr -d '\r')
 echo "=== device: $D  $MODEL  (Android SDK $SDK) ==="
 
 echo "--- 1. install 109/69 ---"
-adb -s "$D" install -r "/Users/kishore/Documents/p/daily-pulse-app/store/assets/DailyPulse.apk" 2>&1 | tail -2
+adb -s "$D" install -r "/Users/kishore/Documents/p/daylog/daily-pulse-app/store/assets/DailyPulse.apk" 2>&1 | tail -2
 echo "installed versionCode: $(adb -s "$D" shell dumpsys package $PKG | grep -m1 versionCode | tr -d '\r')"
 
 echo "--- 2. permission state the new code checks ---"
