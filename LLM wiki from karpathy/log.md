@@ -1,3 +1,18 @@
+## 2026-11-16 — v259 BUILT (not deployed): Lift, Meals, premium look (two rounds)
+
+Kishore (2026-11-15): "the UI is not modern… we need to wow the users"; "if the mood feels low give
+them things to do"; "we may can have the meal planned". Four worktree agents, merged one at a time:
+- Lift (low-mood support) and Meals (planner, shopping list, Today's meals on the Log): entries below.
+- Visual pass round 1: greeting hero, gradient ring, colour mood field, tick pop, floating frosted nav,
+  Stats/Habits polish (CSS block at the end of styles.css).
+- Round 2: the top of the Log is ONE hero panel (date chip holding #log-date, greeting, ring, sleep and
+  deep-work tiles, streak/week line); On this day is a swipeable mood-tinted strip; an empty Tasks
+  section is a slim "+ Add a task" row. Past day: "Editing Friday" + Back to today.
+- Mine: Search finds planned meals (and the planned name after a swap); What's new w29; bump v259.
+Verified: 1412+ unit tests in 4 timezones, every tools/check-*.mjs, browser at 412 and 360 px (no
+overflow, no console errors). Meals stays `adv` (☰ ▸ More features) because of the ≤9 fresh-install
+destinations rule. NOT deployed: needs Kishore's "deploy".
+
 ## 2026-11-16 — Log hero round 2 (branch worktree-agent-a8d33da650b032e09, NOT merged/deployed)
 
 Kishore: "not a polished wow UI". The top of the Log was 4 cards (greeting, ring card, tall On this day

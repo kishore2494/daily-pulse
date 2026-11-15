@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v258';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v259';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1531,7 +1531,7 @@ const WHATS_NEW = {
   items: [
     '🌱 <b>Lift, for heavy days</b> — log a low mood and a gentle card offers a few small things: a one-minute guided breath, a 5-4-3-2-1 grounding exercise, tiny doable actions, your own words from good days, and a place to write it out. It is in the menu any time, for any mood. If the last few days have been heavy, it shows free 24/7 support first (Tele-MANAS, 14416).',
     '🍽️ <b>Meals</b> — plan breakfast, lunch, dinner and snacks for the week, with everyday ideas built in (idli, poha, dal rice, biryani…). Your plan becomes a shopping list, and the Log gets a Today\'s meals card to tick off what you ate. Turn it on in ☰ Menu ▸ More features.',
-    '✨ <b>A fresh look</b> — the Log opens with a greeting, a glowing progress ring and a colour mood grid; ticks pop, the tab bar floats, and Stats and Habits got the same care. In all five styles.',
+    '\u2728 <b>A fresh look</b> \u2014 the Log opens on one panel: a greeting, your progress ring, and the sleep and deep work your phone already counted. On this day is a strip you swipe, the mood grid is a colour field, ticks pop and the tab bar floats. Stats and Habits got the same care, in all five styles.',
     '🌅 <b>A cleaner Log</b> — the date is a small pill you tap to change day, and sleep and deep work are two big figures that say where they came from. Tap one only if you want to correct it.',
     '❤️ <b>Truer health numbers</b> (with Play update 120) — screen time now counts every screen of an app and leaves out the home screen, and yesterday is re-read in full instead of keeping the total from your last sync. No sleep tracker? Daylog estimates sleep from the longest stretch your phone sat unused overnight, and distance from your steps, both clearly marked.',
     '⏰ <b>Full-screen alarms</b> — the Fix button now opens the right page (Full screen notifications), so the warning goes away once you turn it on. 🧠 The Deep log has a "Show on the Log screen" switch in Customize ▸ Deep log.',
