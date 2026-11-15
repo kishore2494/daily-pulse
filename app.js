@@ -724,7 +724,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
    Deliberately conservative: a lone zero on an auto-mirrored counter is not content, and an
    all-false habits map is not content — but a SKIP (0) is, because choosing to skip is a
    choice you tapped. */
-const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt', 'autoAt'];
+const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt', 'autoAt', 'lift'];   // lift: a Lift tick or a dismissed card is not a log
 function entryHasContent(en) {
   if (!en) return false;
   for (const k of Object.keys(en)) {
@@ -1824,6 +1824,7 @@ const LOG_SECTIONS_DEF = [
   { id: 'onthisday', label: 'On this day',      sub: 'your entry from a week / month / year ago' },
   { id: 'core',      label: 'Date & main fields', sub: 'mood, energy, sleep, deep work…', lock: true },
   { id: 'moodgrid',  label: 'Mood grid',        sub: 'set mood and energy with one tap' },
+  { id: 'lift',      label: 'Lift on hard days', sub: 'a gentle card when your mood is low' },
   { id: 'tasks',     label: 'Tasks',            sub: "today's task count + quick add" },
   { id: 'checklist', label: 'Daily checklist',  sub: 'your habits' },
   { id: 'workout',   label: 'Workout',          sub: "link to today's gym log" },
@@ -2345,6 +2346,7 @@ function renderToday() {
       ${simpleRows}
     </div>`,
     moodgrid: () => moodMeterHTML(),
+    lift: () => (isToday ? liftSlotHTML() : ''),
     tasks: () => `<div class="card">
       <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
       ${tc.planned
@@ -2473,6 +2475,7 @@ document.addEventListener('input', (ev) => {
 let _autosaveTimer, _pendingSave = null;
 function autosaveDraft() {
   try { refreshTodayRing(); } catch (e) {}
+  try { liftSlotRefresh(); } catch (e) {}
   clearTimeout(_autosaveTimer);
   // Capture the target date + draft object NOW. loadDraft() reassigns the `draft`/`logDate`
   // globals when you switch day or tab, and the deep-clone means this reference stays intact —
@@ -5833,6 +5836,7 @@ function dayOpen(d) {
 function dayFromLabel(k) {
   if (k === 'today') return 'Log';
   if (k === 'cal') return 'Calendar';
+  if (k === 'lift') return 'Lift';
   const n = navCfg().find(x => x.k === k);
   return n ? n.label : 'Back';
 }
@@ -7637,6 +7641,549 @@ document.addEventListener('input', (ev) => {
   if (wv) { const s = waveSettings(); s.vol = (+wv.value) / 100; saveWaveSettings(s);
     if (_waveNodes) _waveNodes.gain.gain.value = Math.max(0.01, Math.min(0.5, s.vol)); }
 });
+
+/* ============================================================
+   SCREEN: LIFT  (low-mood support, fully offline)
+   ===== Lift (low-mood support) =====
+   Kishore: "if the mood feels low we need to give them some kind of things like that".
+   When today's mood is low, a warm card under the mood grid offers Lift (dismissable for the
+   day, never a notification). The drawer always offers it, for any mood.
+
+   Lift is six small things: breathe for about a minute, a 5-4-3-2-1 grounding exercise, one
+   small action from a shuffled deck, the person's OWN good days read back to them, a prompt
+   that writes into today's journal, and people to talk to (raised to the top when the mood has
+   been low on 3 of the last 5 logged days, or when they tap "I'm not okay").
+
+   Honest by rule: Daylog is a journal, not a medical service. Nothing here diagnoses or
+   treats. The learning line compares hard days WITH an action against hard days WITHOUT it
+   (a low day is usually followed by a better one anyway, so "your mood rose afterwards" alone
+   would flatter every action), needs LIFT_MIN_N days on both sides, and says it is a pattern.
+
+   Storage: only `lift` on the day's entry, { did: [actionId…], hide: true }. No new dp.* key,
+   so sync (field-level day merge), backup, export and import already carry it. `lift` is in
+   ENTRY_META: a tick or a dismissed card alone never makes a day count as logged.
+   ============================================================ */
+const LIFT_LOW = 4;        // a mood at or under this is a low day (the card shows)
+const LIFT_HARD = 5;       // mood 5 counts as low only with an unpleasant word tagged; the learning line compares days at or under it
+const LIFT_MIN_N = 4;      // fewest days on EACH side before Lift says anything it learned
+const LIFT_HEAVY = { of: 5, low: 3, days: 14 };   // 3+ low of the last 5 logged days, within 14 days
+const LIFT_ACTS = [
+  { id: 'water',   e: '💧', k: 'Drink water',    t: 'Drink a glass of water',     s: 'Slowly. A small reset your body notices.' },
+  { id: 'outside', e: '🌳', k: 'Step outside',   t: 'Step outside for 5 minutes', s: 'Look up at the sky. Notice the air on your skin.' },
+  { id: 'stretch', e: '🧘', k: 'Stretch',        t: 'Stretch for 2 minutes',      s: 'Neck, shoulders, back. Slow and easy.' },
+  { id: 'friend',  e: '💬', k: 'Text a friend',  t: 'Text one friend',            s: '“Thinking of you” is enough. No need to explain.' },
+  { id: 'song',    e: '🎵', k: 'A song you love', t: 'Put on a song you love',    s: 'Just one. Let it fill the room.' },
+  { id: 'tidy',    e: '🧺', k: 'Tidy one spot',  t: 'Tidy one small spot',        s: 'A corner of the desk, one shelf. Small and finished.' },
+  { id: 'shower',  e: '🚿', k: 'Shower',         t: 'Take a shower',              s: 'Warm water, no rush.' },
+  { id: 'eat',     e: '🍎', k: 'Eat something',  t: 'Eat something',              s: 'A real snack counts. Low fuel makes everything heavier.' },
+  { id: 'walk',    e: '🚶', k: 'A short walk',   t: 'Walk for 10 minutes',        s: 'Any direction. Moving helps feelings move too.' },
+  { id: 'light',   e: '🌞', k: 'Let light in',   t: 'Let some light in',          s: 'Open the curtains or a window for a minute.' },
+];
+const LIFT_GROUND = [
+  { n: 5, e: '👀', t: 'things you can see',  s: 'Look around slowly. A colour, a shape, a shadow.' },
+  { n: 4, e: '✋', t: 'things you can feel', s: 'Your feet on the floor, the chair, your clothes, the air.' },
+  { n: 3, e: '👂', t: 'things you can hear', s: 'Near and far. Even quiet has sounds in it.' },
+  { n: 2, e: '🌸', t: 'things you can smell', s: 'Or two smells you like, if nothing is near.' },
+  { n: 1, e: '🍵', t: 'thing you can taste', s: 'Or take one slow sip of something.' },
+];
+const LIFT_BREATH = {
+  box:  { label: 'Box 4·4·4·4', ph: [['in', 4], ['hold', 4], ['out', 4], ['rest', 4]], cycles: 4 },
+  calm: { label: 'Calm 4·7·8',  ph: [['in', 4], ['hold', 7], ['out', 8]], cycles: 3 },
+};
+const LIFT_CUE = { in: 'Breathe in', hold: 'Hold', out: 'Breathe out', rest: 'Hold' };
+const LIFT_PROMPTS = [
+  "What's weighing on you right now?",
+  'If a friend felt like this, what would you tell them?',
+  "What's one thing that's still okay today?",
+  'Name the feeling. Where do you notice it in your body?',
+  'What would make the next hour a little easier?',
+  'What is one small thing you are looking forward to?',
+];
+// Section icons that the app's ICONS set does not have (same Lucide-style stroke).
+const LIFT_ICO = {
+  wind: '<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
+  call: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>',
+  tick: '<path d="M20 6 9 17l-5-5"/>',
+  shuffle: '<path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="m4 4 5 5"/>',
+};
+function liftIco(name, size) {
+  const p = LIFT_ICO[name]; if (!p) return icon(name, size);
+  size = size || 20;
+  return `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+
+/* ---------- the pure parts (unit-tested) ---------- */
+function liftMood(en) { const v = en && en.mood; return v == null || v === '' || isNaN(+v) ? null : +v; }
+const LIFT_LOW_WORDS = MM_QUAD.red.words.concat(MM_QUAD.blue.words);
+const LIFT_GOOD_WORDS = MM_QUAD.yellow.words.concat(MM_QUAD.green.words);
+/* Low = mood 4 or under, or a middle mood (5, the mood grid's unpleasant middle column) with an
+   unpleasant word tagged — the person has named the feeling. A day with no mood but #sad
+   tagged counts too. */
+function liftIsLow(en) {
+  const m = liftMood(en);
+  if (m != null && m <= LIFT_LOW) return true;
+  if (m != null && m > LIFT_HARD) return false;
+  const j = String((en && en.journal) || '');
+  return !!j && LIFT_LOW_WORDS.some(w => hasTag(j, '#' + w.toLowerCase()));
+}
+function liftCardShows(en, date, today) {
+  return date === (today || todayStr()) && liftIsLow(en) && !(en && objOf(en.lift).hide);
+}
+/* The last LIFT_HEAVY.of days that have a mood, within LIFT_HEAVY.days, and how many were low.
+   Sample days are not the person's and do not count. */
+function liftHeavyDays(ents, today) {
+  const t = today || todayStr(), from = addDays(t, -(LIFT_HEAVY.days - 1)), e = ents || {};
+  const days = Object.keys(e).filter(d => d >= from && d <= t && e[d] && !e[d].sample && liftMood(e[d]) != null).sort().slice(-LIFT_HEAVY.of);
+  return { low: days.filter(d => liftMood(e[d]) <= LIFT_LOW).length, of: days.length };
+}
+function liftEscalate(ents, today) { return liftHeavyDays(ents, today).low >= LIFT_HEAVY.low; }
+function liftDid(en) { const d = objOf(en && en.lift).did; return Array.isArray(d) ? d.filter(x => typeof x === 'string') : []; }
+/* Which action has helped THIS person. For every hard day (mood ≤ LIFT_HARD) with a mood the
+   next day: how much the mood moved by the next day. Days the action was done vs other hard
+   days. Both sides need LIFT_MIN_N days, and the gap must be at least 0.3, or nothing is said. */
+function liftLearn(ents) {
+  const e = ents || {}, rise = [];
+  Object.keys(e).forEach(d => {
+    const en = e[d]; if (!en || en.sample) return;
+    const m = liftMood(en); if (m == null || m > LIFT_HARD) return;
+    const n = liftMood(e[addDays(d, 1)]); if (n == null) return;
+    rise.push({ r: n - m, did: liftDid(en) });
+  });
+  const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+  let best = null;
+  LIFT_ACTS.forEach(a => {
+    const on = [], off = [];
+    rise.forEach(x => (x.did.includes(a.id) ? on : off).push(x.r));
+    if (on.length < LIFT_MIN_N || off.length < LIFT_MIN_N) return;
+    const diff = avg(on) - avg(off);
+    if (diff >= 0.3 && (!best || diff > best.diff)) best = { act: a, diff, on: avg(on), off: avg(off), nOn: on.length, nOff: off.length };
+  });
+  return best;
+}
+function liftLearnLine(L) {
+  if (!L) return '';
+  const f = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
+  return `After <b>‘${escapeHtml(L.act.k)}’</b> on a hard day, your mood the next day moved <b>${f(L.on)}</b> on average, vs <b>${f(L.off)}</b> after hard days without it (${L.nOn} vs ${L.nOff} days). A pattern in your own log, not proof.`;
+}
+/* Good days to read back: a mood of 8+ before today with something to show — words they wrote,
+   a pleasant mood word tagged, or a photo. Newest first. */
+function liftGoodDays(ents, today) {
+  const t = today || todayStr(), e = ents || {}, pics = {};
+  try { _media.forEach(r => { if (r.ctx === 'log' && r.kind === 'photo') pics[r.day] = (pics[r.day] || 0) + 1; }); } catch (err) {}
+  const out = [];
+  Object.keys(e).forEach(d => {
+    const en = e[d]; if (d >= t || !/^\d{4}-\d{2}-\d{2}$/.test(d) || !en || en.sample) return;
+    const m = liftMood(en); if (m == null || m < 8) return;
+    const j = String(en.journal || '');
+    const words = LIFT_GOOD_WORDS.filter(w => hasTag(j, '#' + w.toLowerCase()));
+    // the tagged words show as chips, so they come out of the quote
+    let text = j.replace(/#[\p{L}\p{N}_-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) text = String(en.wentWell || '').replace(/\s+/g, ' ').trim();
+    if (!text && !words.length && !pics[d]) return;
+    out.push({ d, m, text, words, pics: pics[d] || 0 });
+  });
+  return out.sort((a, b) => b.d.localeCompare(a.d));
+}
+
+/* ---------- writing to today's entry ----------
+   From the Log, Lift changes go through the open draft and its autosave like any Log edit.
+   From the Lift screen, the pending autosave is flushed first (or it would land later and
+   overwrite this), the stored day is changed, and the Log's draft is kept in step. */
+function liftWrite(fn, fields) {
+  const d = todayStr();
+  flushAutosave();
+  const all = DB.entries();
+  const en = all[d] || { habits: {} };
+  fn(en);
+  en.updatedAt = new Date().toISOString();
+  delete en.sample;   // a sample day you wrote in is yours now (as saveDraftNow does)
+  all[d] = en;
+  if (DB.saveEntries(all) === false) return false;
+  if (logDate === d && draft) (fields || []).forEach(k => { if (en[k] !== undefined) draft[k] = JSON.parse(JSON.stringify(en[k])); else delete draft[k]; });
+  try { refreshStreak(); } catch (e) {}
+  try { syncEntry(d, en); } catch (e) {}
+  return true;
+}
+function liftToggleAct(id) {
+  let now = false;
+  const ok = liftWrite(en => {
+    const L = Object.assign({}, objOf(en.lift)), did = liftDid(en);
+    const i = did.indexOf(id);
+    if (i >= 0) did.splice(i, 1); else { did.push(id); now = true; }
+    if (did.length) L.did = did; else delete L.did;
+    if (Object.keys(L).length) en.lift = L; else delete en.lift;
+  }, ['lift']);
+  return ok ? now : null;
+}
+function liftSaveWriting(text) {
+  text = String(text || '').trim(); if (!text) return false;
+  return liftWrite(en => { const j = String(en.journal || '').replace(/\s+$/, ''); en.journal = j ? j + '\n\n' + text : text; }, ['journal']);
+}
+
+/* ---------- the card on the Log ---------- */
+function liftLogEntries() {
+  const e = DB.entriesRO(), t = todayStr();
+  return logDate === t && draft ? Object.assign({}, e, { [t]: draft }) : e;
+}
+function liftCardKey() {
+  if (!(draft && liftCardShows(draft, logDate))) return '';
+  return liftEscalate(liftLogEntries()) ? 'heavy' : 'low';
+}
+function liftCardHTML(k) {
+  if (k === undefined) k = liftCardKey();
+  if (!k) return '';
+  const heavy = k === 'heavy';
+  return `<div class="card lift-card" role="region" aria-label="Lift">
+    <span class="lift-card-orb" aria-hidden="true"></span>
+    <div class="lift-card-body">
+      <b class="lift-card-h">${heavy ? 'It has been a heavy few days' : 'Rough day?'}</b>
+      <span class="lift-card-s">${heavy ? 'Lift has a few small things to try, and people you can talk to.' : 'A few small things that can help, whenever you want them.'}</span>
+      <div class="lift-card-acts">
+        <button type="button" class="btn btn-primary btn-sm" data-lift-open>Open Lift</button>
+        <button type="button" class="lift-card-x" data-lift-dismiss>Not today</button>
+      </div>
+    </div>
+  </div>`;
+}
+function liftSlotHTML() { const k = liftCardKey(); return `<div id="lift-slot" data-k="${k}">${liftCardHTML(k)}</div>`; }
+// Called from autosaveDraft: the card appears as soon as a low mood is tapped, and goes when it rises.
+// Not while typing: a #sad typed in the journal must not push the text field down mid-word.
+// The card catches up on the next tap or render.
+function liftSlotRefresh() {
+  const s = document.getElementById('lift-slot'); if (!s) return;
+  const a = document.activeElement; if (a && a.matches && a.matches('textarea, input[type=text], [contenteditable]')) return;
+  const k = liftCardKey(); if (s.dataset.k === k) return;
+  s.dataset.k = k; s.innerHTML = liftCardHTML(k);
+  const c = s.querySelector('.lift-card'); if (c) c.classList.add('lift-in');
+}
+function liftDrawerHTML(cur) {
+  return `<h3 class="drawer-sec">For heavy moments</h3>
+    <button class="drawer-row lift-drawer${cur === 'lift' ? ' on' : ''}" data-screen="lift">
+      <span class="drawer-ico">${icon('heart', 21)}</span>
+      <span class="drawer-lbl"><span>Lift</span><span class="drawer-peek">Breathe, ground yourself, small steps</span></span></button>`;
+}
+
+/* ---------- the Lift screen ---------- */
+let _liftNotOk = null, _liftPat = 'box', _liftBreath = null, _liftBrTimer = null,
+  _liftGround = { step: 0, n: 0, wait: false }, _liftDeck = null, _liftGood = null, _liftPrompt = 0, _liftText = '', _liftSaved = false;
+function liftReduced() { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
+function liftSecHead(ico, eyebrow, title) {
+  return `<div class="lift-sec-h"><span class="lift-sec-ico">${liftIco(ico, 19)}</span>
+    <div class="lift-sec-tt"><span class="lift-eyebrow">${eyebrow}</span><h2 class="lift-h">${title}</h2></div></div>`;
+}
+function liftHeroHTML(st) {
+  const [h, p] = st.notOk ? ['Thank you for saying it.', "You don't have to fix anything right now. The lines below are free, and someone is there any time."]
+    : st.low ? ['Today feels heavy.', "That's okay. Pick one small thing below. One is enough."]
+    : ['Be gentle with yourself.', 'A few small things for when the day feels heavy. Take what helps, skip the rest.'];
+  return `<div class="lift-hero">
+    <div class="lift-hero-art" aria-hidden="true"><i></i><i></i><i></i></div>
+    <span class="lift-eyebrow">Lift</span>
+    <h2 class="lift-hero-h">${h}</h2>
+    <p class="lift-hero-p">${p}</p>
+    <div class="lift-hero-acts">
+      <button type="button" class="btn btn-primary btn-sm" data-lift-go="breathe">${liftIco('wind', 16)} Breathe for a minute</button>
+      ${st.notOk ? '' : `<button type="button" class="btn btn-ghost btn-sm lift-notok" data-lift-notok>I'm not okay</button>`}
+    </div>
+  </div>`;
+}
+function liftBreathHTML() {
+  const b = _liftBreath, pat = LIFT_BREATH[_liftPat];
+  const state = !b ? 'idle' : b.done ? 'done' : 'run';
+  const cue = state === 'done' ? 'Well done' : state === 'idle' ? 'Ready when you are' : '';
+  const sub = state === 'done' ? 'Notice how your body feels now.' : state === 'idle' ? `${pat.label} · tap Start, then follow the circle` : '';
+  return `<section class="card lift-sec" id="lift-breathe">
+    ${liftSecHead('wind', 'Breathe · about a minute', 'Slow your breathing down')}
+    <div class="lift-br lift-br-${state}">
+      <div class="lift-br-stage">
+        <svg class="lift-br-ring" viewBox="0 0 120 120" aria-hidden="true"><circle class="lift-br-track" cx="60" cy="60" r="56"/><circle class="lift-br-prog" id="lift-br-prog" cx="60" cy="60" r="56"/></svg>
+        <div class="lift-orb" id="lift-orb"></div>
+        <b class="lift-br-n" id="lift-br-n" aria-hidden="true">${state === 'done' ? liftIco('tick', 38) : ''}</b>
+      </div>
+      <div class="lift-br-cue"><b id="lift-br-cue" aria-live="polite">${cue}</b><span id="lift-br-sub">${escapeHtml(sub)}</span></div>
+      ${state === 'run' ? '' : `<div class="lift-pat" role="group" aria-label="Breathing rhythm">${Object.keys(LIFT_BREATH).map(k =>
+        `<button type="button" class="lift-pat-b${k === _liftPat ? ' on' : ''}" data-lift-pat="${k}" aria-pressed="${k === _liftPat}">${LIFT_BREATH[k].label}</button>`).join('')}</div>`}
+      <div class="lift-br-acts">
+        <button type="button" class="btn ${state === 'run' ? 'btn-ghost' : 'btn-primary'} btn-sm" data-lift-breathe>${state === 'run' ? 'Stop' : state === 'done' ? 'Again' : 'Start'}</button>
+        ${state === 'done' ? `<button type="button" class="btn btn-ghost btn-sm" data-lift-go="ground">Next: ground yourself</button>` : ''}
+      </div>
+    </div>
+  </section>`;
+}
+function liftBreathTimeline() {
+  const p = LIFT_BREATH[_liftPat], tl = []; let t = 0;
+  for (let c = 0; c < p.cycles; c++) p.ph.forEach(([k, s]) => { tl.push({ k, s, at: t }); t += s; });
+  return { tl, total: t };
+}
+function liftBreathStart() {
+  const { tl, total } = liftBreathTimeline();
+  _liftBreath = { tl, total, t0: Date.now(), cur: -1, done: false };
+  clearInterval(_liftBrTimer); _liftBrTimer = setInterval(liftBreathTick, 200);
+  liftSecSwap('lift-breathe', liftBreathHTML());
+  liftBreathTick();
+}
+function liftBreathStop(keepDone) {
+  clearInterval(_liftBrTimer); _liftBrTimer = null;
+  if (!keepDone) _liftBreath = null;
+}
+function liftBreathTick() {
+  const b = _liftBreath; if (!b || b.done) { liftBreathStop(true); return; }
+  if (!isOn('lift')) { liftBreathStop(); return; }   // left the screen: stop quietly
+  const el = (Date.now() - b.t0) / 1000;
+  if (el >= b.total) {
+    b.done = true; liftBreathStop(true); buzz(24);
+    liftSecSwap('lift-breathe', liftBreathHTML());
+    return;
+  }
+  let i = b.tl.length - 1; while (i > 0 && b.tl[i].at > el) i--;
+  const ph = b.tl[i], left = Math.max(1, Math.ceil(ph.at + ph.s - el)), per = LIFT_BREATH[_liftPat].ph.length;
+  const orb = document.getElementById('lift-orb');
+  if (orb && orb.dataset.ph !== String(i)) {
+    if (b.cur !== i && b.cur !== -1) buzz(8);
+    b.cur = i; orb.dataset.ph = String(i);
+    void orb.offsetWidth;   // a freshly drawn orb must have its start size before the class, or it jumps
+    orb.style.setProperty('--ph', ph.s + 's');
+    orb.className = 'lift-orb is-' + ph.k;
+  }
+  const set = (id, v) => { const x = document.getElementById(id); if (x && x.textContent !== v) x.textContent = v; };
+  set('lift-br-cue', LIFT_CUE[ph.k]);
+  set('lift-br-n', String(left));
+  set('lift-br-sub', `Round ${Math.floor(i / per) + 1} of ${LIFT_BREATH[_liftPat].cycles}`);
+  const pr = document.getElementById('lift-br-prog'); if (pr) pr.style.strokeDashoffset = String(351.86 * (1 - el / b.total));
+}
+function liftGroundHTML() {
+  const g = _liftGround;
+  const head = liftSecHead('leaf', 'Ground yourself · 5-4-3-2-1', 'Come back to right now');
+  if (g.step >= LIFT_GROUND.length) return `<section class="card lift-sec" id="lift-ground">${head}
+    <div class="lift-gr-done lift-fade">
+      <span class="lift-gr-e" aria-hidden="true">🌿</span>
+      <b>You're here, right now.</b>
+      <span>Grounding brings your attention back to the present. Come back to it any time.</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-lift-gr-reset>Do it again</button>
+    </div></section>`;
+  const s = LIFT_GROUND[g.step];
+  return `<section class="card lift-sec" id="lift-ground">${head}
+    <div class="lift-gr-steps" aria-hidden="true">${LIFT_GROUND.map((x, i) => `<span class="${i < g.step ? 'done' : i === g.step ? 'on' : ''}">${x.n}</span>`).join('')}</div>
+    <button type="button" class="lift-gr-card lift-fade" data-lift-tap aria-label="${s.n} ${s.t}. Tap once for each one you notice. ${g.n} of ${s.n} so far.">
+      <span class="lift-gr-e" aria-hidden="true">${s.e}</span>
+      <span class="lift-gr-q">Name <b>${s.n}</b> ${s.t}</span>
+      <span class="lift-gr-s">${s.s}</span>
+      <span class="lift-gr-dots" aria-hidden="true">${Array.from({ length: s.n }, (_, i) => `<i class="${i < g.n ? 'on' : ''}"></i>`).join('')}</span>
+      <span class="lift-gr-hint">${g.n ? `${g.n} of ${s.n}` : 'Tap once for each one you notice'}</span>
+    </button>
+    <div class="lift-gr-foot"><span>Step ${g.step + 1} of ${LIFT_GROUND.length}</span>
+      <button type="button" class="lift-link" data-lift-gr-skip>Skip this one</button></div>
+  </section>`;
+}
+function liftDeckOrder() {
+  if (_liftDeck) return _liftDeck;
+  const ids = LIFT_ACTS.map(a => a.id);
+  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+  // what has helped this person before comes first
+  let L = null; try { L = liftLearn(DB.entriesRO()); } catch (e) {}
+  if (L) { ids.splice(ids.indexOf(L.act.id), 1); ids.unshift(L.act.id); }
+  return (_liftDeck = { ids, i: 0 });
+}
+function liftSmallHTML(anim) {
+  const t = todayStr(), en = DB.entriesRO()[t], did = liftDid(en);
+  const dk = liftDeckOrder(), a = LIFT_ACTS.find(x => x.id === dk.ids[dk.i % dk.ids.length]) || LIFT_ACTS[0];
+  const done = did.includes(a.id);
+  let L = null; try { L = liftLearn(DB.entriesRO()); } catch (e) {}
+  const doneActs = LIFT_ACTS.filter(x => did.includes(x.id));
+  return `<section class="card lift-sec" id="lift-small">
+    ${liftSecHead('sparkle', 'One small thing', 'Pick one. Small still counts.')}
+    <div class="lift-deck">
+      <div class="lift-act${done ? ' done' : ''}${anim ? ' lift-deal' : ''}">
+        <span class="lift-act-e" aria-hidden="true">${a.e}</span>
+        <b class="lift-act-t">${escapeHtml(a.t)}</b>
+        <span class="lift-act-s">${escapeHtml(a.s)}</span>
+        ${done ? `<span class="lift-act-ok">${liftIco('tick', 15)} Done today. That counts.</span>` : ''}
+      </div>
+    </div>
+    <div class="lift-deck-acts">
+      <button type="button" class="btn btn-ghost btn-sm" data-lift-next>${liftIco('shuffle', 15)} Another idea</button>
+      <button type="button" class="btn ${done ? 'btn-ghost' : 'btn-primary'} btn-sm" data-lift-did="${a.id}">${done ? 'Undo' : 'I did this'}</button>
+    </div>
+    ${doneActs.length ? `<div class="lift-did-row"><span>Today</span>${doneActs.map(x => `<span class="lift-chip"><span aria-hidden="true">${x.e}</span> ${escapeHtml(x.k)}</span>`).join('')}</div>` : ''}
+    ${L ? `<div class="lift-learn">${icon('lightbulb', 16)}<span>${liftLearnLine(L)}</span></div>` : ''}
+  </section>`;
+}
+function liftGoodHTML() {
+  // days with a few real words (or a photo) first, newest first within each group
+  const rich = g => (g.text.length >= 24 || g.pics > 0 ? 1 : 0);
+  const goods = liftGoodDays(DB.entriesRO()).sort((a, b) => rich(b) - rich(a));
+  const nRich = goods.filter(rich).length || goods.length;
+  let mems = [];
+  try { mems = memList().slice().sort((a, b) => (memCover(b) ? 1 : 0) - (memCover(a) ? 1 : 0) || memDate(b).localeCompare(memDate(a))).slice(0, 3); } catch (e) {}
+  const head = liftSecHead('sun', 'From your good days', 'You have felt better than this');
+  if (!goods.length && !mems.length) return `<section class="card lift-sec" id="lift-good">${head}
+    <p class="lift-empty">When you log a day that feels good, Lift keeps it here for a day like this one.</p></section>`;
+  let day = '';
+  if (goods.length) {
+    // start somewhere new each day, not always on the newest
+    if (_liftGood == null) _liftGood = [...todayStr()].reduce((s, c) => s + c.charCodeAt(0), 0) % nRich;
+    const g = goods[_liftGood % goods.length];
+    const when = relDay(g.d).toLowerCase();
+    const lead = g.text ? `On a good day ${when}, you wrote` : g.words.length ? `On a good day ${when}, you felt` : `A good day, ${when}`;
+    const pics = g.pics ? mediaList('log', g.d).filter(r => r.kind === 'photo').slice(0, 3) : [];
+    const q = g.text.length > 240 ? g.text.slice(0, 240).replace(/\s+\S*$/, '') + '…' : g.text;
+    day = `<figure class="lift-good lift-fade">
+      <figcaption class="lift-good-when">${escapeHtml(lead)}<span>${escapeHtml(prettyDate(g.d))} · mood ${g.m}</span></figcaption>
+      ${q ? `<blockquote class="lift-good-q">${escapeHtml(q)}</blockquote>` : ''}
+      ${g.words.length ? `<div class="lift-good-w">${g.words.map(w => `<span class="lift-chip">${escapeHtml(w)}</span>`).join('')}</div>` : ''}
+      ${pics.length ? `<div class="otd-pics">${pics.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo from ${escapeHtml(prettyDate(g.d))}"><img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : ''}
+      <div class="lift-good-acts">
+        <button type="button" class="lift-link" data-lift-day="${g.d}">Open that day ${icon('chevR', 14)}</button>
+        ${goods.length > 1 ? `<button type="button" class="lift-link" data-lift-good-next>${liftIco('shuffle', 14)} Another good day</button>` : ''}
+      </div>
+    </figure>`;
+  }
+  const mem = mems.length ? `<div class="lift-mems"><span class="lift-mini-h">Memories you kept</span><div class="lift-mem-row">${mems.map(m => {
+    const c = memCover(m);
+    return `<button type="button" class="lift-mem" data-lift-mem="${escapeHtml(m.id)}">
+      <span class="lift-mem-c${c ? '' : ' blank'}">${c ? `<img src="${mediaUrl(c, 't')}" alt="" loading="lazy" decoding="async">` : `<b aria-hidden="true">${escapeHtml(([...memTitle(m)][0] || '').toUpperCase())}</b>`}</span>
+      <span class="lift-mem-t">${escapeHtml(memTitle(m))}</span>
+      <span class="lift-mem-d">${escapeHtml(relDay(memDate(m)))}</span></button>`; }).join('')}</div></div>` : '';
+  return `<section class="card lift-sec" id="lift-good">${head}${day}${mem}</section>`;
+}
+function liftWriteHTML() {
+  return `<section class="card lift-sec" id="lift-write">
+    ${liftSecHead('pencil', 'Write it out', 'Get it out of your head')}
+    <div class="lift-prompt-row">
+      <p class="lift-prompt">${escapeHtml(LIFT_PROMPTS[_liftPrompt % LIFT_PROMPTS.length])}</p>
+      <button type="button" class="lift-prompt-next" data-lift-prompt aria-label="A different prompt" title="A different prompt">${liftIco('shuffle', 17)}</button>
+    </div>
+    <textarea id="lift-text" class="lift-text" placeholder="As much or as little as you like…">${escapeHtml(_liftText)}</textarea>
+    <div class="lift-write-acts">
+      <button type="button" class="btn btn-ghost btn-sm lift-mic" data-mic="#lift-text" aria-label="Speak instead">${icon('mic', 17)}</button>
+      <button type="button" class="btn btn-primary btn-sm lift-save" data-lift-save>Save to today's journal</button>
+    </div>
+    ${_liftSaved ? `<p class="lift-saved lift-fade">${liftIco('tick', 15)} Saved to today's journal. You don't have to fix it; writing it down is enough.</p>` : ''}
+  </section>`;
+}
+function liftTalkHTML(mode, hd) {
+  const intro = mode === 'notok' ? "If you can, reach out to someone now: a friend, family, or one of these free lines. You don't need the right words."
+    : mode === 'heavy' ? `Your mood has been low on ${hd.low} of your last ${hd.of} logged days. That is a lot to carry alone, and talking to someone can really help.`
+    : "You don't have to carry it alone. Talking to someone, a friend or a trained listener, often helps more than we expect.";
+  return `<section class="card lift-sec lift-talk${mode ? ' raised' : ''}" id="lift-talk">
+    ${liftSecHead('call', 'Talk to someone', mode === 'heavy' ? 'It has been a heavy few days' : mode === 'notok' ? "You don't have to do this alone" : 'Reach out, it helps')}
+    <p class="lift-talk-p">${intro}</p>
+    <div class="lift-line">
+      <div class="lift-line-t"><b>Tele-MANAS</b><span>India · free · 24/7</span></div>
+      <p class="lift-line-s">The Government of India's mental health helpline, with trained counsellors in many Indian languages.</p>
+      <div class="lift-line-acts">
+        <a class="btn btn-primary btn-sm lift-call" href="tel:14416">${liftIco('call', 15)} Call 14416</a>
+        <a class="btn btn-ghost btn-sm lift-call" href="tel:18008914416">1-800-891-4416</a>
+      </div>
+    </div>
+    <div class="lift-line">
+      <div class="lift-line-t"><b>Outside India</b></div>
+      <p class="lift-line-s">Find A Helpline lists free, confidential helplines in your country.</p>
+      <a class="lift-link" href="https://findahelpline.com" target="_blank" rel="noopener noreferrer">findahelpline.com ${icon('chevR', 14)}</a>
+    </div>
+    <p class="lift-talk-foot">If you are in danger right now, call your local emergency number (112 in India).</p>
+  </section>`;
+}
+function renderLift() {
+  flushAutosave();   // a mood typed a moment ago on the Log counts
+  document.getElementById('screen-title').textContent = 'Lift';
+  document.getElementById('screen-sub').textContent = 'Small things for heavy moments';
+  const t = todayStr(), ents = DB.entriesRO(), hd = liftHeavyDays(ents, t);
+  const st = { notOk: _liftNotOk === t, low: liftIsLow(ents[t]), heavy: hd.low >= LIFT_HEAVY.low };
+  const mode = st.notOk ? 'notok' : st.heavy ? 'heavy' : '';
+  const talk = liftTalkHTML(mode, hd);
+  document.getElementById('s-lift').innerHTML = `<div class="lift">
+    ${liftHeroHTML(st)}
+    ${mode ? talk : ''}
+    ${liftBreathHTML()}
+    ${liftGroundHTML()}
+    ${liftSmallHTML()}
+    ${liftGoodHTML()}
+    ${liftWriteHTML()}
+    ${mode ? '' : talk}
+    <p class="lift-foot">Lift is part of a private journal, not a medical service. It cannot diagnose or treat anything. It works offline, and what you tick and write stays in your own log.</p>
+  </div>`;
+  if (_liftBreath && !_liftBreath.done) liftBreathTick();
+}
+function liftSecSwap(id, html) {
+  const el = document.getElementById(id); if (!el) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = html;
+  if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+}
+function liftScrollTo(id) {
+  const el = document.getElementById(id); if (!el) return;
+  const y = el.getBoundingClientRect().top + (window.scrollY || 0) - 84;
+  try { window.scrollTo({ top: Math.max(0, y), behavior: liftReduced() ? 'auto' : 'smooth' }); } catch (e) {}
+}
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest) return;
+  // the card on the Log
+  const lc = ev.target.closest('[data-lift-open],[data-lift-dismiss]');
+  if (lc) {
+    if (lc.hasAttribute('data-lift-open')) { navigateTo('lift'); return; }
+    if (!draft) return;
+    const before = draft.lift ? JSON.parse(JSON.stringify(draft.lift)) : undefined, d = draft;
+    draft.lift = Object.assign({}, objOf(draft.lift), { hide: true }); autosaveDraft();
+    undoToast('Okay, not today. Lift is always in the menu.', () => {
+      if (before === undefined) delete d.lift; else d.lift = before;
+      if (d === draft) autosaveDraft(); else liftWrite(en => { if (before === undefined) delete en.lift; else en.lift = before; }, ['lift']);
+    });
+    return;
+  }
+  if (!isOn('lift')) return;
+  const b = ev.target.closest('[data-lift-go],[data-lift-notok],[data-lift-breathe],[data-lift-pat],[data-lift-tap],[data-lift-gr-skip],[data-lift-gr-reset],[data-lift-next],[data-lift-did],[data-lift-day],[data-lift-good-next],[data-lift-mem],[data-lift-prompt],[data-lift-save]');
+  if (!b) return;
+  const d = b.dataset;
+  if (d.liftGo) {
+    liftScrollTo('lift-' + d.liftGo);
+    if (d.liftGo === 'breathe' && !(_liftBreath && !_liftBreath.done)) liftBreathStart();
+    return;
+  }
+  if (b.hasAttribute('data-lift-notok')) { _liftNotOk = todayStr(); renderLift(); window.scrollTo(0, 0); buzz(12); return; }
+  if (b.hasAttribute('data-lift-breathe')) {
+    if (_liftBreath && !_liftBreath.done) { liftBreathStop(); liftSecSwap('lift-breathe', liftBreathHTML()); }
+    else liftBreathStart();
+    return;
+  }
+  if (d.liftPat) { _liftPat = LIFT_BREATH[d.liftPat] ? d.liftPat : 'box'; if (_liftBreath && _liftBreath.done) _liftBreath = null; liftSecSwap('lift-breathe', liftBreathHTML()); return; }
+  if (b.hasAttribute('data-lift-tap')) {
+    const g = _liftGround, s = LIFT_GROUND[g.step]; if (!s || g.wait) return;
+    g.n = Math.min(s.n, g.n + 1); buzz(10);
+    if (g.n >= s.n) {
+      g.wait = true; liftSecSwap('lift-ground', liftGroundHTML());
+      setTimeout(() => { g.wait = false; g.step++; g.n = 0; liftSecSwap('lift-ground', liftGroundHTML()); if (g.step >= LIFT_GROUND.length) buzz(24); }, liftReduced() ? 250 : 650);
+    } else {
+      const card = b; const dots = card.querySelectorAll('.lift-gr-dots i'); if (dots[g.n - 1]) dots[g.n - 1].classList.add('on');
+      const h = card.querySelector('.lift-gr-hint'); if (h) h.textContent = `${g.n} of ${s.n}`;
+      card.setAttribute('aria-label', `${s.n} ${s.t}. ${g.n} of ${s.n} so far.`);
+    }
+    return;
+  }
+  if (b.hasAttribute('data-lift-gr-skip')) { const g = _liftGround; if (g.wait) return; g.step++; g.n = 0; liftSecSwap('lift-ground', liftGroundHTML()); return; }
+  if (b.hasAttribute('data-lift-gr-reset')) { _liftGround = { step: 0, n: 0, wait: false }; liftSecSwap('lift-ground', liftGroundHTML()); return; }
+  if (b.hasAttribute('data-lift-next')) { const dk = liftDeckOrder(); dk.i = (dk.i + 1) % dk.ids.length; liftSecSwap('lift-small', liftSmallHTML(true)); return; }
+  if (d.liftDid) {
+    const now = liftToggleAct(d.liftDid);
+    if (now === null) return;   // the write failed; safeSet has already said so
+    if (now) { buzz(18); toast('Ticked. That counts.'); }
+    liftSecSwap('lift-small', liftSmallHTML());
+    return;
+  }
+  if (d.liftDay) { dayOpen(d.liftDay); return; }
+  if (b.hasAttribute('data-lift-good-next')) { _liftGood = (_liftGood || 0) + 1; liftSecSwap('lift-good', liftGoodHTML()); return; }
+  if (d.liftMem) { memOpenPage(d.liftMem); return; }
+  if (b.hasAttribute('data-lift-prompt')) { _liftPrompt = (_liftPrompt + 1) % LIFT_PROMPTS.length; _liftSaved = false; liftSecSwap('lift-write', liftWriteHTML()); return; }
+  if (b.hasAttribute('data-lift-save')) {
+    const ta = document.getElementById('lift-text'); const text = ta ? ta.value : _liftText;
+    if (!String(text || '').trim()) { toast('Write a line first, even a short one'); if (ta) ta.focus(); return; }
+    if (!liftSaveWriting(text)) return;
+    _liftText = ''; _liftSaved = true; buzz(14);
+    liftSecSwap('lift-write', liftWriteHTML());
+    return;
+  }
+});
+document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'lift-text') { _liftText = ev.target.value; if (_liftSaved) { _liftSaved = false; const s = document.querySelector('#lift-write .lift-saved'); if (s) s.remove(); } } });
+/* ===== end Lift ===== */
 
 /* ============================================================
    SCREEN: CALENDAR  (month grid of your data + dated events)
@@ -15515,7 +16062,7 @@ function renderDrawer() {
       }).join('')}</div>` : ''}
     </div>` : '';
   document.getElementById('drawer-list').innerHTML =
-    (items.length ? `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}` : '') + more;
+    (items.length ? `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}` : '') + liftDrawerHTML(cur) + more;
   const st = navCfg().find(n => n.k === 'settings');
   document.getElementById('drawer-foot').innerHTML =
     `<button class="drawer-row ${cur === 'settings' || cur === 'custom' ? 'on' : ''}" data-screen="settings">
@@ -15831,7 +16378,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
