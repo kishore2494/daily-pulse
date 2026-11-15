@@ -3028,7 +3028,8 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
   --nav-shadow: 0 0 0 1px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .05), 0 14px 34px -10px rgba(15, 23, 42, .22);
   --nav-ind: color-mix(in srgb, var(--accent) 13%, #ffffff);
   --nav-ind-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
-  --nav-ink: var(--accent-ink);
+  /* half accent, half ink: 5.0–7.3:1 on the tinted pill for all six accent colours */
+  --nav-ink: color-mix(in srgb, var(--accent) 50%, #101626);
 }
 
 /* ---------- Midnight: one surface system (layered shadow, not hairlines) ---------- */
@@ -3046,7 +3047,7 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
   --field: #f2f4f9; --field-ring: rgba(15, 23, 42, .07);
   --chip: #f5f7fb; --chip-ring: rgba(15, 23, 42, .07);
 }
-:where(:root[data-style="midnight"]) .card { border-color: transparent; box-shadow: var(--elev); padding: 18px 17px; }
+:where(:root[data-style="midnight"]) .card { border-color: transparent; box-shadow: var(--elev); padding: 18px 16px; }
 :where(:root[data-style="midnight"]) .card.alarm-warn { box-shadow: inset 3px 0 0 var(--warn), var(--elev); }
 :where(:root[data-style="midnight"]) .card.play-nudge { box-shadow: inset 0 0 0 1.5px var(--accent), var(--elev); }
 :where(:root[data-style="midnight"]) .card.fresh-card { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), var(--elev); }
@@ -3080,15 +3081,15 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
 
 /* ---------- Log hero: greeting + date over a slow living mesh ---------- */
 /* z-index -1: a positioned hero would otherwise paint its glow OVER the in-flow cards below it */
-.log-hero { position: relative; z-index: -1; isolation: isolate; margin: calc(-1 * var(--tb-h, 76px)) -16px 8px;
-  padding: calc(var(--safe-top) + 24px) 20px 20px; }
-/* full-bleed: .app already clips sideways, the Log screen need not clip the hero's gutters */
+.log-hero { position: relative; z-index: -1; isolation: isolate; margin: calc(-1 * var(--tb-h, 76px)) 0 8px;
+  padding: calc(var(--safe-top) + 24px) 2px 20px; }
+/* the mesh is full-bleed: .app already clips sideways, so the Log screen need not clip it */
 #s-today { overflow-x: visible; }
-.log-hero::before { content: ''; position: absolute; z-index: -1; left: -10%; right: -10%; top: -30px; height: calc(100% + 170px);
+.log-hero::before { content: ''; position: absolute; z-index: -1; left: calc(-16px - 8%); right: calc(-16px - 8%); top: -30px; height: calc(100% + 170px);
   background:
     radial-gradient(42% 46% at 14% 34%, var(--mesh-a), transparent 72%),
     radial-gradient(40% 42% at 86% 20%, var(--mesh-b), transparent 72%),
-    radial-gradient(46% 40% at 58% 78%, var(--mesh-c), transparent 72%);
+    radial-gradient(46% 40% at 58% 58%, var(--mesh-c), transparent 72%);
   -webkit-mask-image: linear-gradient(#000 45%, transparent 92%); mask-image: linear-gradient(#000 45%, transparent 92%);
   animation: lh-drift 20s ease-in-out infinite alternate; will-change: transform; pointer-events: none; }
 html:not(.lh-top) .log-hero::before { animation-play-state: paused; }
@@ -3101,6 +3102,10 @@ html:not(.lh-top) .log-hero::before { animation-play-state: paused; }
 .lh-greet { margin-top: 6px; font-family: var(--font-display); font-size: 30px; font-weight: 750; line-height: 1.12;
   letter-spacing: -1px; color: var(--text); overflow-wrap: anywhere; }
 .lh-name { color: var(--accent-ink); }
+/* Midnight follows the user's accent colour; mixed toward ink/white so every accent clears 3:1
+   as large text (light: 3.9–6.5:1, dark: 7.5–12:1 across the six accents) */
+:root[data-style="midnight"] .lh-name { color: color-mix(in srgb, var(--accent) 75%, #ffffff); }
+:root[data-style="midnight"][data-mode="light"] .lh-name { color: color-mix(in srgb, var(--accent) 60%, #101626); }
 @media (max-width: 360px) { .lh-greet { font-size: 26px; } }
 /* while the hero is on screen the top bar steps aside: no title, no backdrop */
 .topbar { align-items: flex-start; transition: background-color .25s, border-color .2s; }
@@ -3186,7 +3191,9 @@ html:not(.lh-top) .log-hero::before { animation-play-state: paused; }
   transition: transform .25s var(--ease-spring), background-color .2s, box-shadow .2s; }
 .mm-word:active { opacity: 1; transform: scale(.94); }
 .mm-word.on { background: var(--mq-fill, var(--accent)) !important; color: var(--mq-on, #ffffff) !important;
-  box-shadow: 0 6px 16px -8px var(--mq-fill, var(--accent)); animation: chip-in .35s var(--ease-spring); }
+  box-shadow: 0 6px 16px -8px var(--mq-fill, var(--accent)); }
+.mm-word.pop { animation: chip-in .35s var(--ease-spring); }
+.mm-still .mm-cell.on { animation: none; }   /* a word tap redraws the card: the picked cell stays put */
 .mm-word.on::before { content: '✓'; margin-right: 5px; font-weight: 800; }
 @keyframes chip-in { 0% { transform: scale(.9); } 60% { transform: scale(1.06); } 100% { transform: none; } }
 
@@ -3271,7 +3278,7 @@ body.kbd-open .nav { transform: translateY(calc(100% + 40px)); }
 .ov-lab { font-size: 14px; }
 .ov-ctx { border-top-color: color-mix(in srgb, var(--text) 8%, transparent); }
 .st-mood { --sc: var(--s-mood); } .st-nrg { --sc: var(--s-nrg); } .st-poly { --sc: var(--s-poly); }
-.st { border: 0; border-radius: 16px; padding: 11px 10px 9px;
+.st { border: 0; border-radius: 16px; padding: 11px 9px 9px;   /* 9px sides: 10 clipped a 3-digit value at 320w */
   background: linear-gradient(180deg, color-mix(in srgb, var(--sc, var(--accent)) 12%, var(--bg-card)), color-mix(in srgb, var(--sc, var(--accent)) 4%, var(--bg-card)));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sc, var(--accent)) 22%, transparent); }
 .st-label { display: flex; align-items: center; gap: 5px; }
@@ -3366,6 +3373,6 @@ body.kbd-open .nav { transform: translateY(calc(100% + 40px)); }
 
 @media (prefers-reduced-motion: reduce) {
   .log-hero::before, .screen.enter > *, .ring-fg, .ring-glow, .ring-celebrate, .ring-celebrate .ring-wrap::before,
-  .ring-celebrate .ring-wrap::after, .mm-cell.on, .mm-word.on, .habit.tick, .habit.tick .check, .habit.tick .check::after { animation: none !important; }
+  .ring-celebrate .ring-wrap::after, .mm-cell.on, .mm-word.pop, .habit.tick, .habit.tick .check, .habit.tick .check::after { animation: none !important; }
   :root[data-style] .nav::before { transition: none; }
 }

@@ -1809,7 +1809,9 @@ document.addEventListener('click', (ev) => {
     // re-render the card so the word chip's highlight matches the journal
     const card = wd.closest('.mm-card');
     if (card) { const tmp = document.createElement('div'); tmp.innerHTML = moodMeterHTML();
-      if (tmp.firstElementChild) card.replaceWith(tmp.firstElementChild); }
+      const nc = tmp.firstElementChild;
+      if (nc) { nc.classList.add('mm-still'); card.replaceWith(nc);    // only the tapped word animates
+        const w = nc.querySelector(`[data-mmword="${wd.dataset.mmword}"]`); if (w) w.classList.add('pop'); } }
     return;
   }
 });
