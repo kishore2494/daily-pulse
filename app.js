@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v257';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v258';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1437,6 +1437,37 @@ function numField(f) {
     <input type="number" step="${f.step||1}" inputmode="decimal" data-num="${f.key}" value="${draft[f.key]??''}"></div>`;
 }
 // Sleep: pick bed time + wake time → duration (#log-1)
+let _glanceOpen = null;   // the Sleep / Deep work tile whose editor is open on the Log
+function glanceSource(key) {
+  const v = draft[key], has = v !== '' && v != null;
+  if (key === 'sleepHours') {
+    const hs = healthFor(logDate);
+    if (trackedInfo.sleep && has && +v === +trackedInfo.sleep) return 'from Time tracker';
+    if (hs && hs.sleepMin && has && Math.abs(+v - hs.sleepMin / 60) < 0.02) return hs.sleepEst ? 'phone idle overnight' : 'from your phone';
+  }
+  if (key === 'deepWorkHours' && trackedInfo.work && has && +v === +trackedInfo.work) return 'from Time tracker';
+  return has ? 'you entered · tap to change' : 'tap to add';
+}
+function glanceTileHTML(f) {
+  const v = draft[f.key], has = v !== '' && v != null;
+  const ico = f.bedwake ? 'moon' : f.key === 'deepWorkHours' ? 'target' : 'clock';
+  return `<button type="button" class="gl-tile${_glanceOpen === f.key ? ' on' : ''}${has ? '' : ' empty'}" data-gl="${f.key}" aria-expanded="${_glanceOpen === f.key}">
+    <span class="gl-l">${icon(ico, 15)}${escapeHtml(f.label)}${f.req && !has ? ' <span class="req">*</span>' : ''}</span>
+    <span class="gl-v" data-gl-v="${f.key}">${has ? fmtMin(Math.round(+v * 60)) : '—'}</span>
+    <span class="gl-s">${glanceSource(f.key)}</span></button>`;
+}
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-gl]'); if (!t) return;
+  _glanceOpen = _glanceOpen === t.dataset.gl ? null : t.dataset.gl;
+  const y = window.scrollY; renderToday(); window.scrollTo(0, y);
+});
+// keep the big figure in step while its pickers are being changed
+['input', 'change'].forEach(type => document.addEventListener(type, (ev) => {
+  const k = ev.target.dataset && (ev.target.dataset.bed || ev.target.dataset.wake || ev.target.dataset.durH || ev.target.dataset.durM);
+  if (!k) return;
+  setTimeout(() => { const el = document.querySelector(`[data-gl-v="${k}"]`); const v = draft[k];
+    if (el) el.textContent = v !== '' && v != null ? fmtMin(Math.round(+v * 60)) : '—'; }, 0);
+}));
 function bedwakeField(f) {
   const dur = draft[f.key]; const h = dur !== '' && dur != null ? Math.floor(dur) + 'h ' + Math.round((dur - Math.floor(dur)) * 60) + 'm' : '';
   return `<div class="field"><label>${escapeHtml(f.label)} ${f.req ? '<span class="req">*</span>' : ''} <span class="hint">bed → wake</span></label>
@@ -1488,8 +1519,11 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w27',
+  v: 'w28',
   items: [
+    '🌅 <b>A cleaner Log</b> — the date is a small pill you tap to change day, and sleep and deep work are two big figures that say where they came from. Tap one only if you want to correct it.',
+    '❤️ <b>Truer health numbers</b> (with Play update 120) — screen time now counts every screen of an app and leaves out the home screen, and yesterday is re-read in full instead of keeping the total from your last sync. No sleep tracker? Daylog estimates sleep from the longest stretch your phone sat unused overnight, and distance from your steps, both clearly marked.',
+    '⏰ <b>Full-screen alarms</b> — the Fix button now opens the right page (Full screen notifications), so the warning goes away once you turn it on. 🧠 The Deep log has a "Show on the Log screen" switch in Customize ▸ Deep log.',
     '🌅 <b>A new look for Daylog</b> — a new app icon, and a lot of small things made easier: tap a task, plan step or project step to fix its text; plan tomorrow in Timebox (or copy yesterday\'s plan); Stats now explains itself in plain words; and Back works inside the app in your browser too.',
     '📝 <b>Memories and Money</b> — an imported memory starts with a place for the story, and its photos sit in a compact grid while you edit. Money\'s Record button is at the top, and the category follows your note (Netflix → Subscriptions). Ask now says when it could not use a word in your question.',
     '🔄 <b>Two phones stay in step</b> — a running timer or a gym tick on one phone no longer overwrites the mood and journal you typed on the other.',
@@ -1827,6 +1861,12 @@ function logSecCfg() {
   });
   return out;
 }
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest || !ev.target.closest('[data-deep-show]')) return;
+  const on = logSecHidden('deep');   // hidden now → turning it on
+  setLogSecHidden('deep', !on); renderCustom();
+  toast(on ? 'Deep log is on the Log screen' : 'Deep log hidden from the Log screen');
+});
 function saveLogSec(list) {
   safeSet('dp.logsec', JSON.stringify(list.map(x => ({ id: x.id, hidden: !!x.hidden }))));
   pushState();
@@ -2270,8 +2310,8 @@ function renderToday() {
   // Wide pickers (sleep bed→wake, deep-work duration) get their own full-width row; simple numbers pair up 2-per-row.
   const wideNums = coreNums.filter(f => f.bedwake || f.dur);
   const simpleNums = coreNums.filter(f => !f.bedwake && !f.dur);
-  let numRows = wideNums.map(f => `<div class="row-wide">${numCell(f)}</div>`).join('');
-  for (let i = 0; i < simpleNums.length; i += 2) numRows += `<div class="row2">${numCell(simpleNums[i])}${numCell(simpleNums[i + 1])}</div>`;
+  let simpleRows = '';
+  for (let i = 0; i < simpleNums.length; i += 2) simpleRows += `<div class="row2">${numCell(simpleNums[i])}${numCell(simpleNums[i + 1])}</div>`;
   const reflect = core.filter(f => f.type === 'text').map(f => `<div class="field"><label>${escapeHtml(f.label)}</label>
       <textarea data-txt="${f.key}" placeholder="Write a line or two…">${escapeHtml(draft[f.key] || '')}</textarea></div>`).join('');
   const journalF = core.find(f => f.type === 'journal');
@@ -2291,11 +2331,18 @@ function renderToday() {
     fresh: () => freshHTML(),
     ring: () => todayRingHTML(),
     onthisday: () => `<div id="otd-slot">${throwbackHTML()}</div>`,
-    core: () => `<div class="card">
-      <div class="field"><label>Date</label>
-        <input type="date" id="log-date" value="${logDate}" max="${todayStr()}"></div>
+    /* "At a glance" (v258). The card used to open with a full-width date input, then bed/wake
+       time pickers and two hour/minute dropdowns — form controls for numbers the app already
+       works out (Time tracker, phone sleep). Now: the date is a small pill, and sleep and deep
+       work are two big figures that say where they came from; the pickers open only when you
+       tap one to correct it. */
+    core: () => `<div class="card glance">
+      <label class="gl-date">${icon('calendar', 15)}<span>${isToday ? 'Today · ' : ''}${escapeHtml(prettyDate(logDate))}</span><span class="gl-caret">▾</span>
+        <input type="date" id="log-date" value="${logDate}" max="${todayStr()}" aria-label="Change day"></label>
+      ${wideNums.length ? `<div class="gl-tiles">${wideNums.map(glanceTileHTML).join('')}</div>` : ''}
+      ${wideNums.some(f => f.key === _glanceOpen) ? `<div class="gl-edit">${numCell(wideNums.find(f => f.key === _glanceOpen))}</div>` : ''}
       ${coreScales}
-      ${numRows}
+      ${simpleRows}
     </div>`,
     moodgrid: () => moodMeterHTML(),
     tasks: () => `<div class="card">
@@ -6677,7 +6724,7 @@ const CUSTOM_PAGES = [
   { id: 'habits', ico: '✅', label: 'Checklist habits',    sub: 'emoji, name, colour, counts & goals' },
   { id: 'sound',  ico: '🔔', label: 'Alarm sound',         sub: 'pick the tone your reminders ring with' },
   { id: 'acts',   ico: '⏱️', label: 'Time activities',    sub: 'one-tap stopwatch activities' },
-  { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'sections & fields' },
+  { id: 'deep',   ico: '🧠', label: 'Deep log',           sub: 'show it on the Log · sections & fields' },
   { id: 'gym',    ico: '💪', label: 'Gym & workouts',     sub: 'exercises, split, groups' },
   { id: 'theme',  ico: '🎨', label: 'Style & dark mode',  sub: 'Midnight, Paper, Luxe, Aurora, Bloom · light or dark' },
 ];
@@ -6789,7 +6836,16 @@ function cfgSectionHTML(page) {
       </div></div>`;
   }
   if (page === 'deep') {
+    /* The Deep log is off on the Log screen by default, and this page never said so: people
+       edited its sections here and then could not find it anywhere. The switch lives here now. */
+    const deepOn = !logSecHidden('deep');
     return `<div class="card">
+      <div class="at-row">
+        <div class="at-txt"><div class="at-lbl">Show the Deep log on the Log screen</div>
+          <div class="at-sub">${deepOn ? 'On · it appears near the bottom of the Log' : 'Off · turn on to rate these each day'}</div></div>
+        <button class="at-tog ${deepOn ? 'on' : ''}" ${togAria(deepOn, 'Show the Deep log on the Log screen')} data-deep-show><span class="at-knob"></span></button>
+      </div></div>
+      <div class="card">
       <h2>🧠 Deep log sections <span class="hint">rename · hide · add fields & sections</span></h2>
       ${deepCfg().map(sec => deepSecEditor(sec)).join('')}
       <div class="task-add" style="margin-top:10px">
@@ -10066,23 +10122,47 @@ async function syncHealth(opts) {
         }
       } catch (e) { /* HC unavailable — screen time still works */ }
     }
-    const t = await hc.today();
-    if (!t) return null;
-    // Screen time comes from a separate native module (UsageStats); optional in the contract.
-    let scr = null;
-    if (at.screentime && hc.screenTimeToday) { try { const r = await hc.screenTimeToday(); scr = r && r.screenTimeMinutes != null ? r.screenTimeMinutes : null; } catch (_) {} }
+    /* Each day is read for the WHOLE day where the Play app can (hc.day / screenTimeForDay),
+       and the two days before today are re-read too: a day used to keep whatever it showed
+       at the last sync, so screen time, steps and calories for a day last synced at 6 pm stayed
+       at their 6 pm values and looked far lower than the phone's own figures. */
+    const perDay = !!(hc.day && hc.screenTimeForDay);
     const store = healthStore(); const key = todayStr();
-    // Only store what's switched ON — an off toggle means "don't collect", not "hide".
-    store[key] = {
-      steps: at.steps ? (t.steps ?? null) : null,
-      distanceKm: at.steps && t.distanceMeters != null ? +(t.distanceMeters / 1000).toFixed(2) : null,
-      calories: at.calories && t.caloriesKcal != null ? Math.round(t.caloriesKcal) : null,
-      sleepMin: at.sleep ? (t.sleepMinutes ?? null) : null,
-      exerciseMin: at.workouts ? (t.exerciseMinutes ?? null) : null,
-      hr: at.hr ? (t.heartRateAvg ?? null) : null,
-      screenMin: scr,
-      at: new Date().toISOString(),
-    };
+    const days = perDay ? [addDays(key, -2), addDays(key, -1), key] : [key];
+    for (const d of days) {
+      const t = perDay ? await hc.day({ date: d }) : await hc.today();
+      if (!t) continue;
+      let scr = null, idle = null;
+      if (at.screentime || at.sleep) {
+        try {
+          const r = perDay ? await hc.screenTimeForDay({ date: d }) : (hc.screenTimeToday ? await hc.screenTimeToday() : null);
+          if (r) { scr = r.screenTimeMinutes != null ? r.screenTimeMinutes : null; idle = r.idleSleepMinutes != null ? r.idleSleepMinutes : null; }
+        } catch (_) {}
+      }
+      const steps = at.steps ? (t.steps ?? null) : null;
+      let dist = at.steps && t.distanceMeters != null ? +(t.distanceMeters / 1000).toFixed(2) : null, distEst = false;
+      // No app writes distance to Health Connect on many phones: estimate it from steps (0.76 m a step).
+      if (dist == null && steps != null && steps > 0) { dist = +(steps * 0.00076).toFixed(2); distEst = true; }
+      let sleepMin = at.sleep ? (t.sleepMinutes ?? null) : null, sleepEst = false;
+      // No sleep tracker writing to Health Connect: use the longest overnight stretch the phone sat unused.
+      if (at.sleep && sleepMin == null && idle != null) { sleepMin = idle; sleepEst = true; }
+      const rec = {
+        steps, distanceKm: dist,
+        calories: at.calories && t.caloriesKcal != null ? Math.round(t.caloriesKcal) : null,
+        sleepMin, exerciseMin: at.workouts ? (t.exerciseMinutes ?? null) : null,
+        hr: at.hr ? (t.heartRateAvg ?? null) : null,
+        screenMin: at.screentime ? scr : null,
+        at: new Date().toISOString(),
+      };
+      if (distEst) rec.distEst = true;
+      if (sleepEst) rec.sleepEst = true;
+      if (d === key) { store[key] = rec; continue; }
+      // a past day: keep what was there for anything this read could not get
+      const old = store[d] || {};
+      Object.keys(rec).forEach(k => { if (rec[k] == null && old[k] != null) rec[k] = old[k]; });
+      if (['steps', 'calories', 'sleepMin', 'screenMin'].some(k => rec[k] != null)) store[d] = rec;
+    }
+    if (!store[key]) return null;
     // don't store an all-null day (e.g. silent sync before Usage access is granted)
     const hasAny = ['steps', 'distanceKm', 'calories', 'sleepMin', 'exerciseMin', 'hr', 'screenMin'].some(k => store[key][k] != null);
     if (!hasAny) { if (!opts.silent) toast('No health data yet — grant Usage access first', true); return null; }
@@ -10194,9 +10274,9 @@ function healthCardHTML() {
   const cell = (v, unit, label) => `<div class="ts-cell"><div class="ts-n">${v != null ? v : '—'}</div><div class="ts-l">${label}${v != null && unit ? ' ' + unit : ''}</div></div>`;
   const cells = h ? [
     at.steps ? cell(h.steps, '', 'steps') : '',
-    at.steps ? cell(h.distanceKm, 'km', 'distance') : '',
+    at.steps ? cell(h.distanceKm, 'km', h.distEst ? 'distance · est.' : 'distance') : '',
     at.calories ? cell(h.calories, 'kcal', 'calories') : '',
-    at.sleep ? cell(fmtMin(h.sleepMin), '', 'sleep') : '',
+    at.sleep ? cell(fmtMin(h.sleepMin), '', h.sleepEst ? 'sleep · phone idle' : 'sleep') : '',
     at.workouts ? cell(fmtMin(h.exerciseMin), '', 'active') : '',
     at.screentime ? cell(fmtMin(h.screenMin), '', 'screen time') : '',
   ].join('') : '';
@@ -12398,7 +12478,7 @@ function alarmHealthHTML() {
   if (h.exactAllowed === false)
     bad.push(['Exact alarms are not allowed', 'Android will only fire your reminder within ~10 minutes of the time you set. Allow "Alarms & reminders" for on-the-dot alarms.', 'exact']);
   if (h.exactAllowed !== false && h.fullScreenAllowed === false)
-    bad.push(['Full-screen alarms are off', 'Alarms will ring as a loud notification instead of taking over the screen.', 'fsi']);
+    bad.push(['Full-screen alarms are off', 'Alarms will ring as a loud notification instead of taking over the screen. The switch is in Settings ▸ Apps ▸ Special app access ▸ Full screen notifications.', 'fsi']);
   if (!bad.length) return '';
   return `<div class="card alarm-warn">
     <h2 class="h2-icon">${hicon('clock')}<span>Your alarms need one more tap</span></h2>
@@ -12415,9 +12495,16 @@ document.addEventListener('click', async (ev) => {
   if (!b) return;
   const FS = fullScreenPlugin(); if (!FS) return;
   try {
-    if (b.dataset.alarmFix === 'exact' && FS.openExactAlarmSettings) await FS.openExactAlarmSettings();
+    /* The full-screen switch is NOT on the notification settings page — on Android 14+ it is
+       Special app access ▸ Full screen notifications. Sending people to notification settings
+       is why "Full-screen alarms are off" stayed on after they had turned everything on. */
+    const k = b.dataset.alarmFix;
+    if (k === 'exact' && FS.openExactAlarmSettings) await FS.openExactAlarmSettings();
+    else if (k === 'fsi' && FS.openFullScreenSettings) await FS.openFullScreenSettings();
     else if (FS.openNotificationSettings) await FS.openNotificationSettings();
-    toast('Turn it on, then come back — this updates itself');
+    toast(k === 'fsi' && !FS.openFullScreenSettings
+      ? 'Open Settings ▸ Apps ▸ Special app access ▸ Full screen notifications ▸ Daylog, turn it on, then come back'
+      : 'Turn it on, then come back — this updates itself');
     /* Belt and braces for shells where visibilitychange does not fire on return from a
        system settings page. Cheap, and the alternative is a stale warning. */
     [1200, 3000, 6000].forEach(ms => setTimeout(() => { try { recheckAlarmHealth(); } catch (e) {} }, ms));

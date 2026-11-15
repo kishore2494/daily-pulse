@@ -1,3 +1,22 @@
+## 2026-11-15 — v258 + native 120: alarm Fix page, Deep log switch, whole-day health, Log glance card
+
+Kishore reported: full-screen alarm always "off", Deep log missing, screen time lower than the phone's,
+sleep/distance blank, and the Log's date/sleep/deep-work card looking dated.
+- **Alarm:** the 'fsi' Fix opened app notification settings; the Android 14+ switch is Special app access ▸
+  Full screen notifications. New native `FullScreenAlarm.openFullScreenSettings` (ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+  JS uses it, older builds get the path in a toast.
+- **Deep log:** off on the Log by default (`LOG_SECTIONS_DEF` off:true) and Customize ▸ Deep log never said so.
+  It now has a "Show on the Log screen" switch (`data-deep-show`).
+- **Health:** only "today so far" was ever stored, so a day kept its value from the last sync. Native 120 adds
+  `HealthConnect.day({date})` (full day; sleep window 18:00 prev → 14:00) and `screenTimeForDay({date})`
+  (pairs per activity class, reads from 6 h before midnight, clips to the day, skips launcher + systemui;
+  also returns the longest overnight screen-off gap ≥3 h as `idleSleepMinutes`). `syncHealth` re-reads
+  today + 2 previous days when those exist. Fallbacks marked `distEst` (steps × 0.76 m) and `sleepEst` (phone idle).
+- **Log:** the core card is now "at a glance": date pill over a hidden date input, Sleep / Deep work figures
+  with their source (`glanceTileHTML`, `_glanceOpen`); pickers open on tap.
+- Native 120 (versionName 80) also carries the new sunrise launcher icon. Built, backed up (`native-120`),
+  NOT uploaded. Files: `~/Documents/p/Daylog-120.aab/.apk`.
+
 ## 2026-11-09 (morning) — v257 built: overnight helper work merged (NOT deployed)
 
 Five worktree helpers, each reviewed, merged, tested (1276 × 4 timezones, all checks, every screen × 5 styles clean):

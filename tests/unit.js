@@ -3979,6 +3979,33 @@
     }
   })();
 
+  // ---- v258: Log glance card, Deep log switch ----
+  (function () {
+    const keys = ['dp.logsec', 'dp.entries'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    try {
+      navigateTo('today');
+      const sc = document.getElementById('s-today');
+      ok('the Log shows the date as a pill, not a full-width field', !!sc.querySelector('.glance .gl-date #log-date'));
+      ok('sleep and deep work are big figures, pickers closed', sc.querySelectorAll('.gl-tile').length >= 1 && !sc.querySelector('.glance [data-bed]') && !sc.querySelector('.glance [data-dur-h]'));
+      const t = sc.querySelector('[data-gl]'); const k = t.dataset.gl; t.click();
+      ok('tapping a figure opens its pickers', !!document.querySelector(`#s-today .gl-edit`) && document.querySelector(`#s-today [data-gl="${k}"]`).classList.contains('on'));
+      document.querySelector(`#s-today [data-gl="${k}"]`).click();
+      ok('tapping again closes them', !document.querySelector('#s-today .gl-edit'));
+      setLogSecHidden('deep', true);
+      customPage = 'deep'; show('custom');
+      const sw = document.querySelector('[data-deep-show]');
+      ok('Customize ▸ Deep log has a show-on-Log switch, off when hidden', !!sw && !sw.classList.contains('on'));
+      sw.click();
+      ok('turning it on shows the Deep log on the Log screen', !logSecHidden('deep'));
+    } finally {
+      window.toast = tSnap; _glanceOpen = null; customPage = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
