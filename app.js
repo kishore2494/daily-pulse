@@ -1450,12 +1450,18 @@ function glanceSource(key) {
   if (key === 'deepWorkHours' && trackedInfo.work && has && +v === +trackedInfo.work) return 'from Time tracker';
   return has ? 'you entered · tap to change' : 'tap to add';
 }
+/* "7h24m" with the units set small, the way a stat reads on a watch face. Numbers only, so
+   it is safe as innerHTML. */
+function glanceValHTML(v) {
+  if (v === '' || v == null) return '—';
+  return String(fmtMin(Math.round(+v * 60))).replace(/(\d+)([hm])/g, '$1<small>$2</small>').replace(/<\/small>(?=\d)/, '</small> ');
+}
 function glanceTileHTML(f) {
   const v = draft[f.key], has = v !== '' && v != null;
   const ico = f.bedwake ? 'moon' : f.key === 'deepWorkHours' ? 'target' : 'clock';
   return `<button type="button" class="gl-tile${_glanceOpen === f.key ? ' on' : ''}${has ? '' : ' empty'}" data-gl="${f.key}" aria-expanded="${_glanceOpen === f.key}">
     <span class="gl-l">${icon(ico, 15)}${escapeHtml(f.label)}${f.req && !has ? ' <span class="req">*</span>' : ''}</span>
-    <span class="gl-v" data-gl-v="${f.key}">${has ? fmtMin(Math.round(+v * 60)) : '—'}</span>
+    <span class="gl-v" data-gl-v="${f.key}">${glanceValHTML(v)}</span>
     <span class="gl-s">${glanceSource(f.key)}</span></button>`;
 }
 document.addEventListener('click', (ev) => {
@@ -1467,8 +1473,8 @@ document.addEventListener('click', (ev) => {
 ['input', 'change'].forEach(type => document.addEventListener(type, (ev) => {
   const k = ev.target.dataset && (ev.target.dataset.bed || ev.target.dataset.wake || ev.target.dataset.durH || ev.target.dataset.durM);
   if (!k) return;
-  setTimeout(() => { const el = document.querySelector(`[data-gl-v="${k}"]`); const v = draft[k];
-    if (el) el.textContent = v !== '' && v != null ? fmtMin(Math.round(+v * 60)) : '—'; }, 0);
+  setTimeout(() => { const el = document.querySelector(`[data-gl-v="${k}"]`);
+    if (el) el.innerHTML = glanceValHTML(draft[k]); }, 0);
 }));
 function bedwakeField(f) {
   const dur = draft[f.key]; const h = dur !== '' && dur != null ? Math.floor(dur) + 'h ' + Math.round((dur - Math.floor(dur)) * 60) + 'm' : '';
@@ -1673,30 +1679,33 @@ function throwbackHTML() {
     { d: addDays(logDate, -365), label: 'A year ago' },
   ];
   // A day with only a photo counts too: a picture from a year ago is the best "on this day".
-  const hits = marks.filter(m => e[m.d] || mediaDayCount(m.d).p).slice(0, 2);
+  const hits = marks.filter(m => e[m.d] || mediaDayCount(m.d).p);
   if (!hits.length) return '';
-  const rows = hits.map(m => {
+  /* A strip of small cards you swipe through, each tinted by that day's mood, rather than a
+     tall card of paragraphs: the past is a glance on the Log, and a tap opens the whole day. */
+  const has = v => v != null && v !== '';
+  const cards = hits.map(m => {
     const en = e[m.d] || {};
-    const pics = mediaList('log', m.d).filter(r => r.kind === 'photo').slice(0, 3);
-    const bits = [];
-    if (en.mood != null) bits.push(`mood <b>${en.mood}</b>`);
-    if (en.energy != null) bits.push(`energy <b>${en.energy}</b>`);
-    if (en.sleepHours != null) bits.push(`<b>${en.sleepHours}h</b> sleep`);
-    const doneN = en.habits ? Object.keys(en.habits).filter(k => en.habits[k] === true).length : 0;
-    if (doneN) bits.push(`<b>${doneN}</b> habit${doneN > 1 ? 's' : ''}`);
-    const jr = (en.journal || '').trim().replace(/\s+/g, ' ');
-    const quote = jr ? `<div class="otd-quote">“${escapeHtml(jr.slice(0, 140))}${jr.length > 140 ? '…' : ''}”</div>` : '';
-    return `<div class="otd-row" data-throwback="${m.d}">
-      <div class="otd-when">${m.label}<span class="hint"> · ${prettyDate(m.d)}</span></div>
-      ${bits.length ? `<div class="otd-stats">${bits.join(' · ')}</div>` : ''}
-      ${quote}
-      ${pics.length ? `<div class="otd-pics">${pics.map(r => `<button class="mthumb" data-mview="${r.id}" aria-label="Photo from ${escapeHtml(prettyDate(m.d))}"><img src="${mediaUrl(r, 't')}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>` : ''}
+    const pic = mediaList('log', m.d).filter(r => r.kind === 'photo')[0];
+    const mc = has(en.mood) ? moodColor(+en.mood) : null;
+    const nums = [];
+    if (has(en.mood)) nums.push(`<span class="otd-n"><b>${escapeHtml(String(en.mood))}</b>mood</span>`);
+    if (has(en.energy)) nums.push(`<span class="otd-n"><b>${escapeHtml(String(en.energy))}</b>energy</span>`);
+    if (nums.length < 2 && has(en.sleepHours)) nums.push(`<span class="otd-n"><b>${escapeHtml(String(en.sleepHours))}h</b>sleep</span>`);
+    const jr = (en.journal || en.wentWell || en.win || '').trim().replace(/\s+/g, ' ');
+    return `<div class="otd-c${pic ? ' has-pic' : ''}"${mc ? ` style="--oc:${mc}"` : ''}>
+      <button type="button" class="otd-open" data-throwback="${m.d}">
+        <span class="otd-when">${m.label}</span>
+        <span class="otd-date">${escapeHtml(prettyDate(m.d))}</span>
+        ${nums.length ? `<span class="otd-nums">${nums.join('')}</span>` : ''}
+        ${jr ? `<span class="otd-q">“${escapeHtml(jr.slice(0, 160))}”</span>` : ''}
+      </button>
+      ${pic ? `<button type="button" class="mthumb otd-pic" data-mview="${pic.id}" aria-label="Photo from ${escapeHtml(prettyDate(m.d))}"><img src="${mediaUrl(pic, 't')}" alt="" loading="lazy" decoding="async"></button>` : ''}
     </div>`;
   }).join('');
-  return `<div class="card otd-card">
-    <h2 class="h2-icon">${hicon('history')}<span>On this day</span>
-      <span class="hint" style="margin-left:auto"><a href="#" id="otd-hide">hide</a></span></h2>
-    ${rows}
+  return `<div class="otd-strip-wrap${hits.length === 1 ? ' otd-one' : ''}">
+    <div class="otd-head"><span class="otd-title">${icon('history', 15)}On this day</span><a href="#" id="otd-hide">hide</a></div>
+    <div class="otd-strip">${cards}</div>
   </div>`;
 }
 document.addEventListener('click', (ev) => {
@@ -1827,7 +1836,7 @@ document.addEventListener('click', (ev) => {
    here too, so a section can never be hidden in one place and shown in another. */
 const LOG_SECTIONS_DEF = [
   { id: 'fresh',     label: 'Fresh start',      sub: 'a note on Mondays, 1sts and new years' },
-  { id: 'ring',      label: 'Today ring',       sub: "how much of today you've logged" },
+  { id: 'ring',      label: 'Today ring',       sub: "in the top panel: how much of today you've logged" },
   { id: 'onthisday', label: 'On this day',      sub: 'your entry from a week / month / year ago' },
   { id: 'core',      label: 'Date & main fields', sub: 'mood, energy, sleep, deep work…', lock: true },
   { id: 'moodgrid',  label: 'Mood grid',        sub: 'set mood and energy with one tap' },
@@ -1984,13 +1993,16 @@ function todayRingHTML() {
   const off = C * (1 - c.pct / 100);
   const full = c.pct >= 100;
   const col = full ? 'var(--good)' : 'var(--accent)';
-  const st = loggedStreak();
-  const past = logDate !== todayStr();   // editing an earlier day: no "today", streak or week lines
+  const past = logDate !== todayStr();   // editing an earlier day: "This day", and no streak or week lines
   // Gradient stroke + a blurred copy underneath for the glow; colours come from CSS (.rg0/.rg1).
   const arc = cls => `<circle cx="40" cy="40" r="${R}" class="${cls}" stroke="${col}"
         stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>`;
-  return `<div class="card ring-card${full ? ' ring-full' : ''}">
-    <div class="ring-wrap"><svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of today logged">
+  /* Round 2: the ring lives in the Log hero (logHeroHTML), beside the day's numbers. The
+     streak and week lines moved to the hero's foot (logHeroFootHTML); refreshTodayRing keeps
+     both in step. */
+  const head = past ? (full ? 'This day is complete' : 'This day') : (full ? "Today's complete" : 'Today so far');
+  return `<div class="ring-card${full ? ' ring-full' : ''}">
+    <div class="ring-wrap"><svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of ${past ? 'this day' : 'today'} logged">
       <defs><linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="rg0"/><stop offset="1" class="rg1"/></linearGradient>
         <filter id="ring-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>
       <circle cx="40" cy="40" r="${R}" class="ring-bg"/>
@@ -1999,31 +2011,40 @@ function todayRingHTML() {
       <text x="40" y="44" class="ring-txt">${c.pct}%</text>
     </svg></div>
     <div class="ring-side">
-      ${past ? `<div class="ring-head">${full ? 'This day is complete' : 'This day'}</div>
-      <div class="hint">${c.done} of ${c.total} logged · ${escapeHtml(prettyDate(logDate))}</div>`
-      : `<div class="ring-head">${full ? "Today's complete" : 'Today so far'}</div>
-      <div class="hint">${c.done} of ${c.total} logged${full ? ' — nice.' : ''}</div>
-      ${st > 1 ? `<div class="ring-streak">${icon('flame', 14)} ${st}-day logging streak</div>` : ''}
-      ${weekLineHTML()}`}
+      <div class="ring-head">${head}</div>
+      <div class="ring-cap"><b>${c.done}</b> of ${c.total} logged${full && !past ? ' — nice.' : ''}</div>
     </div>
   </div>`;
 }
 /* The weekly line. Its job is to remove daily-failure pressure: once the week is banked it
-   says so plainly, so a missed day tomorrow costs nothing. */
-function weekLineHTML() {
+   says so plainly, so a missed day tomorrow costs nothing. `short` is the Log hero's one-liner. */
+function weekLineHTML(short) {
   const w = weekStreak();
   const banked = w.current.ok;
   const need = Math.max(0, w.min - w.current.days);
   const run = w.live;
   const runTxt = run > 1 ? ` · <b>${run}-week streak</b>` : '';
+  if (short) return `<span class="ring-week${banked ? ' ok' : ''}">${banked
+    ? `${icon('check', 13)}Week counted${runTxt}`
+    : `This week ${w.current.days} of 7 · <b>${need} more</b> to count it`}</span>`;
   return `<div class="ring-week${banked ? ' ok' : ''}">${banked
     ? `✓ This week counted — ${w.current.days} of 7 days logged${runTxt}`
     : `This week: ${w.current.days} of 7 · <b>${need} more</b> to count it${runTxt}`}</div>`;
+}
+/* The hero's foot: the logging streak (the top bar's flame badge steps aside while the hero is
+   on screen, so it is said here) and, with the ring, the week line. Today only. */
+function logHeroFootHTML() {
+  if (logDate !== todayStr()) return '';
+  const st = loggedStreak();
+  return (st > 1 ? `<span class="ring-streak lh-streak">${icon('flame', 14)}${st}-day streak</span>` : '')
+    + (logSecHidden('ring') ? '' : weekLineHTML(true));
 }
 
 /* Re-draw the ring in place after any edit, so the dial visibly moves as you fill the form. */
 let _ringWasFull = false;
 function refreshTodayRing() {
+  const foot = document.querySelector('#s-today .lh-foot');
+  if (foot) foot.innerHTML = logHeroFootHTML();
   const card = document.querySelector('.ring-card'); if (!card) return;
   const tmp = document.createElement('div'); tmp.innerHTML = todayRingHTML();
   const next = tmp.firstElementChild; if (!next) return;
@@ -2353,35 +2374,33 @@ function renderToday() {
 
   // Each Log card is a named section; the user controls order and visibility
   // (Customize ▸ Log screen sections). Build them as a map, then emit in their order.
+  /* Round 2: the top of the Log is ONE hero panel (logHeroHTML) — greeting, the day picker,
+     the ring and the day's numbers. So `ring` draws nothing in place (it is in the hero
+     whenever it is shown, wherever it sits in the order), and `core` keeps only the fields
+     that are real form fields (1-10 scales, plain numbers) as a card at its own position. */
+  const glOpen = wideNums.find(f => f.key === _glanceOpen);
   const SEC = {
     fresh: () => freshHTML(),
-    ring: () => todayRingHTML(),
+    ring: () => '',
     onthisday: () => `<div id="otd-slot">${throwbackHTML()}</div>`,
-    /* "At a glance" (v258). The card used to open with a full-width date input, then bed/wake
-       time pickers and two hour/minute dropdowns — form controls for numbers the app already
-       works out (Time tracker, phone sleep). Now: the date is a small pill, and sleep and deep
-       work are two big figures that say where they came from; the pickers open only when you
-       tap one to correct it. */
-    core: () => `<div class="card glance">
-      <label class="gl-date">${icon('calendar', 15)}<span>${isToday ? 'Today · ' : ''}${escapeHtml(prettyDate(logDate))}</span><span class="gl-caret">▾</span>
-        <input type="date" id="log-date" value="${logDate}" max="${todayStr()}" aria-label="Change day"></label>
-      ${wideNums.length ? `<div class="gl-tiles">${wideNums.map(glanceTileHTML).join('')}</div>` : ''}
-      ${wideNums.some(f => f.key === _glanceOpen) ? `<div class="gl-edit">${numCell(wideNums.find(f => f.key === _glanceOpen))}</div>` : ''}
-      ${coreScales}
-      ${simpleRows}
-    </div>`,
+    core: () => ((coreScales || simpleRows) ? `<div class="card glance core-more">${coreScales}${simpleRows}</div>` : ''),
     moodgrid: () => moodMeterHTML(),
     lift: () => (isToday ? liftSlotHTML() : ''),
-    tasks: () => `<div class="card">
-      <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.planned ? tc.done + ' of ' + tc.planned + ' done' : 'auto from your Tasks list'}</span></h2>
-      ${tc.planned
-        ? `<div class="task-summary"><div class="ts-cell"><div class="ts-n">${tc.done}</div><div class="ts-l">done</div></div><div class="ts-cell"><div class="ts-n">${tc.planned}</div><div class="ts-l">planned</div></div></div>`
-        : '<div class="hint" style="padding:4px 0 8px">No tasks yet — add one below or on the Tasks tab.</div>'}
+    /* No tasks: one slim "+ Add a task" row that opens up when you tap it, not a big card
+       saying there is nothing here. */
+    tasks: () => (tc.planned ? `<div class="card">
+      <h2 class="h2-icon">${hicon('check')}<span>Tasks</span> <span class="hint">${tc.done + ' of ' + tc.planned + ' done'}</span></h2>
+      <div class="task-summary"><div class="ts-cell"><div class="ts-n">${tc.done}</div><div class="ts-l">done</div></div><div class="ts-cell"><div class="ts-n">${tc.planned}</div><div class="ts-l">planned</div></div></div>
       <div class="task-add">
         <input type="text" id="log-task-input" placeholder="Add a task…" autocomplete="off">
         <button class="btn btn-primary btn-sm" id="log-task-add">Add</button>
       </div>
-    </div>`,
+    </div>` : `<div class="card task-slim">
+      <label class="tsl-row"><span class="tsl-ico" aria-hidden="true">${icon('plus', 16)}</span>
+        <input type="text" id="log-task-input" placeholder="Add a task" autocomplete="off" enterkeyhint="done"></label>
+      <button class="btn btn-primary btn-sm" id="log-task-add">Add</button>
+      <div class="tsl-hint">It goes on your Tasks tab, and today's done / planned count fills itself in.</div>
+    </div>`),
     checklist: () => `<div class="card">
       <h2>Daily checklist <span class="hint">tap what you did</span></h2>
       <div class="habits">${habitChips}</div>
@@ -2415,7 +2434,8 @@ function renderToday() {
     .join('\n');
 
   document.getElementById('s-today').innerHTML = `
-    ${isToday ? logHeroHTML() : ''}
+    ${logHeroHTML(wideNums)}
+    ${glOpen ? `<div class="card gl-edit" data-gl-for="${glOpen.key}">${numCell(glOpen)}</div>` : ''}
     ${whatsNewHTML()}
     ${playNudgeHTML()}
     ${secHTML}
@@ -2429,20 +2449,57 @@ function renderToday() {
   logHeroWatch();
 }
 
-/* Log hero (polish pass): a time-of-day greeting and the date as the page's large title, over
-   the style's gradient. While it is on screen the top bar steps aside (no title, no backdrop);
-   scrolled past it, the bar and its "Today" title come back. #screen-title keeps its text. */
-function logHeroHTML() {
-  const h = new Date().getHours();
-  const g = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-  const name = ((DB.settings().name || '').trim().split(/\s+/)[0] || '').slice(0, 24);
-  const date = new Date(logDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<div class="log-hero"><div class="lh-date">${escapeHtml(date)}</div>
-    <div class="lh-greet" role="heading" aria-level="2">${g}${name ? `,<span class="lh-name"> ${escapeHtml(name)}</span>` : ''}</div></div>`;
+/* Log hero. Round 1 (polish pass) made the greeting and date the page's large title; round 2
+   makes the whole top of the Log ONE panel: the greeting, the day picker as a small chip, the
+   ring with how much is logged, and the day's numbers (sleep, deep work) as tap-to-edit stats,
+   with the streak at its foot. It replaced three cards (ring, the date pill + figures, and
+   the date said twice). While it is on screen the top bar steps aside (no title, no badge,
+   no backdrop); scrolled past it, the bar and its title come back. #screen-title keeps its text.
+   On a past day it says so: "Editing Friday", the chip shows that day, and one tap goes back. */
+function logHeroHTML(tiles) {
+  tiles = tiles || [];
+  const today = todayStr(), isToday = logDate === today;
+  const d = new Date(logDate + 'T12:00:00');
+  let eyebrow, greet;
+  if (isToday) {
+    const h = new Date().getHours();
+    const g = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const name = ((DB.settings().name || '').trim().split(/\s+/)[0] || '').slice(0, 24);
+    eyebrow = escapeHtml(d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }));
+    greet = `${g}${name ? `,<span class="lh-name"> ${escapeHtml(name)}</span>` : ''}`;
+  } else {
+    const ago = Math.round((new Date(today + 'T12:00:00') - d) / 864e5);
+    const when = ago === 1 ? 'yesterday'
+      : ago > 1 && ago < 7 ? d.toLocaleDateString(undefined, { weekday: 'long' })
+      : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+    eyebrow = 'Past entry' + (ago > 1 ? ` · ${ago} days ago` : '');
+    greet = `Editing <span class="lh-name">${escapeHtml(when)}</span>`;
+  }
+  const ring = todayRingHTML();   // '' when the ring section is hidden
+  const cls = ['lhero', ring ? 'has-ring' : 'no-ring', tiles.length ? 'has-tiles' : 'no-tiles', isToday ? '' : 'lh-past'].filter(Boolean).join(' ');
+  return `<section class="${cls}" aria-label="${isToday ? 'Today' : 'Editing ' + escapeHtml(prettyDate(logDate))}">
+    <div class="lh-in">
+      <div class="lh-head">
+        <div class="lh-date">${eyebrow}</div>
+        <label class="gl-date lh-chip">${icon('calendar', 14)}<span class="lh-chip-t">${isToday ? 'Today' : escapeHtml(prettyDate(logDate))}</span><span class="gl-caret">▾</span>
+          <input type="date" id="log-date" value="${logDate}" max="${today}" aria-label="Change day"></label>
+      </div>
+      <div class="lh-greet" role="heading" aria-level="2">${greet}</div>
+      ${isToday ? '' : `<div class="lh-pastline"><span>Changes save to this day.</span><button type="button" class="lh-back" data-lh-today>Back to today</button></div>`}
+      ${(ring || tiles.length) ? `<div class="lh-body">${ring}${tiles.length ? `<div class="gl-tiles lh-tiles">${tiles.map(glanceTileHTML).join('')}</div>` : ''}</div>` : ''}
+      <div class="lh-foot">${logHeroFootHTML()}</div>
+    </div>
+  </section>`;
 }
+/* "Back to today" from a past day: the same path as picking today in the date chip. */
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest || !ev.target.closest('[data-lh-today]')) return;
+  const ld = document.getElementById('log-date'); if (!ld) return;
+  ld.value = todayStr(); ld.dispatchEvent(new Event('change', { bubbles: true }));
+});
 let _lhObs = null;
 function logHeroWatch() {
-  const root = document.documentElement, hero = document.querySelector('#s-today.on .log-hero');
+  const root = document.documentElement, hero = document.querySelector('#s-today.on .lhero');
   if (_lhObs) { _lhObs.disconnect(); _lhObs = null; }
   // The Log never shows "‹ Menu" (renderNav hides it, but only after this runs): hide it now so
   // the bar is measured at the height it will have.
@@ -17675,7 +17732,7 @@ document.addEventListener('click', (ev) => {
    element (spotlight cutout) and explains it. ============================================================ */
 const TOUR = [
   { s: 'today', t: '.mm-card', alt: '.mm-cell', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
-  { s: 'today', t: '#log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
+  { s: 'today', t: '.task-slim, #log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
   { s: 'today', t: '#health-sync', opt: true, h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
   { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
   { s: 'dash', t: '#patterns-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
