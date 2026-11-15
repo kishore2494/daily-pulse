@@ -1976,13 +1976,18 @@ function todayRingHTML() {
   const col = full ? 'var(--good)' : 'var(--accent)';
   const st = loggedStreak();
   const past = logDate !== todayStr();   // editing an earlier day: no "today", streak or week lines
+  // Gradient stroke + a blurred copy underneath for the glow; colours come from CSS (.rg0/.rg1).
+  const arc = cls => `<circle cx="40" cy="40" r="${R}" class="${cls}" stroke="${col}"
+        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>`;
   return `<div class="card ring-card${full ? ' ring-full' : ''}">
-    <svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of today logged">
+    <div class="ring-wrap"><svg class="ring" viewBox="0 0 80 80" aria-label="${c.pct}% of today logged">
+      <defs><linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="rg0"/><stop offset="1" class="rg1"/></linearGradient>
+        <filter id="ring-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter></defs>
       <circle cx="40" cy="40" r="${R}" class="ring-bg"/>
-      <circle cx="40" cy="40" r="${R}" class="ring-fg" stroke="${col}"
-        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+      ${c.pct > 0 ? arc('ring-glow') : ''}
+      ${arc('ring-fg')}
       <text x="40" y="44" class="ring-txt">${c.pct}%</text>
-    </svg>
+    </svg></div>
     <div class="ring-side">
       ${past ? `<div class="ring-head">${full ? 'This day is complete' : 'This day'}</div>
       <div class="hint">${c.done} of ${c.total} logged · ${escapeHtml(prettyDate(logDate))}</div>`
@@ -2012,8 +2017,17 @@ function refreshTodayRing() {
   const card = document.querySelector('.ring-card'); if (!card) return;
   const tmp = document.createElement('div'); tmp.innerHTML = todayRingHTML();
   const next = tmp.firstElementChild; if (!next) return;
-  card.replaceWith(next);
+  // A redraw moves the arc from where it was (no replay of the on-load sweep) and
+  // celebrates only the moment the day becomes complete.
+  const was = (card.querySelector('.ring-fg') || { getAttribute: () => null }).getAttribute('stroke-dashoffset');
   const nowFull = next.classList.contains('ring-full');
+  next.classList.add('ring-live');
+  if (nowFull && !_ringWasFull) next.classList.add('ring-celebrate');
+  card.replaceWith(next);
+  if (was != null) next.querySelectorAll('.ring-fg, .ring-glow').forEach(c => {
+    if (c.getAttribute('stroke-dashoffset') === was) return;
+    c.style.strokeDashoffset = was + 'px'; c.getBoundingClientRect(); c.style.strokeDashoffset = '';
+  });
   if (nowFull && !_ringWasFull) { buzz(28); toast('🎉 Today fully logged'); }
   _ringWasFull = nowFull;
 }
@@ -2262,7 +2276,9 @@ function refreshHabitChip(key) {
   const el = document.querySelector(`[data-habit="${key}"]`); if (!el) return;
   const h = HABITS.find(x => x.key === key); if (!h) return;
   const tmp = document.createElement('div'); tmp.innerHTML = habitChipHTML(h);
-  el.replaceWith(tmp.firstElementChild);
+  const n = tmp.firstElementChild;
+  if (n.classList.contains('on') && !el.classList.contains('on')) n.classList.add('tick');   // tick animation
+  el.replaceWith(n);
 }
 
 /* The Log left open overnight kept yesterday as "Today": the header, the date picker's max and
@@ -2387,6 +2403,7 @@ function renderToday() {
     .join('\n');
 
   document.getElementById('s-today').innerHTML = `
+    ${isToday ? logHeroHTML() : ''}
     ${whatsNewHTML()}
     ${playNudgeHTML()}
     ${secHTML}
@@ -2397,7 +2414,37 @@ function renderToday() {
     </div>
     <div style="height:14px"></div>
   `;
+  logHeroWatch();
+}
 
+/* Log hero (polish pass): a time-of-day greeting and the date as the page's large title, over
+   the style's gradient. While it is on screen the top bar steps aside (no title, no backdrop);
+   scrolled past it, the bar and its "Today" title come back. #screen-title keeps its text. */
+function logHeroHTML() {
+  const h = new Date().getHours();
+  const g = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const name = ((DB.settings().name || '').trim().split(/\s+/)[0] || '').slice(0, 24);
+  const date = new Date(logDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  return `<div class="log-hero"><div class="lh-date">${escapeHtml(date)}</div>
+    <div class="lh-greet" role="heading" aria-level="2">${g}${name ? `,<span class="lh-name"> ${escapeHtml(name)}</span>` : ''}</div></div>`;
+}
+let _lhObs = null;
+function logHeroWatch() {
+  const root = document.documentElement, hero = document.querySelector('#s-today.on .log-hero');
+  if (_lhObs) { _lhObs.disconnect(); _lhObs = null; }
+  // The Log never shows "‹ Menu" (renderNav hides it, but only after this runs): hide it now so
+  // the bar is measured at the height it will have.
+  const nb = document.getElementById('nav-back'); if (nb && hero) nb.hidden = true;
+  const tb = document.querySelector('.topbar'), top = tb ? tb.offsetHeight : 0;
+  const set = on => root.classList.toggle('lh-top', !!on);
+  if (!hero) { set(false); return; }
+  root.style.setProperty('--tb-h', top + 'px');   // the hero slides up under the (now see-through) bar
+  // Assume on screen: show() scrolls to the top right after this, and the observer's first
+  // report (next frame) corrects it when it is not.
+  set(true);
+  if (typeof IntersectionObserver !== 'function') return;
+  _lhObs = new IntersectionObserver(es => set(es[es.length - 1].isIntersecting), { rootMargin: `-${top}px 0px 0px 0px` });
+  _lhObs.observe(hero);
 }
 
 /* delegated handlers for Today screen */
@@ -2458,7 +2505,7 @@ document.addEventListener('click', (ev) => {
     else { draft.habits[k] = true; buzz(18); }
     habitTouch(k);
     const now = hVal(draft, k), on = now === H_DONE, sk = now === H_SKIP;
-    hb.classList.toggle('on', on); hb.classList.toggle('skip', sk);
+    hb.classList.toggle('on', on); hb.classList.toggle('skip', sk); hb.classList.toggle('tick', on);
     const ckEl = hb.querySelector('.check'); if (ckEl) ckEl.textContent = sk ? '⤳' : '✓';
     const h = HABITS.find(x => x.key === k);
     if (h && h.color) hb.setAttribute('style', `box-shadow: inset 4px 0 0 ${h.color}${on ? `; background:${h.color}1f; border-color:${h.color}` : ''}`);
@@ -4197,10 +4244,13 @@ function renderHabits() {
     /* One column per week, Monday on top, today outlined. It used to wrap 91 cells into rows
        of whatever fitted (17 on a phone), so no column meant anything and today was lost. */
     const lead = (new Date(days[0] + 'T12:00:00').getDay() + 6) % 7;
+    let run = 0;   // done cells deepen as a run goes on (d1…d4); a skip keeps the run, a miss ends it
     const heat = '<div class="cell pad"></div>'.repeat(lead) + days.map(d => {
       const v = hVal(e[d], h.key);
+      run = v === H_DONE ? run + 1 : v === H_SKIP ? run : 0;
+      const lv = v === H_DONE ? ` d${run >= 7 ? 4 : run >= 4 ? 3 : run >= 2 ? 2 : 1}` : '';
       const bg = v === H_DONE ? 'var(--good)' : v === H_SKIP ? '#a9b0c9' : 'var(--bg-input)';
-      return `<div class="cell${d === todayStr() ? ' today' : ''}" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
+      return `<div class="cell${lv}${v === H_SKIP ? ' sk' : ''}${d === todayStr() ? ' today' : ''}" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
     }).join('');
     return `<div class="card">
       <div class="hab-head"><h2>${h.emoji} ${escapeHtml(h.label)}</h2>${habTodayBtnHTML(h, e[todayStr()])}</div>
@@ -15477,7 +15527,12 @@ function renderNav() {
   // synthetic Menu button — always present, opens the side drawer with everything
   const menuOn = (!primaryKeys.has(curKey) || document.getElementById('drawer')?.classList.contains('on')) ? 'on' : '';
   btns.push(`<button data-screen="__menu" class="${menuOn}"><span class="ico">${icon('menu')}</span>Menu</button>`);
-  document.getElementById('nav').innerHTML = btns.join('');
+  const navEl = document.getElementById('nav');
+  navEl.innerHTML = btns.join('');
+  // The sliding active pill (.nav::before) is placed by index, so no layout is measured.
+  const onIdx = [...navEl.children].findIndex(b => b.classList.contains('on'));
+  navEl.style.setProperty('--nav-n', btns.length); navEl.style.setProperty('--nav-i', Math.max(0, onIdx));
+  navEl.classList.toggle('no-ind', onIdx < 0);
   // Back-to-menu affordance for any screen that isn't a pinned bottom-bar tab
   const back = document.getElementById('nav-back');
   if (back) back.hidden = primaryKeys.has(curKey) || curKey === 'today';
@@ -15847,6 +15902,9 @@ function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const sec = document.getElementById('s-' + name);
   if (sec) sec.classList.add('on');
+  document.documentElement.classList.remove('lh-top');   // only the Log's hero hides the top bar title
+  // Staggered entrance, only when a screen actually opens (not on re-renders inside it).
+  if (sec && (leaving || !show._once)) { show._once = true; sec.classList.add('enter'); clearTimeout(sec._enterT); sec._enterT = setTimeout(() => sec.classList.remove('enter'), 900); }
   (RENDER[name] || (()=>{}))();
   if (sec) decorateHeaders(sec);   // swap leading header/menu emoji → clean icons app-wide
   renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)
