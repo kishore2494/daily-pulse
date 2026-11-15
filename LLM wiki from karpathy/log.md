@@ -1,4 +1,4 @@
-## 2026-11-16 — v259 BUILT (not deployed): Lift, Meals, premium look (two rounds)
+## 2026-11-16 — v259 LIVE (tag web-v259): Lift, Meals, premium look (two rounds)
 
 Kishore (2026-11-15): "the UI is not modern… we need to wow the users"; "if the mood feels low give
 them things to do"; "we may can have the meal planned". Four worktree agents, merged one at a time:
@@ -11,7 +11,7 @@ them things to do"; "we may can have the meal planned". Four worktree agents, me
 - Mine: Search finds planned meals (and the planned name after a swap); What's new w29; bump v259.
 Verified: 1412+ unit tests in 4 timezones, every tools/check-*.mjs, browser at 412 and 360 px (no
 overflow, no console errors). Meals stays `adv` (☰ ▸ More features) because of the ≤9 fresh-install
-destinations rule. NOT deployed: needs Kishore's "deploy".
+destinations rule. Deployed on Kishore's "deploy" 2026-11-16; deploy.sh confirmed the live URL serves v259.
 
 ## 2026-11-16 — Log hero round 2 (branch worktree-agent-a8d33da650b032e09, NOT merged/deployed)
 
