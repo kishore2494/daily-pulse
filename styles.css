@@ -3099,7 +3099,8 @@ html:not(.lh-top) .log-hero::before { animation-play-state: paused; }
   100% { transform: translate3d(-4%, -2%, 0) scale(1.03) rotate(-3deg); }
 }
 .lh-date { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); line-height: 16px; }
-.lh-greet { margin-top: 6px; font-family: var(--font-display); font-size: 30px; font-weight: 750; line-height: 1.12;
+/* 14px below the date: a one-line greeting long enough to reach the streak badge clears it */
+.lh-greet { margin-top: 14px; font-family: var(--font-display); font-size: 30px; font-weight: 750; line-height: 1.12;
   letter-spacing: -1px; color: var(--text); overflow-wrap: anywhere; }
 .lh-name { color: var(--accent-ink); }
 /* Midnight follows the user's accent colour; mixed toward ink/white so every accent clears 3:1
