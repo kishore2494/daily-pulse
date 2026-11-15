@@ -3038,10 +3038,10 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
   border: 1px solid var(--border-hi); background: transparent; color: var(--text); font: 600 13px/1 var(--font-ui); cursor: pointer; }
 .ml-act .ic { color: var(--accent-ink); }
 .ml-tabs { margin: 0 0 12px; }
-.ml-tabs .seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; }
+.ml-tabs .seg-btn { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; font-size: 14px; }
 .ml-badge { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px;
   background: var(--accent); color: #fff; font: 700 11px/1 var(--font-ui); }
-.seg-btn.on .ml-badge { background: rgba(255, 255, 255, .28); }
+.seg-btn.on .ml-badge { background: color-mix(in srgb, currentColor 22%, transparent); color: inherit; }
 
 /* first visit */
 .ml-first { text-align: center; padding: 18px 18px 16px; }
@@ -3155,7 +3155,7 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
 .ml-li-t b::first-letter { text-transform: uppercase; }
 .ml-li-t span { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-li.done .ml-li-t b { color: var(--text-faint); text-decoration: line-through; }
-.ml-cnt { flex: 0 0 auto; font: 700 13px/1 var(--font-display); padding: 6px 9px; border-radius: 99px; background: var(--bg-input); color: var(--text-dim); }
+.ml-cnt { flex: 0 0 auto; font: 700 12.5px/1 var(--font-ui); padding: 6px 9px; border-radius: 99px; background: var(--bg-input); color: var(--text-dim); }
 .ml-list-sub { margin: 16px 0 2px; font: 700 11.5px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
 .ml-shop-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .ml-shop-foot .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; }
@@ -3294,5 +3294,9 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
 :root[data-style="aurora"] .ml-card { background: #0e1124; border-color: rgba(255, 255, 255, .12); }
 :root[data-style="aurora"] .ml-emo, :root[data-style="aurora"] .ml-it-e { background: color-mix(in srgb, var(--ml-c, var(--accent)) 22%, transparent); }
 :root[data-style="bloom"] .ml-chip, :root[data-style="bloom"] .ml-lrow, :root[data-style="bloom"] .ml-row { border-color: transparent; }
+:root[data-style="bloom"] .ml-chip.eaten, :root[data-style="bloom"] .ml-lrow.eaten { background: color-mix(in srgb, var(--good) 13%, var(--bg-card)); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 :root[data-style="bloom"] .ml-wk-t b, :root[data-style="bloom"] .ml-day-h b, :root[data-style="bloom"] .ml-sh-t b, :root[data-style="bloom"] .ml-it-t b,
 :root[data-style="bloom"] .ml-dp-n { font-weight: 600; letter-spacing: 0; }
+.ml-more { display: block; width: 100%; min-height: 44px; margin-top: 6px; border: 0; background: none; color: var(--accent-ink); font: 700 13px/1 var(--font-ui); cursor: pointer; }
+.ml-rd.past:not(.on) { background: transparent; }
+.ml-rd.past:not(.on) b { color: var(--text-dim); }

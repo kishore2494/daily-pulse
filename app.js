@@ -15261,8 +15261,8 @@ function mealWeekShift(dir) {
 }
 function mealWeekday(d, len) { return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: len || 'short' }); }
 function mealDietMark(diet) { return MEAL_DIETS[diet] ? `<span class="ml-dm ml-dm-${diet}" title="${MEAL_DIETS[diet]}" aria-label="${MEAL_DIETS[diet]}"><i></i></span>` : ''; }
-function mealMeta(m) {
-  const bits = [MEAL_DIETS[m.diet], ...(m.tags || []).map(t => MEAL_TAGS[t])].filter(Boolean);
+function mealMeta(m, extra) {
+  const bits = [MEAL_DIETS[m.diet], ...(m.tags || []).map(t => MEAL_TAGS[t]), extra].filter(Boolean);
   return bits.length ? `${mealDietMark(m.diet)}<span>${bits.join(' · ')}</span>` : '';
 }
 function mealChipHTML(p, canEat) {
@@ -15460,13 +15460,13 @@ function mealSheetRender() {
     const ws = weekStart(p.day), plan = mealPlan(), pick = new Set(s.pick || []);
     const has = d => d === p.day || plan.some(x => x.day === d && x.slot === p.slot && mealNorm(x.name) === mealNorm(p.name));
     const week = (start, label) => `<div class="ml-rp-l">${label}</div><div class="ml-rp">${[0, 1, 2, 3, 4, 5, 6].map(i => { const d = addDays(start, i), h = has(d);
-      return `<button class="ml-rd ${h ? 'has' : ''} ${pick.has(d) ? 'on' : ''}" data-ml-rday="${d}" ${h ? 'disabled aria-disabled="true"' : ''} aria-pressed="${pick.has(d)}" aria-label="${escapeHtml(prettyDate(d))}${h ? ', already planned' : ''}">
+      return `<button class="ml-rd ${h ? 'has' : ''} ${pick.has(d) ? 'on' : ''} ${d < todayStr() ? 'past' : ''}" data-ml-rday="${d}" ${h ? 'disabled aria-disabled="true"' : ''} aria-pressed="${pick.has(d)}" aria-label="${escapeHtml(prettyDate(d))}${h ? ', already planned' : ''}">
         <span>${escapeHtml(mealWeekday(d, 'narrow'))}</span><b>${+d.slice(8)}</b>${h ? `<i>${mlSvg('tick', 11)}</i>` : ''}</button>`; }).join('')}</div>`;
     inner = `<div class="ml-sh-h"><button class="ml-x" data-ml-back aria-label="Back">${mlSvg('chevL', 18)}</button>
         <div class="ml-sh-t"><b>Repeat ${escapeHtml(p.emoji || '')} ${escapeHtml(p.name)}</b><span>${mealSlotLabel(p.slot)} on…</span></div>${x}</div>
       ${week(ws, ws === weekStart(todayStr()) ? 'This week' : `Week of ${escapeHtml(shortDate(ws))}`)}
       ${week(addDays(ws, 7), 'The week after')}
-      <div class="ml-rq"><button class="ml-f" data-ml-rquick="week">Rest of this week</button><button class="ml-f" data-ml-rquick="wkdays">Weekdays</button><button class="ml-f" data-ml-rquick="none">None</button></div>
+      <div class="ml-rq"><button class="ml-f" data-ml-rquick="week">Next 7 days</button><button class="ml-f" data-ml-rquick="wkdays">Weekdays</button><button class="ml-f" data-ml-rquick="none">None</button></div>
       <button class="btn btn-primary ml-go" id="ml-repeat-go" ${pick.size ? '' : 'disabled'}>${pick.size ? `Repeat on ${pick.size} day${pick.size > 1 ? 's' : ''}` : 'Pick days'}</button>`;
   } else if (s.mode === 'edit') {
     const m = s.lib ? mealLib().find(i => i.id === s.lib) : null;
@@ -15478,8 +15478,9 @@ function mealSheetRender() {
         <input type="text" id="ml-ed-name" maxlength="60" placeholder="Meal name" aria-label="Meal name" value="${escapeHtml(m ? m.name : s.name || '')}"></div>
       <div class="ml-ed-l">Type</div>
       <div class="ml-filters ml-ed-chips">${[['veg', 'Veg'], ['egg', 'Egg'], ['nonveg', 'Non-veg'], ['', 'Not set']].map(([k, l]) =>
-        `<button class="ml-f ${ed.diet === k ? 'on' : ''}" data-ml-diet="${k}">${mealDietMark(k)}${l}</button>`).join('')}
-        ${Object.keys(MEAL_TAGS).map(k => `<button class="ml-f ${ed.tags.includes(k) ? 'on' : ''}" data-ml-tag="${k}">${MEAL_TAGS[k]}</button>`).join('')}</div>
+        `<button class="ml-f ${ed.diet === k ? 'on' : ''}" data-ml-diet="${k}" aria-pressed="${ed.diet === k}">${mealDietMark(k)}${l}</button>`).join('')}</div>
+      <div class="ml-ed-l">Tags <span>tap any that fit</span></div>
+      <div class="ml-filters ml-ed-chips">${Object.keys(MEAL_TAGS).map(k => `<button class="ml-f ${ed.tags.includes(k) ? 'on' : ''}" data-ml-tag="${k}" aria-pressed="${ed.tags.includes(k)}">${MEAL_TAGS[k]}</button>`).join('')}</div>
       <div class="ml-ed-l">Ingredients <span>comma-separated, for the shopping list</span></div>
       <textarea id="ml-ed-ing" rows="3" placeholder="e.g. rice, toor dal, tomato, onion">${escapeHtml(m ? m.ing || '' : '')}</textarea>
       <div class="ml-ed-btns"><button class="btn btn-primary" id="ml-ed-save">Save</button>
@@ -15501,13 +15502,16 @@ function mealResultsHTML() {
   const g = q ? mealGuess(s.q) : null;
   const newBtn = q && !exact ? `<button class="ml-new" data-ml-new><span class="ml-emo" aria-hidden="true">${escapeHtml(g.emoji)}</span>
     <span class="ml-chip-t"><b>Add “${escapeHtml(String(s.q).trim())}”</b><span class="ml-meta"><span>new meal · saved to your meals</span></span></span>${mlSvg('plus', 18)}</button>` : '';
-  const mineHTML = mine.length ? `<div class="ml-sec">Your meals</div><div class="ml-mine">${mine.slice(0, q ? 30 : 12).map(m => `<div class="ml-row">
+  // a short list until you search or ask for all, so the ideas are not pushed out of sight
+  const cap = q || f !== 'all' || s.all ? 60 : 5, more = mine.length - cap;
+  const mineHTML = mine.length ? `<div class="ml-sec">Your meals</div><div class="ml-mine">${mine.slice(0, cap).map(m => `<div class="ml-row">
       <button class="ml-pick" data-ml-pick="lib:${escapeHtml(m.id)}"><span class="ml-emo" aria-hidden="true">${escapeHtml(m.emoji || '🍲')}</span>
-        <span class="ml-chip-t"><b>${escapeHtml(m.name)}</b><span class="ml-meta">${mealMeta(m)}${mealIngList(m.ing).length ? `<span>${mealIngList(m.ing).length} ingredients</span>` : ''}</span></span></button>
+        <span class="ml-chip-t"><b>${escapeHtml(m.name)}</b><span class="ml-meta">${mealMeta(m, mealIngList(m.ing).length ? mealIngList(m.ing).length + ' ingredients' : '')}</span></span></button>
       <button class="ml-ibtn ml-fav ${m.fav ? 'on' : ''}" data-ml-fav="${escapeHtml(m.id)}" aria-pressed="${!!m.fav}" aria-label="Favourite ${escapeHtml(m.name)}">${mlSvg('star', 17, !!m.fav)}</button>
-      <button class="ml-ibtn" data-ml-edit="${escapeHtml(m.id)}" aria-label="Edit ${escapeHtml(m.name)}">${mlSvg('pencil', 16)}</button></div>`).join('')}</div>` : '';
+      <button class="ml-ibtn" data-ml-edit="${escapeHtml(m.id)}" aria-label="Edit ${escapeHtml(m.name)}">${mlSvg('pencil', 16)}</button></div>`).join('')}</div>
+    ${more > 0 ? `<button class="ml-more" data-ml-all>Show all ${mine.length} of your meals</button>` : ''}` : '';
   const ideasHTML = ideas.length ? `<div class="ml-sec">Ideas</div><div class="ml-ideas">${ideas.map(x => `<button class="ml-idea" data-ml-pick="idea:${x.i}">
-      <span class="ml-idea-e" aria-hidden="true">${x.m.emoji}</span><span class="ml-idea-n">${escapeHtml(x.m.name)}</span><span class="ml-idea-m">${mealDietMark(x.m.diet)}${x.m.tags.map(t => MEAL_TAGS[t]).join(' · ')}</span></button>`).join('')}</div>` : '';
+      <span class="ml-idea-e" aria-hidden="true">${x.m.emoji}</span><span class="ml-idea-n">${escapeHtml(x.m.name)}</span><span class="ml-idea-m">${mealDietMark(x.m.diet)}${x.m.tags.length ? x.m.tags.map(t => MEAL_TAGS[t]).join(' · ') : MEAL_DIETS[x.m.diet]}</span></button>`).join('')}</div>` : '';
   return newBtn + mineHTML + ideasHTML + (!newBtn && !mineHTML && !ideasHTML ? `<p class="ml-sh-note">Nothing matches. Clear the filter, or type a name to add it.</p>` : '');
 }
 function mealPickDone(item, msg) {
@@ -15548,6 +15552,7 @@ document.addEventListener('click', (ev) => {
       const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML(); return; }
     if ((b = t.closest('[data-ml-pick]'))) { mealSheetPick(mealSrc(b.dataset.mlPick)); return; }
     if (t.closest('[data-ml-new]')) { mealSheetNew(); return; }
+    if (t.closest('[data-ml-all]')) { s.all = true; const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML(); return; }
     if ((b = t.closest('[data-ml-fav]'))) {
       const lib = mealLib(), m = lib.find(x => x.id === b.dataset.mlFav); if (!m) return;
       if (m.fav) delete m.fav; else m.fav = true;
@@ -15580,11 +15585,13 @@ document.addEventListener('click', (ev) => {
     }
     if ((b = t.closest('[data-ml-rquick]'))) {
       const p = mealPlan().find(x => x.id === s.id); if (!p) return;
-      const ws = weekStart(p.day), plan = mealPlan(), q = b.dataset.mlRquick, today = todayStr();
+      // the 7 days after the meal (or after today, for a meal in the past), within the two weeks shown
+      const ws = weekStart(p.day), last = addDays(ws, 13), plan = mealPlan(), q = b.dataset.mlRquick, today = todayStr();
       const free = d => d !== p.day && !plan.some(x => x.day === d && x.slot === p.slot && mealNorm(x.name) === mealNorm(p.name));
-      const span = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i));
-      s.pick = q === 'none' ? [] : q === 'week' ? span.filter(d => d > p.day && d >= today && free(d))
-        : span.filter(d => { const g = new Date(d + 'T00:00:00').getDay(); return g !== 0 && g !== 6 && d >= today && free(d); });
+      const from = p.day >= today ? p.day : addDays(today, -1);
+      const span = [1, 2, 3, 4, 5, 6, 7].map(i => addDays(from, i)).filter(d => d <= last && free(d));
+      s.pick = q === 'none' ? [] : q === 'week' ? span
+        : span.filter(d => { const g = new Date(d + 'T00:00:00').getDay(); return g !== 0 && g !== 6; });
       mealSheetRender(); return;
     }
     if (t.closest('#ml-repeat-go')) {
@@ -15593,8 +15600,8 @@ document.addEventListener('click', (ev) => {
       if (n) { toast(`${p ? p.name : 'Meal'} on ${n} more day${n > 1 ? 's' : ''}`); buzz(10); }
       return;
     }
-    if ((b = t.closest('[data-ml-diet]'))) { s.ed.diet = b.dataset.mlDiet; sheet.querySelectorAll('[data-ml-diet]').forEach(x => x.classList.toggle('on', x === b)); return; }
-    if ((b = t.closest('[data-ml-tag]'))) { const k = b.dataset.mlTag, i = s.ed.tags.indexOf(k); if (i >= 0) s.ed.tags.splice(i, 1); else s.ed.tags.push(k); b.classList.toggle('on', i < 0); return; }
+    if ((b = t.closest('[data-ml-diet]'))) { s.ed.diet = b.dataset.mlDiet; sheet.querySelectorAll('[data-ml-diet]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); return; }
+    if ((b = t.closest('[data-ml-tag]'))) { const k = b.dataset.mlTag, i = s.ed.tags.indexOf(k); if (i >= 0) s.ed.tags.splice(i, 1); else s.ed.tags.push(k); b.classList.toggle('on', i < 0); b.setAttribute('aria-pressed', i < 0); return; }
     if (t.closest('#ml-ed-fav')) {
       const lib = mealLib(), m = lib.find(x => x.id === s.lib); if (!m) return;
       if (m.fav) delete m.fav; else m.fav = true;
