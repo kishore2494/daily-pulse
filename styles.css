@@ -3988,7 +3988,7 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 
 .lh-tiles { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .lhero.no-ring .lh-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.lhero.no-ring .lh-tiles > :only-child { grid-column: 1 / -1; }
+.lh-tiles > :only-child { grid-column: 1 / -1; }
 :root[data-style] .lhero .gl-tile { position: relative; min-height: 0; gap: 0; padding: 10px 30px 10px 12px; border: 0; border-radius: 16px;
   background: var(--hx-tile); box-shadow: inset 0 0 0 1px var(--hx-tile-ring); color: var(--hx-ink); }
 .lhero .gl-tile[data-gl="sleepHours"] { --gc: var(--gc-sleep); }
@@ -4146,6 +4146,8 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 :root[data-style="bloom"] .lhero .gl-v { font-weight: 600; letter-spacing: 0; }
 :root[data-style="bloom"] .otd-c { border-color: transparent; border-radius: 20px; }
 
+/* tablets and wide windows: the numbers sit side by side beside the ring */
+@media (min-width: 560px) { .lhero.has-ring .lh-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 380px) {
   .lhero .ring-wrap, .lhero .ring { width: 92px; height: 92px; }
   .lh-body { gap: 12px; }
