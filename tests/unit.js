@@ -4006,6 +4006,121 @@
     }
   })();
 
+  // ---- Lift: low-mood support (trigger, Talk-to-someone escalation, learning line minimum) ----
+  (function () {
+    const keys = ['dp.entries', 'dp.logsec'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const T = todayStr();
+    // moods for the last N days, the last one today
+    const mk = moods => { const e = {}; moods.forEach((m, i) => { e[addDays(T, -(moods.length - 1 - i))] = { mood: m }; }); return e; };
+    try {
+      // --- when the card shows ---
+      ok('Lift: mood 3 is a low day', liftIsLow({ mood: 3 }));
+      ok('Lift: mood 4 is still low (the line)', liftIsLow({ mood: 4 }));
+      ok('Lift: mood 5 on its own is not', !liftIsLow({ mood: 5 }));
+      ok('Lift: mood 5 with an unpleasant word tagged is', liftIsLow({ mood: 5, journal: 'meh #drained' }));
+      ok('Lift: #sadness is not #sad', !liftIsLow({ mood: 5, journal: 'reading about #sadness' }));
+      ok('Lift: a pleasant mood is never low, whatever is tagged', !liftIsLow({ mood: 7, journal: '#tired' }));
+      ok('Lift: no mood and nothing tagged is not low', !liftIsLow({}) && !liftIsLow(null) && !liftIsLow({ mood: '' }));
+      ok('Lift: the card shows on a low today', liftCardShows({ mood: 2 }, T));
+      ok('Lift: not once dismissed for the day', !liftCardShows({ mood: 2, lift: { hide: true } }, T));
+      ok('Lift: not on a past day', !liftCardShows({ mood: 2 }, addDays(T, -1)));
+      ok('Lift: a tick or a dismissed card alone is not a logged day', !entryHasContent({ lift: { did: ['water'], hide: true }, updatedAt: 'x', habits: {} }));
+
+      // --- Talk to someone moves up ---
+      ok('Lift: 3 low of the last 5 logged days raises Talk to someone', liftEscalate(mk([7, 3, 6, 2, 4])));
+      ok('Lift: 2 low of 5 does not', !liftEscalate(mk([7, 3, 6, 8, 4])));
+      ok('Lift: only the last 5 logged days count', !liftEscalate(mk([2, 2, 2, 7, 7, 7, 7, 7])));
+      const old = {}; [20, 19, 18].forEach(n => { old[addDays(T, -n)] = { mood: 2 }; });
+      ok('Lift: low days more than two weeks back do not', !liftEscalate(old));
+      const samp = mk([2, 2, 2]); Object.keys(samp).forEach(d => { samp[d].sample = true; });
+      ok('Lift: sample days do not', !liftEscalate(samp));
+      ok('Lift: heavy-day count says how many of how many', JSON.stringify(liftHeavyDays(mk([7, 3, 6, 2, 4]))) === '{"low":3,"of":5}');
+
+      // --- the learning line: nothing below LIFT_MIN_N days on either side ---
+      const L = (nOn, nOff, onNext, offNext) => { const e = {}; let d = addDays(T, -200);
+        for (let i = 0; i < nOn; i++) { e[d] = { mood: 3, lift: { did: ['outside'] } }; e[addDays(d, 1)] = { mood: onNext }; d = addDays(d, 3); }
+        for (let i = 0; i < nOff; i++) { e[d] = { mood: 3 }; e[addDays(d, 1)] = { mood: offNext }; d = addDays(d, 3); }
+        return e; };
+      ok('Lift learning: the minimum is 4', LIFT_MIN_N === 4);
+      ok('Lift learning: 3 days with the action says nothing', liftLearn(L(3, 6, 6, 4)) === null);
+      ok('Lift learning: 4 with only 3 to compare with says nothing', liftLearn(L(4, 3, 6, 4)) === null);
+      const ln = liftLearn(L(4, 4, 6, 4));
+      ok('Lift learning: 4 and 4 names the action', !!ln && ln.act.id === 'outside' && ln.nOn === 4 && ln.nOff === 4 && approx(ln.diff, 2), ln && [ln.act.id, ln.nOn, ln.nOff, ln.diff]);
+      ok('Lift learning: the line gives both sample sizes and the plain numbers', !!ln && /4 vs 4 days/.test(liftLearnLine(ln)) && /\+3\.0/.test(liftLearnLine(ln)) && /\+1\.0/.test(liftLearnLine(ln)) && /not proof/.test(liftLearnLine(ln)), ln && liftLearnLine(ln));
+      ok('Lift learning: an action that did not help is not praised', liftLearn(L(5, 5, 3, 6)) === null);
+      ok('Lift learning: no data, no line', liftLearn({}) === null && liftLearnLine(null) === '');
+
+      // --- the card on the Log ---
+      localStorage.removeItem('dp.logsec');
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 8, energy: 7, habits: {} } }));
+      navigateTo('today');
+      ok('Lift card: none on a good day', !document.querySelector('#s-today .lift-card') && !!document.getElementById('lift-slot'));
+      document.querySelector('#s-today [data-mm="1,3"]').click();
+      ok('Lift card: appears as soon as a low mood is tapped', !!document.querySelector('#s-today .lift-card'));
+      const slot = document.getElementById('lift-slot');
+      ok('Lift card: sits right under the mood grid', !!slot.previousElementSibling && slot.previousElementSibling.classList.contains('mm-card'));
+      document.querySelector('#s-today [data-lift-dismiss]').click();
+      ok('Lift card: Not today hides it', !document.querySelector('#s-today .lift-card'));
+      flushAutosave();
+      ok('Lift card: and that is kept on the day', objOf((DB.entry(T) || {}).lift).hide === true, DB.entry(T));
+      navigateTo('today');
+      ok('Lift card: still hidden when the Log opens again', !document.querySelector('#s-today .lift-card'));
+
+      // --- the screen ---
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 3, journal: 'Long day.' } }));
+      _liftNotOk = null; navigateTo('lift');
+      const sc = document.getElementById('s-lift');
+      const order = () => [...sc.querySelectorAll('section.lift-sec')].map(s => s.id);
+      ok('Lift: a screen with all six parts', sc.classList.contains('on') && ['lift-breathe', 'lift-ground', 'lift-small', 'lift-good', 'lift-write', 'lift-talk'].every(id => order().includes(id)), order().join(','));
+      ok('Lift: Talk to someone is last on an ordinary low day', order()[order().length - 1] === 'lift-talk', order().join(','));
+      ok('Lift: Tele-MANAS numbers are tap-to-call links', !!sc.querySelector('a[href="tel:14416"]') && !!sc.querySelector('a[href="tel:18008914416"]'));
+      ok('Lift: findahelpline.com for everywhere else', !!sc.querySelector('a[href="https://findahelpline.com"]'));
+      ok('Lift: says plainly it is not a medical service', /not a medical service/i.test(sc.textContent) && /cannot diagnose or treat/i.test(sc.textContent));
+      sc.querySelector('[data-lift-notok]').click();
+      ok("Lift: I'm not okay raises Talk to someone to the top", order()[0] === 'lift-talk', order().join(','));
+      _liftNotOk = null;
+      localStorage.setItem('dp.entries', JSON.stringify(mk([7, 3, 6, 2, 4])));
+      renderLift();
+      ok('Lift: 3 low days of the last 5 raise it too, and say so', order()[0] === 'lift-talk' && /3 of your last 5/.test(sc.querySelector('#lift-talk').textContent), order().join(','));
+      localStorage.setItem('dp.entries', JSON.stringify(mk([8, 7, 3])));
+      renderLift();
+      ok('Lift: one low day in a good week keeps it at the bottom', order()[order().length - 1] === 'lift-talk', order().join(','));
+
+      // ticking a small thing, and writing it out
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 3, journal: 'Long day.' } }));
+      renderLift();
+      const id = sc.querySelector('[data-lift-did]').dataset.liftDid;
+      sc.querySelector('[data-lift-did]').click();
+      ok('Lift: I did this is recorded on today', liftDid(DB.entry(T)).includes(id), DB.entry(T).lift);
+      sc.querySelector('[data-lift-did]').click();
+      ok('Lift: Undo takes it back, leaving nothing behind', !('lift' in DB.entry(T)), DB.entry(T));
+      const ta = sc.querySelector('#lift-text'); ta.value = 'It was <b>a lot</b>.'; ta.dispatchEvent(new Event('input', { bubbles: true }));
+      sc.querySelector('[data-lift-save]').click();
+      ok("Lift: Write it out adds to today's journal", DB.entry(T).journal === 'Long day.\n\nIt was <b>a lot</b>.', DB.entry(T).journal);
+      ok('Lift: and says it was saved', !!sc.querySelector('#lift-write .lift-saved') && sc.querySelector('#lift-text').value === '');
+
+      // the person's own good days, escaped
+      const e2 = DB.entries(); e2[addDays(T, -30)] = { mood: 9, journal: '<img src=x onerror=alert(1)> best day in ages #grateful' };
+      localStorage.setItem('dp.entries', JSON.stringify(e2));
+      _liftGood = null; renderLift();
+      const good = sc.querySelector('#lift-good');
+      ok('Lift: a good day is read back in their words', /best day in ages/.test(good.textContent) && /Grateful/.test(good.textContent), good.textContent.replace(/\s+/g, ' ').slice(0, 160));
+      ok('Lift: and their text is escaped', !good.querySelector('img[src="x"]'));
+      ok('Lift: a low day is never offered as a good one', liftGoodDays({ [addDays(T, -3)]: { mood: 4, journal: 'rough' } }).length === 0);
+
+      renderDrawer();
+      ok('Lift: the menu always offers it', !!document.querySelector('#drawer-list [data-screen="lift"]'));
+    } catch (err) {
+      ok('Lift tests ran to the end', false, String(err && err.stack || err));
+    } finally {
+      window.toast = tSnap; _liftNotOk = null; _liftDeck = null; _liftGood = null; _liftText = ''; _liftSaved = false; liftBreathStop();
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
