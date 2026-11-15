@@ -451,3 +451,9 @@ internal track.
   (tests, a local copy). Both are the pull's failure, not a crash — guarded by `_pullsOpen`.
 - **Delete records need the same expiry on both sides.** `timelogForget` pruned at 90 days
   but the merge did not, so a 200-day-old record ping-ponged with one extra push per open.
+
+## CSS (learned in the 2026-11-15 visual pass)
+- A positioned element with a glow (box-shadow/filter) paints OVER the plain cards below it unless it gets `z-index: -1` (or the cards get their own stacking context).
+- `* { box-sizing: border-box }` does NOT reach `::before`/`::after`: the nav's sliding pill drifted 2px per tab until the pseudo-element got its own `box-sizing`.
+- The entrance animation (slight scale-up) makes 44px buttons measure under 44px in the layout eval: switch it off while measuring (`tools/evals`).
+
