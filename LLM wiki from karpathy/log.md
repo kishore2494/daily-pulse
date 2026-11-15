@@ -1,3 +1,19 @@
+## 2026-11-16 — Log hero round 2 (branch worktree-agent-a8d33da650b032e09, NOT merged/deployed)
+
+Kishore: "not a polished wow UI". The top of the Log was 4 cards (greeting, ring card, tall On this day
+card, date pill + Sleep/Deep work figures) and said the date twice. Now ONE panel, `logHeroHTML(tiles)`:
+eyebrow date + "Today ▾" chip (holds `#log-date`), greeting, the ring beside the glance tiles (still
+`[data-gl]` tap-to-edit; the pickers open as `.card.gl-edit` right under the hero), streak + week line
+in `.lh-foot` (`logHeroFootHTML`, refreshed by `refreshTodayRing`). Past day: "Editing Friday", the chip
+shows the day, `[data-lh-today]` "Back to today" fires the normal date change. Section rules: `ring`
+draws nothing in place — it is in the hero whenever shown, whatever its order; `core` keeps only scale /
+plain-number fields as `.card.core-more`. On this day = scroll-snap strip of mood-tinted `.otd-c` cards
+(all 4 marks, not 2). No tasks = `.task-slim` "+ Add a task" row (same ids; TOUR step targets it).
+While the hero is on screen the top bar is click-through and hides its flame badge. CSS: one block at
+the end of styles.css, per-style `--hx-*` tokens; Midnight is a night-sky panel in light AND dark.
+Verified: 1412 tests × 4 timezones, every check, shots in all 6 looks + past day / ring hidden / fresh
+install / 360px. No version bump, no WHATS_NEW item (add when merging).
+
 ## 2026-11-15 — Lift: low-mood support (branch worktree-agent-a42815294431461c7, NOT merged/deployed)
 
 Kishore: "if the mood feels low we need to give them some kind of things like that". Built as a new
