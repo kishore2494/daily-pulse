@@ -6,6 +6,15 @@ screen `lift` (features.md ▸ Lift). A low mood on today's Log shows a warm car
 Talk to someone lists Tele-MANAS (14416 / 1-800-891-4416) and findahelpline.com. 46 unit tests.
 Verified at 412px in midnight light/dark, paper, luxe, aurora, bloom. Not in WHATS_NEW yet.
 
+## 2026-11-15 — Meals: weekly planner, shopping list, Today's meals on the Log (branch, NOT merged)
+
+Built in worktree branch `worktree-agent-a7d95bec3ba692ed9` (parallel with a low-mood support feature
+and a visual polish pass). New screen `meals` (☰ ▸ More features), three new LIST_SYNC stores
+`dp.meals` / `dp.meallib` / `dp.mealshop`, Log section `meals` (hidden until a meal is planned).
+Details and deferred items: features.md ▸ Meals. Verified: 1344 unit tests in 4 timezones, every
+`tools/check-*.mjs`, and screenshots at 412×900 in midnight light/dark, paper light/dark, luxe,
+aurora, bloom. No version bump, no WHATS_NEW item yet (add both when merging).
+
 ## 2026-11-15 — native 120 rebuilt with R8 (Play "Obfuscation 1%" warning, fix by Feb 2027)
 
 minifyEnabled + shrinkResources ON. Runtime-verified on the emulator (Medium_Phone_API_36.1, headless):

@@ -314,7 +314,8 @@ function savedToast(ok, msg) {
    them now compares it with what is stored and records beside it when each item last changed
    (dp.listAt) and when each was deleted (dp.listDel), per list, by id. The pull (mergeList)
    then merges item by item. Recorded at save time, so no screen has to remember to do it. */
-const LIST_SYNC = ['tasks', 'notes', 'plans', 'projects', 'reminders', 'exercises', 'timeacts', 'events', 'docs', 'timebox', 'goals', 'finaccts', 'fintx', 'finmarks'];
+const LIST_SYNC = ['tasks', 'notes', 'plans', 'projects', 'reminders', 'exercises', 'timeacts', 'events', 'docs', 'timebox', 'goals', 'finaccts', 'fintx', 'finmarks',
+  'meals', 'meallib', 'mealshop'];   // Meals: the plan, your meals, the shopping list (see the Meals block)
 const LIST_DEL_KEEP = 90 * 864e5;   // long enough to reach every phone that syncs at all
 // The feedback box keeps its draft: Back or a tab switch used to wipe a long message.
 document.addEventListener('input', (ev) => { if (ev.target.id === 'fb-text') { try { localStorage.setItem('dp.fbDraft', ev.target.value.slice(0, 5000)); } catch (e) {} } });
@@ -989,6 +990,7 @@ function pushState(now) {
       projectnames: safeParse(localStorage.getItem('dp.pjnames'), {}),
       finaccts: finAccts(), fintx: finTx(), finmarks: finMarks(),
       finbudget: finBudgets(), fincats: safeParse(localStorage.getItem('dp.fincats'), []), finset: finSet(),
+      meals: mealPlan(), meallib: mealLib(), mealshop: mealShop(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}),
       timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel'), gymAt: listMeta('dp.gymAt') };
@@ -1827,6 +1829,8 @@ const LOG_SECTIONS_DEF = [
   { id: 'lift',      label: 'Lift on hard days', sub: 'a gentle card when your mood is low' },
   { id: 'tasks',     label: 'Tasks',            sub: "today's task count + quick add" },
   { id: 'checklist', label: 'Daily checklist',  sub: 'your habits' },
+  // Hidden until you have planned a meal (a getter: it is read before Meals' consts exist; mealsAny reads storage only)
+  { id: 'meals',     label: "Today's meals",    sub: 'tick off what you planned, or swap it', get off() { return !mealsAny(); } },
   { id: 'workout',   label: 'Workout',          sub: "link to today's gym log" },
   { id: 'health',    label: 'Health',           sub: 'auto-tracked steps, sleep, screen time' },
   { id: 'reflection',label: 'Reflection',       sub: 'wins, improvements, journal' },
@@ -2366,6 +2370,7 @@ function renderToday() {
       </div>
       <button class="btn btn-ghost btn-sm" id="log-habit-ideas" style="margin-top:8px">✨ Browse habit ideas</button>
     </div>`,
+    meals: () => mealsLogHTML(logDate),
     workout: () => `<div class="card">
       <h2 class="h2-icon">${hicon('dumbbell')}<span>Workout</span> <span class="hint">${(() => { const wd = (DB.entry(logDate) || {}).workoutsDone; return wd ? wd + ' exercise' + (wd > 1 ? 's' : '') + ' logged' : 'not logged yet'; })()}</span></h2>
       <button class="btn btn-primary btn-sm" id="log-open-gym">Log / edit ${logDate === todayStr() ? "today's" : "this day's"} workout →</button>
@@ -10014,6 +10019,7 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
   'milestones', 'alarmSound', 'alarmHealth', 'waves',
   'hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff',
   'usageDisclosure', 'exactAsked',
+  'meals', 'meallib', 'mealshop',   // Meals: the plan, your meals, the shopping list
   /* Added v231, and the v231 note about it was WRONG. dp.settings — name, reminder time, sync
      URL — was never actually being lost: backupBlob() special-cased it as `{ settings:
      DB.settings() }` and importData had a matching `d.settings` branch, both there since the
@@ -15433,6 +15439,838 @@ function mnChartsHTML() {
 
 
 /* ============================================================
+   MEALS — a weekly meal planner, the shopping list it adds up to, and "eaten" on the Log.
+   ------------------------------------------------------------
+   ===== Meals =====
+   Three lists. All three are in LIST_SYNC (saved through listSave, so every item carries its
+   own change stamp and merges item by item on a pull), in the pushState payload and in
+   BACKUP_KEYS:
+     dp.meals     one item per planned meal:
+                    { id, day: 'YYYY-MM-DD', slot: 'b'|'l'|'d'|'s', name, emoji,
+                      diet: 'veg'|'nonveg'|'egg'|'', tags: ['light','protein'],
+                      lib (the library meal it came from), eaten: true, was (the name it
+                      replaced, when swapped on the day or after) }
+                  The name, emoji and tags are copied onto the plan, so a plan still reads right
+                  after its library meal is deleted. A slot may hold several meals (snacks, or
+                  dal and rice), which is also why two phones planning the same slot keep both.
+     dp.meallib   the person's own meals: { id, name, emoji, diet, tags, ing: 'onion, rice', fav }.
+                  Ingredients live here, not on each plan, so one edit reaches every plan.
+     dp.mealshop  the shopping list: items typed in { id, name, done, manual: true }, and ticks on
+                  items worked out from the plan { id: 'g:<ingredient>', name, done, src: [plan
+                  ids], cleared }. A worked-out item is ticked (or cleared) for the meals it was
+                  ticked for: plan another meal that needs it and it comes back, unticked.
+                  Its id is the ingredient itself, so two phones ticking "onion" write the same
+                  item and the later tick wins, instead of making two.
+   Nothing here is derived-and-stored: counts, the list, suggestions and the insight are all
+   worked out on render.
+   ============================================================ */
+const MEAL_SLOTS = [
+  { k: 'b', label: 'Breakfast', short: 'Bfast', ico: 'sunrise' },
+  { k: 'l', label: 'Lunch',     short: 'Lunch', ico: 'sun' },
+  { k: 'd', label: 'Dinner',    short: 'Dinner', ico: 'moon' },
+  { k: 's', label: 'Snacks',    short: 'Snack', ico: 'cookie' },
+];
+const MEAL_DIETS = { veg: 'Veg', egg: 'Egg', nonveg: 'Non-veg' };
+const MEAL_TAGS = { light: 'Light', protein: 'Protein' };
+/* Starter ideas, rich in Indian everyday food. `s` = the slots each one suits (sorts them first
+   there). Ingredients are a starting point the person edits; they make the shopping list work
+   from the very first plan. Single-codepoint emoji only (gotchas.md ▸ Emoji / rendering). */
+const MEAL_IDEAS = [
+  { name: 'Idli & sambar', emoji: '🍥', diet: 'veg', tags: ['light'], s: 'b', ing: 'idli batter, toor dal, tomato, onion, sambar powder' },
+  { name: 'Masala dosa', emoji: '🫓', diet: 'veg', tags: [], s: 'bd', ing: 'dosa batter, potato, onion, mustard seeds, curry leaves' },
+  { name: 'Poha', emoji: '🍚', diet: 'veg', tags: ['light'], s: 'b', ing: 'poha, onion, peanuts, potato, curry leaves, lemon' },
+  { name: 'Upma', emoji: '🥣', diet: 'veg', tags: ['light'], s: 'b', ing: 'rava, onion, green chilli, curry leaves, mustard seeds' },
+  { name: 'Aloo paratha & curd', emoji: '🫓', diet: 'veg', tags: [], s: 'bl', ing: 'wheat flour, potato, green chilli, butter, curd' },
+  { name: 'Besan chilla', emoji: '🥞', diet: 'veg', tags: ['protein'], s: 'b', ing: 'besan, onion, tomato, green chilli' },
+  { name: 'Pongal', emoji: '🍲', diet: 'veg', tags: ['light'], s: 'b', ing: 'rice, moong dal, ghee, pepper, cumin' },
+  { name: 'Egg bhurji & toast', emoji: '🍳', diet: 'egg', tags: ['protein'], s: 'bd', ing: 'eggs, onion, tomato, green chilli, bread' },
+  { name: 'Masala omelette', emoji: '🥚', diet: 'egg', tags: ['protein', 'light'], s: 'b', ing: 'eggs, onion, tomato, coriander' },
+  { name: 'Oats with fruit', emoji: '🥣', diet: 'veg', tags: ['light'], s: 'b', ing: 'oats, milk, banana, honey' },
+  { name: 'Sprouts salad', emoji: '🥗', diet: 'veg', tags: ['protein', 'light'], s: 'bs', ing: 'moong sprouts, onion, tomato, cucumber, lemon' },
+  { name: 'Dal rice', emoji: '🍛', diet: 'veg', tags: [], s: 'ld', ing: 'toor dal, rice, tomato, onion, ghee' },
+  { name: 'Rajma chawal', emoji: '🫘', diet: 'veg', tags: ['protein'], s: 'l', ing: 'rajma, rice, onion, tomato, ginger garlic paste' },
+  { name: 'Chole & rice', emoji: '🍛', diet: 'veg', tags: ['protein'], s: 'l', ing: 'chickpeas, rice, onion, tomato, chole masala' },
+  { name: 'Chapati & sabzi', emoji: '🫓', diet: 'veg', tags: [], s: 'ld', ing: 'wheat flour, mixed vegetables, onion, tomato' },
+  { name: 'Curd rice', emoji: '🍚', diet: 'veg', tags: ['light'], s: 'ld', ing: 'rice, curd, mustard seeds, curry leaves' },
+  { name: 'Khichdi', emoji: '🍲', diet: 'veg', tags: ['light'], s: 'd', ing: 'rice, moong dal, ghee, cumin' },
+  { name: 'Sambar rice', emoji: '🍛', diet: 'veg', tags: [], s: 'l', ing: 'rice, toor dal, sambar powder, drumstick, tamarind' },
+  { name: 'Lemon rice', emoji: '🍋', diet: 'veg', tags: ['light'], s: 'l', ing: 'rice, lemon, peanuts, curry leaves, turmeric' },
+  { name: 'Veg pulao & raita', emoji: '🥘', diet: 'veg', tags: [], s: 'ld', ing: 'basmati rice, peas, carrot, beans, curd' },
+  { name: 'Palak paneer & roti', emoji: '🥬', diet: 'veg', tags: ['protein'], s: 'ld', ing: 'paneer, spinach, onion, tomato, wheat flour' },
+  { name: 'Veg biryani', emoji: '🥘', diet: 'veg', tags: [], s: 'ld', ing: 'basmati rice, mixed vegetables, onion, curd, biryani masala' },
+  { name: 'Chicken biryani', emoji: '🍗', diet: 'nonveg', tags: ['protein'], s: 'ld', ing: 'basmati rice, chicken, onion, curd, biryani masala' },
+  { name: 'Chicken curry & chapati', emoji: '🍖', diet: 'nonveg', tags: ['protein'], s: 'd', ing: 'chicken, onion, tomato, ginger garlic paste, wheat flour' },
+  { name: 'Fish curry & rice', emoji: '🐟', diet: 'nonveg', tags: ['protein'], s: 'ld', ing: 'fish, rice, coconut, tamarind, onion' },
+  { name: 'Egg curry & rice', emoji: '🥚', diet: 'egg', tags: ['protein'], s: 'ld', ing: 'eggs, onion, tomato, rice' },
+  { name: 'Paneer tikka', emoji: '🍢', diet: 'veg', tags: ['protein'], s: 'sd', ing: 'paneer, capsicum, onion, curd, tikka masala' },
+  { name: 'Masala chai', emoji: '☕', diet: 'veg', tags: [], s: 's', ing: 'tea leaves, milk, sugar, ginger' },
+  { name: 'Roasted chana', emoji: '🥜', diet: 'veg', tags: ['protein', 'light'], s: 's', ing: 'roasted chana' },
+  { name: 'Fruit bowl', emoji: '🍉', diet: 'veg', tags: ['light'], s: 'sb', ing: 'banana, apple, papaya, pomegranate' },
+  { name: 'Bhel puri', emoji: '🥗', diet: 'veg', tags: ['light'], s: 's', ing: 'puffed rice, onion, tomato, sev, chutney' },
+  { name: 'Veg sandwich', emoji: '🥪', diet: 'veg', tags: ['light'], s: 'bs', ing: 'bread, cucumber, tomato, butter, green chutney' },
+  { name: 'Peanut butter toast', emoji: '🍞', diet: 'veg', tags: ['protein'], s: 'bs', ing: 'bread, peanut butter, banana' },
+  { name: 'Grilled chicken salad', emoji: '🥗', diet: 'nonveg', tags: ['protein', 'light'], s: 'ld', ing: 'chicken breast, lettuce, cucumber, olive oil' },
+  { name: 'Pasta in tomato sauce', emoji: '🍝', diet: 'veg', tags: [], s: 'd', ing: 'pasta, tomato, garlic, olive oil, cheese' },
+];
+/* A typed name gets an emoji (and, where the word says so, a diet) without asking. Order
+   matters: "paneer bhurji" is paneer, not egg, so paneer is tested first. */
+const MEAL_GUESS = [
+  [/chicken|mutton|lamb|keema|meat|beef|pork/, '🍗', 'nonveg'], [/fish|meen|machli/, '🐟', 'nonveg'],
+  [/prawn|shrimp|jhinga/, '🍤', 'nonveg'], [/paneer|cheese/, '🧀', 'veg'],
+  [/\beggs?\b|omelet|anda|bhurji/, '🥚', 'egg'], [/salad|sprout/, '🥗', 'veg'], [/biryani|pulao|pilaf/, '🥘', ''],
+  [/dosa|paratha|roti|chapati|naan|phulka|thepla|kulcha/, '🫓', 'veg'], [/idli|appam/, '🍥', 'veg'],
+  [/oats|porridge|cereal|muesli|upma|daliya|dalia/, '🥣', 'veg'], [/dal|sabzi|sabji|rajma|chole|sambar|kadhi/, '🍛', 'veg'],
+  [/curry/, '🍛', ''], [/rice|chawal|khichdi|pongal/, '🍚', ''], [/soup|rasam|stew/, '🍲', ''],
+  [/chai|\btea\b|coffee|kaapi/, '☕', 'veg'], [/milk|lassi|buttermilk|chaas|shake|smoothie/, '🥛', 'veg'],
+  [/banana/, '🍌', 'veg'], [/apple/, '🍎', 'veg'], [/mango/, '🥭', 'veg'], [/fruit/, '🍉', 'veg'],
+  [/sandwich|toast/, '🥪', ''], [/pizza/, '🍕', ''], [/burger/, '🍔', ''], [/noodle|maggi|ramen/, '🍜', ''],
+  [/pasta|spaghetti|macaroni/, '🍝', ''], [/nuts|chana|peanut|makhana/, '🥜', 'veg'], [/wrap|roll|frankie|kathi/, '🌯', ''],
+];
+const MEAL_MIN_DAYS = 6;   // the floor Patterns and Money use: never a finding from fewer days on either side
+const ML_ICO = {
+  utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+  sunrise: '<path d="M12 2v7"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 5 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  cookie: '<path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/>',
+  swap: '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  tick: '<path d="M20 6 9 17l-5-5"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+};
+function mlSvg(name, size, fill) {
+  size = size || 18;
+  const p = ML_ICO[name] || (typeof ICONS !== 'undefined' && ICONS[name]) || '';
+  return `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+
+/* ---- storage ---- */
+function mealPlan() { const v = safeParse(localStorage.getItem('dp.meals'), []); return Array.isArray(v) ? v.filter(x => x && x.id && x.day) : []; }
+function mealSavePlan(list) { const ok = listSave('dp.meals', list); pushState(); return ok; }
+function mealLib() { const v = safeParse(localStorage.getItem('dp.meallib'), []); return Array.isArray(v) ? v.filter(x => x && x.id && x.name) : []; }
+function mealSaveLib(list) { const ok = listSave('dp.meallib', list); pushState(); return ok; }
+function mealShop() { const v = safeParse(localStorage.getItem('dp.mealshop'), []); return Array.isArray(v) ? v.filter(x => x && x.id) : []; }
+function mealSaveShop(list) { const ok = listSave('dp.mealshop', list); pushState(); return ok; }
+/* Read by LOG_SECTIONS_DEF while the file is still loading, so: storage only, nothing declared
+   with const further down. */
+function mealsAny() { const v = safeParse(localStorage.getItem('dp.meals'), []); return Array.isArray(v) && v.length > 0; }
+function mealId(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+/* ---- names, ingredients, the library ---- */
+function mealNorm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function mealIngList(s) { return String(s || '').split(/[,;\n]+/).map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean).slice(0, 40); }
+/* "Onions", "onion" and "ONION" are one line on the list; "tomatoes" is "tomato". */
+function mealIngKey(s) {
+  let k = mealNorm(s);
+  if (/oes$/.test(k)) k = k.slice(0, -2); else if (k.length > 3 && /[^s]s$/.test(k)) k = k.slice(0, -1);
+  return k;
+}
+function mealGuess(name) {
+  const n = mealNorm(name);
+  for (const [re, emoji, diet] of MEAL_GUESS) if (re.test(n)) return { emoji, diet };
+  return { emoji: '🍲', diet: '' };
+}
+function mealEmojiOf(raw) {
+  const m = String(raw || '').trim().match(/^(\p{Extended_Pictographic}[\u{fe0f}\u{200d}\p{Extended_Pictographic}]*)/u);
+  return m ? m[1] : '';
+}
+function mealLibFind(name, lib) { const k = mealNorm(name); return (lib || mealLib()).find(m => mealNorm(m.name) === k) || null; }
+function mealIdeaFind(name) { const k = mealNorm(name); return MEAL_IDEAS.find(m => mealNorm(m.name) === k) || null; }
+/* The library meal behind a plan: by id, else by name (its library meal deleted on another phone). */
+function mealLibOf(p, lib) { lib = lib || mealLib(); return lib.find(m => m.id === p.lib) || mealLibFind(p.name, lib); }
+function mealIngOf(p, lib) { const m = mealLibOf(p, lib) || mealIdeaFind(p.name); return mealIngList(m && m.ing); }
+/* The library item for something picked (a library meal, an idea, a typed name): the one with
+   that name if there is one, else a new one. The caller saves `lib` when `added`. */
+function mealLibEnsure(src, lib) {
+  lib = lib || mealLib();
+  const name = String(src.name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  let m = mealLibFind(name, lib);
+  if (m) return { m, lib, added: false };
+  const g = mealGuess(name);
+  m = { id: mealId('mb'), name, emoji: src.emoji || g.emoji, diet: src.diet != null && src.diet !== '' ? src.diet : g.diet,
+    tags: Array.isArray(src.tags) ? src.tags.filter(t => MEAL_TAGS[t]) : [], ing: src.ing || '' };
+  lib.push(m);
+  return { m, lib, added: true };
+}
+/* "pick" tokens in the sheet: lib:<id>, idea:<index>, plan:<id> (a suggestion from history). */
+function mealSrc(tok) {
+  const i = String(tok).indexOf(':'), kind = String(tok).slice(0, i), v = String(tok).slice(i + 1);
+  if (kind === 'lib') return mealLib().find(m => m.id === v) || null;
+  if (kind === 'idea') return MEAL_IDEAS[+v] || null;
+  if (kind === 'plan') {
+    const p = mealPlan().find(x => x.id === v); if (!p) return null;
+    return mealLibOf(p) || { name: p.name, emoji: p.emoji, diet: p.diet, tags: p.tags, ing: (mealIdeaFind(p.name) || {}).ing || '' };
+  }
+  return null;
+}
+
+/* ---- the plan ---- */
+function mealsOn(day, slot, plan) { return (plan || mealPlan()).filter(x => x.day === day && (!slot || x.slot === slot)); }
+const ML_SLOT_ORDER = { b: 0, l: 1, d: 2, s: 3 };
+function mealBySlot(a, b) { return (ML_SLOT_ORDER[a.slot] - ML_SLOT_ORDER[b.slot]) || 0; }
+function mealAdd(day, slot, src) {
+  const r = mealLibEnsure(src);
+  if (r.added && !mealSaveLib(r.lib)) return null;
+  const plan = mealPlan(), first = !plan.length, m = r.m;
+  const item = { id: mealId('ml'), day, slot, name: m.name, emoji: m.emoji, diet: m.diet || '', tags: (m.tags || []).slice(), lib: m.id };
+  plan.push(item);
+  if (!mealSavePlan(plan)) return null;
+  // the first meal anyone plans brings "Today's meals" onto their Log (hidden until there is one)
+  if (first) { try { if (logSecHidden('meals')) setLogSecHidden('meals', false); } catch (e) {} }
+  return item;
+}
+/* Swap a planned meal for another. On the day itself or after, the old name is kept as `was`:
+   "ate the planned dinner" (the insight) means the one that was planned. `eat` marks it eaten
+   too (a swap from the Log is "I had this instead"). */
+function mealSwap(id, src, eat) {
+  const r = mealLibEnsure(src);
+  if (r.added) mealSaveLib(r.lib);
+  const plan = mealPlan(), p = plan.find(x => x.id === id), m = r.m;
+  if (!p) return false;
+  if (mealNorm(p.name) !== mealNorm(m.name) && p.day <= todayStr()) {
+    if (!p.was) p.was = p.name; else if (mealNorm(p.was) === mealNorm(m.name)) delete p.was;
+  }
+  Object.assign(p, { name: m.name, emoji: m.emoji, diet: m.diet || '', tags: (m.tags || []).slice(), lib: m.id });
+  if (eat && p.day <= todayStr()) p.eaten = true;
+  return mealSavePlan(plan);
+}
+function mealEatToggle(id) {
+  const plan = mealPlan(), p = plan.find(x => x.id === id);
+  if (!p || p.day > todayStr()) return null;   // a meal is not eaten before its day
+  if (p.eaten) delete p.eaten; else p.eaten = true;
+  return mealSavePlan(plan) ? !!p.eaten : null;
+}
+/* Copies the week before `ws` into `ws`, only into slots that are still empty there, so it can
+   never double up a meal already planned. Returns how many it added. */
+function mealCopyWeek(ws) {
+  const plan = mealPlan(), prev = addDays(ws, -7), add = [];
+  for (let i = 0; i < 7; i++) {
+    const from = addDays(prev, i), to = addDays(ws, i);
+    MEAL_SLOTS.forEach(s => {
+      if (plan.some(x => x.day === to && x.slot === s.k)) return;
+      plan.filter(x => x.day === from && x.slot === s.k).forEach(x => {
+        const c = Object.assign({}, x, { id: mealId('ml'), day: to }); delete c.eaten; delete c.was;
+        add.push(c);
+      });
+    });
+  }
+  if (!add.length) return 0;
+  return mealSavePlan(plan.concat(add)) ? add.length : 0;
+}
+/* The same meal on more days, same slot; a day that already has it is left alone. */
+function mealRepeat(id, days) {
+  const plan = mealPlan(), p = plan.find(x => x.id === id); if (!p) return 0;
+  const add = [];
+  days.forEach(d => {
+    if (d === p.day || plan.concat(add).some(x => x.day === d && x.slot === p.slot && mealNorm(x.name) === mealNorm(p.name))) return;
+    const c = Object.assign({}, p, { id: mealId('ml'), day: d }); delete c.eaten; delete c.was;
+    add.push(c);
+  });
+  if (!add.length) return 0;
+  return mealSavePlan(plan.concat(add)) ? add.length : 0;
+}
+/* Your meals for the sheet: favourites, then the most recently planned, then the ones you plan
+   most in this slot. */
+function mealLibSorted(slot) {
+  const lib = mealLib(), plan = mealPlan(), last = {}, inSlot = {};
+  plan.forEach(p => { const m = mealLibOf(p, lib); if (!m) return;
+    if (!last[m.id] || p.day > last[m.id]) last[m.id] = p.day;
+    if (p.slot === slot) inSlot[m.id] = (inSlot[m.id] || 0) + 1; });
+  return lib.slice().sort((a, b) => (!!b.fav - !!a.fav) || String(last[b.id] || '').localeCompare(String(last[a.id] || ''))
+    || ((inSlot[b.id] || 0) - (inSlot[a.id] || 0)) || a.name.localeCompare(b.name));
+}
+/* One tap for an empty slot: what you plan most there lately, else an idea for that slot that
+   changes day by day. */
+function mealSuggest(day, slot, plan) {
+  const from = addDays(day, -42), n = {}, has = new Set(mealsOn(day, null, plan).map(p => mealNorm(p.name)));
+  plan.forEach(p => { if (p.slot === slot && p.day >= from && p.day !== day && !has.has(mealNorm(p.name))) { const k = mealNorm(p.name); (n[k] = n[k] || { p, c: 0 }).c++; } });
+  const best = Object.values(n).sort((a, b) => b.c - a.c)[0];
+  if (best && best.c >= 2) return { tok: 'plan:' + best.p.id, emoji: best.p.emoji, name: best.p.name, again: true };
+  const ideas = MEAL_IDEAS.map((m, i) => ({ m, i })).filter(x => x.m.s.includes(slot) && !has.has(mealNorm(x.m.name)));
+  if (!ideas.length) return null;
+  const dn = Math.round(new Date(day + 'T12:00:00').getTime() / 864e5);
+  const x = ideas[(dn * 7 + ML_SLOT_ORDER[slot] * 3) % ideas.length];
+  return { tok: 'idea:' + x.i, emoji: x.m.emoji, name: x.m.name, again: false };
+}
+
+/* ---- the shopping list ---- */
+/* Ingredients of the meals planned for today and the next six days that are not eaten yet,
+   one line per ingredient, counted by meal ("onion ×3" = three meals need onion). */
+function mealShopDerived(plan, lib) {
+  const from = todayStr(), to = addDays(from, 6), out = new Map();
+  plan.forEach(p => {
+    if (p.eaten || !(p.day >= from && p.day <= to)) return;
+    mealIngOf(p, lib).forEach(ing => {
+      const k = mealIngKey(ing); if (!k) return;
+      let r = out.get(k);
+      if (!r) out.set(k, r = { id: 'g:' + k, name: ing, n: 0, ids: [], meals: [] });
+      if (r.ids.includes(p.id)) return;   // listed twice in one meal: one meal
+      r.n++; r.ids.push(p.id);
+      if (!r.meals.includes(p.name)) r.meals.push(p.name);
+    });
+  });
+  return [...out.values()];
+}
+function mealShopRows() {
+  const shop = mealShop(), byId = new Map(shop.map(x => [x.id, x])), rows = [];
+  mealShopDerived(mealPlan(), mealLib()).forEach(r => {
+    const rec = byId.get(r.id);
+    const covered = !!rec && Array.isArray(rec.src) && r.ids.every(i => rec.src.includes(i));
+    if (covered && rec.cleared) return;
+    rows.push({ id: r.id, name: r.name, n: r.n, meals: r.meals, ids: r.ids, done: covered && !!rec.done });
+  });
+  shop.forEach(x => { if (x.manual) rows.push({ id: x.id, name: String(x.name || ''), n: 0, meals: [], done: !!x.done, manual: true }); });
+  return rows;
+}
+/* A tick on an ingredient no meal in the next seven days needs any more goes. */
+function mealShopPrune(shop) {
+  const need = new Set(mealShopDerived(mealPlan(), mealLib()).map(r => r.id));
+  return shop.filter(x => x.manual || need.has(x.id));
+}
+function mealShopToggle(id) {
+  const row = mealShopRows().find(r => r.id === id); if (!row) return null;
+  const shop = mealShop();
+  let rec = shop.find(x => x.id === id);
+  if (row.manual) rec.done = !rec.done;
+  else if (row.done) { rec.done = false; delete rec.cleared; }
+  else { if (!rec) shop.push(rec = { id }); Object.assign(rec, { name: row.name, done: true, src: row.ids.slice() }); delete rec.cleared; }
+  return mealSaveShop(mealShopPrune(shop)) ? !!(rec.done) : null;
+}
+function mealShopAddManual(name) {
+  name = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 80); if (!name) return false;
+  const shop = mealShop();
+  shop.push({ id: mealId('ms'), name, done: false, manual: true });
+  return mealSaveShop(shop);
+}
+/* Checked items you typed go; checked items from the plan are cleared for the meals they were
+   ticked for. Returns how many went, and what to put back for Undo. */
+function mealShopClear() {
+  const done = new Set(mealShopRows().filter(r => r.done).map(r => r.id));
+  if (!done.size) return { n: 0 };
+  const before = mealShop();
+  const shop = before.map(x => Object.assign({}, x)).filter(x => !(x.manual && done.has(x.id)));
+  shop.forEach(x => { if (!x.manual && done.has(x.id)) x.cleared = true; });
+  mealSaveShop(mealShopPrune(shop));
+  return { n: done.size, before };
+}
+function mealShopText() {
+  const rows = mealShopRows().filter(r => !r.done);
+  return rows.length ? 'Shopping list\n' + rows.map(r => '• ' + r.name + (r.n > 1 ? ' ×' + r.n : '')).join('\n') : '';
+}
+
+/* ---- one honest insight ----
+   Nights after a planned dinner you marked eaten, against nights after a planned dinner you did
+   not (or swapped). Sleep the next night first, next-day mood second; the bigger effect, and
+   only past the floors: 6 days a side (MEAL_MIN_DAYS, as Patterns), 15 minutes, half a point. */
+function mealInsight() {
+  const plan = mealPlan(), today = todayStr(), ents = DB.entries(), hs = (typeof healthStore === 'function' ? healthStore() : {}) || {};
+  const din = {};
+  plan.forEach(p => { if (p.slot !== 'd' || !(p.day < today)) return;
+    din[p.day] = din[p.day] === 'ate' || (p.eaten && !p.was) ? 'ate' : 'not'; });
+  const num = v => v != null && v !== '' && !isNaN(+v) ? +v : null;
+  const sleepOf = d => { const h = hs[d] && hs[d].sleepMin != null ? hs[d].sleepMin / 60 : null; return h != null ? h : num(ents[d] && ents[d].sleepHours); };
+  const moodOf = d => num(ents[d] && ents[d].mood);
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const split = valueOf => {
+    const a = [], b = [];
+    Object.keys(din).forEach(d => { const v = valueOf(addDays(d, 1)); if (v == null) return; (din[d] === 'ate' ? a : b).push(v); });
+    if (a.length < MEAL_MIN_DAYS || b.length < MEAL_MIN_DAYS) return null;
+    const diff = avg(a) - avg(b), sd = dpStd(a.concat(b)) || 1;
+    return { a, b, diff, size: Math.abs(diff) / sd, ma: avg(a), mb: avg(b) };
+  };
+  const out = [];
+  const s = split(sleepOf);
+  if (s && Math.abs(s.diff) * 60 >= 15) {
+    const min = Math.round(Math.abs(s.diff) * 60), hm = h => fmtDur(Math.round(h * 60) * 60000);
+    out.push({ size: s.size, head: `On days you ate the planned dinner, you slept ${min} min ${s.diff > 0 ? 'more' : 'less'}`,
+      body: `${hm(s.ma)} the night after ${s.a.length} planned dinners you marked eaten, vs ${hm(s.mb)} after ${s.b.length} you skipped or swapped. Your own log, not a rule: other things change on those days too.` });
+  }
+  const m = split(moodOf);
+  if (m && Math.abs(m.diff) >= 0.5) {
+    out.push({ size: m.size, head: `After a planned dinner you ate, next-day mood runs ${Math.abs(m.diff).toFixed(1)} ${m.diff > 0 ? 'higher' : 'lower'}`,
+      body: `Mood averages ${m.ma.toFixed(1)} the day after ${m.a.length} planned dinners you marked eaten, vs ${m.mb.toFixed(1)} after ${m.b.length} you skipped or swapped. Your own log, not a rule: other things change on those days too.` });
+  }
+  out.sort((x, y) => y.size - x.size);
+  return out[0] || null;
+}
+
+/* ---- the screen ---- */
+let mlWeek = null, mlDay = null, mlTab = 'plan', mlAnim = 0, mlSwipedAt = 0;
+function mealsReset() { mlWeek = weekStart(todayStr()); mlDay = todayStr(); mlTab = 'plan'; mlAnim = 0; mealSheetClose(); }
+function mealsGoDay(day) { mlWeek = weekStart(day); mlDay = day; mlTab = 'plan'; }
+function mealWeekShift(dir) {
+  mlWeek = addDays(mlWeek || weekStart(todayStr()), dir * 7);
+  mlDay = addDays(mlDay || todayStr(), dir * 7);
+  if (!(mlDay >= mlWeek && mlDay <= addDays(mlWeek, 6))) mlDay = mlWeek;
+  mlAnim = dir; renderMeals(); buzz(6);
+}
+function mealWeekday(d, len) { return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: len || 'short' }); }
+function mealDietMark(diet) { return MEAL_DIETS[diet] ? `<span class="ml-dm ml-dm-${diet}" title="${MEAL_DIETS[diet]}" aria-label="${MEAL_DIETS[diet]}"><i></i></span>` : ''; }
+function mealMeta(m, extra) {
+  const bits = [MEAL_DIETS[m.diet], ...(m.tags || []).map(t => MEAL_TAGS[t]), extra].filter(Boolean);
+  return bits.length ? `${mealDietMark(m.diet)}<span>${bits.join(' · ')}</span>` : '';
+}
+function mealChipHTML(p, canEat) {
+  return `<div class="ml-chip ${p.eaten ? 'eaten' : ''}">
+    <button class="ml-chip-main" data-ml-item="${escapeHtml(p.id)}" aria-label="${escapeHtml(p.name)}: options">
+      <span class="ml-emo" aria-hidden="true">${escapeHtml(p.emoji || '🍲')}</span>
+      <span class="ml-chip-t"><b>${escapeHtml(p.name)}</b><span class="ml-meta">${p.eaten ? `<span class="ml-ate">Eaten</span>` : ''}${mealMeta(p)}${p.was ? `<span class="ml-was">instead of ${escapeHtml(p.was)}</span>` : ''}</span></span>
+    </button>
+    ${canEat ? `<button class="ml-eat ${p.eaten ? 'on' : ''}" data-ml-eat="${escapeHtml(p.id)}" aria-pressed="${!!p.eaten}" aria-label="${p.eaten ? 'Eaten' : 'Mark eaten'}: ${escapeHtml(p.name)}">${mlSvg('tick', 17)}</button>` : ''}
+  </div>`;
+}
+function renderMeals() {
+  const el = document.getElementById('s-meals'); if (!el) return;
+  if (!mlWeek) mealsReset();
+  document.getElementById('screen-title').textContent = 'Meals';
+  const plan = mealPlan(), today = todayStr(), thisW = weekStart(today);
+  const days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mlWeek, i));
+  if (!days.includes(mlDay)) mlDay = days.includes(today) ? today : days[0];
+  const week = plan.filter(p => p.day >= days[0] && p.day <= days[6]);
+  const filled = new Set(week.map(p => p.day + p.slot)).size;
+  const rel = mlWeek === thisW ? 'This week' : mlWeek === addDays(thisW, 7) ? 'Next week' : mlWeek === addDays(thisW, -7) ? 'Last week' : '';
+  const shopLeft = mlTab === 'shop' || plan.length ? mealShopRows().filter(r => !r.done).length : 0;
+  document.getElementById('screen-sub').textContent = plan.length ? `${filled} of 28 meals planned ${rel ? rel.toLowerCase() : 'that week'}` : 'plan your week';
+  const anim = mlAnim > 0 ? 'ml-in-r' : mlAnim < 0 ? 'ml-in-l' : '';
+  mlAnim = 0;
+  const canCopy = filled < 28 && plan.some(p => p.day >= addDays(mlWeek, -7) && p.day < mlWeek);
+  const strip = days.map(d => {
+    const has = new Set(mealsOn(d, null, week).map(p => p.slot));
+    return `<button class="ml-dp ${d === mlDay ? 'on' : ''} ${d === today ? 'today' : ''} ${d < today ? 'past' : ''}" data-ml-day="${d}" aria-pressed="${d === mlDay}" aria-label="${escapeHtml(prettyDate(d))}${d === today ? ', today' : ''}: ${has.size} of 4 planned">
+      <span class="ml-dp-w">${escapeHtml(mealWeekday(d))}</span><span class="ml-dp-n">${+d.slice(8)}</span>
+      <span class="ml-dp-dots">${MEAL_SLOTS.map(s => `<i class="${has.has(s.k) ? 'f ml-s-' + s.k : ''}"></i>`).join('')}</span></button>`;
+  }).join('');
+  const hero = `<div class="card ml-hero">
+    <div class="ml-wk">
+      <button class="ml-wk-b" data-ml-week="-1" aria-label="Previous week">${mlSvg('chevL', 18)}</button>
+      <div class="ml-wk-t"><b>${escapeHtml(shortDate(days[0]))} – ${escapeHtml(shortDate(days[6]))}</b>
+        ${rel ? `<span>${rel}</span>` : `<button class="ml-wk-now" data-ml-week="0">Back to this week</button>`}</div>
+      <button class="ml-wk-b" data-ml-week="1" aria-label="Next week">${mlSvg('chevR', 18)}</button>
+    </div>
+    <div class="ml-strip ${anim}" id="ml-strip">${strip}</div>
+    <div class="ml-prog"><div class="ml-prog-bar"><span style="width:${Math.round(filled / 28 * 100)}%"></span></div><span>${filled}/28</span></div>
+    <div class="ml-acts">
+      ${canCopy ? `<button class="ml-act" id="ml-copy">${mlSvg('copy', 16)}<span>Copy last week</span></button>` : ''}
+    </div>
+  </div>`;
+  const tabs = `<div class="seg-row ml-tabs" role="tablist">
+    <button class="seg-btn ${mlTab === 'plan' ? 'on' : ''}" data-ml-tab="plan" role="tab" aria-selected="${mlTab === 'plan'}">Plan</button>
+    <button class="seg-btn ${mlTab === 'shop' ? 'on' : ''}" data-ml-tab="shop" role="tab" aria-selected="${mlTab === 'shop'}">Shopping list${shopLeft ? ` <span class="ml-badge">${shopLeft}</span>` : ''}</button>
+  </div>`;
+  el.innerHTML = hero + tabs + (mlTab === 'shop' ? mealShopHTML() : mealDayHTML(days, plan, week));
+}
+function mealDayHTML(days, plan, week) {
+  const today = todayStr(), d = mlDay, canEat = d <= today;
+  const items = mealsOn(d, null, week);
+  const eaten = items.filter(p => p.eaten).length;
+  const day = `<div class="card ml-day">
+    <div class="ml-day-h"><div><b>${escapeHtml(mealWeekday(d, 'long'))}</b><span>${escapeHtml(shortDate(d))}</span></div>
+      ${d === today ? `<span class="ml-pill">${items.length ? `${eaten} of ${items.length} eaten` : 'Today'}</span>` : d < today && items.length ? `<span class="ml-pill dim">${eaten} of ${items.length} eaten</span>` : ''}</div>
+    ${MEAL_SLOTS.map(s => {
+      const its = items.filter(p => p.slot === s.k);
+      const sug = its.length ? null : mealSuggest(d, s.k, plan);
+      return `<div class="ml-slot ml-s-${s.k}">
+        <div class="ml-slot-h"><span class="ml-slot-i">${mlSvg(s.ico, 15)}</span><span class="ml-slot-l">${s.label}</span>
+          ${its.length ? `<button class="ml-slot-add" data-ml-add="${d}|${s.k}" aria-label="Add another to ${s.label}">${mlSvg('plus', 16)}</button>` : ''}</div>
+        ${its.length ? `<div class="ml-chips">${its.map(p => mealChipHTML(p, canEat)).join('')}</div>`
+          : `<div class="ml-empty"><button class="ml-empty-add" data-ml-add="${d}|${s.k}">${mlSvg('plus', 16)}<span>Add ${s.label.toLowerCase()}</span></button>
+            ${sug ? `<button class="ml-sugg" data-ml-quick="${d}|${s.k}|${escapeHtml(sug.tok)}" aria-label="Add ${escapeHtml(sug.name)}"><span class="ml-sugg-k">${sug.again ? 'Again?' : 'Try'}</span><span aria-hidden="true">${escapeHtml(sug.emoji)}</span><span class="ml-sugg-n">${escapeHtml(sug.name)}</span></button>` : ''}</div>`}
+      </div>`;
+    }).join('')}
+  </div>`;
+  const today0 = todayStr();
+  const glance = `<div class="card ml-glance">
+    <h2 class="ml-h">This week at a glance</h2>
+    <div class="ml-grid">
+      <div class="ml-grow ml-ghead" aria-hidden="true"><span></span>${MEAL_SLOTS.map(s => `<span class="ml-s-${s.k}">${s.short}</span>`).join('')}</div>
+      ${days.map(x => `<button class="ml-grow ${x === mlDay ? 'on' : ''} ${x === today0 ? 'today' : ''}" data-ml-day="${x}" aria-label="${escapeHtml(prettyDate(x))}">
+        <span class="ml-gd">${escapeHtml(mealWeekday(x))}<b>${+x.slice(8)}</b></span>
+        ${MEAL_SLOTS.map(s => { const its = mealsOn(x, s.k, week);
+          return `<span class="ml-gc ml-s-${s.k} ${its.length ? 'f' : ''} ${its.length && its.every(p => p.eaten) ? 'ate' : ''}">${its.length ? `<span class="ml-ge">${escapeHtml(its[0].emoji || '🍲')}</span>${its.length > 1 ? `<i>+${its.length - 1}</i>` : ''}` : '<span class="ml-g0"></span>'}</span>`; }).join('')}
+      </button>`).join('')}
+    </div>
+  </div>`;
+  const ins = mealInsight();
+  const insight = ins ? `<div class="card ml-ins"><span class="ml-ins-i">${mlSvg('sparkle', 18)}</span><div><b>${escapeHtml(ins.head)}</b><p>${escapeHtml(ins.body)}</p></div></div>` : '';
+  const first = !plan.length ? `<div class="card ml-first"><div class="ml-first-e" aria-hidden="true">🍛 🥗 🫓</div>
+    <b>Plan the week's food in a minute</b>
+    <p>Tap a slot, pick from ideas or type your own. Meals you plan add up to a shopping list, and on the day you can tick them off on the Log.</p></div>` : '';
+  return first + day + glance + insight;
+}
+function mealShopHTML() {
+  const rows = mealShopRows(), todo = rows.filter(r => !r.done), done = rows.filter(r => r.done);
+  todo.sort((a, b) => (!!a.manual - !!b.manual) || (b.n - a.n) || a.name.localeCompare(b.name));
+  const plan = mealPlan(), from = todayStr(), to = addDays(from, 6);
+  const upcoming = plan.filter(p => !p.eaten && p.day >= from && p.day <= to), lib = mealLib();
+  const noIng = upcoming.filter(p => !mealIngOf(p, lib).length);
+  const row = r => `<button class="ml-li ${r.done ? 'done' : ''}" data-ml-shop="${escapeHtml(r.id)}" role="checkbox" aria-checked="${r.done}">
+      <span class="ml-box" aria-hidden="true">${mlSvg('tick', 14)}</span>
+      <span class="ml-li-t"><b>${escapeHtml(r.name)}</b>${r.manual ? '<span>added by you</span>' : `<span>for ${escapeHtml(r.meals.slice(0, 3).join(', '))}${r.meals.length > 3 ? ` +${r.meals.length - 3}` : ''}</span>`}</span>
+      ${r.n > 1 ? `<span class="ml-cnt">×${r.n}</span>` : ''}</button>`;
+  const pct = rows.length ? Math.round(done.length / rows.length * 100) : 0;
+  return `<div class="card ml-shop">
+    <div class="ml-shop-h">
+      <span class="ml-shop-i">${mlSvg('cart', 20)}</span>
+      <div><b>For the next 7 days</b><span>${upcoming.length ? `from ${upcoming.length} planned meal${upcoming.length > 1 ? 's' : ''}` : 'nothing planned yet'}</span></div>
+      ${rows.length ? `<span class="ml-pill">${done.length}/${rows.length}</span>` : ''}
+    </div>
+    ${rows.length ? `<div class="ml-prog-bar ml-shop-bar"><span style="width:${pct}%"></span></div>` : ''}
+    <div class="ml-shop-add"><input type="text" id="ml-shop-in" placeholder="Add an item…" autocomplete="off" maxlength="80" enterkeyhint="done">
+      <button class="btn btn-primary btn-sm" id="ml-shop-add">Add</button></div>
+    ${rows.length ? `<div class="ml-list">${todo.map(row).join('')}</div>
+      ${done.length ? `<div class="ml-list-sub">In the bag · ${done.length}</div><div class="ml-list">${done.map(row).join('')}</div>` : ''}
+      <div class="ml-shop-foot">
+        ${done.length ? `<button class="btn btn-ghost btn-sm" id="ml-shop-clear">Clear ${done.length} checked</button>` : ''}
+        ${todo.length ? `<button class="btn btn-ghost btn-sm" id="ml-shop-copy">${mlSvg('copy', 15)} Copy list</button>` : ''}
+      </div>`
+    : `<div class="ml-shop-empty"><b>Your list fills itself</b><p>Plan meals for the next 7 days and their ingredients add up here, counted, like “onion ×3”. Ideas come with ingredients; for your own meals, tap one and choose Edit.</p></div>`}
+    ${noIng.length ? `<p class="ml-shop-note">${noIng.length} planned meal${noIng.length > 1 ? 's have' : ' has'} no ingredients yet (${escapeHtml([...new Set(noIng.map(p => p.name))].slice(0, 3).join(', '))}). Tap a meal on the plan ▸ Edit to add them.</p>` : ''}
+  </div>`;
+}
+
+/* ---- the Log section: "Today's meals" ---- */
+function mealsLogHTML(day) { return `<div id="ml-log-slot">${mealsLogCard(day)}</div>`; }
+function mealsLogCard(day) {
+  const today = todayStr(), isToday = day === today, canEat = day <= today;
+  const items = mealsOn(day).sort(mealBySlot), eaten = items.filter(p => p.eaten).length;
+  const open = MEAL_SLOTS.filter(s => !items.some(p => p.slot === s.k));
+  const head = `<h2 class="h2-icon"><span class="hicon">${mlSvg('utensils', 18)}</span><span>${isToday ? "Today's meals" : 'Meals'}</span>
+    <span class="hint">${items.length ? (canEat ? `${eaten} of ${items.length} eaten` : `${items.length} planned`) : 'nothing planned'}</span></h2>`;
+  const rows = items.map(p => {
+    const slot = MEAL_SLOTS.find(s => s.k === p.slot) || MEAL_SLOTS[0];
+    return `<div class="ml-lrow ml-s-${p.slot} ${p.eaten ? 'eaten' : ''}">
+      <span class="ml-emo" aria-hidden="true">${escapeHtml(p.emoji || '🍲')}</span>
+      <span class="ml-lt"><b>${escapeHtml(p.name)}</b><span>${slot.label}${p.was ? ` · instead of ${escapeHtml(p.was)}` : ''}</span></span>
+      ${canEat ? `<button class="ml-ibtn" data-ml-swap="${escapeHtml(p.id)}" aria-label="Had something else instead of ${escapeHtml(p.name)}">${mlSvg('swap', 17)}</button>
+      <button class="ml-eat ${p.eaten ? 'on' : ''}" data-ml-eat="${escapeHtml(p.id)}" aria-pressed="${!!p.eaten}" aria-label="${p.eaten ? 'Eaten' : 'Mark eaten'}: ${escapeHtml(p.name)}">${mlSvg('tick', 17)}</button>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="card ml-log">${head}
+    ${items.length ? `<div class="ml-prog-bar ml-log-bar"><span style="width:${Math.round(eaten / items.length * 100)}%"></span></div><div class="ml-lrows">${rows}</div>`
+      : `<p class="ml-log-none">Nothing planned for ${isToday ? 'today' : 'this day'} yet.</p>`}
+    <div class="ml-log-foot">${open.map(s => `<button class="ml-log-add" data-ml-add="${day}|${s.k}">${mlSvg('plus', 14)}${s.label}</button>`).join('')}
+      <button class="ml-log-open" data-ml-open="${day}">Planner ›</button></div>
+  </div>`;
+}
+
+/* ---- the bottom sheet: add, a meal's options, edit a meal, repeat on… ---- */
+let mlSheet = null;
+function mealSheetIsOpen() { const el = document.getElementById('ml-sheet'); return !!(el && el.classList.contains('on')); }
+function mealSheetClose() { mlSheet = null; const el = document.getElementById('ml-sheet'); if (el) { el.classList.remove('on'); el.innerHTML = ''; } }
+/* Back from edit or repeat returns to where it came from; from anything else it closes. */
+function mealSheetBack() { if (mlSheet && mlSheet.back) { mlSheet = mlSheet.back; mealSheetRender(); } else mealSheetClose(); }
+function mealSheetOpen(state) {
+  mlSheet = state;
+  let el = document.getElementById('ml-sheet');
+  if (!el) { el = document.createElement('div'); el.id = 'ml-sheet'; el.className = 'sharesheet ml-scrim'; document.body.appendChild(el); }
+  mealSheetRender();
+  el.classList.add('on');
+}
+function mealSlotLabel(k) { return (MEAL_SLOTS.find(s => s.k === k) || MEAL_SLOTS[0]).label; }
+function mealDayLabel(d) { const t = todayStr(); return d === t ? 'Today' : d === addDays(t, 1) ? 'Tomorrow' : d === addDays(t, -1) ? 'Yesterday' : prettyDate(d); }
+function mealSheetRender() {
+  const el = document.getElementById('ml-sheet'); if (!el || !mlSheet) return;
+  const s = mlSheet, x = `<button class="ml-x" id="ml-x" aria-label="Close">${mlSvg('x', 18)}</button>`;
+  let inner = '';
+  if (s.mode === 'add') {
+    const swapOf = s.swap ? mealPlan().find(p => p.id === s.swap) : null;
+    inner = `<div class="ml-sh-h">${s.back ? `<button class="ml-x" data-ml-back aria-label="Back">${mlSvg('chevL', 18)}</button>` : ''}
+        <div class="ml-sh-t"><b>${swapOf ? `Swap ${escapeHtml(swapOf.name)}` : `Add to ${escapeHtml(mealDayLabel(s.day))}`}</b>
+        <span>${swapOf ? (s.eat ? 'Pick what you had instead' : `${escapeHtml(mealDayLabel(swapOf.day))} · ${mealSlotLabel(swapOf.slot)}`) : 'Pick a meal, or type a new one'}</span></div>${x}</div>
+      ${swapOf ? '' : `<div class="ml-slots" role="radiogroup" aria-label="Meal">${MEAL_SLOTS.map(o => `<button class="ml-slotb ml-s-${o.k} ${o.k === s.slot ? 'on' : ''}" data-ml-slot="${o.k}" role="radio" aria-checked="${o.k === s.slot}">${mlSvg(o.ico, 14)}${o.label}</button>`).join('')}</div>`}
+      <label class="ml-q">${mlSvg('search', 17)}<input type="search" id="ml-q" placeholder="Search or type a new meal…" autocomplete="off" maxlength="60" enterkeyhint="done" value="${escapeHtml(s.q || '')}"></label>
+      <div class="ml-filters">${[['all', 'All'], ['veg', 'Veg'], ['egg', 'Egg'], ['nonveg', 'Non-veg'], ['light', 'Light'], ['protein', 'Protein']].map(([k, l]) =>
+        `<button class="ml-f ${(s.f || 'all') === k ? 'on' : ''}" data-ml-filter="${k}">${MEAL_DIETS[k] ? mealDietMark(k) : ''}${l}</button>`).join('')}</div>
+      <div id="ml-res">${mealResultsHTML()}</div>`;
+  } else if (s.mode === 'item') {
+    const p = mealPlan().find(i => i.id === s.id);
+    if (!p) { mealSheetClose(); return; }
+    const ing = mealIngOf(p, mealLib()), canEat = p.day <= todayStr();
+    inner = `<div class="ml-sh-h"><div class="ml-sh-t"><b>${escapeHtml(mealDayLabel(p.day))} · ${mealSlotLabel(p.slot)}</b></div>${x}</div>
+      <div class="ml-it">
+        <span class="ml-it-e ml-s-${p.slot}" aria-hidden="true">${escapeHtml(p.emoji || '🍲')}</span>
+        <div class="ml-it-t"><b>${escapeHtml(p.name)}</b><span class="ml-meta">${mealMeta(p)}${p.was ? `<span class="ml-was">instead of ${escapeHtml(p.was)}</span>` : ''}</span></div>
+      </div>
+      ${ing.length ? `<div class="ml-ing">${ing.map(i => `<span>${escapeHtml(i)}</span>`).join('')}</div>` : `<p class="ml-sh-note">No ingredients yet. Add them with Edit and they go on your shopping list.</p>`}
+      <div class="ml-grid2">
+        ${canEat ? `<button class="ml-big ${p.eaten ? 'on' : ''}" data-ml-act="eat">${mlSvg('tick', 20)}<span>${p.eaten ? 'Eaten' : 'Mark eaten'}</span></button>` : ''}
+        <button class="ml-big" data-ml-act="swap">${mlSvg('swap', 20)}<span>Swap</span></button>
+        <button class="ml-big" data-ml-act="repeat">${mlSvg('repeat', 20)}<span>Repeat on…</span></button>
+        <button class="ml-big" data-ml-act="edit">${mlSvg('pencil', 20)}<span>Edit meal</span></button>
+      </div>
+      <button class="ml-remove" data-ml-act="remove">${mlSvg('trash', 16)} Remove from ${p.day === todayStr() ? 'today' : escapeHtml(prettyDate(p.day))}</button>`;
+  } else if (s.mode === 'repeat') {
+    const p = mealPlan().find(i => i.id === s.id);
+    if (!p) { mealSheetClose(); return; }
+    const ws = weekStart(p.day), plan = mealPlan(), pick = new Set(s.pick || []);
+    const has = d => d === p.day || plan.some(x => x.day === d && x.slot === p.slot && mealNorm(x.name) === mealNorm(p.name));
+    const week = (start, label) => `<div class="ml-rp-l">${label}</div><div class="ml-rp">${[0, 1, 2, 3, 4, 5, 6].map(i => { const d = addDays(start, i), h = has(d);
+      return `<button class="ml-rd ${h ? 'has' : ''} ${pick.has(d) ? 'on' : ''} ${d < todayStr() ? 'past' : ''}" data-ml-rday="${d}" ${h ? 'disabled aria-disabled="true"' : ''} aria-pressed="${pick.has(d)}" aria-label="${escapeHtml(prettyDate(d))}${h ? ', already planned' : ''}">
+        <span>${escapeHtml(mealWeekday(d, 'narrow'))}</span><b>${+d.slice(8)}</b>${h ? `<i>${mlSvg('tick', 11)}</i>` : ''}</button>`; }).join('')}</div>`;
+    inner = `<div class="ml-sh-h"><button class="ml-x" data-ml-back aria-label="Back">${mlSvg('chevL', 18)}</button>
+        <div class="ml-sh-t"><b>Repeat ${escapeHtml(p.emoji || '')} ${escapeHtml(p.name)}</b><span>${mealSlotLabel(p.slot)} on…</span></div>${x}</div>
+      ${week(ws, ws === weekStart(todayStr()) ? 'This week' : `Week of ${escapeHtml(shortDate(ws))}`)}
+      ${week(addDays(ws, 7), 'The week after')}
+      <div class="ml-rq"><button class="ml-f" data-ml-rquick="week">Next 7 days</button><button class="ml-f" data-ml-rquick="wkdays">Weekdays</button><button class="ml-f" data-ml-rquick="none">None</button></div>
+      <button class="btn btn-primary ml-go" id="ml-repeat-go" ${pick.size ? '' : 'disabled'}>${pick.size ? `Repeat on ${pick.size} day${pick.size > 1 ? 's' : ''}` : 'Pick days'}</button>`;
+  } else if (s.mode === 'edit') {
+    const m = s.lib ? mealLib().find(i => i.id === s.lib) : null;
+    if (s.lib && !m) { mealSheetBack(); return; }
+    const ed = s.ed || (s.ed = { diet: m ? m.diet || '' : '', tags: m ? (m.tags || []).slice() : [] });
+    inner = `<div class="ml-sh-h">${s.back ? `<button class="ml-x" data-ml-back aria-label="Back">${mlSvg('chevL', 18)}</button>` : ''}
+        <div class="ml-sh-t"><b>${m ? 'Edit meal' : 'New meal'}</b><span>Changes reach every plan from today on</span></div>${x}</div>
+      <div class="ml-ed-row"><input type="text" id="ml-ed-emoji" class="ml-ed-emoji" maxlength="8" aria-label="Emoji" value="${escapeHtml(m ? m.emoji : (s.name ? mealGuess(s.name).emoji : '🍲'))}">
+        <input type="text" id="ml-ed-name" maxlength="60" placeholder="Meal name" aria-label="Meal name" value="${escapeHtml(m ? m.name : s.name || '')}"></div>
+      <div class="ml-ed-l">Type</div>
+      <div class="ml-filters ml-ed-chips">${[['veg', 'Veg'], ['egg', 'Egg'], ['nonveg', 'Non-veg'], ['', 'Not set']].map(([k, l]) =>
+        `<button class="ml-f ${ed.diet === k ? 'on' : ''}" data-ml-diet="${k}" aria-pressed="${ed.diet === k}">${mealDietMark(k)}${l}</button>`).join('')}</div>
+      <div class="ml-ed-l">Tags <span>tap any that fit</span></div>
+      <div class="ml-filters ml-ed-chips">${Object.keys(MEAL_TAGS).map(k => `<button class="ml-f ${ed.tags.includes(k) ? 'on' : ''}" data-ml-tag="${k}" aria-pressed="${ed.tags.includes(k)}">${MEAL_TAGS[k]}</button>`).join('')}</div>
+      <div class="ml-ed-l">Ingredients <span>comma-separated, for the shopping list</span></div>
+      <textarea id="ml-ed-ing" rows="3" placeholder="e.g. rice, toor dal, tomato, onion">${escapeHtml(m ? m.ing || '' : '')}</textarea>
+      <div class="ml-ed-btns"><button class="btn btn-primary" id="ml-ed-save">Save</button>
+        ${m ? `<button class="btn btn-ghost" id="ml-ed-fav">${mlSvg('star', 16, !!m.fav)} ${m.fav ? 'Favourite' : 'Add to favourites'}</button>` : ''}</div>
+      ${m ? `<button class="ml-remove" id="ml-ed-del">${mlSvg('trash', 16)} Delete from your meals</button><p class="ml-sh-note">Deleting keeps the days it is already planned on.</p>` : ''}`;
+  }
+  el.innerHTML = `<div class="ml-card" role="dialog" aria-modal="true" aria-label="Meals"><div class="ml-grip" aria-hidden="true"></div>${inner}</div>`;
+}
+function mealResultsHTML() {
+  const s = mlSheet; if (!s) return '';
+  const q = mealNorm(s.q), f = s.f || 'all';
+  const ok = m => (!q || mealNorm(m.name).includes(q) || mealNorm(m.ing).includes(q))
+    && (f === 'all' || (MEAL_DIETS[f] ? m.diet === f : (m.tags || []).includes(f)));
+  const lib = mealLibSorted(s.slot || 'b'), names = new Set(lib.map(m => mealNorm(m.name)));
+  const mine = lib.filter(ok);
+  const ideas = MEAL_IDEAS.map((m, i) => ({ m, i })).filter(x => !names.has(mealNorm(x.m.name)) && ok(x.m))
+    .sort((a, b) => (+b.m.s.includes(s.slot || 'b') - +a.m.s.includes(s.slot || 'b')) || a.i - b.i);
+  const exact = q && (lib.some(m => mealNorm(m.name) === q) || MEAL_IDEAS.some(m => mealNorm(m.name) === q));
+  const g = q ? mealGuess(s.q) : null;
+  const newBtn = q && !exact ? `<button class="ml-new" data-ml-new><span class="ml-emo" aria-hidden="true">${escapeHtml(g.emoji)}</span>
+    <span class="ml-chip-t"><b>Add “${escapeHtml(String(s.q).trim())}”</b><span class="ml-meta"><span>new meal · saved to your meals</span></span></span>${mlSvg('plus', 18)}</button>` : '';
+  // a short list until you search or ask for all, so the ideas are not pushed out of sight
+  const cap = q || f !== 'all' || s.all ? 60 : 5, more = mine.length - cap;
+  const mineHTML = mine.length ? `<div class="ml-sec">Your meals</div><div class="ml-mine">${mine.slice(0, cap).map(m => `<div class="ml-row">
+      <button class="ml-pick" data-ml-pick="lib:${escapeHtml(m.id)}"><span class="ml-emo" aria-hidden="true">${escapeHtml(m.emoji || '🍲')}</span>
+        <span class="ml-chip-t"><b>${escapeHtml(m.name)}</b><span class="ml-meta">${mealMeta(m, mealIngList(m.ing).length ? mealIngList(m.ing).length + ' ingredients' : '')}</span></span></button>
+      <button class="ml-ibtn ml-fav ${m.fav ? 'on' : ''}" data-ml-fav="${escapeHtml(m.id)}" aria-pressed="${!!m.fav}" aria-label="Favourite ${escapeHtml(m.name)}">${mlSvg('star', 17, !!m.fav)}</button>
+      <button class="ml-ibtn" data-ml-edit="${escapeHtml(m.id)}" aria-label="Edit ${escapeHtml(m.name)}">${mlSvg('pencil', 16)}</button></div>`).join('')}</div>
+    ${more > 0 ? `<button class="ml-more" data-ml-all>Show all ${mine.length} of your meals</button>` : ''}` : '';
+  const ideasHTML = ideas.length ? `<div class="ml-sec">Ideas</div><div class="ml-ideas">${ideas.map(x => `<button class="ml-idea" data-ml-pick="idea:${x.i}">
+      <span class="ml-idea-e" aria-hidden="true">${x.m.emoji}</span><span class="ml-idea-n">${escapeHtml(x.m.name)}</span><span class="ml-idea-m">${mealDietMark(x.m.diet)}${x.m.tags.length ? x.m.tags.map(t => MEAL_TAGS[t]).join(' · ') : MEAL_DIETS[x.m.diet]}</span></button>`).join('')}</div>` : '';
+  return newBtn + mineHTML + ideasHTML + (!newBtn && !mineHTML && !ideasHTML ? `<p class="ml-sh-note">Nothing matches. Clear the filter, or type a name to add it.</p>` : '');
+}
+function mealPickDone(item, msg) {
+  mealSheetClose(); mealsRefresh();
+  if (item === null || item === false) { toast('Could not save — your phone storage is full', true); return; }
+  toast(msg); buzz(8);
+}
+function mealSheetPick(src) {
+  const s = mlSheet; if (!s || !src) return;
+  if (s.swap) { const ok = mealSwap(s.swap, src, s.eat); mealPickDone(ok, `Swapped for ${src.name}`); return; }
+  const item = mealAdd(s.day, s.slot, src);
+  mealPickDone(item, item ? `${src.name} · ${mealDayLabel(s.day)} ${mealSlotLabel(s.slot).toLowerCase()}` : '');
+}
+function mealSheetNew() {
+  const s = mlSheet; if (!s) return;
+  const name = String(s.q || '').trim().replace(/\s+/g, ' ').slice(0, 60); if (!name) return;
+  const src = { name };   // mealLibEnsure guesses the emoji and diet from the name
+  mealSheetPick(src);
+}
+function mealsRefresh() {
+  const on = (document.querySelector('.screen.on') || {}).id;
+  if (on === 's-meals') renderMeals();
+  else if (on === 's-today') { const slot = document.getElementById('ml-log-slot'); if (slot) slot.innerHTML = mealsLogCard(logDate); }
+}
+
+/* ---- events ---- */
+document.addEventListener('click', (ev) => {
+  const t = ev.target; if (!t || !t.closest) return;
+  const sheet = document.getElementById('ml-sheet');
+  if (sheet && sheet.classList.contains('on') && sheet.contains(t)) {
+    if (!t.closest('.ml-card') || t.closest('#ml-x')) { mealSheetClose(); return; }
+    if (t.closest('[data-ml-back]')) { mealSheetBack(); return; }
+    const s = mlSheet; if (!s) return;
+    let b;
+    if ((b = t.closest('[data-ml-slot]'))) { s.slot = b.dataset.mlSlot; mealSheetRender(); return; }
+    if ((b = t.closest('[data-ml-filter]'))) { s.f = b.dataset.mlFilter; const q = document.getElementById('ml-q'); s.q = q ? q.value : s.q;
+      sheet.querySelectorAll('[data-ml-filter]').forEach(x => x.classList.toggle('on', x === b));
+      const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML(); return; }
+    if ((b = t.closest('[data-ml-pick]'))) { mealSheetPick(mealSrc(b.dataset.mlPick)); return; }
+    if (t.closest('[data-ml-new]')) { mealSheetNew(); return; }
+    if (t.closest('[data-ml-all]')) { s.all = true; const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML(); return; }
+    if ((b = t.closest('[data-ml-fav]'))) {
+      const lib = mealLib(), m = lib.find(x => x.id === b.dataset.mlFav); if (!m) return;
+      if (m.fav) delete m.fav; else m.fav = true;
+      mealSaveLib(lib); buzz(6);
+      const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML(); return;
+    }
+    if ((b = t.closest('[data-ml-edit]'))) { mlSheet = { mode: 'edit', lib: b.dataset.mlEdit, back: s }; mealSheetRender(); return; }
+    if ((b = t.closest('[data-ml-act]'))) {
+      const act = b.dataset.mlAct, plan = mealPlan(), p = plan.find(x => x.id === s.id); if (!p) { mealSheetClose(); return; }
+      if (act === 'eat') { const on = mealEatToggle(p.id); mealSheetClose(); mealsRefresh(); if (on !== null) { buzz(on ? 12 : 6); toast(on ? `${p.name} · eaten` : 'Unmarked'); } return; }
+      if (act === 'swap') { mlSheet = { mode: 'add', day: p.day, slot: p.slot, swap: p.id, q: '', f: 'all', back: s }; mealSheetRender(); return; }
+      if (act === 'repeat') { mlSheet = { mode: 'repeat', id: p.id, pick: [], back: s }; mealSheetRender(); return; }
+      if (act === 'edit') {
+        let m = mealLibOf(p);
+        if (!m) { const r = mealLibEnsure(p); m = r.m; if (r.added) mealSaveLib(r.lib); }
+        if (p.lib !== m.id) { p.lib = m.id; mealSavePlan(plan); }
+        mlSheet = { mode: 'edit', lib: m.id, back: s }; mealSheetRender(); return;
+      }
+      if (act === 'remove') {
+        const before = plan.slice();
+        mealSavePlan(plan.filter(x => x.id !== p.id)); mealSheetClose(); mealsRefresh();
+        undoToast(`Removed ${p.name}`, () => { mealSavePlan(before); mealsRefresh(); });
+        return;
+      }
+    }
+    if ((b = t.closest('[data-ml-rday]'))) {
+      const pick = new Set(s.pick || []), d = b.dataset.mlRday;
+      if (pick.has(d)) pick.delete(d); else pick.add(d);
+      s.pick = [...pick]; mealSheetRender(); buzz(5); return;
+    }
+    if ((b = t.closest('[data-ml-rquick]'))) {
+      const p = mealPlan().find(x => x.id === s.id); if (!p) return;
+      // the 7 days after the meal (or after today, for a meal in the past), within the two weeks shown
+      const ws = weekStart(p.day), last = addDays(ws, 13), plan = mealPlan(), q = b.dataset.mlRquick, today = todayStr();
+      const free = d => d !== p.day && !plan.some(x => x.day === d && x.slot === p.slot && mealNorm(x.name) === mealNorm(p.name));
+      const from = p.day >= today ? p.day : addDays(today, -1);
+      const span = [1, 2, 3, 4, 5, 6, 7].map(i => addDays(from, i)).filter(d => d <= last && free(d));
+      s.pick = q === 'none' ? [] : q === 'week' ? span
+        : span.filter(d => { const g = new Date(d + 'T00:00:00').getDay(); return g !== 0 && g !== 6; });
+      mealSheetRender(); return;
+    }
+    if (t.closest('#ml-repeat-go')) {
+      const p = mealPlan().find(x => x.id === s.id), n = mealRepeat(s.id, s.pick || []);
+      mealSheetClose(); mealsRefresh();
+      if (n) { toast(`${p ? p.name : 'Meal'} on ${n} more day${n > 1 ? 's' : ''}`); buzz(10); }
+      return;
+    }
+    if ((b = t.closest('[data-ml-diet]'))) { s.ed.diet = b.dataset.mlDiet; sheet.querySelectorAll('[data-ml-diet]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); return; }
+    if ((b = t.closest('[data-ml-tag]'))) { const k = b.dataset.mlTag, i = s.ed.tags.indexOf(k); if (i >= 0) s.ed.tags.splice(i, 1); else s.ed.tags.push(k); b.classList.toggle('on', i < 0); b.setAttribute('aria-pressed', i < 0); return; }
+    if (t.closest('#ml-ed-fav')) {
+      const lib = mealLib(), m = lib.find(x => x.id === s.lib); if (!m) return;
+      if (m.fav) delete m.fav; else m.fav = true;
+      mealSaveLib(lib); buzz(6);
+      const keep = { name: document.getElementById('ml-ed-name').value, emoji: document.getElementById('ml-ed-emoji').value, ing: document.getElementById('ml-ed-ing').value };
+      mealSheetRender();
+      ['name', 'emoji', 'ing'].forEach(k => { const i = document.getElementById('ml-ed-' + k); if (i) i.value = keep[k]; });
+      return;
+    }
+    if (t.closest('#ml-ed-save')) { mealEditSave(); return; }
+    if (t.closest('#ml-ed-del')) {
+      const lib = mealLib(), m = lib.find(x => x.id === s.lib); if (!m) return;
+      if (!confirm(`Delete “${m.name}” from your meals? Days it is already planned on keep it.`)) return;
+      mealSaveLib(lib.filter(x => x.id !== m.id));
+      const back = s.back && s.back.mode === 'add' ? s.back : null;
+      if (back) { mlSheet = back; mealSheetRender(); } else { mealSheetClose(); mealsRefresh(); }
+      toast(`Deleted ${m.name}`); return;
+    }
+    return;
+  }
+  let b;
+  if ((b = t.closest('[data-ml-eat]'))) {
+    const on = mealEatToggle(b.dataset.mlEat);
+    if (on !== null) { buzz(on ? 12 : 6); mealsRefresh(); }
+    return;
+  }
+  if ((b = t.closest('[data-ml-add]'))) { const [day, slot] = b.dataset.mlAdd.split('|'); mealSheetOpen({ mode: 'add', day, slot, q: '', f: 'all' }); return; }
+  if ((b = t.closest('[data-ml-swap]'))) { const p = mealPlan().find(x => x.id === b.dataset.mlSwap); if (p) mealSheetOpen({ mode: 'add', day: p.day, slot: p.slot, swap: p.id, eat: true, q: '', f: 'all' }); return; }
+  if ((b = t.closest('[data-ml-open]'))) { navigateTo('meals'); mealsGoDay(b.dataset.mlOpen); renderMeals(); return; }
+  if (!document.getElementById('s-meals') || !document.getElementById('s-meals').classList.contains('on')) return;
+  if ((b = t.closest('[data-ml-week]'))) { const v = +b.dataset.mlWeek; if (v) mealWeekShift(v); else { mlWeek = weekStart(todayStr()); mlDay = todayStr(); renderMeals(); } return; }
+  if ((b = t.closest('[data-ml-day]'))) {
+    if (Date.now() - mlSwipedAt < 400) return;   // the tap that ended a swipe
+    mlDay = b.dataset.mlDay; renderMeals(); buzz(4);
+    if (b.classList.contains('ml-grow')) { const d = document.querySelector('#s-meals .ml-day'); if (d) d.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    return;
+  }
+  if ((b = t.closest('[data-ml-tab]'))) { mlTab = b.dataset.mlTab; renderMeals(); return; }
+  if ((b = t.closest('[data-ml-item]'))) { mealSheetOpen({ mode: 'item', id: b.dataset.mlItem }); return; }
+  if ((b = t.closest('[data-ml-quick]'))) {
+    const [day, slot, tok] = b.dataset.mlQuick.split('|'), src = mealSrc(tok); if (!src) return;
+    const item = mealAdd(day, slot, src);
+    if (!item) { toast('Could not save — your phone storage is full', true); return; }
+    renderMeals(); buzz(8); toast(`${src.name} · ${mealDayLabel(day)} ${mealSlotLabel(slot).toLowerCase()}`); return;
+  }
+  if (t.closest('#ml-copy')) {
+    const before = mealPlan(), n = mealCopyWeek(mlWeek);
+    renderMeals();
+    if (n) undoToast(`Copied ${n} meal${n > 1 ? 's' : ''} from last week`, () => { mealSavePlan(before); renderMeals(); });
+    else toast('Nothing to copy: every slot that was planned last week is already planned');
+    return;
+  }
+  if ((b = t.closest('[data-ml-shop]'))) { if (mealShopToggle(b.dataset.mlShop) !== null) { buzz(6); renderMeals(); } return; }
+  if (t.closest('#ml-shop-add')) { mealShopAddFromInput(); return; }
+  if (t.closest('#ml-shop-clear')) {
+    const r = mealShopClear(); renderMeals();
+    if (r.n) undoToast(`Cleared ${r.n} item${r.n > 1 ? 's' : ''}`, () => { mealSaveShop(r.before); renderMeals(); });
+    return;
+  }
+  if (t.closest('#ml-shop-copy')) {
+    const txt = mealShopText(); if (!txt) return;
+    (async () => { try { await navigator.clipboard.writeText(txt); toast('List copied — paste it in a chat'); } catch (e) { toast('Could not copy here. Long-press to select the list instead.', true); } })();
+  }
+});
+function mealShopAddFromInput() {
+  const i = document.getElementById('ml-shop-in'); if (!i) return;
+  const v = i.value.trim(); if (!v) { i.focus(); return; }
+  if (!mealShopAddManual(v)) { toast('Could not save — your phone storage is full', true); return; }
+  renderMeals(); buzz(6);
+  const n = document.getElementById('ml-shop-in'); if (n) n.focus();
+}
+function mealEditSave() {
+  const s = mlSheet; if (!s) return;
+  const name = (document.getElementById('ml-ed-name').value || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  if (!name) { toast('Give the meal a name', true); return; }
+  const lib = mealLib(); let m = s.lib ? lib.find(x => x.id === s.lib) : null;
+  if (lib.some(x => x !== m && mealNorm(x.name) === mealNorm(name))) { toast('You already have a meal with that name', true); return; }
+  const emoji = mealEmojiOf(document.getElementById('ml-ed-emoji').value) || (m && m.emoji) || mealGuess(name).emoji;
+  if (!m) { m = { id: mealId('mb') }; lib.push(m); }
+  Object.assign(m, { name, emoji, diet: s.ed.diet || '', tags: s.ed.tags.filter(t => MEAL_TAGS[t]), ing: mealIngList(document.getElementById('ml-ed-ing').value).join(', ') });
+  if (!mealSaveLib(lib)) { toast('Could not save — your phone storage is full', true); return; }
+  // plans from today on follow the meal's new name, emoji and type; the past stays as it was
+  const plan = mealPlan(), today = todayStr();
+  let ch = false;
+  plan.forEach(p => { if (p.lib === m.id && p.day >= today) { Object.assign(p, { name: m.name, emoji: m.emoji, diet: m.diet, tags: m.tags.slice() }); ch = true; } });
+  if (ch) mealSavePlan(plan);
+  const back = s.back && s.back.mode === 'add' ? s.back : null;
+  if (back) { mlSheet = back; mealSheetRender(); } else { mealSheetClose(); mealsRefresh(); }
+  toast(`Saved ${m.name}`);
+}
+document.addEventListener('input', (ev) => {
+  if (!ev.target || ev.target.id !== 'ml-q' || !mlSheet) return;
+  mlSheet.q = ev.target.value;
+  const r = document.getElementById('ml-res'); if (r) r.innerHTML = mealResultsHTML();
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' || !ev.target) return;
+  if (ev.target.id === 'ml-shop-in') { ev.preventDefault(); mealShopAddFromInput(); return; }
+  if (ev.target.id === 'ml-q' && mlSheet) {
+    ev.preventDefault();
+    const q = mealNorm(ev.target.value); if (!q) return;
+    const lib = mealLib().find(m => mealNorm(m.name) === q), idea = MEAL_IDEAS.find(m => mealNorm(m.name) === q);
+    mlSheet.q = ev.target.value;
+    if (lib || idea) mealSheetPick(lib || idea); else mealSheetNew();
+  }
+});
+/* Swipe the week strip for the next or previous week. */
+let _mlTouch = null;
+document.addEventListener('touchstart', (ev) => {
+  const s = ev.target && ev.target.closest && ev.target.closest('#ml-strip');
+  _mlTouch = s && ev.touches && ev.touches[0] ? { x: ev.touches[0].clientX, y: ev.touches[0].clientY } : null;
+}, { passive: true });
+document.addEventListener('touchend', (ev) => {
+  if (!_mlTouch) return;
+  const st = _mlTouch, t = ev.changedTouches && ev.changedTouches[0]; _mlTouch = null;
+  if (!t) return;
+  const dx = t.clientX - st.x, dy = t.clientY - st.y;
+  if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.4) { mlSwipedAt = Date.now(); mealWeekShift(dx < 0 ? 1 : -1); }
+}, { passive: true });
+
+
+/* ============================================================
    ASK — a question box over the analysis this app already does.
    ------------------------------------------------------------
    NO MODEL. Deliberately. Daylog's insights are trusted because they are COMPUTED: real
@@ -15958,6 +16796,7 @@ const NAV_DEF = [
   { k: 'plans',    ico: 'list',     label: 'Plans',   adv: true, blurb: 'Checklists for anything with steps.' },
   { k: 'projects', ico: 'layers',   label: 'Projects', adv: true, blurb: 'Bigger efforts with milestones — and the hours you actually logged against them.' },
   { k: 'money',    ico: 'wallet',   label: 'Money',   adv: true, blurb: 'Accounts, spending and net worth, with patterns against your mood and sleep.' },
+  { k: 'meals',    ico: 'utensils', label: 'Meals',   adv: true, blurb: "Plan the week's meals, get the shopping list, tick off what you ate." },
   { k: 'ask',      ico: 'sparkle',  label: 'Ask',     adv: true, blurb: 'Ask questions about your own data. No AI model, works offline.' },
   { k: 'focus',    ico: 'target',   label: 'Focus',   primary: true },
   { k: 'waves',    ico: 'radio',    label: 'Waves', adv: true, blurb: 'Ambient sounds for focus.' },
@@ -16158,6 +16997,7 @@ function handleBack() {
   if (mrd && mrd.classList.contains('on')) { mrClose(); return; }
   if (mediaViewIsOpen()) { mediaViewClose(); return; }
   if (_rec) { voiceStop(false); return; }   // back while recording saves the note, like leaving does
+  if (mealSheetIsOpen()) { mealSheetBack(); return; }   // the Meals sheet: edit/repeat step back, else it closes
   for (const id of ['tip-ask', 'rate-ask']) {   // the tip and review sheets
     const x = document.getElementById(id); if (x && x.classList.contains('on')) { x.classList.remove('on'); return; }
   }
@@ -16181,6 +17021,7 @@ function handleBack() {
   if (cur === 'custom' && customPage) { customPage = null; renderCustom(); return; }
   if (cur === 'money' && (mnAddOpen || mnAcctOpen || mnTxEdit || mnImport)) { mnAddOpen = false; mnAcctOpen = null; mnTxEdit = null; mnImport = null; renderMoney(); return; }
   if (cur === 'projects' && pjOpen) { pjOpen = null; renderProjects(); window.scrollTo(0, 0); return; }
+  if (cur === 'meals' && mlTab !== 'plan') { mlTab = 'plan'; renderMeals(); return; }
   if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   if (cur === 'settings' && settingsPage) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
   if (cur === 'history' && histDay) { histDayClose(); return; }
@@ -16379,6 +17220,7 @@ function renderMore() {
 
 /* ---------- Navigation ---------- */
 const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+RENDER.meals = renderMeals;   // Meals (see the Meals block)
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
@@ -16432,6 +17274,7 @@ function navigateTo(name) {
   if (name === 'memories') { curMem = null; memEdit = false; memLinkOpen = false; }   // Memories opens the timeline
   if (name === 'history') histDay = null;                   // History opens the list of days
   if (name === 'projects') pjOpen = null;                   // Projects opens the list
+  if (name === 'meals') mealsReset();                       // Meals opens this week, today
   _customFrom = null;
   _editFromHist = null; _dayFrom = null;
   /* Picking Settings — from the menu, a pinned tab or More — opens its HOME, not whichever
@@ -16461,6 +17304,7 @@ function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<
    user-chosen content (custom habits/activities). icon() falls back to the raw string
    (e.g. an emoji) if the name isn't in the set. */
 const ICONS = {
+  utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',   // Meals
   play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
