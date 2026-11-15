@@ -1,3 +1,11 @@
+## 2026-11-15 — Lift: low-mood support (branch worktree-agent-a42815294431461c7, NOT merged/deployed)
+
+Kishore: "if the mood feels low we need to give them some kind of things like that". Built as a new
+screen `lift` (features.md ▸ Lift). A low mood on today's Log shows a warm card under the mood grid
+(Log section `lift`); the drawer always has a "Lift" row. No new dp.* key: `entry.lift = {did, hide}`.
+Talk to someone lists Tele-MANAS (14416 / 1-800-891-4416) and findahelpline.com. 46 unit tests.
+Verified at 412px in midnight light/dark, paper, luxe, aurora, bloom. Not in WHATS_NEW yet.
+
 ## 2026-11-15 — native 120 rebuilt with R8 (Play "Obfuscation 1%" warning, fix by Feb 2027)
 
 minifyEnabled + shrinkResources ON. Runtime-verified on the emulator (Medium_Phone_API_36.1, headless):

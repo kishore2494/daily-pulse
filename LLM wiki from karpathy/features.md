@@ -250,3 +250,29 @@ bulk import; big files stay **on the phone only** (no Drive, no compression).
 - The page says Android's App info shows more, because it also counts the app and its
   temporary files, and that **Clear storage** there deletes everything.
 - The Shrink older photos card shows only while `mediaShrinkCount() > 0`.
+
+
+## Lift — low-mood support (built 2026-11-15, NOT deployed)
+
+Kishore asked for "things to do" when the mood is low. All offline; JS in one block
+(`===== Lift (low-mood support) =====`, before SCREEN: CALENDAR), CSS in one block at the end of styles.css.
+- **Trigger** (`liftIsLow`): today's mood ≤ 4 (`LIFT_LOW`), or mood 5 / no mood with an unpleasant
+  mood-grid word tagged (#sad, #anxious… from `MM_QUAD.red/blue`). The card (`liftSlotHTML`, Log section
+  `lift` after the mood grid) appears the moment the mood is tapped (`liftSlotRefresh` from
+  `autosaveDraft`, skipped while a text field has focus). "Not today" sets `lift.hide` on the day, with Undo.
+  Only on today. No notification, ever.
+- **Screen** (`renderLift`, `show('lift')`, drawer row `liftDrawerHTML`, not in NAV_DEF so it does not
+  count against the fresh-install menu): hero, Breathe (box 4-4-4-4 ×4 or 4-7-8 ×3, orb + progress ring,
+  timer reads `Date.now()` so it cannot drift, stops when you leave), 5-4-3-2-1 grounding (one tap per thing),
+  One small thing (10 actions, `LIFT_ACTS`; "I did this" → `lift.did`), From your good days (mood 8+ days
+  with words/tags/photos, `liftGoodDays`; memories), Write it out (appends to today's `journal`), Talk to someone.
+- **Talk to someone** goes to the top when 3+ of the last 5 days with a mood (within 14 days, sample days
+  excluded) are ≤ 4 (`liftEscalate`), or after "I'm not okay" (session only, never stored).
+- **Learning line** (`liftLearn`): for hard days (mood ≤ 5) with a mood the next day, the next-day change
+  after days WITH the action vs hard days WITHOUT it — not "did the mood rise", which every low day does.
+  Needs ≥ 4 days on each side (`LIFT_MIN_N`) and a gap ≥ 0.3; shows only a positive one; says "not proof".
+- **Storage:** `entry.lift = { did: [ids], hide: true }` on the day, written via `liftWrite` (flushes the
+  Log autosave first, mirrors into the open draft). In `ENTRY_META`, so it never makes a day count as logged.
+  Syncs with the day (field-level merge), in backups/import; not a Sheet Log column; not in the CSV.
+- **Open items:** use `lift.did` to order the deck beyond the single best action; a Customize list for
+  the user's own actions; a WHATS_NEW line when it ships.
