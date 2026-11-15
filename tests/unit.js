@@ -4296,6 +4296,17 @@
       ok('the shopping tab lists the week\'s ingredients', mlTab === 'shop' && !!sc.querySelector('.ml-li') && /rice/i.test(sc.textContent));
       handleBack();
       ok('Back from the shopping list returns to the plan', mlTab === 'plan');
+
+      // Search finds planned meals and opens that day in Meals
+      const sm = mealAdd(addDays(T, -3), 'l', { name: 'Paneer butter masala' });
+      const res = runSearch('paneer');
+      ok('Search finds a planned meal by name', !!sm && /🍽️ Meals/.test(res) && /data-sr="meal" data-d="/.test(res) && /Lunch/.test(res));
+      ok('…and a meal swapped away is found by the planned name too', (() => {
+        mealSwap(sm.id, { name: 'Dal rice' }, false); return /data-sr="meal"/.test(runSearch('paneer'));
+      })());
+      show('search'); const sr = document.getElementById('search-results'); if (sr) sr.innerHTML = runSearch('paneer');
+      tap('#search-results .sr-row[data-sr="meal"]');
+      ok('…and tapping it opens Meals on that day', document.getElementById('s-meals').classList.contains('on') && mlDay === addDays(T, -3));
     } finally {
       window.toast = tSnap; mealSheetClose(); mlWeek = null;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });

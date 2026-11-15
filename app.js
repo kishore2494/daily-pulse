@@ -5591,6 +5591,12 @@ function runSearch(q) {
   const evRows = DB.events().filter(x => hit(x.label)).map(x =>
     `<div class="sr-row" data-sr="event" data-d="${x.date}"><span class="sr-when">${x.date}${x.time ? ' ' + x.time : ''}</span><span class="sr-snip">${snippet(x.label, q)}</span></div>`);
   if (evRows.length) groups.push(['📌 Events', evRows]);
+  // Meals: planned meals by name (and what was planned before a swap), newest first
+  const mealSlot = k => (MEAL_SLOTS.find(x => x.k === k) || {}).label || '';
+  const mealRows = mealPlan().filter(m => hit(m.name) || hit(m.was))
+    .sort((a, b) => b.day.localeCompare(a.day) || mealBySlot(a, b)).slice(0, 40)
+    .map(m => `<div class="sr-row" data-sr="meal" data-d="${escapeHtml(m.day)}"><span class="sr-when">${prettyDate(m.day).replace(/, \d{4}$/, '')} · ${mealSlot(m.slot)}</span><span class="sr-snip">${snippet(hit(m.name) ? m.name : m.was, q)}${m.eaten ? ' ✓' : ''}</span></div>`);
+  if (mealRows.length) groups.push(['🍽️ Meals', mealRows]);
   // Photo captions: the thumbnail opens the photo, the rest of the row opens its day.
   const capRows = [];
   _media.forEach(r => { if (r.kind === 'photo' && hit(r.caption)) capRows.push(r); });
@@ -5626,6 +5632,7 @@ document.addEventListener('click', (ev) => {
   else if (kind === 'plan') { curPlan = row.dataset.id; show('plans'); }
   else if (kind === 'doc') { const dc = DB.docs().find(x => x.id === row.dataset.id); if (dc && dc.kind === 'memory') { curMem = dc.id; memEdit = false; show('memories'); } else { curDoc = row.dataset.id; show('write'); } }
   else if (kind === 'event') { calSel = row.dataset.d; calMonth = calSel.slice(0, 7); show('cal'); }
+  else if (kind === 'meal') { mealsGoDay(row.dataset.d); show('meals'); }
 });
 
 /* ============================================================
