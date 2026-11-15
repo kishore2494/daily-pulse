@@ -3158,9 +3158,15 @@ body:has(#now-pill) .toast { bottom: calc(140px + var(--safe-bottom)); }
 .lift-empty { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-dim); }
 
 /* write it out */
-.lift-prompt { margin: 0 0 12px; font: 600 17px/1.4 var(--font-display); color: var(--text); }
+.lift-prompt-row { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 12px; }
+.lift-prompt { flex: 1 1 auto; min-width: 0; margin: 0; padding-top: 8px; font: 600 17px/1.4 var(--font-display); color: var(--text); }
+.lift-prompt-next { flex: 0 0 auto; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-input); color: var(--accent-ink); cursor: pointer; transition: transform .3s; }
+.lift-prompt-next:active { transform: rotate(180deg); }
 .lift .lift-text { width: 100%; min-height: 120px; }
-.lift-write-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.lift-write-acts { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.lift-write-acts .lift-save { flex: 1 1 auto; min-width: 0; }
+.lift .lift-mic { flex: 0 0 auto; width: 44px; padding: 0; }
 .lift-saved { display: flex; align-items: flex-start; gap: 7px; margin: 12px 0 0; font-size: 13px; line-height: 1.45; color: var(--good-ink); }
 .lift-saved .ic { flex: 0 0 auto; margin-top: 1px; }
 

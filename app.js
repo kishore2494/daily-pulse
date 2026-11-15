@@ -5836,6 +5836,7 @@ function dayOpen(d) {
 function dayFromLabel(k) {
   if (k === 'today') return 'Log';
   if (k === 'cal') return 'Calendar';
+  if (k === 'lift') return 'Lift';
   const n = navCfg().find(x => x.k === k);
   return n ? n.label : 'Back';
 }
@@ -7763,7 +7764,7 @@ function liftLearn(ents) {
 function liftLearnLine(L) {
   if (!L) return '';
   const f = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
-  return `After you did <b>${escapeHtml(L.act.k)}</b> on a hard day, your mood the next day moved <b>${f(L.on)}</b> on average, vs <b>${f(L.off)}</b> after hard days without it (${L.nOn} vs ${L.nOff} days). A pattern in your own log, not proof.`;
+  return `After <b>‘${escapeHtml(L.act.k)}’</b> on a hard day, your mood the next day moved <b>${f(L.on)}</b> on average, vs <b>${f(L.off)}</b> after hard days without it (${L.nOn} vs ${L.nOff} days). A pattern in your own log, not proof.`;
 }
 /* Good days to read back: a mood of 8+ before today with something to show — words they wrote,
    a pleasant mood word tagged, or a photo. Newest first. */
@@ -7847,8 +7848,11 @@ function liftCardHTML(k) {
 }
 function liftSlotHTML() { const k = liftCardKey(); return `<div id="lift-slot" data-k="${k}">${liftCardHTML(k)}</div>`; }
 // Called from autosaveDraft: the card appears as soon as a low mood is tapped, and goes when it rises.
+// Not while typing: a #sad typed in the journal must not push the text field down mid-word.
+// The card catches up on the next tap or render.
 function liftSlotRefresh() {
   const s = document.getElementById('lift-slot'); if (!s) return;
+  const a = document.activeElement; if (a && a.matches && a.matches('textarea, input[type=text], [contenteditable]')) return;
   const k = liftCardKey(); if (s.dataset.k === k) return;
   s.dataset.k = k; s.innerHTML = liftCardHTML(k);
   const c = s.querySelector('.lift-card'); if (c) c.classList.add('lift-in');
@@ -8044,12 +8048,15 @@ function liftGoodHTML() {
 }
 function liftWriteHTML() {
   return `<section class="card lift-sec" id="lift-write">
-    ${liftSecHead('pencil', 'Write it out', 'Put it somewhere outside your head')}
-    <p class="lift-prompt">${escapeHtml(LIFT_PROMPTS[_liftPrompt % LIFT_PROMPTS.length])}</p>
+    ${liftSecHead('pencil', 'Write it out', 'Get it out of your head')}
+    <div class="lift-prompt-row">
+      <p class="lift-prompt">${escapeHtml(LIFT_PROMPTS[_liftPrompt % LIFT_PROMPTS.length])}</p>
+      <button type="button" class="lift-prompt-next" data-lift-prompt aria-label="A different prompt" title="A different prompt">${liftIco('shuffle', 17)}</button>
+    </div>
     <textarea id="lift-text" class="lift-text" placeholder="As much or as little as you like…">${escapeHtml(_liftText)}</textarea>
     <div class="lift-write-acts">
-      <button type="button" class="lift-link" data-lift-prompt>${liftIco('shuffle', 14)} Different prompt</button>
-      <button type="button" class="btn btn-primary btn-sm" data-lift-save>Save to today's journal</button>
+      <button type="button" class="btn btn-ghost btn-sm lift-mic" data-mic="#lift-text" aria-label="Speak instead">${icon('mic', 17)}</button>
+      <button type="button" class="btn btn-primary btn-sm lift-save" data-lift-save>Save to today's journal</button>
     </div>
     ${_liftSaved ? `<p class="lift-saved lift-fade">${liftIco('tick', 15)} Saved to today's journal. You don't have to fix it; writing it down is enough.</p>` : ''}
   </section>`;
