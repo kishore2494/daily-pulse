@@ -100,6 +100,7 @@ The exceptions are deliberate and each has a reason:
 | Daily records | `entries`, `gym`, `health` |
 | Lists | `tasks`, `notes`, `plans`, `docs`, `events`, `reminders`, `timelog`, `timeacts`, `timebox`, `waves`, `goals`, `projects`, `milestones`, `exercises` |
 | Money | `finaccts`, `fintx`, `finmarks`, `finbudget`, `fincats`, `finset` |
+| Meals (unreleased, 2026-11-15) | `meals`, `meallib`, `mealshop` — all three LIST_SYNC (see features.md ▸ Meals) |
 | Config | `habitcfg`, `actcfg`, `deepcfg`, `gymcfg`, `gymgroups`, `daycfg`, `corecfg`, `navcfg`, `logsec`, `pomo`, `settings` |
 | Ledgers / caches | `awards`, `awardsInit`, `pomohist`, `pjnames` (deleted-project name tombstones), `actnames` (deleted-activity names), `gapskip` |
 | Sync stamps (install state, BACKUP_EXCLUDED) | `listAt`, `listDel`, `timelogDel`, `gymAt`, `sheetScript` (Sheet script version per link) |

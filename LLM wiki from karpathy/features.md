@@ -17,6 +17,7 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 | Cal | cal | renderCal | dp.entries, dp.gym, dp.timelog, dp.events | month grid tinted by mood + dots; dated events with alarms |
 | Write | write | renderWrite | dp.docs | block editor: heading/text/checklist/bullet, dictation, drag; photo/video/voice blocks (v254); lists articles only |
 | Memories | memories | renderMemories | dp.docs (`kind:'memory'`) | v254 (unreleased): pages with date/place/people/tags, `[[links]]` + backlinks, timeline, bulk import, videos |
+| Meals | meals | renderMeals | dp.meals, dp.meallib, dp.mealshop | unreleased (2026-11-15): weekly planner, shopping list, Today's meals on the Log — see ▸ Meals |
 | History | history | renderHistory | dp.entries | (hidden from nav by default; reachable via More) |
 | More | settings | renderSettings | dp.settings | sync, reminders, ntfy, data backup, feedback, **Customize** (renderCustom → `#s-custom`), guide link |
 
@@ -217,6 +218,40 @@ bulk import; big files stay **on the phone only** (no Drive, no compression).
   start, a no-EXIF JPEG): 3 memories on the right days, stills + lengths, video plays in the
   viewer, links/backlinks/filters/search, backup = photos only. 44 unit tests (sync + async).
 - **Open items:** roadmap.md ▸ Memories.
+
+## Meals (built 2026-11-15 on branch worktree-agent-a7d95bec3ba692ed9, NOT deployed)
+
+Kishore: "we may can have the meal planned". A weekly meal planner, in the ☰ menu under More
+features (`adv: true`; the fresh-install test caps visible destinations at 9). Code: the
+`MEALS` block in app.js (`renderMeals`, `mealsLogCard`, the sheet `mealSheetRender`), CSS: the
+`===== Meals =====` block at the end of styles.css.
+- **Screen:** week strip (swipe or arrows, today ringed, 4 slot dots per day, `x/28` bar),
+  Copy last week (fills only empty slots, Undo), Plan / Shopping list tabs. Plan = the day's
+  Breakfast · Lunch · Dinner · Snacks as cards (emoji tile, Indian veg/egg/non-veg mark, tags,
+  eaten tick on today and past days); an empty slot offers a one-tap "Again?" (planned 2+ times
+  there in 6 weeks) or "Try" (a starter idea for that slot, rotating by date). Then "This week at
+  a glance" (7×4 emoji grid) and the insight.
+- **Sheet** (`#ml-sheet`, Back steps edit/repeat → previous, else closes): add (slot switch,
+  search-or-type, diet/tag filters, your meals favourites → recent → in-slot count, 35
+  `MEAL_IDEAS` with ingredients), a meal's options (eaten, swap, repeat on… 14-day picker with
+  Next 7 days / Weekdays, edit, remove with Undo), edit a library meal (emoji, name, type, tags,
+  comma-separated ingredients; plans from today on follow the edit).
+- **Shopping list:** ingredients of un-eaten meals planned today..+6, one line per ingredient
+  (`mealIngKey`: case, "onions"/"onion", "tomatoes"/"tomato"), "×n" = meals needing it, plus typed
+  items; Clear checked (Undo), Copy list (clipboard).
+- **Log:** section `meals` ("Today's meals") after the checklist; hidden until a meal is planned
+  (`get off()` in LOG_SECTIONS_DEF, and the first `mealAdd` unhides it). Eaten tick, and ⇄ = "had
+  something else instead" (swap + eaten, the planned name kept as `was`).
+- **Insight** (`mealInsight`): next-night sleep, else next-day mood, after planned dinners marked
+  eaten vs planned dinners not eaten or swapped; only with ≥ 6 days a side (`MEAL_MIN_DAYS`), 15 min
+  or 0.5 points, sample sizes in the sentence.
+- **Storage:** `dp.meals` (plan items), `dp.meallib` (your meals + ingredients + fav),
+  `dp.mealshop` (typed items; ticks on derived items as `g:<ingredient>` with the plan ids they
+  covered, so a newly planned meal brings the line back). All three in LIST_SYNC, the push
+  payload and BACKUP_KEYS. 60+ unit tests (plan, library, list, copy week, two-phone merge,
+  backup round trip, Log card, sheet).
+- **Deferred:** meals in Search and the PDF/CSV export; the Sheet has no Meals tab; an old app
+  version's push drops `meals` from the Sheet until this phone saves again (same as every new list).
 
 ## Write ▸ photos (v253)
 
