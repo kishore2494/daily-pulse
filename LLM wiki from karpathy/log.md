@@ -1,3 +1,14 @@
+## 2026-11-15 — native 120 rebuilt with R8 (Play "Obfuscation 1%" warning, fix by Feb 2027)
+
+minifyEnabled + shrinkResources ON. Runtime-verified on the emulator (Medium_Phone_API_36.1, headless):
+app renders; FullScreenAlarm.status/openFullScreenSettings, HealthConnect.isAvailable/day/screenTimeForDay,
+LocalNotifications, DaylogShare, DaylogBilling all answer through the WebView (checked via adb-forwarded
+webview_devtools_remote). APK 5.4 → 1.8 MB; mapping ships in the .aab. Also: screenTimeForDay now ends open
+stretches at screen-off (an app left in front while the phone sleeps was counted to midnight).
+`builds/Daylog-120.aab` replaced with this build; tag native-120 moved to it. Still NOT uploaded.
+**How to verify a native build on the emulator:** boot `-no-window`, install the release APK, `adb forward
+tcp:9555 localabstract:webview_devtools_remote_<pid>`, then CDP Runtime.evaluate `Capacitor.Plugins.X.method()`.
+
 ## 2026-11-15 — everything Daylog moved into one folder: ~/Documents/p/daylog/
 
 Kishore wants one folder to open in Claude and run several sessions on. Moved `daily-pulse-app`,
