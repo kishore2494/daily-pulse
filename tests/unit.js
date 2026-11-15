@@ -2782,7 +2782,8 @@
       const td = timelogDels();
       ok('a 200-day-old time-block delete record is dropped in the merge, a young one kept', !('old' in td) && !('older' in td) && td.young === now - day, td);
       ok('…without a push to put it back', !sent.some(x => x.type === 'state'), sent.length);
-      const savers = { tasks: DB.saveTasks, notes: DB.saveNotes, plans: DB.savePlans, projects: DB.saveProjects, reminders: DB.saveReminders, exercises: DB.saveExercises, timeacts: DB.saveTimeacts, events: DB.saveEvents, docs: DB.saveDocs, timebox: DB.saveTimebox, goals: saveGoals, finaccts: finSaveAccts, fintx: finSaveTx, finmarks: finSaveMarks };
+      const savers = { tasks: DB.saveTasks, notes: DB.saveNotes, plans: DB.savePlans, projects: DB.saveProjects, reminders: DB.saveReminders, exercises: DB.saveExercises, timeacts: DB.saveTimeacts, events: DB.saveEvents, docs: DB.saveDocs, timebox: DB.saveTimebox, goals: saveGoals, finaccts: finSaveAccts, fintx: finSaveTx, finmarks: finSaveMarks,
+        meals: mealSavePlan, meallib: mealSaveLib, mealshop: mealSaveShop };
       ok('every list in the sync is saved through listSave', LIST_SYNC.every(k => savers[k] && savers[k].toString().includes("listSave('dp." + k + "'")), LIST_SYNC.filter(k => !(savers[k] && savers[k].toString().includes("listSave('dp." + k + "'"))));
     } finally {
       window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null;
@@ -4001,6 +4002,187 @@
       ok('turning it on shows the Deep log on the Log screen', !logSecHidden('deep'));
     } finally {
       window.toast = tSnap; _glanceOpen = null; customPage = null;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
+  // ---- Meals: plan a slot, your meals, the shopping list, copy last week, sync, backup, the Log card ----
+  (function () {
+    const keys = ['dp.meals', 'dp.meallib', 'dp.mealshop', 'dp.listAt', 'dp.listDel', 'dp.logsec', 'dp.entries', 'dp.touched', 'dp.health', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const tSnap = window.toast; window.toast = () => {};
+    const tap = (sel) => { const el = document.querySelector(sel); if (!el) { ok('the page has ' + sel, false); return false; } el.click(); return true; };
+    try {
+      ['dp.meals', 'dp.meallib', 'dp.mealshop', 'dp.listAt', 'dp.listDel', 'dp.logsec'].forEach(k => localStorage.removeItem(k));
+      const st = DB.settings(); delete st.syncUrl; DB.saveSettings(st);
+      const T = todayStr(), WS = weekStart(T), idea = n => MEAL_IDEAS.find(m => m.name === n);
+      ok('Meals is a screen with a renderer', typeof RENDER.meals === 'function' && !!document.getElementById('s-meals'));
+      ok('the plan, your meals and the shopping list sync item by item', ['meals', 'meallib', 'mealshop'].every(k => LIST_SYNC.includes(k)));
+      ok('…and are all backed up', ['meals', 'meallib', 'mealshop'].every(k => BACKUP_KEYS.includes(k)));
+      ok('there are about 30 starter ideas, each with an emoji, a type and ingredients', MEAL_IDEAS.length >= 30 && MEAL_IDEAS.every(m => m.emoji && MEAL_DIETS[m.diet] && m.ing && m.s));
+      ok("Today's meals on the Log stays hidden while nothing is planned", logSecHidden('meals'));
+
+      // planning a slot
+      const it = mealAdd(T, 'b', idea('Poha'));
+      const p0 = mealPlan()[0];
+      ok('planning a slot stores the meal on that day and slot', !!it && mealPlan().length === 1 && p0.day === T && p0.slot === 'b' && p0.name === 'Poha' && p0.emoji === '🍚');
+      ok('…stamped for the item-by-item sync', !!(listMeta('dp.listAt').meals || {})[it.id]);
+      ok('…and the idea is now one of your meals, ingredients and all', mealLib().length === 1 && /onion/.test(mealLib()[0].ing) && p0.lib === mealLib()[0].id);
+      ok("…and the first meal planned brings Today's meals onto the Log", !logSecHidden('meals'));
+
+      // the library
+      mealAdd(T, 'd', { name: '  Masala   oats ' });
+      const mo = mealLibFind('masala oats');
+      ok('a typed name is saved to your meals, tidied', !!mo && mo.name === 'Masala oats');
+      ok('…with an emoji guessed from the name', mo && mo.emoji === '🥣');
+      mealAdd(addDays(T, 1), 'd', { name: 'masala OATS' });
+      ok('planning it again does not make a second library meal', mealLib().filter(m => mealNorm(m.name) === 'masala oats').length === 1);
+      ok('chicken is non-veg, paneer bhurji is not egg, an egg dish is egg', mealGuess('Chicken 65').diet === 'nonveg' && mealGuess('Paneer bhurji').diet === 'veg' && mealGuess('Egg roast').diet === 'egg');
+      const lib = mealLib(); lib.find(m => m.id === mo.id).ing = 'Oats, Onions, tomato'; mealSaveLib(lib);
+      ok('a library edit is stamped too', !!(listMeta('dp.listAt').meallib || {})[mo.id]);
+
+      // the shopping list
+      const onion = () => mealShopRows().find(r => r.id === 'g:onion');
+      ok('the list adds ingredients up across meals, "Onions" and "onion" as one line', !!onion() && onion().n === 3, mealShopRows().map(r => r.id + '×' + r.n));
+      ok('…and says which meals need it', onion().meals.includes('Poha') && onion().meals.includes('Masala oats'));
+      ok('"tomatoes" and "tomato" are one ingredient too', mealIngKey('Tomatoes') === mealIngKey('tomato') && mealIngKey('glass') === 'glass');
+      mealAdd(addDays(T, 9), 'l', { name: 'Masala oats' });
+      ok('a meal more than 6 days out is not on the list yet', onion().n === 3);
+      mealEatToggle(it.id);
+      ok('an eaten meal leaves the list', onion().n === 2 && !mealShopRows().some(r => r.id === 'g:poha'));
+      mealEatToggle(it.id);
+      ok('a meal cannot be eaten before its day', mealEatToggle(mealPlan().find(p => p.day === addDays(T, 9)).id) === null);
+      mealShopToggle('g:onion');
+      ok('ticking a line keeps it, ticked', onion().done === true && mealShop().some(x => x.id === 'g:onion' && x.done));
+      mealAdd(addDays(T, 2), 'l', { name: 'Masala oats' });
+      ok('a newly planned meal that needs it brings it back unticked, with the new count', onion().done === false && onion().n === 4, onion());
+      mealShopToggle('g:onion');
+      mealShopAddManual('  Dish   soap ');
+      const soap = mealShopRows().find(r => r.manual);
+      ok('your own items go on the list too', !!soap && soap.name === 'Dish soap');
+      mealShopToggle(soap.id);
+      const cl = mealShopClear();
+      ok('clearing checked removes your own items and clears ticked plan items', cl.n === 2 && !onion() && !mealShopRows().some(r => r.manual), mealShopRows().map(r => r.id));
+      ok('…which stay cleared for those meals, not deleted', mealShop().some(x => x.id === 'g:onion' && x.cleared));
+      ok('the copied text lists what is still to get, counted', /• tomato ×3/.test(mealShopText()), mealShopText());
+      mealSaveShop(cl.before);
+      ok('…and Undo puts them back', mealShopRows().some(r => r.manual && r.done) && onion().done);
+
+      // copy last week, repeat on…
+      mealSavePlan([]);
+      const LW = addDays(WS, -7);
+      mealAdd(LW, 'b', idea('Poha')); mealAdd(addDays(LW, 1), 'l', idea('Dal rice')); mealAdd(addDays(LW, 1), 'd', idea('Khichdi'));
+      mealEatToggle(mealPlan()[0].id);
+      mealAdd(addDays(WS, 1), 'l', idea('Rajma chawal'));   // already planned this week
+      const n = mealCopyWeek(WS);
+      const wk = () => mealPlan().filter(p => p.day >= WS && p.day <= addDays(WS, 6));
+      ok('copy last week fills this week\'s empty slots from last week', n === 2 && wk().some(p => p.day === WS && p.slot === 'b' && p.name === 'Poha') && wk().some(p => p.day === addDays(WS, 1) && p.slot === 'd' && p.name === 'Khichdi'), n);
+      ok('…never over a slot that is already planned', wk().filter(p => p.day === addDays(WS, 1) && p.slot === 'l').map(p => p.name).join() === 'Rajma chawal');
+      ok('…and the copies are not eaten, with ids of their own', wk().every(p => !p.eaten) && new Set(mealPlan().map(p => p.id)).size === mealPlan().length);
+      ok('copying again adds nothing', mealCopyWeek(WS) === 0);
+      const pw = wk().find(p => p.name === 'Poha');
+      ok('repeat on… adds the meal on the days picked, not again on its own day', mealRepeat(pw.id, [addDays(WS, 2), addDays(WS, 3), WS]) === 2 && mealsOn(addDays(WS, 3), 'b').some(p => p.name === 'Poha'));
+      ok('…and leaves a day that already has it alone', mealRepeat(pw.id, [addDays(WS, 2)]) === 0);
+
+      // swap: on the day or after, the planned name is kept
+      const dr = mealAdd(T, 'd', idea('Dal rice'));
+      mealSwap(dr.id, idea('Khichdi'), true);
+      const sw = mealPlan().find(p => p.id === dr.id);
+      ok('swapping today keeps what was planned and, from the Log, marks it eaten', sw.name === 'Khichdi' && sw.was === 'Dal rice' && sw.eaten === true);
+      mealSwap(dr.id, idea('Dal rice'));
+      ok('…and swapping back forgets it was swapped', !mealPlan().find(p => p.id === dr.id).was);
+
+      // two phones editing the same week
+      const now = Date.now();
+      localStorage.setItem('dp.listAt', '{}'); localStorage.setItem('dp.listDel', '{}');
+      const shared = { id: 'mlshared', day: WS, slot: 'd', name: 'Dal rice', emoji: '🍛', diet: 'veg', tags: [], lib: '' };
+      localStorage.setItem('dp.meals', JSON.stringify([shared]));
+      mealSavePlan([shared, { id: 'mlmine', day: WS, slot: 'b', name: 'Poha', emoji: '🍚', diet: 'veg', tags: [], lib: '' }]);
+      const P = mealPlan(); P.find(p => p.id === 'mlshared').eaten = true; mealSavePlan(P);
+      localStorage.setItem('dp.touched', String(now - 60000));
+      applyRemoteState({ touched: now, meals: [shared, { id: 'mltheirs', day: addDays(WS, 1), slot: 'l', name: 'Rajma chawal', emoji: '🫘', diet: 'veg', tags: [], lib: '' }],
+        listAt: { meals: { mlshared: now - 50000, mltheirs: now - 1000 } }, listDel: {}, entries: {}, timelog: [], timelogDel: {} });
+      const M = mealPlan();
+      ok('two phones planning the same week: both phones\' meals survive the merge', M.some(p => p.id === 'mlmine') && M.some(p => p.id === 'mltheirs'), M.map(p => p.id));
+      ok('…and the later edit of the same meal wins (eaten here after their older copy)', (M.find(p => p.id === 'mlshared') || {}).eaten === true);
+      applyRemoteState({ touched: Date.now() + 10, meals: M.filter(p => p.id !== 'mlmine'), listAt: { meals: { mltheirs: now - 1000 } },
+        listDel: { meals: { mlmine: Date.now() + 5 } }, entries: {}, timelog: [], timelogDel: {} });
+      ok('…and a meal removed on the other phone goes here too', !mealPlan().some(p => p.id === 'mlmine') && mealPlan().some(p => p.id === 'mltheirs'));
+      const mm = mergeList([{ id: 'g:onion', done: true, src: ['a'] }], [{ id: 'g:onion', done: true, src: ['a', 'b'] }], { 'g:onion': now - 900 }, { 'g:onion': now - 100 }, {}, {}, true);
+      ok('the same ingredient ticked on both phones stays one line, the later tick wins', mm.list.length === 1 && mm.list[0].src.length === 2);
+
+      // backup and restore
+      mealShopAddManual('Ghee');
+      const blob = backupBlob().data;
+      ok('a backup carries the plan, your meals and the shopping list', Array.isArray(blob.meals) && blob.meals.length === mealPlan().length && blob.meals.length > 0
+        && Array.isArray(blob.meallib) && blob.meallib.length === mealLib().length && Array.isArray(blob.mealshop) && blob.mealshop.some(x => x.name === 'Ghee'));
+      const saved = JSON.stringify({ meals: blob.meals, meallib: blob.meallib, mealshop: blob.mealshop });
+      ['dp.meals', 'dp.meallib', 'dp.mealshop'].forEach(k => localStorage.removeItem(k));
+      ok('(a wipe empties them)', !mealPlan().length && !mealLib().length && !mealShop().length);
+      const d = JSON.parse(saved), check = validateBackup(d);
+      ok('the backup file validates with all three sections', check.ok && ['meals', 'meallib', 'mealshop'].every(k => check.keys.includes(k)), check);
+      const before = listIds(check.keys);
+      check.keys.forEach(k => safeSet('dp.' + k, JSON.stringify(d[k])));
+      listRestored(before, Date.now() - 5000);
+      ok('restoring brings every meal, library meal and list item back', mealPlan().length === d.meals.length && mealLib().length === d.meallib.length && mealShop().some(x => x.name === 'Ghee'));
+      ok('…each stamped, so the next sync carries them', Object.keys(listMeta('dp.listAt').meals || {}).length === d.meals.length);
+      ok('a backup whose plan is not a list is refused', !validateBackup({ meals: { a: 1 } }).ok);
+
+      // the insight: nothing below 6 days a side, then an honest sentence
+      mealSavePlan([]);
+      ok('no insight without enough days', mealInsight() === null);
+      const ents = {}, pl = [];
+      for (let i = 1; i <= 14; i++) {
+        const day = addDays(T, -i - 1), ate = i % 2 === 0;
+        pl.push({ id: 'ins' + i, day, slot: 'd', name: 'Khichdi', emoji: '🍲', diet: 'veg', tags: [], lib: '', eaten: ate || undefined });
+        ents[addDays(day, 1)] = { sleepHours: ate ? 7.5 + (i % 3) * 0.1 : 7 + (i % 3) * 0.1, updatedAt: new Date().toISOString() };
+      }
+      localStorage.setItem('dp.health', '{}');
+      localStorage.setItem('dp.entries', JSON.stringify(ents));
+      mealSavePlan(pl.slice(0, 10));
+      ok('5 days a side is still not enough', mealInsight() === null);
+      mealSavePlan(pl);
+      const ins = mealInsight();
+      ok('7 days a side gives one finding, worded like Patterns, sample sizes shown', !!ins && /slept 3\d min more/.test(ins.head) && /7 planned dinners/.test(ins.body) && /7 you skipped/.test(ins.body), ins);
+
+      // the Log card
+      mealSavePlan([]);
+      const tp = mealAdd(T, 'l', idea('Curd rice'));
+      navigateTo('today');
+      const card = document.querySelector('#s-today .ml-log');
+      ok("the Log shows Today's meals once there is a plan", !!card && /Curd rice/.test(card.textContent));
+      tap(`#s-today [data-ml-eat="${tp.id}"]`);
+      ok('one tap on the Log marks it eaten', mealPlan().find(p => p.id === tp.id).eaten === true && !!document.querySelector(`#s-today [data-ml-eat="${tp.id}"].on`));
+
+      // the screen and its sheet
+      navigateTo('meals');
+      const sc = document.getElementById('s-meals');
+      ok('the planner shows a 7-day strip with today marked', sc.querySelectorAll('.ml-dp').length === 7 && !!sc.querySelector('.ml-dp.today.on'));
+      ok('…the day\'s four slots, and the week at a glance', sc.querySelectorAll('.ml-day .ml-slot').length === 4 && sc.querySelectorAll('.ml-glance .ml-grow[data-ml-day]').length === 7);
+      ok('an empty slot offers a one-tap suggestion', !!sc.querySelector('.ml-day [data-ml-quick]'));
+      tap('#s-meals .ml-day [data-ml-add]');
+      ok('a slot opens the add sheet, with ideas', mealSheetIsOpen() && document.querySelectorAll('#ml-sheet .ml-idea').length >= 20);
+      const q = document.getElementById('ml-q');
+      if (q) { q.value = 'Thayir <b>sadam</b>'; q.dispatchEvent(new Event('input', { bubbles: true })); }
+      ok('typing a new name offers to add it, escaped', !!document.querySelector('#ml-sheet [data-ml-new]') && !document.querySelector('#ml-sheet [data-ml-new] b b'));
+      tap('#ml-sheet [data-ml-new]');
+      ok('…which plans it and closes the sheet', !mealSheetIsOpen() && mealPlan().some(p => p.name === 'Thayir <b>sadam</b>'));
+      tap(`#s-meals [data-ml-item="${tp.id}"]`);
+      ok('a planned meal opens its options', mealSheetIsOpen() && !!document.querySelector('#ml-sheet [data-ml-act="repeat"]'));
+      tap('#ml-sheet [data-ml-act="repeat"]');
+      ok('Repeat on… shows two weeks of days', document.querySelectorAll('#ml-sheet [data-ml-rday]').length === 14);
+      handleBack();
+      ok('Back steps from Repeat to the meal, then closes', mealSheetIsOpen() && !!document.querySelector('#ml-sheet [data-ml-act]') && (handleBack(), !mealSheetIsOpen()));
+      tap('#s-meals [data-ml-week="1"]');
+      ok('the arrow goes to next week', mlWeek === addDays(WS, 7) && /Next week/.test(sc.textContent));
+      mealAdd(addDays(T, 1), 'd', idea('Dal rice'));
+      tap('#s-meals [data-ml-tab="shop"]');
+      ok('the shopping tab lists the week\'s ingredients', mlTab === 'shop' && !!sc.querySelector('.ml-li') && /rice/i.test(sc.textContent));
+      handleBack();
+      ok('Back from the shopping list returns to the plan', mlTab === 'plan');
+    } finally {
+      window.toast = tSnap; mealSheetClose(); mlWeek = null;
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
       navigateTo('today');
     }
