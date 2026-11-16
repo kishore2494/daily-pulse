@@ -1,3 +1,19 @@
+## 2026-11-16 (evening) — blink fix + greeting on any opening tab (on main, NOT deployed)
+
+- **Every screen blinked once** ~0.8s after opening (Kishore, on his Realme RMX3231). Cause: v259's
+  entrance put `.enter` on the screen with `.screen.enter { animation: none }`; removing the class at
+  900ms re-armed `.screen.on { animation: fade }`, so the whole screen replayed its fade from opacity 0.
+  Fix: `screenRise(sec)` marks the screen's top-level children `.rise` once, after the render, and
+  `.screen.on { animation: none }` for good. Proven on the phone (Chrome over adb reverse + CDP):
+  live v259 showed `fade` with screen opacity 0.00 on every screen; the fix shows none, and no child
+  ever drops back below 0.5. Screen recordings agree (no frame change at +0.8s). gotchas.md ▸ CSS.
+- **Greeting on any opening tab** (Kishore: "what if the user sets another first screen?"):
+  `homeGreetHTML`/`homeGreetSync` put a compact hero (date, greeting, today's % as a ring button
+  that opens the Log, streak) in `#home-greet`, outside the screens, only on the `defaultTab()`
+  screen when that is not the Log. 7 unit tests.
+- Tests ran on **inbook** (repo cloned to `C:\Users\gskee\projects\p\daylog\daily-pulse-app`;
+  in PowerShell use `npm.cmd`, not `npm`, since script execution is disabled).
+
 ## 2026-11-16 — v259 LIVE (tag web-v259): Lift, Meals, premium look (two rounds)
 
 Kishore (2026-11-15): "the UI is not modern… we need to wow the users"; "if the mood feels low give

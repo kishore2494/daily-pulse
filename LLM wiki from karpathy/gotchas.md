@@ -458,4 +458,7 @@ internal track.
 - The entrance animation (slight scale-up) makes 44px buttons measure under 44px in the layout eval: switch it off while measuring (`tools/evals`).
 - `<html>` carries the class `lh-top` while the Log hero is on screen. Never name a component class `.lh-top`: a row styled `display:flex` turned `<html>` into a flex box, the body grew to 720px and every screenshot came back zoomed out (the hero's row is `.lh-head`).
 - An element inside the Log hero that needs taps near the top of the screen works only because the top bar is `pointer-events: none` under `html.lh-top`; anything new put in the top bar must opt back in.
+- Never toggle a class that switches a `.screen`'s OWN `animation` to `none` and back: when the
+  `none` goes away, the original animation (`.screen.on { animation: fade }`) starts again from
+  its first keyframe, and the screen blinks. Animate the children once instead (`screenRise`).
 
