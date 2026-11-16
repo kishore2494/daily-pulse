@@ -17345,6 +17345,16 @@ function renderMore() {
 /* ---------- Navigation ---------- */
 const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 RENDER.meals = renderMeals;   // Meals (see the Meals block)
+/* The entrance: the screen's top-level blocks rise in, staggered. Marked per element and only
+   once, after the render: an element a later re-render creates just appears, and nothing is
+   ever replayed. (v259 toggled an `enter` class on the screen instead; removing it 900ms later
+   re-armed `.screen.on`'s own fade, and every screen blinked once, on the phone too.) */
+function screenRise(sec) {
+  clearTimeout(sec._enterT);
+  const kids = Array.from(sec.children).slice(0, 14);
+  kids.forEach((k, i) => { k.style.setProperty('--rise-i', Math.min(i, 6)); k.classList.add('rise'); });
+  sec._enterT = setTimeout(() => kids.forEach(k => k.classList.remove('rise')), 1000);
+}
 function show(name) {
   // Leaving Settings abandons a half-finished delete. An in-progress irreversible action
   // must never survive navigating away and come back still armed.
@@ -17362,8 +17372,10 @@ function show(name) {
   if (sec) sec.classList.add('on');
   document.documentElement.classList.remove('lh-top');   // only the Log's hero hides the top bar title
   // Staggered entrance, only when a screen actually opens (not on re-renders inside it).
-  if (sec && (leaving || !show._once)) { show._once = true; sec.classList.add('enter'); clearTimeout(sec._enterT); sec._enterT = setTimeout(() => sec.classList.remove('enter'), 900); }
+  const entering = !!sec && (leaving || !show._once);
+  if (entering) show._once = true;
   (RENDER[name] || (()=>{}))();
+  if (entering) screenRise(sec);
   if (sec) decorateHeaders(sec);   // swap leading header/menu emoji → clean icons app-wide
   renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)
   try { nowPillRefresh(); } catch (e) {}

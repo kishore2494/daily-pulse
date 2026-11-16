@@ -3257,14 +3257,10 @@ body.kbd-open .nav { transform: translateY(calc(100% + 40px)); }
 .task .check, .lrow .check { transition: all .15s, transform .25s var(--ease-spring); }
 /* the Log's Done: a centred pill rather than a full-width slab */
 .log-footer .btn { width: auto; min-width: 200px; padding-left: 40px; padding-right: 40px; border-radius: 999px; }
-.screen.enter { animation: none; }
-.screen.enter > * { animation: dl-rise .6s var(--ease-out) backwards; }
-.screen.enter > :nth-child(2) { animation-delay: .05s; }
-.screen.enter > :nth-child(3) { animation-delay: .1s; }
-.screen.enter > :nth-child(4) { animation-delay: .15s; }
-.screen.enter > :nth-child(5) { animation-delay: .2s; }
-.screen.enter > :nth-child(6) { animation-delay: .25s; }
-.screen.enter > :nth-child(n+7) { animation-delay: .3s; }
+/* The staggered rise replaces the screen-wide fade for good. Never toggle .screen's own animation:
+   switching it back on replays the fade, and the whole screen blinks (v259, seen on a phone). */
+.screen.on { animation: none; }
+.screen > .rise { animation: dl-rise .6s var(--ease-out) backwards; animation-delay: calc(var(--rise-i, 0) * .05s); }
 @keyframes dl-rise { from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.985); } }
 
 /* ---------- Stats overview: streak hero + metric tiles ---------- */
@@ -3373,7 +3369,7 @@ body.kbd-open .nav { transform: translateY(calc(100% + 40px)); }
 :root[data-style="bloom"] .heat.heat-wk .cell { border-radius: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .log-hero::before, .screen.enter > *, .ring-fg, .ring-glow, .ring-celebrate, .ring-celebrate .ring-wrap::before,
+  .log-hero::before, .screen > .rise, .ring-fg, .ring-glow, .ring-celebrate, .ring-celebrate .ring-wrap::before,
   .ring-celebrate .ring-wrap::after, .mm-cell.on, .mm-word.pop, .habit.tick, .habit.tick .check, .habit.tick .check::after { animation: none !important; }
   :root[data-style] .nav::before { transition: none; }
 }
