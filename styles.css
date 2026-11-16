@@ -4156,3 +4156,25 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
   .lhero .gl-tile::after, .tsl-ico, .topbar .streak-badge { transition: none; }
 }
 /* ===== end Log hero round 2 ===== */
+
+/* ===== Greeting on any opening tab (#home-greet, homeGreetHTML) =====
+   The Log hero's panel and per-style --hx-* tokens, compact: no negative top margin (the screen keeps
+   its own title bar), no tiles, a small ring that opens the Log. */
+#home-greet[hidden] { display: none; }
+.lhero.hgreet { margin: 2px 0 18px; }
+.hgreet .lh-in { padding-bottom: 16px; }
+.hgreet .lh-greet { font-size: 26px; }
+.hg-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.hg-log { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 14px 6px 8px; border: 0; border-radius: 999px;
+  background: var(--hx-chip); box-shadow: inset 0 0 0 1px var(--hx-chip-ring); color: var(--hx-ink); font: 600 13.5px/1.2 var(--font-ui); cursor: pointer;
+  transition: transform .15s ease; }
+.hg-log:active { transform: scale(.97); }
+.hg-ring { width: 32px; height: 32px; transform: rotate(-90deg); flex: 0 0 auto; }
+.hg-ring circle { fill: none; stroke-width: 4; }
+.hg-tr { stroke: var(--ring-track); }
+.hg-fg { stroke: var(--accent); stroke-linecap: round; }
+.hg-log.full .hg-fg { stroke: var(--hx-ok); }
+.hg-t b { font-weight: 800; margin-right: 3px; }
+.hg-go { color: var(--hx-dim); font-size: 18px; line-height: 1; margin-left: 2px; }
+.hg-streak { font-size: 13px; }
+

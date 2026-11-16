@@ -2491,6 +2491,42 @@ function logHeroHTML(tiles) {
     </div>
   </section>`;
 }
+/* ---------- The greeting on any opening tab ----------
+   The hero lives on the Log. Someone who set Settings ▸ Customize ▸ Tabs ▸ default opening tab to
+   Stats, Time, Habits… never saw it. So the chosen opening screen gets a compact version above its
+   content: the date, the greeting, today's progress as a small ring that opens the Log, and the
+   streak. It sits outside the screen's own markup (#home-greet), so a re-render inside the screen
+   (a Stats tab, a Meals week) never drops or re-animates it. */
+function homeGreetHTML() {
+  const today = todayStr(), d = new Date(today + 'T12:00:00'), h = new Date().getHours();
+  const g = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const name = ((DB.settings().name || '').trim().split(/\s+/)[0] || '').slice(0, 24);
+  const c = todayCompletion(DB.entries()[today] || {}), st = loggedStreak();
+  const R = 15, C = 2 * Math.PI * R, off = C * (1 - Math.max(0, Math.min(100, c.pct)) / 100);
+  const full = c.pct >= 100;
+  const lbl = full ? "Today's log is complete" : c.pct > 0 ? "Continue today's log" : "Log today";
+  return `<section class="lhero hgreet no-ring no-tiles" aria-label="Today">
+    <div class="lh-in">
+      <div class="lh-head"><div class="lh-date">${escapeHtml(d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }))}</div></div>
+      <div class="lh-greet" role="heading" aria-level="2">${g}${name ? `,<span class="lh-name"> ${escapeHtml(name)}</span>` : ''}</div>
+      <div class="hg-row">
+        <button type="button" class="hg-log${full ? ' full' : ''}" data-hg-log aria-label="${lbl}: ${c.pct}%">
+          <svg class="hg-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="${R}" class="hg-tr"/><circle cx="18" cy="18" r="${R}" class="hg-fg" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>
+          <span class="hg-t"><b>${c.pct}%</b> ${escapeHtml(lbl)}</span><span class="hg-go" aria-hidden="true">›</span></button>
+        ${st > 1 ? `<span class="ring-streak lh-streak hg-streak">${icon('flame', 14)}${st}-day streak</span>` : ''}
+      </div>
+    </div>
+  </section>`;
+}
+function homeGreetSync(name) {
+  const el = document.getElementById('home-greet'); if (!el) return;
+  const on = !!name && name !== 'today' && name === defaultTab();
+  el.hidden = !on;
+  el.innerHTML = on ? homeGreetHTML() : '';
+}
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest && ev.target.closest('[data-hg-log]')) navigateTo('today');
+});
 /* "Back to today" from a past day: the same path as picking today in the date chip. */
 document.addEventListener('click', (ev) => {
   if (!ev.target.closest || !ev.target.closest('[data-lh-today]')) return;
@@ -17375,6 +17411,7 @@ function show(name) {
   const entering = !!sec && (leaving || !show._once);
   if (entering) show._once = true;
   (RENDER[name] || (()=>{}))();
+  try { homeGreetSync(name); } catch (e) {}
   if (entering) screenRise(sec);
   if (sec) decorateHeaders(sec);   // swap leading header/menu emoji → clean icons app-wide
   renderNav();   // recompute bottom-bar highlight (More lights up for overflow screens)

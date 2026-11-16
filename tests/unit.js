@@ -4197,6 +4197,30 @@
     }
   })();
 
+  // ---- The greeting on a non-Log opening tab (homeGreetSync) ----
+  (function () {
+    const sS = localStorage.getItem('dp.settings');
+    try {
+      const set = dt => { const st = DB.settings(); if (dt) st.defaultTab = dt; else delete st.defaultTab; st.name = 'Asha Rao'; DB.saveSettings(st); };
+      const hg = () => document.getElementById('home-greet');
+      ok('there is a greeting slot outside the screens', !!hg() && !hg().closest('.screen'));
+      set('dash'); navigateTo('dash');
+      ok('the opening tab (Stats) shows the greeting', !hg().hidden && /Good (night|morning|afternoon|evening)/.test(hg().textContent) && /Asha/.test(hg().textContent));
+      ok('…with today\'s progress as a way into the Log', !!hg().querySelector('[data-hg-log]') && /%/.test(hg().querySelector('[data-hg-log]').textContent));
+      renderDash();
+      ok('…and a re-render inside Stats keeps it', !hg().hidden && !!hg().querySelector('.lh-greet'));
+      navigateTo('time');
+      ok('another screen does not show it', hg().hidden && hg().innerHTML === '');
+      navigateTo('dash'); hg().querySelector('[data-hg-log]').click();
+      ok('tapping the progress opens the Log', document.getElementById('s-today').classList.contains('on') && hg().hidden);
+      set(null); navigateTo('dash');
+      ok('with the Log as the opening tab, Stats shows no greeting (the Log has its own hero)', hg().hidden);
+    } finally {
+      if (sS != null) localStorage.setItem('dp.settings', sS); else localStorage.removeItem('dp.settings');
+      navigateTo('today');
+    }
+  })();
+
   // ---- Meals: plan a slot, your meals, the shopping list, copy last week, sync, backup, the Log card ----
   (function () {
     const keys = ['dp.meals', 'dp.meallib', 'dp.mealshop', 'dp.listAt', 'dp.listDel', 'dp.logsec', 'dp.entries', 'dp.touched', 'dp.health', 'dp.settings'];
