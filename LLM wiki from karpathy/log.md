@@ -1,4 +1,4 @@
-## 2026-11-16 (evening) — blink fix + greeting on any opening tab (on main, NOT deployed)
+## 2026-11-16 (evening) — v260 LIVE (tag web-v260): blink fix + greeting on any opening tab
 
 - **Every screen blinked once** ~0.8s after opening (Kishore, on his Realme RMX3231). Cause: v259's
   entrance put `.enter` on the screen with `.screen.enter { animation: none }`; removing the class at
@@ -11,6 +11,9 @@
   `homeGreetHTML`/`homeGreetSync` put a compact hero (date, greeting, today's % as a ring button
   that opens the Log, streak) in `#home-greet`, outside the screens, only on the `defaultTab()`
   screen when that is not the Log. 7 unit tests.
+- Deployed on Kishore's "deploy". Verified after deploy on his phone: live site in Chrome (CDP probe: no
+  screen animation, opacity stays 1.00 on 6 screens) and the real Daylog app (Settings shows v260;
+  screen recordings of Stats/Time/Focus/Log taps: no frame change later than 0.4s after navigation).
 - Tests ran on **inbook** (repo cloned to `C:\Users\gskee\projects\p\daylog\daily-pulse-app`;
   in PowerShell use `npm.cmd`, not `npm`, since script execution is disabled).
 
