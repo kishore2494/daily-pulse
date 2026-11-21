@@ -1,3 +1,11 @@
+## 2026-11-21 — v262 LIVE (tag web-v262); Kishore uploads native 121 next
+
+Deployed on Kishore's "deploy" (he then uploads `builds/Daylog-121.aab` himself). deploy.sh passed every check and
+pushed both remotes + tags, but **the Pages build failed on GitHub's side** ("No artifacts named github-pages were
+found" — both the push-triggered and the dispatched run, same minute). Re-dispatching `pages.yml` once fixed it
+(run 44902647643, success); the live app.js, sw.js cache and index.html `?v=` all say v262. Pitfall worth
+remembering: that artifact error is a GitHub flake, not our build — re-dispatch before debugging anything.
+
 ## 2026-11-21 — v262 + native 121 BUILT (NOT deployed / NOT uploaded): the daily-users push
 
 Kishore: "there are lots of tokens, can you use that to build it" (the DAU plan in roadmap.md). Built in parallel,
