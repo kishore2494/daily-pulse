@@ -1,3 +1,11 @@
+## 2026-11-21 — Play phone screenshots replaced with store/brand/out/store-1..8 (by API)
+
+Kishore: "screenshots too". `play.mjs set-image phoneScreenshots store-1-memories … store-8-private` (1080×1920,
+8 files); `images` afterwards lists the 8 local sha256s in order; production still 121. The 3 tablet screenshots
+(sevenInch/tenInch) are still the old set — nothing new was made for tablets. Under Google review like the icon.
+Also at 19:50 Kishore said stop; two background agents (v262 bug review, fix-time clobber fix) were started and
+stopped unfinished — nothing from them landed.
+
 ## 2026-11-21 — Play listing icon + feature graphic replaced with the sunset brand (by API)
 
 Kishore: "update the logo too … OK do it". The store still showed the old pulse-line icon and the old "Habits,
