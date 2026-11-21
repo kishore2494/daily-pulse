@@ -1,3 +1,15 @@
+## 2026-11-21 — Time review's last two bugs fixed on branch `time-fixes-2` (NOT merged / NOT deployed)
+
+- **Midnight time boxes are "now":** `tbLive(b, now)` — an end before the start (23:00–01:00) ends the next
+  morning; equal start/end is an empty block, not 24 h. After midnight the Today view lists last night's
+  block first while it is still on ("● now · since yesterday"). `timeboxHTML(now)` takes the moment for tests.
+- **Overlapping blocks count once:** `coveredMs(clips, lo, hi)` (union, clamped) and `actTotalsMs(clips)`
+  (per activity: the SAME activity's overlaps once; DIFFERENT activities over one hour each keep it — only
+  day totals are a union). Used by Stats coverage % + tracked h (was 250% on a doubled day), the Time
+  screen's Tracked/untracked line, `updateTimeSummary`, `trackedHours`/`trackedSleepHours` (Log fill-in),
+  the day page, Best days, both reports, the month wrap-up and compare-periods.
++25 tests, written first (on old main 16 fail: 14 asserts + 2 "helper missing"). Closes the Nov 2 Time review.
+
 ## 2026-11-21 — v264 LIVE (tag web-v264): rating sheet web side
 
 Deployed on Kishore's "deploy". Only change since v263: the in-app rating code (features.md ▸ Rating asks), inert

@@ -3399,6 +3399,108 @@
     }
   })();
 
+  // ---- The Nov 2 Time review's last two: a time box across midnight is "now"; overlapping blocks count once ----
+  (function () {
+    const keys = ['dp.timebox'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const daySnap = tbDay, edSnap = tbEdit;
+    const at = (ds, hh, mm) => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d, hh, mm); };
+    try {
+      // the Today / Tomorrow views, drawn at a given moment
+      const D = '2026-03-10', N = addDays(D, 1);
+      const night = { id: 'tbM1', date: D, start: '23:00', end: '01:00', label: 'Night shift' };
+      localStorage.setItem('dp.timebox', JSON.stringify([night, { id: 'tbM2', date: N, start: '09:00', end: '10:00', label: 'Standup' }]));
+      const view = now => { const el = document.createElement('div'); el.innerHTML = timeboxHTML(now); return el; };
+      const row = (el, id) => el.querySelector(`.tb-row[data-id="${id}"]`);
+      const isNow = r => !!r && r.classList.contains('live') && /● now/.test(r.textContent);
+      tbDay = 0; tbEdit = null;
+      let v = view(at(D, 23, 30));
+      ok('timebox Today at 23:30: the 23:00–01:00 block is now', isNow(row(v, 'tbM1')), v.innerHTML.slice(0, 300));
+      v = view(at(N, 0, 30));
+      ok('timebox Today at 00:30 the next day: last night\'s block is still on, first, as now', isNow(row(v, 'tbM1')) && v.querySelector('.tb-row') === row(v, 'tbM1'));
+      ok('…next to today\'s own blocks, which are not now', !!row(v, 'tbM2') && !isNow(row(v, 'tbM2')));
+      v = view(at(N, 1, 30));
+      ok('…and it leaves Today once it has ended', !row(v, 'tbM1') && !!row(v, 'tbM2'));
+      v = view(at(N, 9, 30));
+      ok('a same-day block is still now inside its hours', isNow(row(v, 'tbM2')));
+      tbDay = 1;
+      v = view(at(D, 23, 30));
+      ok('timebox Tomorrow at 23:30: tomorrow\'s blocks, none of them now', !row(v, 'tbM1') && !!row(v, 'tbM2') && !v.querySelector('.tb-row.live'));
+      tbDay = 0;
+      // the rule itself
+      ok('timebox: 23:00–01:00 is now at 23:30 on its day', tbLive(night, at(D, 23, 30)));
+      ok('…and at 00:30 the morning after', tbLive(night, at(N, 0, 30)));
+      ok('…but not at 01:00, at 22:59, at 00:30 BEFORE it, or at 23:30 the next day',
+        !tbLive(night, at(N, 1, 0)) && !tbLive(night, at(D, 22, 59)) && !tbLive(night, at(D, 0, 30)) && !tbLive(night, at(N, 23, 30)));
+      const toMid = { date: D, start: '23:00', end: '00:00' };
+      ok('a 23:00–00:00 block runs to midnight', tbLive(toMid, at(D, 23, 59)) && !tbLive(toMid, at(N, 0, 0)));
+      const same = { date: D, start: '09:00', end: '10:00' };
+      ok('09:00–10:00 is now at 09:00 and 09:59, not at 10:00 or on another day',
+        tbLive(same, at(D, 9, 0)) && tbLive(same, at(D, 9, 59)) && !tbLive(same, at(D, 10, 0)) && !tbLive(same, at(N, 9, 30)));
+      const zero = { date: D, start: '09:00', end: '09:00' };
+      ok('a block that starts and ends at the same minute is never now (not a 24-hour block)', !tbLive(zero, at(D, 9, 0)) && !tbLive(zero, at(D, 15, 0)) && !tbLive(zero, at(N, 8, 0)));
+    } catch (e) {
+      ok('timebox across midnight: the block ran without throwing', false, String(e && e.stack || e).slice(0, 300));
+    } finally {
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      tbDay = daySnap; tbEdit = edSnap;
+    }
+  })();
+  (function () {
+    const keys = ['dp.timelog', 'dp.entries'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const H = 3600000;
+    try {
+      // overlapping time blocks (two phones, a hand edit) count once
+      const P = addDays(todayStr(), -3), p0 = dayStartMs(P), p1 = dayEndMs(P);
+      localStorage.setItem('dp.timelog', JSON.stringify([
+        { id: 'ov1', act: 'work', start: p0 + 9 * H, end: p0 + 12 * H, upd: 1 },    // phone A: work 9–12
+        { id: 'ov2', act: 'work', start: p0 + 10 * H, end: p0 + 13 * H, upd: 1 },   // phone B: work 10–13
+        { id: 'ov3', act: 'gymt', start: p0 + 12 * H, end: p0 + 13 * H, upd: 1 },   // gym 12–13, over B's work
+        { id: 'ov4', act: 'sleep', start: p0 - 1 * H, end: p0 + 7 * H, upd: 1 },    // last night's sleep…
+        { id: 'ov5', act: 'sleep', start: p0 - 1 * H, end: p0 + 7 * H, upd: 1 },    // …on both phones
+      ]));
+      localStorage.setItem('dp.entries', '{}');
+      updateTimeSummary(P);
+      const sum = (DB.entry(P) || {}).timeSummary || '';
+      ok('time summary: the same activity tracked twice over the same hours counts once', /Work 4h 00m/.test(sum) && /Sleep 7h 00m/.test(sum), sum);
+      ok('…and a different activity over the same hours keeps its own time', /Gym 1h 00m/.test(sum), sum);
+      ok('Log fill-in: tracked work and sleep are not doubled', trackedHours(P, 'work') === 4 && trackedSleepHours(P) === 8, [trackedHours(P, 'work'), trackedSleepHours(P)]);
+      const tt = timeTotalsHTML(P);
+      // covered: sleep 0–7 (twice) + work 9–13 (gym 12–13 sits inside it) = 11 h
+      ok('Time screen: the day total is the time covered, not the sum of the bars',
+        tt.includes('Tracked <b>11h 00m</b> · untracked ' + fmtDur(p1 - p0 - 11 * H)), tt.slice(-160));
+      const hdWork = (historyDayHTML(P).match(/Work<\/span><span class="hd-ab">.*?<\/span><b>([^<]*)<\/b>/) || [])[1];
+      ok('day page: the same activity tracked twice is not doubled', hdWork === '4h 00m', hdWork);
+      // a day covered twice over: coverage reads 100%, not 200%+
+      const Q = addDays(todayStr(), -5), q0 = dayStartMs(Q), q1 = dayEndMs(Q);
+      localStorage.setItem('dp.timelog', JSON.stringify([
+        { id: 'ow1', act: 'work', start: q0, end: q1, upd: 1 },
+        { id: 'ow2', act: 'work', start: q0, end: q1, upd: 1 },
+        { id: 'ow3', act: 'learn', start: q0 + 6 * H, end: q0 + 18 * H, upd: 1 },
+      ]));
+      const st = timeStatsHTML([Q]);
+      const cov = +((st.match(/>(\d+)%<\/div><div class="l">of time covered/) || [])[1]);
+      ok('Stats: a day tracked twice over (two phones) reads 100% covered, never more', cov === 100, cov);
+      const trk = +((st.match(/>(\d+)h<\/div><div class="l">tracked/) || [])[1]);
+      ok('…and its tracked hours are the length of the day', trk === Math.round((q1 - q0) / H), trk);
+      const mr = monthReview(Q.slice(0, 7));
+      ok('month wrap-up: overlaps count once in its total and per activity',
+        mr.trackedMs === q1 - q0 && (mr.actRows.find(r => r.id === 'work') || {}).ms === q1 - q0, [mr.trackedMs / H, mr.actRows.map(r => r.id + ':' + r.ms / H)]);
+      const qw = { days: [Q], t0: q0, t1: q1 };
+      ok('compare periods: tracked time counts an hour once', vsCtx().trackedMs(qw) === q1 - q0, vsCtx().trackedMs(qw) / H);
+      // the rule itself
+      ok('coveredMs: overlapping blocks count once', coveredMs([{ a: 0, b: 2 * H }, { a: H, b: 3 * H }]) === 3 * H);
+      ok('coveredMs: a block inside another adds nothing', coveredMs([{ a: 0, b: 4 * H }, { a: H, b: 2 * H }]) === 4 * H);
+      ok('coveredMs: blocks that touch or stand apart add up', coveredMs([{ a: 3 * H, b: 4 * H }, { a: 0, b: H }, { a: H, b: 2 * H }]) === 3 * H);
+      ok('coveredMs: clamped to the range asked for', coveredMs([{ a: -H, b: 2 * H }], 0, H) === H && coveredMs([]) === 0);
+    } catch (e) {
+      ok('overlapping time blocks: the block ran without throwing', false, String(e && e.stack || e).slice(0, 300));
+    } finally {
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+    }
+  })();
+
   // ---- v253: the read-only parse cache (Stats 2.4× faster with 3 years of data) ----
   (function () {
     const eSnap = localStorage.getItem('dp.entries'), roSnap = roParse;
