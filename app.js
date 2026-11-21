@@ -10722,7 +10722,7 @@ function setupReminders() {
     reminderTimeouts.push(setTimeout(() => checkReminders(true), Math.max(0, ms) + 300));
   });
   checkReminders(true);   // check immediately too (catches an already-due one)
-  if (nativeShell()) { scheduleNativeAlarms(); refreshTimerNotif(); scheduleTimeboxAlarms(); return; }   // Android app: real native alarms, skip the workarounds
+  if (nativeShell()) { const p = scheduleNativeAlarms(); refreshTimerNotif(); scheduleTimeboxAlarms(); return p; }   // Android app: real native alarms, skip the workarounds (p: done once the permission prompt is answered)
   scheduleBackgroundNotifications();   // + OS-level alarms even when the app is closed (where supported)
   scheduleNtfy();                      // + ntfy push (rings via the ntfy app even when this app is closed)
 }
@@ -13727,19 +13727,27 @@ function notifAskRefresh() {
 document.addEventListener('click', async (ev) => {
   const b = ev.target.closest && ev.target.closest('[data-notif-ask]'); if (!b) return;
   const a = b.dataset.notifAsk;
-  safeSet('dp.notifAsk', a + ':' + todayStr());
+  // The one answer is spent on "No" or once notifications are really on. Refused, the
+  // "can't ring" card ('enable') shows instead, until it is turned on or dismissed.
+  const spend = () => safeSet('dp.notifAsk', a + ':' + todayStr());
+  if (a === 'no') spend();
   if (a === 'yes') {
     const t = (document.getElementById('notif-ask-time') || {}).value || '21:00';
     const rs = DB.reminders();
-    rs.push({ id: 'rem' + Date.now(), time: t, label: 'Log my day', enabled: true, mode: 'notify' });
-    DB.saveReminders(rs); setupReminders();   // → scheduleNativeAlarms → Android's permission prompt
-    toast('Reminder set for ' + t + ' 🔔');
+    // a "Log my day" that is switched off or in alarm mode becomes this one, never a second one
+    const lr = rs.find(r => r && /^log my day$/i.test(String(r.label || '').trim()));
+    if (lr) Object.assign(lr, { time: t, enabled: true, mode: 'notify' });
+    else rs.push({ id: 'rem' + Date.now(), time: t, label: 'Log my day', enabled: true, mode: 'notify' });
+    DB.saveReminders(rs);
+    await setupReminders();   // → scheduleNativeAlarms → Android's permission prompt, answered
+    if (await refreshNotifPerm() === 'granted') { spend(); toast('Reminder set for ' + t + ' 🔔'); }
+    else toast('Reminder saved, but notifications are off for Daylog, so it can\'t ring yet');
   } else if (a === 'on') {
     try {
       const LN = window.Capacitor.Plugins.LocalNotifications;
       const p = await LN.requestPermissions();
-      if (p && p.display === 'granted') { setupReminders(); toast('Notifications on 🔔'); }
-      else { const FS = fullScreenPlugin(); if (FS && FS.openNotificationSettings) await FS.openNotificationSettings(); toast('Allow notifications for Daylog, then come back'); }
+      if (p && p.display === 'granted') { spend(); setupReminders(); toast('Notifications on 🔔'); }
+      else { const FS = fullScreenPlugin(); if (FS && FS.openNotificationSettings) await FS.openNotificationSettings(); toast('Notifications are still off. Allow them for Daylog, then come back'); }
     } catch (e) {}
   }
   await refreshNotifPerm();

@@ -709,5 +709,71 @@
       closeDrawer(); navigateTo('today');
     }
   }
+
+  /* ---------- review #3: the one-time notification ask, when Android says no ----------
+     "Remind me" toasted "Reminder set" and spent dp.notifAsk even when the permission prompt was
+     refused, so the "can't ring" card could never show. The real card, the real click handler. */
+  {
+    const capSnap = window.Capacitor, permSnap = _notifPerm, tSnap = window.toast, tourSnap = tourIdx;
+    const ks = ['dp.entries', 'dp.reminders', 'dp.notifAsk', 'dp.onboarded'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const toasts = [];
+    let answer = 'denied', asked = 0;
+    const LN = {
+      requestPermissions: () => { asked++; return Promise.resolve({ display: answer }); },
+      checkPermissions: () => Promise.resolve({ display: answer }),
+      getPending: () => Promise.resolve({ notifications: [] }), cancel: () => Promise.resolve(),
+      schedule: () => Promise.resolve(), registerActionTypes: () => Promise.resolve(), addListener: () => {},
+    };
+    const logRems = () => DB.reminders().filter(r => /^log my day$/i.test(String(r.label || '').trim()));
+    const tap = async (which) => {
+      toasts.length = 0; renderToday();
+      const b = document.querySelector(`#notif-ask-slot [data-notif-ask="${which}"]`);
+      if (!b) return false;
+      b.click(); await until(() => toasts.length > 0); await sleep(20);
+      return true;
+    };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN } }; window.toast = m => toasts.push(m);
+      localStorage.setItem('dp.onboarded', '1'); localStorage.removeItem('dp.notifAsk'); tourIdx = -1;
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 7 } }));
+      localStorage.setItem('dp.reminders', '[]');
+      navigateTo('today'); _notifPerm = 'prompt';
+
+      // Android's prompt refused
+      ok('(the ask offers a reminder)', await tap('yes') || notifAskKind() === 'remind');
+      ok('review #3: "Remind me" with notifications refused does not say "Reminder set"',
+         asked > 0 && !toasts.some(m => /Reminder set/.test(m)) && toasts.some(m => /notifications are off/i.test(m)), toasts);
+      ok('review #3: …and does not spend the one-time ask', localStorage.getItem('dp.notifAsk') === null);
+      ok('review #3: …so the "can\'t ring" card shows next', logRems().length === 1 && notifAskKind() === 'enable'
+         && /can't ring/.test((document.getElementById('notif-ask-slot') || {}).textContent || ''), [logRems(), notifAskKind()]);
+      ok('review #3: "Turn on notifications" still refused: says so, ask not spent',
+         await tap('on') && toasts.some(m => /off/i.test(m)) && localStorage.getItem('dp.notifAsk') === null && notifAskKind() === 'enable', toasts);
+      answer = 'granted';
+      ok('review #3: …allowed this time: "Notifications on", the ask is spent',
+         await tap('on') && toasts.some(m => /Notifications on/.test(m)) && /^on:/.test(localStorage.getItem('dp.notifAsk') || ''), toasts);
+
+      // a "Log my day" that exists but is switched off, or in alarm mode: reused, never a second one
+      for (const old of [{ id: 'old', time: '20:00', label: 'Log my day', enabled: false, mode: 'notify' },
+                         { id: 'old', time: '07:30', label: 'Log my day', enabled: true, mode: 'alarm' }]) {
+        localStorage.removeItem('dp.notifAsk'); _notifPerm = 'granted';
+        localStorage.setItem('dp.reminders', JSON.stringify([old]));
+        ok('(the ask offers a reminder: ' + (old.enabled ? 'alarm mode' : 'switched off') + ')', notifAskKind() === 'remind');
+        await tap('yes');
+        const lr = logRems();
+        ok('review #3: "Remind me" reuses the existing Log my day (' + (old.enabled ? 'alarm mode' : 'switched off') + '), no duplicate',
+           lr.length === 1 && lr[0].id === 'old' && lr[0].enabled && lr[0].time === '21:00' && isLogReminder(lr[0]), lr);
+        ok('review #3: …allowed: "Reminder set", the ask is spent', toasts.some(m => /Reminder set for 21:00/.test(m)) && /^yes:/.test(localStorage.getItem('dp.notifAsk') || ''), toasts);
+      }
+    } catch (e) {
+      fail++; R.push('FAIL the notification-ask block threw: ' + (e && e.stack || e));
+    } finally {
+      clearInterval(reminderInterval); reminderTimeouts.forEach(clearTimeout); reminderTimeouts = [];
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      _notifPerm = permSnap; window.toast = tSnap; tourIdx = tourSnap;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  }
   return { pass, fail, results: R };
 })();
