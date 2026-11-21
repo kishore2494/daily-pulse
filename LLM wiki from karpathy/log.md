@@ -1,3 +1,18 @@
+## 2026-11-22 (04:00) — the 9 review findings fixed + sync fuzzer merged (main, NOT deployed)
+
+- **review-fixes** (helper; each finding test-first, one commit each): #5 today's "Log my day" kept when
+  rescheduled in the last minute; #2 saveDraftNow copies-or-deletes ENTRY_AUTO + autoAt from the stored day; #3 the
+  ask card waits for Android's answer — a refusal no longer spends `dp.notifAsk` or says "Reminder set", and an
+  existing "Log my day" is reused (an alarm-mode one becomes a notification); #4 sample days/blocks ignored by
+  nudgeInput/lastActiveDay; #6 tip ask reachable on 122+ (combined rating budget); #1 replayed notification
+  presses ignored (`dp.notifDone`, last 50, BACKUP_EXCLUDED); #7 a second "Log my day" rings as a normal reminder;
+  #8 Health Connect sleep fill saved only into a day already logged by hand; #9 `updateTimeSummaries(days)`:
+  one pass, one read, one write — 3 years of data 4.1 s → 0.07 s, identical output. Not done: phones in different
+  time zones still overwrite each other's summaries.
+- **sync-fuzz**: `tools/check-sync-fuzz.mjs` (50 seeds, ~8 s; in deploy.sh and CI; `SEEDS=500`, `STRICT=1`,
+  `SEED=n TRACE=1`). Found 4 sync bugs → roadmap.md (not fixed).
+1662 tests × 4 timezones, 11/11 checks on main. With the time fixes + landing refresh, ships as v265 on "deploy".
+
 ## 2026-11-22 (00:05) — review of v260..v264: 9 findings, NOT fixed yet (fix next session)
 
 Helper review (read-only; scratch repros in the session scratchpad). Ranked:
