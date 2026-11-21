@@ -1373,7 +1373,7 @@ function applyRemoteState(remote) {
     // re-sum each day whose blocks changed from the merged log (after reloadCfg, so activity names
     // that came down in this pull are used). Both phones then sum the same blocks to the same line,
     // so this settles instead of going back and forth.
-    if (tlDays && tlDays.size && DB.settings().syncUrl) tlDays.forEach(updateTimeSummary);
+    if (tlDays && tlDays.size && DB.settings().syncUrl) updateTimeSummaries(tlDays);
     renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
@@ -4259,7 +4259,7 @@ function syncTimelogNow() {
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'timelog', items }) }).catch(() => {});
   _tlDirty.forEach(d => touchedDates.add(d)); _tlDirty.clear();   // days left with no block at all
-  touchedDates.forEach(updateTimeSummary);
+  updateTimeSummaries(touchedDates);
 }
 /* Every calendar day a block covers (a running one: up to now). */
 function segDays(s, out) {
@@ -4287,29 +4287,54 @@ function timelogChangedDays(before, after) {
   Object.keys(was).forEach(id => { if (!seen.has(id)) segDays(was[id], out); });
   return out;
 }
-/* Write "Work 6h 20m · Travel 1h 05m" into the day's entry so it lands on the Log row. */
-function updateTimeSummary(dateStr) {
-  const totals = actTotalsMs(segsForDay(dateStr));   // the same activity's overlapping blocks count once
-  const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
-    .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
-  if (!parts.length) {
-    // No block left on the day: drop the old line, stamped, so the other phone drops it too
-    // (mergeAuto lets a newer stamp without the field remove it).
-    const en = DB.entry(dateStr);
-    if (!en || !('timeSummary' in en)) return;
-    delete en.timeSummary;
-    (en.autoAt = Object.assign({}, objOf(en.autoAt))).timeSummary = Date.now();
-    DB.putEntry(dateStr, en);
-    syncEntry(dateStr, en);   // the Sheet writes the whole row, so the missing field blanks its cell
-    return;
-  }
-  const entry = DB.entry(dateStr) || { habits: {} };
-  const summary = parts.join(' · ');
-  if (entry.timeSummary === summary) return;     // nothing changed — skip the network call
-  entryAutoSet(entry, { timeSummary: summary });   // not updatedAt: see ENTRY_AUTO
-  DB.putEntry(dateStr, entry);
-  syncEntry(dateStr, entry);
+/* Write "Work 6h 20m · Travel 1h 05m" into each day's entry so it lands on the Log row.
+   Batched: syncTimelogNow re-sums EVERY day that has a block, and per day this used to re-scan
+   the whole time log and re-parse (and, when it changed, re-write) the whole entries store:
+   1.7 s on every timer stop with 3 years of data. Now one pass buckets the blocks by day (the
+   same clips segsForDay gives), the entries are read once, and the changed days go in one save. */
+function updateTimeSummaries(dates) {
+  const days = [...new Set(dates)].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (!days.length) return;
+  const want = new Set(days), lo = dayStartMs(days[0]), hi = dayEndMs(days[days.length - 1]), now = Date.now(), by = {};
+  DB.timelogRO().forEach(s => {
+    const end = s.end == null ? now : s.end;
+    let a = Math.max(s.start, lo), n = 0;
+    while (a < Math.min(end, hi) && n++ < 5000) {
+      const d = todayStr(new Date(a)), d1 = dayEndMs(d);
+      if (want.has(d)) {
+        const ca = Math.max(s.start, dayStartMs(d)), cb = Math.min(end, d1);
+        if (cb > ca) (by[d] = by[d] || []).push({ seg: s, a: ca, b: cb });
+      }
+      a = d1;
+    }
+  });
+  const ents = DB.entries(), changed = [];
+  days.forEach(d => {
+    const totals = actTotalsMs((by[d] || []).sort((x, y) => x.a - y.a));   // the same activity's overlapping blocks count once
+    const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
+      .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
+    if (!parts.length) {
+      // No block left on the day: drop the old line, stamped, so the other phone drops it too
+      // (mergeAuto lets a newer stamp without the field remove it).
+      const en = ents[d];
+      if (!en || !('timeSummary' in en)) return;
+      delete en.timeSummary;
+      (en.autoAt = Object.assign({}, objOf(en.autoAt))).timeSummary = Date.now();
+      changed.push(d);
+      return;
+    }
+    const entry = ents[d] || { habits: {} };
+    const summary = parts.join(' · ');
+    if (entry.timeSummary === summary) return;     // nothing changed — skip the write and the network call
+    entryAutoSet(entry, { timeSummary: summary });   // not updatedAt: see ENTRY_AUTO
+    ents[d] = entry; changed.push(d);
+  });
+  if (!changed.length) return;
+  DB.saveEntries(ents);
+  // the Sheet writes the whole row, so a dropped line blanks its cell
+  changed.forEach(d => syncEntry(d, ents[d]));
 }
+function updateTimeSummary(dateStr) { updateTimeSummaries([dateStr]); }
 
 /* live ticker — updates the elapsed readout each second; light-refreshes the
    timeline once a minute (skipped while you're typing in an input) */

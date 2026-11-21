@@ -3517,6 +3517,65 @@
     }
   })();
 
+  // ---- review #9: the time re-sum reads the entries once and writes the changed days in one save ----
+  /* syncTimelogNow re-sums EVERY day that has a block. Per day it re-scanned the whole time log
+     and re-parsed the whole entries store (and re-wrote it for each changed day): 1.7 s on every
+     timer stop with 3 years of data. The lines must stay exactly what the per-day sum gave. */
+  (function () {
+    const keys = ['dp.timelog', 'dp.entries', 'dp.settings', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, eSnap = DB.entries, sSnap = DB.saveEntries;
+    const H = 3600000, T = todayStr(), now = Date.now();
+    let reads = 0, writes = 0;
+    try {
+      window.fetch = () => Promise.resolve({ ok: true });
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const tl = [], ents = {}, acts = ['work', 'sleep', 'gymt', 'learn'];
+      for (let i = 1; i <= 30; i++) {
+        const d = addDays(T, -i), d0 = dayStartMs(d);
+        tl.push({ id: 'rs' + i + 'a', act: 'sleep', start: d0 - 2 * H, end: d0 + 6 * H, upd: 1 });           // across midnight
+        tl.push({ id: 'rs' + i + 'b', act: acts[i % 4], start: d0 + 9 * H, end: d0 + (10 + i % 3) * H, upd: 1 });
+        if (i % 5 === 0) tl.push({ id: 'rs' + i + 'c', act: acts[i % 4], start: d0 + 9.5 * H, end: d0 + 11 * H, upd: 1 });   // overlap
+        if (i % 7 === 0) ents[d] = { mood: 6, habits: {}, timeSummary: 'stale line', autoAt: { timeSummary: 1 } };
+      }
+      ents[addDays(T, -40)] = { mood: 4, habits: {}, timeSummary: 'a day with no block left' };   // dropped
+      tl.push({ id: 'rsRun', act: 'work', start: now - 2 * H, end: null, upd: 1 });                 // running
+      tl.push({ id: 'rsLong', act: 'learn', start: dayStartMs(addDays(T, -12)) + 20 * H, end: dayStartMs(addDays(T, -10)) + 3 * H, upd: 1 });   // 3 days
+      localStorage.setItem('dp.timelog', JSON.stringify(tl));
+      localStorage.setItem('dp.entries', JSON.stringify(ents));
+      const days = new Set(); tl.forEach(s => segDays(s, days)); days.add(addDays(T, -40));
+      // the reference: the per-day sum, from segsForDay
+      const ref = {};
+      days.forEach(d => { const t = actTotalsMs(segsForDay(d));
+        ref[d] = Object.keys(t).sort((x, y) => t[y] - t[x]).map(id => { const a = actById(id); return `${a.emoji} ${a.name} ${fmtDur(t[id])}`; }).join(' · ') || undefined; });
+      DB.entries = function () { reads++; return eSnap.call(this); };
+      DB.saveEntries = function (e) { writes++; return sSnap.call(this, e); };
+      _tlDirty.add(addDays(T, -40)); clearTimeout(timelogSyncTimer); syncTimelogNow();
+      DB.entries = eSnap; DB.saveEntries = sSnap;
+      const got = DB.entriesRO(), bad = [...days].filter(d => (got[d] || {}).timeSummary !== ref[d]);
+      ok('review #9: the batched re-sum gives every day the same line as the per-day sum', bad.length === 0 && days.size > 30,
+        bad.slice(0, 3).map(d => [d, (got[d] || {}).timeSummary, ref[d]]));
+      ok('review #9: …a day with no block left loses its line, stamped', !('timeSummary' in got[addDays(T, -40)]) && +(got[addDays(T, -40)].autoAt || {}).timeSummary > 0 && got[addDays(T, -40)].mood === 4);
+      ok('review #9: …the rest of a day is untouched', got[addDays(T, -7)].mood === 6 && +got[addDays(T, -7)].autoAt.timeSummary > 1);
+      ok('review #9: the entries are read once and written once for the whole re-sum', reads === 1 && writes === 1, { reads, writes, days: days.size });
+      reads = writes = 0;
+      DB.entries = function () { reads++; return eSnap.call(this); };
+      DB.saveEntries = function (e) { writes++; return sSnap.call(this, e); };
+      const before = localStorage.getItem('dp.entries');
+      syncTimelogNow();
+      DB.entries = eSnap; DB.saveEntries = sSnap;
+      ok('review #9: nothing changed: one read, no write', reads === 1 && writes === 0 && localStorage.getItem('dp.entries') === before, { reads, writes });
+      ok('review #9: updateTimeSummary(day) still re-sums one day', (() => {
+        const d = addDays(T, -3), e = DB.entries(); delete e[d]; localStorage.setItem('dp.entries', JSON.stringify(e));
+        updateTimeSummary(d); return (DB.entry(d) || {}).timeSummary === ref[d]; })());
+    } catch (e) {
+      ok('review #9: the block ran without throwing', false, String(e && e.stack || e).slice(0, 300));
+    } finally {
+      DB.entries = eSnap; DB.saveEntries = sSnap; window.fetch = fSnap; _tlDirty.clear();
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+    }
+  })();
+
   // ---- v253: the read-only parse cache (Stats 2.4× faster with 3 years of data) ----
   (function () {
     const eSnap = localStorage.getItem('dp.entries'), roSnap = roParse;
