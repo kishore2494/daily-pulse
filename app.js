@@ -1527,8 +1527,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w30',
+  v: 'w31',
   items: [
+    '🙂 <b>Log from the notification</b> — your reminders now carry three buttons, Good, Okay and Low. One tap saves your mood and opens the Log, so a whole log can start right there. On Sundays the reminder is a short look at your week: how many days you logged and your best mood day.',
     '🔔 <b>Friendlier reminders</b> — your “Log my day” reminder now says something different each day, skips today once you have logged, and opens straight on the Log. If you stop logging for a while, Daylog checks in a few times, further and further apart, and never after 30 days. Turn these off in Settings ▸ Come-back nudges.',
     '🌱 <b>Lift, for heavy days</b> — log a low mood and a gentle card offers a few small things: a one-minute guided breath, a 5-4-3-2-1 grounding exercise, tiny doable actions, your own words from good days, and a place to write it out. It is in the menu any time, for any mood. If the last few days have been heavy, it shows free 24/7 support first (Tele-MANAS, 14416).',
     '🍽️ <b>Meals</b> — plan breakfast, lunch, dinner and snacks for the week, with everyday ideas built in (idli, poha, dal rice, biryani…). Your plan becomes a shopping list, and the Log gets a Today\'s meals card to tick off what you ate. Turn it on in ☰ Menu ▸ More features.',
