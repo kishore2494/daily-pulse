@@ -4876,6 +4876,90 @@
       sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
       navigateTo('today');
     }
+
+    // Play's in-app rating sheet (native build 122+): maybeAskReview after a save by hand
+    {
+      const capSnap2 = window.Capacitor, tourSnap = tourIdx;
+      const rk = ['dp.entries', 'dp.reviewAsk', 'dp.onboarded', 'dp.milestones', 'dp.celeb'];
+      const rsn = rk.map(k => [k, localStorage.getItem(k)]);
+      const TD = todayStr(), DAY = 86400000;
+      let calls = 0, seen = null, mode = 'ok';
+      const IAR = { request() {
+        calls++; seen = safeParse(localStorage.getItem('dp.reviewAsk'), null);
+        if (mode === 'throw') throw new Error('boom');
+        if (mode === 'reject') return Promise.reject(new Error('nope'));
+        return Promise.resolve({ ok: true }); } };
+      const LN = { checkPermissions: () => Promise.resolve({ display: 'denied' }), cancel: () => Promise.resolve(), schedule: () => Promise.resolve() };
+      // n hand-logged days: today with moodToday, the rest every OTHER day back, so no streak
+      // milestone (a full-screen celebration) lands on the save and takes the moment
+      const seed = (n, moodToday) => { const e = { [TD]: { mood: moodToday } };
+        for (let i = 1; i < n; i++) e[addDays(TD, -2 * i)] = { mood: 5 };
+        localStorage.setItem('dp.entries', JSON.stringify(e)); };
+      const save = () => saveDraftNow(TD, Object.assign({}, DB.entry(TD)));
+      const flush = () => { if (!_reviewAskTimer) return false; clearTimeout(_reviewAskTimer); reviewAskFire(); return true; };
+      const setAsk = (n, daysAgo) => localStorage.setItem('dp.reviewAsk', JSON.stringify({ n, last: Date.now() - daysAgo * DAY }));
+      const fresh = () => { localStorage.removeItem('dp.reviewAsk'); calls = 0; seen = null; mode = 'ok'; };
+      const overlays = ['milestone', 'rate-ask'].map(id => document.getElementById(id)).filter(Boolean);
+      const ovSnap = overlays.map(el => el.classList.contains('on'));
+      try {
+        window.Capacitor = { Plugins: { LocalNotifications: LN, InAppReview: IAR } };
+        localStorage.setItem('dp.onboarded', '1'); tourIdx = -1;
+        overlays.forEach(el => el.classList.remove('on'));
+
+        fresh(); seed(7, 8); save();
+        ok('review ask: nothing during the save itself (the save\'s own "Saved ✓" comes first)', calls === 0 && !!_reviewAskTimer);
+        ok('review ask: shows on the 7th hand-logged day with a good mood', flush() && calls === 1, calls);
+        ok('review ask: dp.reviewAsk is written BEFORE the plugin is called', !!seen && seen.n === 1 && seen.last > Date.now() - 60000, seen);
+
+        fresh(); seed(6, 8); save();
+        ok('review ask: not on day 6', !flush() && calls === 0 && reviewAskDue() === 0 && localStorage.getItem('dp.reviewAsk') === null);
+        fresh(); seed(7, 5); save();
+        ok('review ask: not with mood 5', !flush() && calls === 0 && reviewAskDue() === 0);
+        fresh(); seed(7, 8);
+        const se = DB.entriesRO(); Object.keys(se).forEach(d => { if (d !== TD) se[d].sample = true; });
+        localStorage.setItem('dp.entries', JSON.stringify(se));
+        ok('review ask: sample (demo) days do not count as logged', reviewAskDue() === 0);
+
+        fresh(); seed(7, 8); window.Capacitor = { Plugins: { LocalNotifications: LN } };
+        let webErr = false; try { save(); flush(); } catch (e) { webErr = true; }
+        ok('review ask: not without the plugin (builds ≤121), and no error', !webErr && calls === 0 && localStorage.getItem('dp.reviewAsk') === null);
+        window.Capacitor = undefined;
+        ok('review ask: never on the plain web', reviewAskDue() === 0);
+        window.Capacitor = { Plugins: { LocalNotifications: LN, InAppReview: IAR } };
+        localStorage.removeItem('dp.onboarded');
+        ok('review ask: not before onboarding is done', reviewAskDue() === 0);
+        localStorage.setItem('dp.onboarded', '1'); tourIdx = 0;
+        ok('review ask: not while the tour runs', reviewAskDue() === 0);
+        tourIdx = -1;
+
+        fresh(); seed(7, 8); save();
+        const ms = document.getElementById('milestone') || (() => { const d = document.createElement('div'); d.id = 'milestone'; document.body.appendChild(d); overlays.push(d); ovSnap.push(false); return d; })();
+        ms.classList.add('on'); flush(); ms.classList.remove('on');
+        ok('review ask: skipped while a celebration is on screen, without spending the ask', calls === 0 && reviewAskState().n === 0 && reviewAskDue() === 1);
+
+        fresh(); setAsk(1, 59); seed(40, 8); save();
+        ok('review ask: not twice within 60 days', !flush() && calls === 0 && reviewAskDue() === 0);
+        fresh(); setAsk(1, 61); seed(29, 8); save();
+        ok('review ask: second ask needs 30 logged days, not just 60 days', !flush() && calls === 0 && reviewAskDue() === 0);
+        fresh(); setAsk(1, 61); seed(30, 8); save();
+        ok('review ask: second ask after 60+ days and 30+ logged days', flush() && calls === 1 && seen && seen.n === 2, seen);
+        fresh(); setAsk(2, 400); seed(100, 9); save();
+        ok('review ask: never a third time', !flush() && calls === 0 && reviewAskDue() === 0);
+
+        fresh(); seed(7, 8); mode = 'throw';
+        let threw = false; try { save(); flush(); } catch (e) { threw = true; }
+        ok('review ask: a throwing plugin does not break the save', !threw && calls === 1 && (DB.entry(TD) || {}).mood === 8 && reviewAskState().n === 1);
+        fresh(); seed(7, 8); mode = 'reject';
+        threw = false; try { save(); flush(); } catch (e) { threw = true; }
+        ok('review ask: a plugin that rejects does not throw either', !threw && calls === 1 && reviewAskState().n === 1);
+        ok('review ask: the counter is install-local, not backed up', BACKUP_EXCLUDED.includes('reviewAsk') && !BACKUP_KEYS.includes('reviewAsk'));
+      } finally {
+        if (_reviewAskTimer) { clearTimeout(_reviewAskTimer); _reviewAskTimer = null; }
+        window.Capacitor = capSnap2; tourIdx = tourSnap;
+        overlays.forEach((el, i) => el.classList.toggle('on', !!ovSnap[i]));
+        rsn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      }
+    }
   })();
 
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
