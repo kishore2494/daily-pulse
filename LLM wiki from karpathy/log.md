@@ -1,3 +1,11 @@
+## 2026-11-21 — Reddit launch plan written (store/reddit-plan-2026-11.md)
+
+Kishore asked for exact subreddits and exact posts that won't get him banned. A helper wrote the plan; I checked it
+(no blanks, 11 distinct referrer links, accurate claims: no "without opening the app", no sync mention since
+`SHOW_SYNC` hides it). Reddit blocked every automated read, so no rule is verified first-hand: the plan has a
+2-minute sidebar check before each post. The r/SideProject draft shares real numbers (200+ installs, 47%
+conversion, ~9 visitors/day); Kishore decides whether to publish those. distribution.md ▸ Reddit launch.
+
 ## 2026-11-21 — Play in-app rating sheet: native 122 built, web side on main (NOT deployed / NOT uploaded)
 
 Kishore said yes to asking happy users for a rating. A helper built it; I reviewed and merged:

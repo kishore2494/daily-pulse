@@ -80,6 +80,15 @@ to "Ads and referrals".
 - **Where not to post:** see the "Skip" list in `store/distribution-plan-2026-11.md`. The big one
   is r/androidapps, which moved all self-promotion to r/droidappshowcase on 27 May 2026.
 
+## Reddit launch (plan written 2026-11-21)
+
+`store/reddit-plan-2026-11.md`: account-safety checklist, a 20-day schedule (5 warm-up days, then one sub every
+other day: r/droidappshowcase, r/TestMyApp, r/alphaandbetausers, r/SideProject, r/ProductivityApps,
+r/QuantifiedSelf, then r/IndiaTech and r/habits only if mods agree), exact titles/bodies/replies, weekly threads
+(r/androiddev, r/developersIndia Showcase Sunday) and a do-not-post list. Referrers: `utm_source=reddit`,
+`utm_medium=forum`, `utm_campaign=<sub>` (or `<sub>-thread`). **Every sub's rules are UNVERIFIED** — Reddit blocks
+automated reading (403), so Kishore checks each sidebar before posting. Kishore posts; agents never do.
+
 ## Open (Kishore's calls)
 
 - ~~Play title~~ **Applied 2026-11-21 by API** (Kishore: "push it, roll back after a month if it does worse"):
