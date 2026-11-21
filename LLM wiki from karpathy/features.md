@@ -25,7 +25,15 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 Everything is editable and hideable: theme mode (navy/black/light) + accent (6 colors), nav tabs (reorder/rename/hide), core Log fields, deep-log sections/fields (add/rename/hide, incl. tick-list options), habits, time activities, gym exercises + sets + custom groups + the 6-day split. Deep-log: add/rename/hide fields AND **add or delete whole custom sections** (v58, ids `cs*`). `reloadCfg()` rebuilds the live `HABITS`, `TIME_ACTS_ALL`, `DEEP_SECTIONS` from their configs. Hidden items keep their history.
 
 ## Onboarding (first run only)
-3 steps: welcome (with data-loss note) → pick habits (+ add own) → pick activities (+ add own). Gated by `needsOnboard()` (no data + no `dp.onboarded`). Unpicked items are hidden via the same config flags.
+**2 steps since v262 (was 4):** (1) welcome + privacy + backup note + the restore door; (2) "Make it yours": the 4
+starter habits (tap to drop) and "Remind me to log my day" ticked at 21:00 → "Start logging". Step 2 is the only
+place onboarding asks for notification permission, so everyone who finishes passes it (`OB_LAST = 1`; an old step
+number lands on the last step). Dropped from onboarding: the style picker (Settings ▸ Style & appearance), the
+add-your-own habit/activity rows (Log checklist add row, Settings ▸ Customize). Gated by `needsOnboard()` (no data +
+no `dp.onboarded`). Unpicked items are hidden via the same config flags.
+**Tour: 4 steps (was 8):** mood card → time tracker → Your patterns → Menu (mentions Settings for looks, reminders,
+backups). "Skip tour" first; every exit lands on the Log; after it, "Your turn: tap how today feels" until today
+has a mood. The card moves to the top when it would cover its target.
 
 ## Alarms & notifications (native shell only, all offline)
 - **Reminders** (`dp.reminders`) — daily; mode `alarm` (full-screen) or `notify`.
