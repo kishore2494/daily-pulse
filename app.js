@@ -2801,6 +2801,7 @@ function rateSave(st) { localStorage.setItem('dp.rateAsk', JSON.stringify(st)); 
 function maybeAskForReview() {
   try {
     if (!nativeShell()) return;                                  // only where a store rating exists
+    if (reviewPlugin()) return;   // build 122+: Play's own in-app sheet asks instead (maybeAskReview), same budget
     const st = rateState();
     if (st.done || st.asks >= 2) return;
     if (st.asks === 1 && Date.now() - st.last < 14 * 86400000) return;
@@ -2990,6 +2991,7 @@ function saveDraftNow(date, d) {
   pushWidgetData();                                  // keep the home-screen widget fresh (Play build 121+)
   scheduleInactivityReminder();
   try { notifAskRefresh(); } catch (e) {}            // the one-time notification ask, after a real log
+  if (date === todayStr()) { try { maybeAskReview(); } catch (e) {} }   // Play's rating sheet, on a good day (build 122+)
   syncEntry(date, d);
   // The autosave dot is the quietest possible "it worked" — so it must not appear when it
   // did not. safeSet has already shown the storage-full warning.
@@ -10262,6 +10264,7 @@ const BACKUP_EXCLUDED = [
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'notifAsk',                          // the one-time notification ask; permission belongs to this device
+  'reviewAsk',                         // Play rating-sheet asks on this install (Google's quota is per device too)
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
@@ -13727,6 +13730,73 @@ document.addEventListener('click', async (ev) => {
 });
 refreshNotifPerm();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNotifPerm(); });
+
+/* ---------- Google Play's in-app rating sheet (Play build 122+) ----------
+   The native InAppReview plugin shows Google's own rating sheet over the app. There is NO
+   "Do you like Daylog?" step before it and nothing routes anyone elsewhere: Play policy forbids
+   review gating, and the sheet is itself the prompt. The conditions only pick a good MOMENT:
+     · native shell with the InAppReview plugin (plain web and builds ≤121: nothing, no errors);
+     · onboarded, the tour not running;
+     · today logged by hand with mood ≥ 7, and 7+ hand-logged days in all (sample rows don't count);
+     · at most twice ever: the first on/after the 7th logged day, the second only 60+ days later
+       with 30+ logged days. dp.reviewAsk = {n, last} (this install only).
+   It fires REVIEW_ASK_DELAY after the save (the save's own "Saved ✓" first; a burst of autosaves
+   gives one ask, after the last), re-checks everything then, and skips without spending an ask
+   while a celebration or the older rate card (maybeAskForReview) is on screen, while typing, or
+   when the app is hidden. dp.reviewAsk is written BEFORE the call, so a crash cannot ask twice.
+   Google never says whether the sheet showed or a review was left, and has its own quota. */
+const REVIEW_ASK_DELAY = 2500;   // after the award scan (2000 ms), so a new award wins the moment
+let _reviewAskTimer = null;
+function reviewPlugin() {
+  try { return (nativeShell() && window.Capacitor.Plugins.InAppReview) || null; } catch (e) { return null; }
+}
+function reviewAskState() {
+  const s = safeParse(localStorage.getItem('dp.reviewAsk'), null);
+  return s && typeof s === 'object' ? { n: +s.n || 0, last: +s.last || 0 } : { n: 0, last: 0 };
+}
+function handLoggedDays() {
+  const e = DB.entriesRO(); let n = 0;
+  for (const d of Object.keys(e)) if (e[d] && !e[d].sample && loggedByHand(e[d])) n++;
+  return n;
+}
+/* 0 = not now; 1 or 2 = which ask this would be. Cheapest checks first: on the web it stops at
+   the plugin test, and the day count (a scan of every entry) runs last. */
+function reviewAskDue() {
+  if (!reviewPlugin()) return 0;
+  if (localStorage.getItem('dp.onboarded') !== '1' || tourIdx !== -1) return 0;
+  // One budget with the older rate card (maybeAskForReview, dp.rateAsk), which builds <=122 without
+  // the plugin still show: two asks per person in all, and none after a tap on its Rate button.
+  const st = reviewAskState(), old = rateState();
+  if (old.done) return 0;
+  const used = st.n + Math.min(2, +old.asks || 0), last = Math.max(st.last, +old.last || 0);
+  if (used >= 2) return 0;
+  if (used === 1 && Date.now() - last < 60 * 86400000) return 0;
+  const en = DB.entry(todayStr());
+  if (!en || en.sample || !loggedByHand(en) || !(Number(en.mood) >= 7)) return 0;
+  if (handLoggedDays() < (used === 0 ? 7 : 30)) return 0;
+  return used + 1;
+}
+function maybeAskReview() {
+  try {
+    if (!reviewAskDue()) return;
+    if (_reviewAskTimer) clearTimeout(_reviewAskTimer);
+    _reviewAskTimer = setTimeout(reviewAskFire, REVIEW_ASK_DELAY);
+  } catch (e) {}
+}
+function reviewAskFire() {
+  _reviewAskTimer = null;
+  try {
+    const n = reviewAskDue();                     // the day may have changed since the save
+    if (!n || document.hidden) return;
+    if (['milestone', 'rate-ask'].some(id => { const el = document.getElementById(id); return el && el.classList.contains('on'); })) return;
+    const a = document.activeElement;
+    if (a && (a.isContentEditable || a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /^(text|search|url|email|number)$/.test(a.type)))) return;
+    // Spend the ask first: a WebView killed mid-call must not come back and ask again.
+    if (!safeSet('dp.reviewAsk', JSON.stringify({ n: reviewAskState().n + 1, last: Date.now() }))) return;
+    const p = reviewPlugin().request();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (e) {}
+}
 
 /* ---------- ntfy: real background push (rings even when the app is closed) ----------
    Uses ntfy.sh scheduled delivery: we POST each upcoming reminder occurrence with a
