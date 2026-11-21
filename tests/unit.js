@@ -2862,6 +2862,59 @@
     }
   })();
 
+  // ---- two phones: what the sync fuzzer found (tests/sync-fuzz.js, 2026-11-22) ----
+  (function () {
+    const PK = ['dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.touched', 'dp.gym', 'dp.gymAt'];
+    const keys = [...PK, 'dp.settings', 'dp.listAt', 'dp.listDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [];
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    const tSnap = window.toast; window.toast = () => {};
+    const D = '2026-01-07', d0 = dayStartMs(D), H = 3600000, now = Date.now();
+    const phones = {}; let on = null;
+    const held = () => { const s = {}; PK.forEach(k => { s[k] = localStorage.getItem(k); }); return s; };
+    const all = st => { ['A', 'B', 'C'].forEach(p => { phones[p] = Object.assign({}, st); }); on = null; };
+    const use = p => {
+      if (on) phones[on] = held();
+      on = p; PK.forEach(k => { const v = phones[p][k]; if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); });
+    };
+    const lastState = () => { const s = sent.filter(x => x.type === 'state').pop(); return s && JSON.parse(JSON.stringify(s)); };
+    const push = () => { clearTimeout(pushTimer); _pushPending = null; sent.length = 0; pushState(true); return lastState(); };
+    const pull = st => { sent.length = 0; applyRemoteState(JSON.parse(JSON.stringify(st))); return lastState(); };
+    const tick = () => { const t = Date.now(); while (Date.now() <= t) { /* a later millisecond */ } };
+    const day = () => DB.entry(D) || {};
+    const start = (entry, timelog) => all({ 'dp.entries': JSON.stringify({ [D]: entry }), 'dp.timelog': JSON.stringify(timelog || []),
+      'dp.timelogDel': '{}', 'dp.touched': String(now - 2 * H), 'dp.gym': '{}', 'dp.gymAt': '{}' });
+    const typed = { mood: 3, journal: 'morning', habits: {}, updatedAt: new Date(now - 2 * H).toISOString() };
+    try {
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+
+      // gym-count-not-rederived: the day's workout count follows the MERGED ticks
+      start(typed);
+      use('A'); persistGym(true, D, { done: { 'd1/e1': true }, log: {} }); const sheetA = push();
+      tick(); use('B'); persistGym(true, D, { done: { 'd1/e2': true }, log: { 'd1/e2': '3x5' } });
+      ok('(each phone ticked one exercise; B wrote its count last)', day().workoutsDone === 1, day());
+      const sheetB = pull(sheetA);
+      ok('gym: after a pull brings the other phone\'s tick, the day counts both phones\' ticks',
+        day().workoutsDone === 2 && Object.keys(DB.gymDay(D).done).length === 2, [day(), DB.gymDay(D)]);
+      ok('…and its workout list names both, the typed log included', (day().workoutDetail || '').split('; ').length === 2 && /3x5/.test(day().workoutDetail || ''), day().workoutDetail);
+      ok('…stamped, not an edit by hand', +(day().autoAt || {}).workoutsDone > 0 && day().updatedAt === typed.updatedAt && day().mood === 3, day());
+      use('A'); const back = pull(sheetB);
+      ok('…and the other phone ends with the same count', day().workoutsDone === 2, day());
+      const a = day(); use('B'); if (back) pull(back);
+      ok('…and it settles: the same day on both phones, no push back and forth', canonJSON(day()) === canonJSON(a) && !sent.some(x => x.type === 'state'), [sent.length, day(), a]);
+      // an un-tick that arrives by a pull lowers the count
+      tick(); use('A'); persistGym(true, D, { done: { 'd1/e1': false, 'd1/e2': true }, log: { 'd1/e2': '3x5' } }); const sheetA2 = push();
+      use('B'); pull(sheetA2);
+      ok('gym: an un-tick pulled from the other phone lowers the count', day().workoutsDone === 1 && !/e1/.test(day().workoutDetail || ''), day());
+
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null; clearTimeout(timelogSyncTimer); _tlDirty.clear();
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  })();
+
   // ---- v253: lists sync item by item (tasks, notes, money, …) ----
   (function () {
     const keys = ['dp.notes', 'dp.tasks', 'dp.fintx', 'dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.listAt', 'dp.listDel', 'dp.touched', 'dp.settings'];

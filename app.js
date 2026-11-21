@@ -1210,6 +1210,7 @@ function applyRemoteState(remote) {
   let changed = false;
   let remoteBehind = false;   // this phone holds something the Sheet's copy lacks
   let tlDays = null;          // days whose time blocks this pull changed (re-summed at the end)
+  let gymDays = [];           // days whose gym ticks this pull changed (re-derived at the end)
   const skippedSections = [];
 
   // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields, but fields
@@ -1243,6 +1244,7 @@ function applyRemoteState(remote) {
     const local = objOf(DB.gym()), la = listMeta('dp.gymAt');
     const m = gymMerge(local, remote.gym, la, remote.gymAt, remote.touched);
     if (canonJSON(m.gym) !== canonJSON(local)) { safeSet('dp.gym', JSON.stringify(m.gym)); changed = true; }
+    gymDays = Object.keys(m.gym).filter(d => canonJSON(m.gym[d]) !== canonJSON(local[d]));
     if (canonJSON(m.at) !== canonJSON(la)) safeSet('dp.gymAt', JSON.stringify(m.at));
     if (canonJSON(m.gym) !== canonJSON(remote.gym) || canonJSON(m.at) !== canonJSON(objOf(remote.gymAt))) remoteBehind = true;
   }
@@ -1374,6 +1376,7 @@ function applyRemoteState(remote) {
     // that came down in this pull are used). Both phones then sum the same blocks to the same line,
     // so this settles instead of going back and forth.
     if (tlDays && tlDays.size && DB.settings().syncUrl) updateTimeSummaries(tlDays);
+    if (gymDays.length) gymRederive(gymDays);   // the same for the gym's count and list
     renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
@@ -3712,13 +3715,35 @@ document.addEventListener('click', async (ev) => {
 function persistGym(silent, date, draft) {
   date = date || gymDate; draft = draft || gymDraft;
   DB.putGymDay(date, draft);
-  const doneIds = Object.keys(draft.done).filter(k => draft.done[k]);
-  const detail = doneIds.map(k => { const nm = exName(k.split('/').pop()); return nm + (draft.log[k] ? ` (${draft.log[k]})` : ''); }).join('; ');
   const entry = DB.entry(date) || { habits: {} };
-  entryAutoSet(entry, { workoutsDone: doneIds.length, workoutDetail: detail });   // not updatedAt: see ENTRY_AUTO
+  entryAutoSet(entry, gymEntryVals(draft));   // not updatedAt: see ENTRY_AUTO
   DB.putEntry(date, entry);
   if (silent) { const dot = document.getElementById('autosave-dot'); if (dot) { dot.textContent = 'Saved ✓'; dot.classList.add('show'); setTimeout(() => dot.classList.remove('show'), 1400); } }
   return entry;
+}
+/* The day's workout count and list, from its gym day. */
+function gymEntryVals(g) {
+  const done = objOf(g && g.done), log = objOf(g && g.log), ids = Object.keys(done).filter(k => done[k]);
+  return { workoutsDone: ids.length, workoutDetail: ids.map(k => exName(k.split('/').pop()) + (log[k] ? ` (${log[k]})` : '')).join('; ') };
+}
+/* After a pull merged gym ticks (gymMerge), the count and list of each day whose ticks changed
+   are worked out again from the merged ticks — the twin of the time summary's re-sum. Without
+   it the day kept whichever phone wrote its count last, missing the other phone's ticks. Only
+   days the pull changed: both phones then derive from the same ticks, so it settles. The same
+   exercises in another order (each phone lists its own ticks first) are left as they are, or the
+   two phones would re-stamp the list in turn. */
+function gymRederive(days) {
+  const g = objOf(DB.gym()), ents = DB.entries(), changed = [];
+  const parts = s => String(s || '').split('; ').sort().join('\n');
+  days.forEach(d => {
+    const v = gymEntryVals(g[d]), en = ents[d] || { habits: {} };
+    if ((+en.workoutsDone || 0) === v.workoutsDone && parts(en.workoutDetail) === parts(v.workoutDetail)) return;
+    entryAutoSet(en, v);
+    ents[d] = en; changed.push(d);
+  });
+  if (!changed.length) return;
+  DB.saveEntries(ents);
+  changed.forEach(d => syncEntry(d, ents[d]));
 }
 let _gymSaveTimer, _gymPending = null;
 document.addEventListener('input', (ev) => {

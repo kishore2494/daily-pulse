@@ -95,11 +95,6 @@
        lacks from the older copy, but stamps the merged day with the NEWER updatedAt, so that old
        value now beats a later edit on the third phone. */
     'day-lww-gap-fill': { match: f => f.inv === 'no-loss' && /^field:/.test(f.key || '') && !f.clob && f.gap && f.seen },
-    /* Gym ticks merge tick by tick (gymMerge), but the day's workoutsDone / workoutDetail are
-       written only by persistGym and merged by their own stamp: after a pull brings the other
-       phone's ticks, the count is whichever phone wrote last, not the merged ticks. The time
-       summary had this bug and v263 re-sums it after a pull; the gym count is not re-derived. */
-    'gym-count-not-rederived': { match: f => f.inv === 'derived' && /^wo:/.test(f.key || '') },
     /* A time-log save re-sums the days it touched 1.5 s later (syncTimelog → syncTimelogNow), and
        the days a delete emptied are only remembered in memory (_tlDirty). Killed in between, the
        emptied day keeps its old summary: the next open re-sums only days that still have a
