@@ -84,17 +84,9 @@
   /* Violations the app is known to have (found by this fuzzer, reported, not yet fixed). Each is a
      function of a failure record; a match tags it instead of failing the run. */
   const KNOWN = {
-    /* A day's mood / journal (every field typed on the Log) share ONE stamp, updatedAt, and the
-       day merge gives every shared field to the copy with the newer one. So a save of the day on a
-       phone that has not pulled the other phone's latest typing carries its OLD value over it: a
-       mood typed on B while A's journal had not arrived, or — most often — one habit tick on the
-       Habits screen, which saves the whole day with a new updatedAt. The same class as the time
-       summary / gym tick fix of v257, for the fields people type. */
-    'day-lww-stale-save': { match: f => f.inv === 'no-loss' && /^field:/.test(f.key || '') && !!f.clob && f.seen },
-    /* …and with three phones it needs no stale save at all: the merge fills a field the newer copy
-       lacks from the older copy, but stamps the merged day with the NEWER updatedAt, so that old
-       value now beats a later edit on the third phone. */
-    'day-lww-gap-fill': { match: f => f.inv === 'no-loss' && /^field:/.test(f.key || '') && !f.clob && f.gap && f.seen },
+    /* None open. Fixed 2026-11-22: day-lww-stale-save and day-lww-gap-fill (per-field stamps,
+       fieldAt / mergeFields), gym-count-not-rederived (gymRederive), summary-stale-after-kill
+       (dp.tlDirty). A new one goes here as { id: { match: f => … } } with a comment saying why. */
   };
 
   /* ---------------- deterministic clock ---------------- */
@@ -212,10 +204,10 @@
       new Set([...Object.keys(hx), ...Object.keys(hy), ...Object.keys(objOf(x.habitsAt))]).forEach(k => {
         if (JSON.stringify(hx[k]) !== JSON.stringify(hy[k]) || +objOf(x.habitsAt)[k] !== +objOf(y.habitsAt)[k]) stampIt(truth.habit, d + '|' + k, { stamp: now, phone: p, val: hx[k] });
       });
-      // A save of the day carries every manual field this phone holds, with a new updatedAt, and
-      // the day merge gives every shared field to the newer updatedAt. Kept so a loss can be
-      // explained (see check): a field this save held a STALE copy of, or lacked, under a stamp
-      // newer than the latest write of that field.
+      // A save of the day carries every manual field this phone holds, with a new updatedAt (the
+      // day merge once gave every shared field to the newer updatedAt; fieldAt fixed that). Kept
+      // so a loss can be explained (see check): a field this save held a STALE copy of, or
+      // lacked, under a stamp newer than the latest write of that field.
       if (x.updatedAt && x.updatedAt !== y.updatedAt) {
         const val = {}, has = {};
         MANUAL.forEach(f => {

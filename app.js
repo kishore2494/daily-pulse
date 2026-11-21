@@ -537,7 +537,7 @@ const DB = {
   // know — a full phone used to show "Saved 🎉" over a write that never landed.
   saveEntries(e) { const ok = safeSet('dp.entries', JSON.stringify(e)); pushState(); return ok; },
   entry(date) { return this.entries()[date] || null; },
-  putEntry(date, data) { const e = this.entries(); e[date] = data; return this.saveEntries(e); },
+  putEntry(date, data) { const e = this.entries(); entryFieldStamp(e[date], data); e[date] = data; return this.saveEntries(e); },
 
   tasks() { return safeParse(localStorage.getItem('dp.tasks'), []); },
   saveTasks(t) { const ok = listSave('dp.tasks', t); pushState(); return ok; },
@@ -738,7 +738,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
    Deliberately conservative: a lone zero on an auto-mirrored counter is not content, and an
    all-false habits map is not content — but a SKIP (0) is, because choosing to skip is a
    choice you tapped. */
-const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt', 'autoAt', 'lift'];   // lift: a Lift tick or a dismissed card is not a log
+const ENTRY_META = ['updatedAt', 'tasks', 'tasksPlanned', 'sample', 'habitsAt', 'autoAt', 'fieldAt', 'lift'];   // lift: a Lift tick or a dismissed card is not a log
 function entryHasContent(en) {
   if (!en) return false;
   for (const k of Object.keys(en)) {
@@ -1074,7 +1074,7 @@ function syncFailMsg(why) {
     : 'Could not reach your Sheet. Check the link ends in /exec and the script is deployed for Anyone.';
 }
 // Merge remote into local so NOTHING is lost on either device:
-//  entries  -> by date, newest updatedAt wins
+//  entries  -> by date, field by field, newest stamp wins (mergeFields / mergeHabits / mergeAuto)
 //  gym      -> by date, union of done/log
 //  tasks/notes/reminders -> union by id (adds anything this device is missing)
 /* Is a section from the sync endpoint safe to merge or adopt?
@@ -1158,6 +1158,58 @@ function mergeAuto(a, b, into) {
   if (Object.keys(at).length) into.autoAt = at; else delete into.autoAt;
   return into;
 }
+/* Every other field of the day (mood, journal, sleep, custom fields, tasks …) has a stamp of its
+   own too, fieldAt[field]. The day merge gave every shared field to the copy with the newer
+   updatedAt, and every save stores the whole day with a new one: so one habit tick or journal
+   edit on a phone that had not pulled carried its OLD mood over what was typed on the other
+   phone. And a field the newer copy lacked was filled from the older one but then counted as new
+   as the newer copy, beating a later edit on a third phone. updatedAt stays "last edited by
+   hand" for everything else that reads it. Habits have habitsAt, ENTRY_AUTO has autoAt. */
+const ENTRY_STAMPED = ['updatedAt', 'habits', 'habitsAt', 'autoAt', 'fieldAt', ...ENTRY_AUTO];
+function entryFields(...es) {
+  const out = new Set();
+  es.forEach(e => Object.keys(objOf(e)).forEach(k => { if (!ENTRY_STAMPED.includes(k)) out.add(k); }));
+  return [...out];
+}
+const sortedKeys = o => Object.keys(o).sort().reduce((x, k) => { x[k] = o[k]; return x; }, {});   // the same stamps, the same JSON on every phone
+/* At every save of a day (DB.putEntry, liftWrite): a field that changed is stamped now, a field
+   removed included, so the removal travels. Fields a save did not change keep their stamps; the
+   first save since stamps began gives them the day's old updatedAt, which stood for them until
+   now and is about to move on. Stamps come from the stored day, never from the draft being
+   saved: a draft opened earlier holds older ones. */
+function entryFieldStamp(prev, next) {
+  prev = objOf(prev);
+  const was = objOf(prev.fieldAt), at = {}, now = Date.now(), old = Date.parse(prev.updatedAt) || 1;
+  const moved = next.updatedAt !== prev.updatedAt, has = (e, k) => e[k] !== undefined;
+  entryFields(prev, next, was).forEach(k => {
+    if (has(prev, k) !== has(next, k) || canonJSON(prev[k]) !== canonJSON(next[k])) at[k] = now;
+    else if (+was[k]) at[k] = +was[k];
+    else if (moved && has(next, k)) at[k] = old;
+  });
+  if (Object.keys(at).length) next.fieldAt = sortedKeys(at); else delete next.fieldAt;
+  return next;
+}
+/* Per field, the newer stamp wins, and a newer stamp without the field removes it. A side with no
+   stamp for a field it holds (an older app version, a day not saved since the stamps) has its
+   updatedAt stand in, as in mergeAuto. A tie keeps a value rather than a gap; two values under one
+   stamp (an older app changed the field and carried the stamp along) go to the copy edited later,
+   then to the larger JSON, so both phones pick the same. */
+function mergeFields(a, b, into) {
+  a = objOf(a); b = objOf(b);
+  const ta = objOf(a.fieldAt), tb = objOf(b.fieldAt), at = {};
+  const ua = Date.parse(a.updatedAt) || 1, ub = Date.parse(b.updatedAt) || 1, has = (e, k) => e[k] !== undefined;
+  const stamp = (e, t, u, k) => +t[k] || (has(e, k) ? u : 0);
+  entryFields(a, b, ta, tb).forEach(k => {
+    const sa = stamp(a, ta, ua, k), sb = stamp(b, tb, ub, k);
+    let win = sa > sb ? a : sb > sa ? b : null;
+    if (!win && has(a, k) !== has(b, k)) win = has(a, k) ? a : b;
+    else if (!win && canonJSON(a[k]) !== canonJSON(b[k])) win = ua !== ub ? (ua > ub ? a : b) : canonJSON(a[k]) > canonJSON(b[k]) ? a : b;
+    if (win) { if (has(win, k)) into[k] = win[k]; else delete into[k]; }
+    if (+ta[k] || +tb[k]) at[k] = Math.max(sa, sb);
+  });
+  if (Object.keys(at).length) into.fieldAt = sortedKeys(at); else delete into.fieldAt;
+  return into;
+}
 /* ---------- Gym days sync tick by tick ----------
    dp.gym merged as a union: a tick on either phone was kept, so un-ticking an exercise, or
    changing what you typed against it, came back from the other phone's older copy. Every save
@@ -1218,11 +1270,10 @@ function applyRemoteState(remote) {
   let gymDays = [];           // days whose gym ticks this pull changed (re-derived at the end)
   const skippedSections = [];
 
-  // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields, but fields
-  // present on only one side are always kept. Habits merge per habit (mergeHabits), and the
-  // fields the Time tracker and the Gym fill in by their own stamps (mergeAuto), since writing
-  // them does not move updatedAt: a stale phone's time summary or gym tick must not carry its
-  // old mood and journal over the other phone's.
+  // Entries: FIELD-LEVEL merge by date. Every field by its own stamp (mergeFields), habits per
+  // habit (mergeHabits), and the fields the Time tracker and the Gym fill in by theirs (mergeAuto):
+  // a stale phone's save of the day (a habit tick, a time summary) must not carry its old mood and
+  // journal over the other phone's. The copy edited later gives updatedAt and the key order.
   if (remote.entries && !(typeof remote.entries === 'object' && !Array.isArray(remote.entries))) skippedSections.push('entries');
   else if (remote.entries) {
     const local = DB.entries();
@@ -1236,6 +1287,7 @@ function applyRemoteState(remote) {
       // side gets none: an empty one added here made it differ from both phones' copies.
       if (l.habits || r.habits || l.habitsAt || r.habitsAt) Object.assign(merged, mergeHabits(l, r));
       mergeAuto(l, r, merged);
+      mergeFields(l, r, merged);
       const ms = JSON.stringify(merged);
       if (ms !== JSON.stringify(l)) { local[d] = merged; changed = true; }
       if (ms !== JSON.stringify(r) && canonJSON(merged) !== canonJSON(r)) remoteBehind = true;
@@ -8099,10 +8151,11 @@ function liftWrite(fn, fields) {
   const d = todayStr();
   flushAutosave();
   const all = DB.entries();
-  const en = all[d] || { habits: {} };
+  const en = JSON.parse(JSON.stringify(all[d] || { habits: {} }));
   fn(en);
   en.updatedAt = new Date().toISOString();
   delete en.sample;   // a sample day you wrote in is yours now (as saveDraftNow does)
+  entryFieldStamp(all[d], en);   // as DB.putEntry does
   all[d] = en;
   if (DB.saveEntries(all) === false) return false;
   if (logDate === d && draft) (fields || []).forEach(k => { if (en[k] !== undefined) draft[k] = JSON.parse(JSON.stringify(en[k])); else delete draft[k]; });

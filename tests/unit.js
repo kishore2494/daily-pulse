@@ -2926,6 +2926,87 @@
       use('B'); pull(sheetK2);
       ok('…and the other phone drops the summary too', !('timeSummary' in day()) && day().mood === 3, day());
       ok('the dirty days are install state, not backed up', BACKUP_EXCLUDED.includes('tlDirty') && !BACKUP_KEYS.includes('tlDirty'));
+
+      // day-lww-stale-save: a save of the whole day on a phone that has not pulled carries only
+      // what it changed, not its old copy of the other fields
+      const HK = 'stale-tick-habit';
+      const habitTick = () => { const en = JSON.parse(JSON.stringify(day())); en.habits = Object.assign({}, en.habits, { [HK]: true }); en.habitsAt = Object.assign({}, en.habitsAt, { [HK]: Date.now() }); saveDraftNow(D, en); };
+      const typed2 = Object.assign({}, typed, { sleepHours: 7 });   // saved before the field stamps: no fieldAt
+      start(typed2);
+      use('A'); const s1 = day(); s1.mood = 8; s1.journal = 'evening, typed on A'; saveDraftNow(D, s1); const sheetS1 = push();
+      tick(); use('B'); habitTick();
+      ok('(B ticks a habit, still holding the old mood and journal)', day().mood === 3 && day().habits[HK] === true, day());
+      const sheetS2 = push();
+      use('A'); const backS = pull(sheetS2);
+      ok('stale save: a habit tick on a phone that had not pulled does not undo the mood and journal typed on the other',
+        day().mood === 8 && day().journal === 'evening, typed on A' && day().habits[HK] === true, day());
+      use('B'); const backS2 = backS ? pull(backS) : null;
+      ok('…and the phone that ticked gets the typing', day().mood === 8 && day().journal === 'evening, typed on A' && day().habits[HK] === true, day());
+      const sb = day(); use('A'); if (backS2) pull(backS2);
+      ok('…so both phones end with the same day, and it settles', canonJSON(day()) === canonJSON(sb) && !sent.some(x => x.type === 'state'), [sent.length, day(), sb]);
+      // a journal edit on the stale phone, a mood typed on the other: both survive
+      start(typed2);
+      use('A'); const s3 = day(); s3.mood = 9; saveDraftNow(D, s3); const sheetS3 = push();
+      tick(); use('B'); const s4 = day(); s4.journal = 'typed on B'; saveDraftNow(D, s4); const sheetS4 = push();
+      use('A'); pull(sheetS4);
+      ok('stale save: a journal typed on one phone and a mood on the other both survive', day().mood === 9 && day().journal === 'typed on B' && day().sleepHours === 7, day());
+      use('B'); pull(sheetS3);
+      ok('…on the other phone too', day().mood === 9 && day().journal === 'typed on B', day());
+      // the same field on both phones: the later write wins, whichever phone pulls
+      start(typed2);
+      use('A'); const s5 = day(); s5.mood = 5; saveDraftNow(D, s5); const sheetS5 = push();
+      tick(); use('B'); const s6 = day(); s6.mood = 6; saveDraftNow(D, s6); const sheetS6 = push();
+      use('A'); pull(sheetS6); const mA = day().mood; use('B'); pull(sheetS5);
+      ok('the same field typed on both phones: the later one wins on both', mA === 6 && day().mood === 6, [mA, day()]);
+      // a field removed on one phone stays removed under a stale save of the day on the other
+      start(typed2);
+      use('A'); const s7 = day(); delete s7.sleepHours; saveDraftNow(D, s7); const sheetS7 = push();
+      ok('(the removal is stamped)', !('sleepHours' in day()) && +(day().fieldAt || {}).sleepHours > 0, day());
+      tick(); use('B'); const s8 = day(); s8.mood = 4; saveDraftNow(D, s8); const sheetS8 = push();
+      use('A'); pull(sheetS8);
+      ok('stale save: a field removed on the other phone does not come back', !('sleepHours' in day()) && day().mood === 4, day());
+      use('B'); pull(sheetS7);
+      ok('…on that phone either', !('sleepHours' in day()) && day().mood === 4, day());
+      // an older app version (no stamps): its updatedAt stands for every field it holds
+      start(typed2);
+      use('A'); const s9 = day(); s9.mood = 8; saveDraftNow(D, s9);
+      const tA = +day().fieldAt.mood;
+      const oldApp = (mood, journal, at) => ({ touched: Date.now() + 1000, entries: { [D]: { mood, journal, habits: {}, sleepHours: 7, updatedAt: new Date(at).toISOString() } } });
+      pull(oldApp(2, 'older app, later', tA + 5000));
+      ok('an older app\'s save after the stamps wins every field it holds', day().mood === 2 && day().journal === 'older app, later', day());
+      start(typed2);
+      use('A'); const s10 = day(); s10.mood = 8; saveDraftNow(D, s10);
+      pull(oldApp(3, 'older app, between', +day().fieldAt.mood - 1000));
+      ok('…an older app\'s save from before an edit loses that field and wins the ones not edited since',
+        day().mood === 8 && day().journal === 'older app, between', day());
+
+      // day-lww-gap-fill (three phones): a field filled from an older copy keeps its own stamp
+      start({ journal: 'j0', habits: {}, updatedAt: new Date(now - 2 * H).toISOString() });
+      use('A'); const g1 = day(); g1.mood = 4; saveDraftNow(D, g1); const sheetG1 = push();
+      tick(); use('C'); const g2 = day(); g2.mood = 10; saveDraftNow(D, g2);   // the latest mood, not pushed yet
+      tick(); use('B'); const g3 = day(); g3.journal = 'j1 on B'; saveDraftNow(D, g3);   // B has no mood at all
+      const sheetG2 = pull(sheetG1);
+      ok('(B filled the mood from A\'s copy)', day().mood === 4 && day().journal === 'j1 on B', day());
+      use('C'); pull(sheetG2 || push());
+      ok('gap fill: a mood filled in from an older copy does not beat a later mood typed on a third phone', day().mood === 10 && day().journal === 'j1 on B', day());
+
+      // the stamps themselves
+      const iso = t => new Date(t).toISOString(), N = Date.now();
+      const st1 = entryFieldStamp({ mood: 3, journal: 'a', habits: {}, updatedAt: iso(N - 9000) }, { mood: 4, journal: 'a', habits: { x: true }, updatedAt: iso(N) });
+      ok('first save since the stamps: the changed field is stamped now, the others at the day\'s old updatedAt',
+        st1.fieldAt.mood >= N && st1.fieldAt.journal === N - 9000 && !('habits' in st1.fieldAt), st1);
+      const st2 = entryFieldStamp(st1, Object.assign(JSON.parse(JSON.stringify(st1)), { updatedAt: iso(N + 50), fieldAt: { mood: 1, journal: 1 } }));
+      ok('a save that changes nothing keeps the stored stamps (not the draft\'s)', canonJSON(st2.fieldAt) === canonJSON(st1.fieldAt), [st1.fieldAt, st2.fieldAt]);
+      ok('the stamps are sorted, so the same day is the same JSON on every phone', Object.keys(entryFieldStamp({}, { zeta: 1, alpha: 2, mood: 3 }).fieldAt).join() === 'alpha,mood,zeta');
+      ok('the field stamps are not content: a day holding only them is not a logged day',
+        !entryHasContent({ fieldAt: { mood: N }, updatedAt: iso(N) }) && !loggedByHand({ fieldAt: { mood: N }, updatedAt: iso(N) }));
+      start(typed);
+      use('A'); persistGym(true, D, { done: { 'd1/e1': true }, log: {} });
+      ok('a gym tick (a fill-in, not an edit) adds no field stamps', !('fieldAt' in day()) && day().updatedAt === typed.updatedAt, day());
+      const ma = { mood: 5, journal: 'x', fieldAt: { mood: N - 100 }, updatedAt: iso(N - 100) }, mb = { mood: 6, journal: 'x', fieldAt: { mood: N - 100 }, updatedAt: iso(N - 50) };
+      ok('one stamp, two values: both phones pick the same copy', canonJSON(mergeFields(ma, mb, Object.assign({}, ma, mb))) === canonJSON(mergeFields(mb, ma, Object.assign({}, ma, mb))) && mergeFields(ma, mb, {}).mood === 6);
+      let threw2 = null; try { mergeFields('junk', { fieldAt: 'no', mood: 1 }, {}); mergeFields({ fieldAt: [1] }, null, {}); entryFieldStamp(null, {}); } catch (e) { threw2 = e; }
+      ok('a day in the wrong shape merges as having no field stamps, rather than throwing', !threw2, threw2 && threw2.message);
     } finally {
       window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null; clearTimeout(timelogSyncTimer); _tlDirty.clear();
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
