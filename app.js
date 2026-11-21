@@ -13506,8 +13506,9 @@ const LOGREM_ID = 840;        // 840-846: "Log my day" reminder, today + 6 days
 const NUDGE_HOUR = '20:00';   // come-back time when there is no log reminder
 const INSIGHT_DAYS = 5;       // Stats ▸ Connected insights unlocks at 5 logged days (renderDash)
 function lastActiveDay() {
-  const days = contentDates();
-  DB.timelog().forEach(s => days.push(todayStr(new Date(s.start))));
+  // the sample preview's demo rows (entries and time blocks marked sample) are not activity
+  const e = DB.entriesRO(), days = contentDates(e).filter(d => !e[d].sample);
+  DB.timelog().forEach(s => { if (!s.sample) days.push(todayStr(new Date(s.start))); });
   DB.gym && Object.keys(DB.gym()).forEach(d => days.push(d));
   return days.sort().slice(-1)[0] || todayStr();
 }
@@ -13605,7 +13606,7 @@ function nudgeInput() {
   const today = todayStr();
   const lr = DB.reminders().find(isLogReminder);
   const ents = DB.entriesRO();
-  const hand = Object.keys(ents).filter(d => loggedByHand(ents[d]));
+  const hand = Object.keys(ents).filter(d => ents[d] && !ents[d].sample && loggedByHand(ents[d]));   // demo rows aren't logs
   const recent = {}, from = addDays(today, -14);
   hand.filter(d => d >= from).forEach(d => { const m = ents[d].mood; recent[d] = m == null || m === '' || isNaN(+m) ? null : +m; });
   return { now: Date.now(), today, last: lastActiveDay(), loggedToday: loggedByHand(ents[today]), recent,

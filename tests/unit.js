@@ -4898,6 +4898,21 @@
       const inp = nudgeInput();
       ok('nudgeInput reads the reminder time and the off switch', inp.logTime === '21:30' && inp.off === true && inp.today === T);
     } finally { kSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
+    // review #4: the sample preview's demo rows (entries and time blocks marked sample) are not logged days
+    const sSnap = ['dp.entries', 'dp.timelog', 'dp.gym'].map(k => [k, localStorage.getItem(k)]);
+    try {
+      const smp = {}; [3, 4, 5, 6, 8].forEach(i => { smp[addDays(T, -i)] = { mood: 8, journal: 'demo', habits: {}, sample: true }; });
+      const d3 = new Date(addDays(T, -3) + 'T09:00:00').getTime();
+      localStorage.setItem('dp.entries', JSON.stringify(smp)); localStorage.setItem('dp.gym', '{}');
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'smpX', act: 'work', start: d3, end: d3 + 3600000, upd: d3, sample: true }]));
+      const si = nudgeInput();
+      ok('review #4: sample days do not count as logged days in the nudge plan',
+         si.logDays === 0 && Object.keys(si.recent).length === 0, { logDays: si.logDays, recent: si.recent });
+      ok('review #4: …nor as the last active day (entries or time blocks)', lastActiveDay() === T && si.last === T, [lastActiveDay(), si.last]);
+      smp[addDays(T, -10)] = { mood: 6, habits: {} }; localStorage.setItem('dp.entries', JSON.stringify(smp));
+      const ri = nudgeInput();
+      ok('review #4: …a real day among them still counts', ri.logDays === 1 && ri.last === addDays(T, -10) && Object.keys(ri.recent).join() === addDays(T, -10), ri);
+    } finally { sSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
   })();
 
 
