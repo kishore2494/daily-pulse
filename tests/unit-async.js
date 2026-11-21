@@ -817,5 +817,36 @@
       sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
     }
   }
+
+  /* ---------- review #7: two "Log my day" reminders (e.g. one synced from another phone) ----------
+     nudgePlan schedules only the FIRST one (nudgeInput's find); scheduleNativeAlarms skipped
+     EVERY reminder matching isLogReminder, so the second never rang at all. */
+  {
+    const capSnap = window.Capacitor, rSnap = localStorage.getItem('dp.reminders'), eSnap = localStorage.getItem('dp.events');
+    const sched = [];
+    const LN = {
+      requestPermissions: () => Promise.resolve({ display: 'granted' }), checkPermissions: () => Promise.resolve({ display: 'granted' }),
+      getPending: () => Promise.resolve({ notifications: [] }), cancel: () => Promise.resolve(),
+      schedule: (o) => { sched.push(...o.notifications); return Promise.resolve(); },
+    };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN } };
+      localStorage.setItem('dp.events', '[]');
+      localStorage.setItem('dp.reminders', JSON.stringify([
+        { id: 'lmA', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' },
+        { id: 'lmB', time: '07:45', label: 'Log my day', enabled: true, mode: 'notify' }]));
+      await scheduleNativeAlarms(); await until(() => sched.some(n => n.id >= 840)); await sleep(20);
+      const hm = n => { const d = new Date(n.schedule.at); return d.getHours() + ':' + d.getMinutes(); };
+      const plain = sched.filter(n => n.id < 700), planned = sched.filter(n => n.id >= 840 && n.id <= 846);
+      ok('review #7: the first Log my day stays with nudgePlan (not scheduled twice)', planned.length >= 6 && planned.every(n => hm(n) === '21:0') && !plain.some(n => hm(n) === '21:0'), sched.map(n => n.id + '@' + hm(n)));
+      ok('review #7: the second Log my day still rings, as an ordinary reminder', plain.length >= 6 && plain.every(n => hm(n) === '7:45' && /Log my day/.test(n.title)), plain.map(hm));
+    } catch (e) {
+      fail++; R.push('FAIL the two-reminders block threw: ' + (e && e.stack || e));
+    } finally {
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      if (rSnap != null) localStorage.setItem('dp.reminders', rSnap); else localStorage.removeItem('dp.reminders');
+      if (eSnap != null) localStorage.setItem('dp.events', eSnap); else localStorage.removeItem('dp.events');
+    }
+  }
   return { pass, fail, results: R };
 })();

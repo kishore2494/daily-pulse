@@ -11210,8 +11210,10 @@ async function scheduleNativeAlarms() {
       else notifs.push({ id: seq++, smallIcon: NOTIF_ICON, title, body, schedule: { at: t, allowWhileIdle: true },
         sound: alarm ? 'default' : undefined });
     };
-    // the "Log my day" reminder is scheduled by nudgePlan (scheduleInactivityReminder, below)
-    DB.reminders().filter(r => r.enabled && r.time && !isLogReminder(r)).forEach(r => {
+    // the "Log my day" reminder nudgeInput picks (the first) is scheduled by nudgePlan
+    // (scheduleInactivityReminder, below); a second one, e.g. synced from another phone, rings here
+    const rems = DB.reminders(), logRem = rems.find(isLogReminder);
+    rems.filter(r => r.enabled && r.time && r !== logRem).forEach(r => {   // that one object, not every match
       const [h, m] = r.time.split(':').map(Number);
       for (let d = 0; d < 7; d++) {
         const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);

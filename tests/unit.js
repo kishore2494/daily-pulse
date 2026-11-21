@@ -4888,7 +4888,7 @@
        !isLogReminder({ time: '21:00', label: 'Log my day', enabled: true, mode: 'alarm' }) &&
        !isLogReminder({ time: '21:00', label: 'Take meds', enabled: true, mode: 'notify' }) &&
        !isLogReminder({ time: '21:00', label: 'Log my day', enabled: false, mode: 'notify' }));
-    ok('scheduleNativeAlarms leaves the Log my day reminder to nudgePlan', /!isLogReminder\(r\)/.test(scheduleNativeAlarms.toString()));
+    ok('scheduleNativeAlarms leaves the Log my day reminder to nudgePlan', /logRem = rems\.find\(isLogReminder\)/.test(scheduleNativeAlarms.toString()));   // behaviour: unit-async.js, review #7
     ok('an auto-filled time summary is not a log by hand', !loggedByHand({ timeSummary: { sleep: 420 }, autoAt: { timeSummary: 1 } }) && loggedByHand({ mood: 4 }));
 
     const kSnap = ['dp.reminders', 'dp.nudgeOff', 'dp.entries'].map(k => [k, localStorage.getItem(k)]);
