@@ -1,3 +1,16 @@
+## 2026-11-21 — Play in-app rating sheet: native 122 built, web side on main (NOT deployed / NOT uploaded)
+
+Kishore said yes to asking happy users for a rating. A helper built it; I reviewed and merged:
+- **Native 122 / "82":** `InAppReviewPlugin.java` (`request()` → requestReviewFlow + launchReviewFlow, never
+  rejects), registered in MainActivity, `com.google.android.play:review:2.0.2`. `builds/Daylog-122.aab/.apk`,
+  cert SHA-256 144d1f76…d728 (same as 121), 0 .so, no new permissions; backup commit 47ea4aa, tag native-122.
+- **Web (merged 29a77be):** `maybeAskReview` and friends — see features.md ▸ Rating asks.
+- **My change on top:** the app already had a rate card (`maybeAskForReview`, `dp.rateAsk`) that promised "at
+  most twice, ever"; with both, one person could be asked 4 times. Now one budget of two across both, none
+  after a tap on Rate, and the card stands aside when the plugin exists. +5 tests.
+1595 tests × 4 timezones, 10/10 checks. Web side is inert without the plugin, so it can deploy before 122.
+**Upload 122 only after 121 is approved** — a new production upload replaces the release under review.
+
 ## 2026-11-21 — Play title + descriptions changed by API (1-month experiment); metrics log started
 
 Kishore: push the ASO text now, log the metrics locally, roll back after a month if it underperforms.

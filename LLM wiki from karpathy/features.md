@@ -39,6 +39,21 @@ Everything is editable and hideable: theme mode (navy/black/light) + accent (6 c
 - The plugin also has `requestPin` and `status`: an "Add widget to home screen" button can ship web-only later.
 - Not yet seen on a real device (as of 2026-11-21). A layout mistake shows as "Problem loading widget".
 
+## Rating asks (native shell only)
+
+- **Two ways, one budget: at most two asks per person, ever, and none after they tap Rate.**
+- **Build ≤121 / no plugin:** the older card (`maybeAskForReview`, `dp.rateAsk {asks,last,done}`), shown when a
+  celebration closes (7+ day streak or new award) after 7 real days; "Rate Daylog" opens the Play listing.
+- **Build 122+:** Play's own in-app sheet via the `InAppReview` plugin (`InAppReviewPlugin.java`,
+  `com.google.android.play:review:2.0.2`); the old card stands aside. `maybeAskReview()` runs after each save
+  by hand and fires 2.5 s later (after the award scan) when: onboarded, no tour, today logged by hand with mood
+  ≥7, 7+ hand-logged days (30+ and 60 days after the last ask for the second), no celebration or card on
+  screen, not typing, app visible. `dp.reviewAsk {n,last}` is written before the call. Both keys are
+  install-local (BACKUP_EXCLUDED). Google decides whether the sheet actually shows (quota) and never says;
+  it only appears in an app installed from Play (internal testing works).
+- No "Do you like Daylog?" pre-question and nothing routes unhappy users elsewhere: review gating is against
+  Play policy. Mood ≥7 only picks the moment.
+
 ## Onboarding (first run only)
 **2 steps since v262 (was 4):** (1) welcome + privacy + backup note + the restore door; (2) "Make it yours": the 4
 starter habits (tap to drop) and "Remind me to log my day" ticked at 21:00 → "Start logging". Step 2 is the only
