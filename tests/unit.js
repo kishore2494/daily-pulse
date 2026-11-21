@@ -2834,6 +2834,19 @@
       tick(); gymOpen.mood = 5; saveDraftNow(D, gymOpen);
       ok('review #2: …nor workout fields the stored day does not have', !('workoutsDone' in day()) && !('workoutDetail' in day()) && day().mood === 5, day());
 
+      // 7. A stale Log draft saved in the background after a pull must not delete what the pull brought
+      start(typed, []);
+      use('A'); logDate = D; loadDraft();                      // A holds a draft of D without the evening journal
+      use('B'); const b7 = day(); b7.journal = 'evening, typed on B'; saveDraftNow(D, b7); const sheetB7 = push();
+      tick(); use('A'); logDate = D; loadDraft(); sent.length = 0;
+      const onScr = [...document.querySelectorAll('.screen.on')]; onScr.forEach(el => el.classList.remove('on'));   // the Log is not on screen
+      try { applyRemoteState(sheetB7); } finally { onScr.forEach(el => el.classList.add('on')); }
+      ok('(the pull brought B\'s journal to A)', day().journal === 'evening, typed on B', day());
+      saveDraftNow(D, draft);                                   // what syncHealth does with the global draft, Log not on screen
+      ok('a background save of the Log draft after a pull keeps what the pull brought', day().journal === 'evening, typed on B', day());
+      const sheetA7 = push(); use('B'); applyRemoteState(sheetA7);
+      ok('…and nothing is deleted on the other phone', day().journal === 'evening, typed on B', day());
+
       // timelogChangedDays, directly
       const D2 = addDays(D, 1), sOv = { id: 'ov', act: 'sleep', start: d0 + 23 * H, end: d0 + 31 * H };
       ok('a block across midnight marks both days', [...timelogChangedDays([], [sOv])].join() === [D, D2].join());

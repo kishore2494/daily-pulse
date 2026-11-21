@@ -1428,6 +1428,10 @@ function applyRemoteState(remote) {
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
     reloadCfg();                // custom habits/activities may have changed
+    // The Log's draft may be a stale copy of a day this pull changed. With per-field stamps a save from it
+    // would delete what just came down (a missing field now travels as a removal), and syncHealth saves the
+    // draft even while the Log is not on screen. Reload it from the merged day; what was typed was flushed above.
+    loadDraft();
     // The day merge keeps the newest time summary, but it was summed from one phone's blocks:
     // re-sum each day whose blocks changed from the merged log (after reloadCfg, so activity names
     // that came down in this pull are used). Both phones then sum the same blocks to the same line,
