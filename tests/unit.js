@@ -4848,6 +4848,12 @@
     ok('once today is logged, today\'s Log my day is skipped', !loggedNow.some(n => n.day === T) && loggedNow.filter(n => n.id >= 840).length === 6);
     const late = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T22:00:00').getTime(), logDays: 12, logTime: '21:00' }));
     ok('a time already past today is not scheduled', !late.some(n => n.day === T) && late.every(n => n.at.getTime() > late[0].at.getTime() - 1));
+    // review #5: a save 30 s before 21:00 re-plans; today's occurrence is still ahead and must stay
+    const justBefore = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T20:59:30').getTime(), logDays: 12, logTime: '21:00' }));
+    ok('review #5: rescheduled in the minute before, today\'s Log my day is kept',
+       justBefore.some(n => n.day === T && n.id === LOGREM_ID), JSON.stringify(days(justBefore)));
+    const onTheDot = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T21:00:00').getTime(), logDays: 12, logTime: '21:00' }));
+    ok('review #5: …but not once its minute has come', !onTheDot.some(n => n.day === T));
     const off = nudgePlan(Object.assign({}, base, { logDays: 12, logTime: '21:00', off: true }));
     ok('nudges off: only the user\'s own reminder remains', off.length === 7 && off.every(n => n.id >= 840));
     ok('nudges off and no reminder: nothing at all', nudgePlan(Object.assign({}, base, { off: true })).length === 0);

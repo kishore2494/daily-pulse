@@ -13576,7 +13576,8 @@ function nudgePlan(o) {
       const day = addDays(o.today, d);
       if (d === 0 && o.loggedToday) continue;
       const at = when(day, o.logTime);
-      if (at.getTime() <= o.now + 60000) continue;
+      // <= now, not now + 1 min: a save in the minute before 21:00 re-plans, and today's must survive it
+      if (at.getTime() <= o.now) continue;
       const c = logReminderCopy(day, o);
       out.push({ id: LOGREM_ID + d, day, at, title: c.t, body: c.b });
       taken.add(day);
