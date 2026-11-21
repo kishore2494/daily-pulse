@@ -1,6 +1,18 @@
 # Roadmap — decided but not built
 
 ## Agreed, queued
+- **Sync bugs the fuzzer found (2026-11-22, `node tools/check-sync-fuzz.mjs`, listed in `KNOWN` in tests/sync-fuzz.js;
+  `STRICT=1` fails on them).** Not fixed yet:
+  1. `day-lww-stale-save` (the big one, ~30% of runs): a habit tick or any day edit on a phone that hasn't pulled
+     saves the whole day with a new `updatedAt`, so its OLD mood/journal beats the other phone's typing. Same class
+     as v257's autoAt fix. Fix = per-field stamps for day fields (diff against the stored day at save time), merged
+     per field like `mergeHabits` / `mergeAuto`. Needs care; the fuzzer is the safety net.
+  2. `day-lww-gap-fill` (3 phones): the merge fills a field missing on the newer copy from the older one but
+     stamps it with the newer `updatedAt`. Goes away with (1).
+  3. `gym-count-not-rederived`: after gym ticks merge, `workoutsDone`/`workoutDetail` are not re-derived (the v263
+     time re-sum has no gym twin). Small.
+  4. `summary-stale-after-kill`: `_tlDirty` is in memory, so a delete followed by the app being killed within
+     1.5 s keeps the old summary on both phones. Persist the dirty days or re-sum on start. Small.
 - **Long-form recorder (Kishore, 2026-11-21: "I need to journal a lot but can't type it").** Today: voice notes on a
   day/note, 10-minute cap, no pause, webm/opus. Proposed:
   - **Native (build 123):** foreground-service recorder so it keeps going with the screen off; record / pause /
