@@ -82,9 +82,10 @@ to "Ads and referrals".
 
 ## Open (Kishore's calls)
 
-- Whether to change the Play title (see `store/aso-2026-11.md` §1). The live listing still shows
-  the August text; PASTE-2/3 were never applied.
-- The developer name is `kishore_`. A brand name is suggested.
+- ~~Play title~~ **Applied 2026-11-21 by API** (Kishore: "push it, roll back after a month if it does worse"):
+  `Daylog: Lifelog, Mood & Habits` + new short/full text (`store/listing-new-2026-11-21.json`; old text
+  `store/listing-live-before-2026-11-21.json`). **Judge 2026-12-21** against the baseline in `store/metrics-log.md`.
+- The developer name is `kishore_`. Kishore said 2026-11-21 he will change it himself (Console ▸ Settings ▸ Developer account).
 - When to start the 14-day launch calendar. v250 + v251 are live as of 2026-11-01, so the
   drafts that mention photos and voice notes are now accurate.
-- New Play screenshots: §4 of the ASO file gives the order and captions.
+- ~~New Play screenshots~~ uploaded 2026-11-21 (store/brand/out/store-1..8) with the new icon and feature graphic.

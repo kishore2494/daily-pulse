@@ -1,3 +1,16 @@
+## 2026-11-21 — Play title + descriptions changed by API (1-month experiment); metrics log started
+
+Kishore: push the ASO text now, log the metrics locally, roll back after a month if it underperforms.
+- Saved what Play served first: `store/listing-live-before-2026-11-21.json` (title `Daylog: Habit Tracker & Mood`).
+- Pushed `store/listing-new-2026-11-21.json`: title `Daylog: Lifelog, Mood & Habits`, short + full from
+  `aso-2026-11.md`, updated for v263 (widget + notification buttons as "New", Memories, meal planner, five looks).
+  Read back from the API: 30/30, 80/80, 3575/4000. Under Google review.
+- `store/metrics-log.md`: experiment notes, rollback command, judge date 2026-12-21, and the Nov 21 baseline row.
+- Reading metrics automatically: the Reporting API is not enabled on project `daylog-publish` and only gives
+  vitals anyway. Installs/uninstalls/active devices/store visitors come from the bulk-report bucket:
+  `play.mjs metrics` is written and its UTF-16 CSV parsing tested, but it needs Kishore to (1) give
+  daylog-publisher "download bulk reports" access and (2) paste the bucket's Cloud Storage URI. DAU/MAU stay Console-only.
+
 ## 2026-11-21 — v263 LIVE (tag web-v263): two-phone time summary fixed
 
 Kishore: "fix the two phone time bug". The bug the Nov 2 review flagged (a timer re-sum bumping

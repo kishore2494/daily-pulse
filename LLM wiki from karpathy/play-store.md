@@ -6,6 +6,8 @@
 > **Uploading without the Console:** `node daylog-native-backup/play.mjs status` (read-only: what is on every
 > track), `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`,
 > `... images [--urls]` (read-only) and `... set-image icon|featureGraphic|phoneScreenshots <files…>` (replaces).
+> Store text: `... listing [--save f.json]` (read-only) / `... set-listing f.json`. Installs + store visitors:
+> `... metrics` once `play-config.json` holds the reports bucket (see store/metrics-log.md; DAU/MAU are Console-only).
 > Key: `daylog-native-backup/signing/play-publisher.json`, service account `daylog-publisher` (made 2026-10-14,
 > committed to the private repo on purpose; revocable in Google Cloud ▸ IAM ▸ Service Accounts). Never print it.
 > Uploads only on Kishore's explicit OK for that build. The broad "find key files on the Mac" searches are
