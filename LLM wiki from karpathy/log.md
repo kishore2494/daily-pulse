@@ -1,3 +1,19 @@
+## 2026-11-21 — Play Console snapshot (Oct 23 – Nov 19) + the "16 KB devices" warning
+
+From Kishore's screenshots of the Play Console dashboard (28 days vs the previous 28):
+- Device acquisitions 127 (+59%), first opens 73 (+38%): only ~57% of new installs open the app.
+- Total installs 232 (+122), active devices ~82: about 35% of everyone who ever installed still has it.
+- DAU 18.2 avg, MAU 113: DAU/MAU ≈ 16% (a daily log should aim for 30%+).
+- User loss 2.96/day (+60%) against 4.61/day acquisitions.
+- Store listing: 8.6 visitors/day, 47.1% conversion (+15.3 pp). The listing converts well; traffic is the limit.
+- Rating 5★. Crash and ANR rates show "Data unavailable" (too few users). Revenue ₹50 (first tip).
+- Latest production release dated 2026-11-15, 100% rollout, 63 installs, 62.4% install base
+  (which versionCode it was is not confirmed yet; build 120 is the likely one).
+- **"Your app may crash on 16 KB devices" does not apply to our builds:** none of them contains any `.so`
+  native library (checked every .aab/.apk in `builds/` 113–120 and the old TWA build in
+  `daily-pulse-android/`). 16 KB page alignment only matters for native libraries. If the warning
+  stays, open it in Play Console to see which versionCode it names; it is probably an old bundle.
+
 ## 2026-11-16 (evening) — v260 LIVE (tag web-v260): blink fix + greeting on any opening tab
 
 - **Every screen blinked once** ~0.8s after opening (Kishore, on his Realme RMX3231). Cause: v259's
