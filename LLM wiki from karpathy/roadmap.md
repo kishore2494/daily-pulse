@@ -2,7 +2,7 @@
 
 ## Agreed, queued
 - **Sync bugs the fuzzer found (2026-11-22, `node tools/check-sync-fuzz.mjs`, listed in `KNOWN` in tests/sync-fuzz.js;
-  `STRICT=1` fails on them).** Not fixed yet:
+  `STRICT=1` fails on them).** ALL FOUR FIXED on branch `sync-fixes` (2026-11-22, see log.md), not merged yet:
   1. `day-lww-stale-save` (the big one, ~30% of runs): a habit tick or any day edit on a phone that hasn't pulled
      saves the whole day with a new `updatedAt`, so its OLD mood/journal beats the other phone's typing. Same class
      as v257's autoAt fix. Fix = per-field stamps for day fields (diff against the stored day at save time), merged

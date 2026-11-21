@@ -1,3 +1,14 @@
+## 2026-11-22 (06:30) — the four fuzzer sync bugs fixed (branch `sync-fixes`, NOT merged, NOT deployed)
+
+- **day-lww-stale-save + day-lww-gap-fill:** every day field (not habits / ENTRY_AUTO / updatedAt) has its own
+  stamp `fieldAt[field]`. `entryFieldStamp(prev, next)` in `DB.putEntry` and `liftWrite` diffs against the stored
+  day (changed/removed → now; unchanged keeps its stamp; first save since stamps → the day's old updatedAt).
+  `mergeFields` merges per field, unstamped side falls back to its updatedAt (as `mergeAuto`).
+- **gym-count-not-rederived:** `gymRederive(days)` after a pull, for days whose gym ticks the pull changed.
+- **summary-stale-after-kill:** dirty days also kept on disk in `dp.tlDirty` (BACKUP_EXCLUDED), taken by
+  `syncTimelogNow`, re-summed at start-up when present.
+- Fuzzer `KNOWN` is empty; `STRICT=1` passes 300 seeds (1–300) and 600 (5000–5599); plain 500 passes.
+
 ## 2026-11-22 (04:00) — the 9 review findings fixed + sync fuzzer merged (main, NOT deployed)
 
 - **review-fixes** (helper; each finding test-first, one commit each): #5 today's "Log my day" kept when

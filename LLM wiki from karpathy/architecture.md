@@ -149,6 +149,10 @@ The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web Ap
   run after `reloadCfg` so new activity names are used). A day left with no block loses its
   summary, stamped, so the deletion travels. Summaries exist only when a Sheet is linked.
 
+- (branch `sync-fixes`) Every other day field has `fieldAt[field]` (`entryFieldStamp` at save in `DB.putEntry` /
+  `liftWrite`, `mergeFields` on pull, unstamped side → its updatedAt). Gym count/list re-derived after a pull
+  (`gymRederive`); time-summary dirty days survive a kill in `dp.tlDirty`.
+
 ### How lists sync item by item (v253)
 - **Stamps at save time.** `listSave(store, list)` diffs against what is stored and records,
   per list, `dp.listAt[list][id]` = when that item last changed and `dp.listDel[list][id]` =
