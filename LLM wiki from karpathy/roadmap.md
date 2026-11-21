@@ -1,6 +1,17 @@
 # Roadmap — decided but not built
 
 ## Agreed, queued
+- **Daily users (DAU) plan — proposed 2026-11-21, after v261's nudges.** Play: DAU 18 / MAU 113 (16%),
+  ~43% of installs never open, uninstalls +60%. In order of expected effect:
+  1. **Reach more people with notifications.** Permission is asked only at onboarding's end, and only if the
+     reminder box stays ticked; quitting onboarding early or unticking = unreachable forever. Ask once after the
+     first real log ("Want a nudge tomorrow at 9 pm?") for anyone without permission. Web-only.
+  2. **One-tap mood from the notification** — action buttons (😊 / 😐 / 😞) on the "Log my day" reminder via
+     `registerActionTypes`; the tap opens the app with the mood saved. Web-only (Capacitor actions).
+  3. **Home-screen widget** with today's ring + one-tap mood (`pushWidgetData` already exists, no widget yet).
+     Needs a native build.
+  4. **Sunday recap notification** — "This week: 5 days logged, best mood Tuesday" (gain framing, local data).
+  5. **Shorter onboarding** (4 steps today) so more people reach the reminder step and the first log.
 - **Cloud sync — DECIDED 2026-08-19 (Kishore's plan, supersedes both earlier designs).**
   **Flow:** post-launch update → one What's-new popup + a Settings card → **"Sign in with
   Google"** (native one-tap; accounts chosen deliberately — a lost sync-code means lost data,
