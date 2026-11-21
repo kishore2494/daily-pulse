@@ -1,3 +1,15 @@
+## 2026-11-22 (00:00) — merged to main, NOT deployed: time-tracker fixes + website refresh
+
+- `time-fixes-2` (helper, reviewed): midnight time boxes are "now" (`tbLive`; last night's block leads Today as
+  "● now · since yesterday"); day totals use the union of blocks (`coveredMs`, `actTotalsMs`): Stats coverage
+  was 250% / "60h" on an overlapped day, the same activity counted twice in summaries and in the Log's sleep /
+  deep-work fill-in. +25 tests (1620). No phone-width browser look yet (the visible change is the Today label).
+- `landing-refresh` (helper, checked at 360/1280 px): "Widget & reminders" section, lifelog title/meta, meals
+  card, two-screen setup; small fixes in lifelog-app.html, guide.html (old Play title, "Health Connect coming
+  next"), llms.txt. **Open:** 136 factory pages claim "Android, iOS, Web" in structured data (never claim iOS)
+  and pitch Sheet sync that new users can't see — a sed sweep, not done.
+4 timezones + 10/10 checks on main after both merges. Ship as v265 on Kishore's "deploy".
+
 ## 2026-11-21 (23:40) — build 122 uploaded to Play production; Hindi listing drafted
 
 - Kishore: "upload 122". `play.mjs upload builds/Daylog-122.aab --track production --name "122 (82)"`, same notes
