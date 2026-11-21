@@ -1,4 +1,4 @@
-## 2026-11-21 — two-phone time summary fixed (on main, NOT deployed)
+## 2026-11-21 — v263 LIVE (tag web-v263): two-phone time summary fixed
 
 Kishore: "fix the two phone time bug". The bug the Nov 2 review flagged (a timer re-sum bumping
 `updatedAt`, so a stale phone's mood won) was already fixed in v257 (`autoAt`); memory still called it
@@ -9,6 +9,8 @@ open. What was still wrong, both reproduced in tests that fail on the old code:
 - **Deleting the last block of a day** (on either phone) left its summary for good. Now
   `updateTimeSummary` drops it with an `autoAt` stamp (the deletion syncs; the Sheet cell blanks),
   and `DB.saveTimelog` records changed days in `_tlDirty` so emptied/moved-from days get re-summed.
+Deployed on Kishore's "deploy"; deploy.sh confirmed app.js, sw.js and index.html all serve v263. What's new: one line
+added as item 4 of w31 (no new popup for a small sync fix).
 +15 tests (two-phone cases 5–6, helper cases). 1572 × 4 timezones, 10/10 checks. No UI change, so
 no browser check. Still open from that review: midnight time boxes never "now"; coverage >100% with
 overlapping blocks. architecture.md ▸ "Day fields other screens fill in".
