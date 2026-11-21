@@ -1,3 +1,12 @@
+## 2026-11-21 (23:30) — Play listing approved and live; build 122 upload waits for Kishore's OK
+
+Public Play page (fetched 23:28 IST): title "Daylog: Lifelog, Mood & Habits", the sunset icon, the new
+description (mentions the home-screen widget), "Updated on 21 Nov 2026" — so the listing change and, most
+likely, build 121 are approved. Reports bucket found from the developer id in the notes:
+`pubsite_prod_5724262917689037597` (saved in daylog-native-backup/play-config.json); it answers 403 for now,
+i.e. the new "download bulk reports" permission had not propagated yet (Google says up to a day). Uploading 122
+was stopped by the session's safety check: a production upload needs Kishore's explicit OK for that build.
+
 ## 2026-11-21 — v264 LIVE (tag web-v264): rating sheet web side
 
 Deployed on Kishore's "deploy". Only change since v263: the in-app rating code (features.md ▸ Rating asks), inert
