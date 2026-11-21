@@ -392,11 +392,11 @@
   if (hSnapE != null) localStorage.setItem('dp.entries', hSnapE); else localStorage.removeItem('dp.entries');
   // no invented statistics anywhere: the app has no telemetry that could produce one
   ok('no fabricated population statistic', !/3× longer|3x longer/.test(document.documentElement.innerHTML));
-  // the one re-engagement nudge: no loss framing, and a real off switch
-  const nudgeSrc = scheduleInactivityReminder.toString();
-  ok('the nudge has an off switch', /dp\.nudgeOff/.test(nudgeSrc));
+  // the re-engagement nudges: no loss framing, and a real off switch
+  const nudgeSrc = [scheduleInactivityReminder, nudgeInput, nudgePlan, logReminderCopy, comebackCopy].map(f => f.toString()).join('\n') + JSON.stringify(LOGREM_COPY);
+  ok('the nudge has an off switch', /dp\.nudgeOff/.test(nudgeInput.toString()) && /o\.off/.test(nudgePlan.toString()));
   ok('the nudge uses no loss framing',
-     !/keeps your streak alive|miss you|don't lose|falling behind/i.test(nudgeSrc), nudgeSrc.slice(0, 300));
+     !/keeps your streak alive|miss you|don't lose|falling behind|streak/i.test(nudgeSrc.replace(/loggedStreak/g, '')), nudgeSrc.slice(0, 300));
   // an opaque no-cors response must not be reported as a confirmed sync
   ok('no claim of a confirmed Sheet sync', !/Saved & synced/.test(document.documentElement.innerHTML));
   // celebrations must respect the haptics switch
@@ -751,6 +751,10 @@
     const st1 = document.querySelector('#s-settings [data-sec-toggle="' + st0.dataset.secToggle + '"]');
     ok('flipping a switch flips its announced state', st1.getAttribute('aria-checked') !== was);
     st1.click();
+    const nudgeRow = document.querySelector('#s-settings [data-widget-toggle="dp.nudgeOff"]');
+    ok('Settings ▸ widgets names the come-back nudges honestly', !!nudgeRow &&
+       /Come-back nudges/.test(nudgeRow.closest('.at-row').textContent) && /none after 30 days/.test(nudgeRow.closest('.at-row').textContent) &&
+       !/nothing else ever/.test(document.getElementById('s-settings').textContent));
     settingsPage = null; renderSettings();
     /* Picking Settings again — menu, pinned tab, More — lands on the home and disarms a
        half-started delete. It used to redraw whichever page was open, still armed. */
@@ -4411,6 +4415,70 @@
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
       navigateTo('today');
     }
+  })();
+
+
+  // ---- Come-back nudges + the "Log my day" reminder (nudgePlan, 2026-11-21) ----
+  (() => {
+    const T = todayStr();
+    const at10 = new Date(T + 'T10:00:00').getTime();
+    const base = { now: at10, today: T, last: T, loggedToday: false, logDays: 0, logTime: null, off: false };
+    const days = p => p.map(n => n.day);
+    const uniq = p => new Set(days(p)).size === p.length;
+    const noLoss = p => p.every(n => !/streak|miss you|don't lose|falling behind|lose/i.test(n.title + ' ' + n.body));
+
+    const fresh = nudgePlan(Object.assign({}, base, { logDays: 1 }));
+    ok('a brand-new user without a reminder hears back the next day',
+       fresh.length === 5 && fresh[0].day === addDays(T, 1) && fresh[0].at.getHours() === 20 && fresh[0].id === 760, JSON.stringify(days(fresh)));
+    ok('…then on a widening gap: 5, 10, 20, 30 days, then never',
+       JSON.stringify(days(fresh)) === JSON.stringify([1, 5, 10, 20, 30].map(g => addDays(T, g))));
+    ok('…and the last one says it is the last', /last nudge/i.test(fresh[4].body) && /Settings/.test(fresh[4].body));
+    const settled = nudgePlan(Object.assign({}, base, { logDays: 12 }));
+    ok('a settled user without a reminder: first nudge after two clear days, not every evening',
+       settled[0].day === addDays(T, 2) && settled.length === 5);
+    const gapFrom = nudgePlan(Object.assign({}, base, { logDays: 12, last: addDays(T, -3) }));
+    ok('come-back days count from the last logged day, past ones dropped',
+       JSON.stringify(days(gapFrom)) === JSON.stringify([5, 10, 20, 30].map(g => addDays(T, g - 3))));
+
+    const withRem = nudgePlan(Object.assign({}, base, { logDays: 12, logTime: '21:00' }));
+    const remOnes = withRem.filter(n => n.id >= 840);
+    ok('the Log my day reminder: today + 6 days at its own time',
+       remOnes.length === 7 && remOnes[0].day === T && remOnes.every(n => n.at.getHours() === 21 && n.at.getMinutes() === 0), JSON.stringify(days(remOnes)));
+    ok('…come-back nudges only after its week, at the reminder\'s time',
+       JSON.stringify(days(withRem.filter(n => n.id < 840))) === JSON.stringify([10, 20, 30].map(g => addDays(T, g))) && withRem.filter(n => n.id < 840).every(n => n.at.getHours() === 21));
+    ok('never two log notifications on one day', uniq(withRem) && uniq(fresh) && uniq(gapFrom));
+    const loggedNow = nudgePlan(Object.assign({}, base, { logDays: 12, logTime: '21:00', loggedToday: true }));
+    ok('once today is logged, today\'s Log my day is skipped', !loggedNow.some(n => n.day === T) && loggedNow.filter(n => n.id >= 840).length === 6);
+    const late = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T22:00:00').getTime(), logDays: 12, logTime: '21:00' }));
+    ok('a time already past today is not scheduled', !late.some(n => n.day === T) && late.every(n => n.at.getTime() > late[0].at.getTime() - 1));
+    const off = nudgePlan(Object.assign({}, base, { logDays: 12, logTime: '21:00', off: true }));
+    ok('nudges off: only the user\'s own reminder remains', off.length === 7 && off.every(n => n.id >= 840));
+    ok('nudges off and no reminder: nothing at all', nudgePlan(Object.assign({}, base, { off: true })).length === 0);
+
+    ok('first ever log: a first-log line', /first log/i.test(logReminderCopy(T, { logDays: 0 }).t));
+    ok('under 5 logged days: the honest count to Stats insights',
+       /^2 more logged days and Stats/.test(logReminderCopy(T, { logDays: 3 }).b) && /^1 more logged day and/.test(logReminderCopy(T, { logDays: 4 }).b));
+    const week = [0, 1, 2, 3, 4].map(d => logReminderCopy(addDays(T, d), { logDays: 20 }).b);
+    ok('…after that the copy changes from day to day', new Set(week).size === 5, JSON.stringify(week));
+    ok('no notification uses loss framing', noLoss(fresh) && noLoss(withRem) && noLoss(settled));
+    ok('every notification opens the Log', /extra: \{ go: 'today' \}/.test(scheduleInactivityReminder.toString()) && /navigateTo\('today'\)/.test(setupNudgeTap.toString()));
+    ok('scheduling never asks for permission', !/requestPermissions/.test(scheduleInactivityReminder.toString()));
+
+    ok('isLogReminder: the onboarding reminder', isLogReminder({ id: 'r', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' }));
+    ok('…but not in alarm mode, renamed or switched off',
+       !isLogReminder({ time: '21:00', label: 'Log my day', enabled: true, mode: 'alarm' }) &&
+       !isLogReminder({ time: '21:00', label: 'Take meds', enabled: true, mode: 'notify' }) &&
+       !isLogReminder({ time: '21:00', label: 'Log my day', enabled: false, mode: 'notify' }));
+    ok('scheduleNativeAlarms leaves the Log my day reminder to nudgePlan', /!isLogReminder\(r\)/.test(scheduleNativeAlarms.toString()));
+    ok('an auto-filled time summary is not a log by hand', !loggedByHand({ timeSummary: { sleep: 420 }, autoAt: { timeSummary: 1 } }) && loggedByHand({ mood: 4 }));
+
+    const kSnap = ['dp.reminders', 'dp.nudgeOff', 'dp.entries'].map(k => [k, localStorage.getItem(k)]);
+    try {
+      localStorage.setItem('dp.reminders', JSON.stringify([{ id: 'r1', time: '21:30', label: 'Log my day', enabled: true, mode: 'notify' }]));
+      localStorage.setItem('dp.nudgeOff', '1');
+      const inp = nudgeInput();
+      ok('nudgeInput reads the reminder time and the off switch', inp.logTime === '21:30' && inp.off === true && inp.today === T);
+    } finally { kSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
   })();
 
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');

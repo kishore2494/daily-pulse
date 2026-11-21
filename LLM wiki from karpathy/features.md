@@ -35,7 +35,17 @@ Everything is editable and hideable: theme mode (navy/black/light) + accent (6 c
   Before that it was marked notified and dropped. The same label is never queued twice.
 - **Full-screen alarm** — `FullScreenAlarmPlugin` → `AlarmActivity` over lock screen (siren/vibrate/Dismiss/Snooze).
 - **Running-timer notification** (id 770) — shows active activity + Pause/Stop/Resume (`refreshTimerNotif`).
-- **2-day inactivity nudge** (id 760) — pre-scheduled, fires even if app never opened (`scheduleInactivityReminder`).
+- **Log notifications — `nudgePlan()`** (since v261; `scheduleInactivityReminder` runs it on every save, open and
+  Settings switch; never asks for permission). At most one log notification per day, all tapping through to the Log
+  (`extra.go`, `setupNudgeTap`):
+  - the **"Log my day" reminder** (`isLogReminder`: label "Log my day", notify mode, i.e. the one onboarding creates)
+    is scheduled here, ids 840-846, today + 6 days, skipping today once `loggedByHand` (auto-filled timeSummary /
+    workouts don't count). Copy: first-log line → "N more logged days and Stats can show…" (insights unlock at 5) →
+    5 rotating lines. In alarm mode it is an ordinary reminder again (scheduleNativeAlarms).
+  - **come-back nudges** (ids 760-764, `dp.nudgeOff` = Settings ▸ Log screen widgets ▸ Come-back nudges): days
+    1 (brand-new users) or 2, then 5, 10, 20, 30 after the last logged day; the 30-day one says it is the last.
+    Days already covered by the reminder are skipped. Time = the reminder's time, else 20:00.
+  - Copy rules (tests enforce): no loss framing, no "streak", never quotes an entry on the lock screen.
 - **Pomodoro** (id 750) and **Timebox** (ids 800-830) end/start alarms.
 - PWA fallbacks (no native shell): in-app foreground alarm, `.ics` calendar export, ntfy push.
 

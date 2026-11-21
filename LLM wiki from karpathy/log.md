@@ -1,3 +1,18 @@
+## 2026-11-21 — v261 built (branch `nudges`, merged to main, NOT deployed): come-back nudges + smarter "Log my day"
+
+Kishore, after the Play stats (DAU ≈ 16% of MAU, uninstalls +60%): "push the notification 1 day after… it needs to
+trigger them to open it"; "we need to increase the every day users". Found two leaks: the daily "Log my day"
+reminder was only scheduled 7 days ahead (on each open), so a user who stopped opening heard nothing after a week;
+and the come-back nudge fired once (day 2) and never again. Now one planner, `nudgePlan()` (features.md ▸ Alarms &
+notifications): the reminder's next 7 days with day-to-day copy, skipped today once logged by hand; come-back
+nudges at day 1 (new users) or 2, then 5, 10, 20, 30; one per day max; every tap opens the Log. Web-only, no Play
+build needed. Settings row renamed "Come-back nudges" (it used to promise "nothing else ever"); What's new w30.
+Limits worth knowing: nothing can reach someone who never opened the app or never granted notifications
+(Android 13+): permission is asked only at the end of onboarding when the reminder box is ticked.
+Verified: 1446 unit tests × 4 timezones (24 new), every tools/check-*.mjs. NOT checked in a phone-sized browser
+(the browser step was blocked by the session's safety check); the visible change is one Settings row's text and
+one What's new item.
+
 ## 2026-11-21 — Play Console snapshot (Oct 23 – Nov 19) + the "16 KB devices" warning
 
 From Kishore's screenshots of the Play Console dashboard (28 days vs the previous 28):

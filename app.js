@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v260';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v261';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1527,8 +1527,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w29',
+  v: 'w30',
   items: [
+    '🔔 <b>Friendlier reminders</b> — your “Log my day” reminder now says something different each day, skips today once you have logged, and opens straight on the Log. If you stop logging for a while, Daylog checks in a few times, further and further apart, and never after 30 days. Turn these off in Settings ▸ Come-back nudges.',
     '🌱 <b>Lift, for heavy days</b> — log a low mood and a gentle card offers a few small things: a one-minute guided breath, a 5-4-3-2-1 grounding exercise, tiny doable actions, your own words from good days, and a place to write it out. It is in the menu any time, for any mood. If the last few days have been heavy, it shows free 24/7 support first (Tele-MANAS, 14416).',
     '🍽️ <b>Meals</b> — plan breakfast, lunch, dinner and snacks for the week, with everyday ideas built in (idli, poha, dal rice, biryani…). Your plan becomes a shopping list, and the Log gets a Today\'s meals card to tick off what you ate. Turn it on in ☰ Menu ▸ More features.',
     '\u2728 <b>A fresh look</b> \u2014 the Log opens on one panel: a greeting, your progress ring, and the sleep and deep work your phone already counted. On this day is a strip you swipe, the mood grid is a colour field, ticks pop and the tab bar floats. Stats and Habits got the same care, in all five styles.',
@@ -8714,7 +8715,7 @@ function renderSettings() {
         ${secRow('onthisday', '🕰 On this day', 'your entry from a week / month / year ago')}
         ${secRow('moodgrid', '🎨 Mood grid', 'set mood and energy with one tap')}
         ${flagRow('dp.hapticsOff', '📳 Haptic buzz', 'a short vibration when you complete something')}
-        ${flagRow('dp.nudgeOff', '👋 Nudge after 2 quiet days', 'one notification if you have not logged in two days — nothing else ever')}
+        ${flagRow('dp.nudgeOff', '👋 Come-back nudges', 'if you stop logging: a few notifications, further and further apart, none after 30 days')}
         <div class="hint" style="margin-top:8px">To reorder or hide <b>any</b> Log card — tasks, checklist, workout, reflection, deep log — use <b>Customize ▸ Log screen sections</b>.</div>
       </div>`; })(),
     alarmHealth: alarmHealthHTML(),
@@ -9006,7 +9007,7 @@ document.addEventListener('click', async (ev) => {
          so without this a nudge already sitting in Android's queue would still fire — the
          user would turn it off and still be nudged, which is worse than not offering it. */
       scheduleInactivityReminder();
-      toast(wasOn ? 'Nudge off — no more notifications from Daylog' : 'Nudge back on');
+      toast(wasOn ? 'Nudges off. Your own reminders still ring.' : 'Nudges back on');
       return;
     }
     toast(wasOn ? 'Hidden' : 'Switched back on');
@@ -11015,6 +11016,7 @@ async function clearNativeReminderAlarms() {
       if (mine.length) await LN.cancel({ notifications: mine.map(n => ({ id: n.id })) });
     }
     if (FS) await FS.schedule({ alarms: [] });
+    scheduleInactivityReminder();   // drops the "Log my day" occurrences (ids 840-846) too
   } catch (e) {}
 }
 async function scheduleNativeAlarms() {
@@ -11027,7 +11029,8 @@ async function scheduleNativeAlarms() {
     const notifOk = perm.display === 'granted';
     // wipe previously scheduled reminder/event notifications ONLY (ids < 700).
     // Reserved ids owned by other features must survive this reschedule:
-    // 399 fs-test, 750 pomodoro, 760 inactivity, 770 running-timer, 800-830 timebox.
+    // 399 fs-test, 750 pomodoro, 760-764 come-back nudges, 770 running-timer, 800-830 timebox,
+    // 840-846 the "Log my day" reminder (nudgePlan).
     if (notifOk) {
       const pending = await LN.getPending();
       const mine = (pending.notifications || []).filter(n => n.id < 700 && n.id !== 399);
@@ -11042,7 +11045,8 @@ async function scheduleNativeAlarms() {
       else notifs.push({ id: seq++, smallIcon: NOTIF_ICON, title, body, schedule: { at: t, allowWhileIdle: true },
         sound: alarm ? 'default' : undefined });
     };
-    DB.reminders().filter(r => r.enabled && r.time).forEach(r => {
+    // the "Log my day" reminder is scheduled by nudgePlan (scheduleInactivityReminder, below)
+    DB.reminders().filter(r => r.enabled && r.time && !isLogReminder(r)).forEach(r => {
       const [h, m] = r.time.split(':').map(Number);
       for (let d = 0; d < 7; d++) {
         const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);
@@ -13326,40 +13330,147 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) drai
 // undoing a Stop tapped while the app was closed, and the stale Stop then hit a later timer.
 drainTimerAction();
 
-/* ---------- 2-day inactivity nudge (native shell, fully offline) ----------
-   Pre-schedules one "we miss you" notification for (last active day + 2 days)
-   at 20:00. Fires even if the app is never opened. Refreshed on every use, so
-   it keeps sliding forward as long as you keep logging. */
-const INACTIVITY_ID = 760;
+/* ---------- Come-back nudges + the daily log reminder (native shell, fully offline) ----------
+   Kishore, 2026-11-21, looking at Play Console (DAU ≈ 16% of MAU): "push the notification 1 day
+   after… it needs to trigger them to open it". Two leaks this closes:
+     - The daily "Log my day" reminder was scheduled only 7 days ahead, on each open. Someone who
+       stopped opening the app heard nothing after a week, ever again.
+     - The come-back nudge fired once, 2 days after the last entry, then never again.
+   nudgePlan() is the ONE place that decides every log notification for the next 30 days:
+     - the "Log my day" reminder (the one onboarding creates; notify mode): the next 7 days at its
+       time, skipping today once today is logged, with copy that changes day to day;
+     - come-back nudges on a widening gap from the last logged day, none after 30 days.
+   At most one log notification per calendar day. Rules kept from the behaviour audit:
+     - NO LOSS FRAMING. No "streak alive", "miss you", "don't lose", "falling behind". It states a
+       fact and offers; it never warns about something you are about to lose.
+     - IT CAN BE TURNED OFF from Settings (dp.nudgeOff). The "Log my day" reminder is the user's
+       own reminder and is controlled in Settings ▸ Reminders like any other.
+     - NO PRIVATE TEXT on the lock screen: the copy never quotes an entry. */
+const INACTIVITY_ID = 760;    // 760-764: come-back nudges
+const LOGREM_ID = 840;        // 840-846: "Log my day" reminder, today + 6 days
+const NUDGE_HOUR = '20:00';   // come-back time when there is no log reminder
+const INSIGHT_DAYS = 5;       // Stats ▸ Connected insights unlocks at 5 logged days (renderDash)
 function lastActiveDay() {
-  const days = Object.keys(DB.entries());
+  const days = contentDates();
   DB.timelog().forEach(s => days.push(todayStr(new Date(s.start))));
   DB.gym && Object.keys(DB.gym()).forEach(d => days.push(d));
   return days.sort().slice(-1)[0] || todayStr();
 }
-/* The one re-engagement notification in the app. Two rules it now follows, because it
-   previously broke both:
-     - NO LOSS FRAMING. "a 60-second log keeps your streak alive 🔥" is exactly the
-       streak-insurance nudge this project's own rules refuse, and the test that enforces
-       that rule only ever checked the fresh-start copy. It now states a fact and offers,
-       rather than warning you about something you are about to lose.
-     - IT CAN BE TURNED OFF, from Settings, without digging through Android's notification
-       channels. A nudge with no off switch is not a nudge. */
+/* Logged BY HAND: auto-filled fields (time summary, workouts mirrored from Gym) do not count, so
+   a sleep segment imported overnight cannot silence the evening "Log my day". */
+function loggedByHand(en) {
+  if (!en) return false;
+  const own = Object.assign({}, en);
+  ENTRY_AUTO.forEach(k => { delete own[k]; });
+  return entryHasContent(own);
+}
+/* The onboarding reminder: label "Log my day", notify mode. Switched to alarm mode it is an
+   ordinary full-screen reminder again, scheduled by scheduleNativeAlarms. */
+function isLogReminder(r) {
+  return !!(r && r.enabled && r.time && r.mode === 'notify' && /^log my day$/i.test(String(r.label || '').trim()));
+}
+const LOGREM_COPY = [
+  ['How was today?', 'Two taps, mood and energy, and today is logged.'],
+  ['Quick check-in', 'How did you sleep, and how is your energy? Log it in a minute.'],
+  ['Daylog', 'One line about today is enough. Future you will like reading it.'],
+  ['Today’s log', 'Tick today’s habits and watch your week fill in.'],
+  ['End of the day', 'What went well today? Jot it down in Daylog.'],
+];
+/* Copy for one "Log my day" occurrence. `day` is the date it fires on, `o` the plan input. */
+function logReminderCopy(day, o) {
+  if (!o.logDays) return { t: 'Your first log', b: 'Tap your mood and energy. That is a whole log, in under a minute.' };
+  if (o.logDays < INSIGHT_DAYS) {
+    const n = INSIGHT_DAYS - o.logDays;
+    return { t: 'How was today?', b: `${n} more logged day${n === 1 ? '' : 's'} and Stats can show how your sleep shapes your mood.` };
+  }
+  const i = Math.round(Date.parse(day + 'T12:00:00Z') / 864e5) % LOGREM_COPY.length;
+  const c = LOGREM_COPY[(i + LOGREM_COPY.length) % LOGREM_COPY.length];
+  return { t: c[0], b: c[1] };
+}
+/* Copy for a come-back nudge `gap` days after the last logged day. */
+function comebackCopy(gap, last) {
+  if (last) return { t: 'Daylog', b: 'This is the last nudge. Everything you logged stays on your phone, ready whenever you are. (Turn nudges off in Settings.)' };
+  if (gap <= 1) return { t: 'How did today go?', b: 'Mood and energy take two taps. That is today logged.' };
+  if (gap === 2) return { t: 'Daylog', b: 'Two days since your last entry. A minute is enough, whenever you feel like it.' };
+  if (gap <= 7) return { t: 'Daylog', b: 'Pick it up any day you like. No catching up needed: just log today.' };
+  return { t: 'Daylog', b: 'How have you been lately? Your Daylog is right where you left it.' };
+}
+/* Pure: every log notification for the next 30 days.
+   o = { now: ms, today: 'YYYY-MM-DD', last: last logged day, loggedToday, logDays,
+         logTime: 'HH:MM' of the "Log my day" reminder or null, off: dp.nudgeOff }
+   → [{ id, day, at: Date, title, body }] sorted by time, at most one per day. */
+function nudgePlan(o) {
+  const out = [], taken = new Set();
+  const when = (day, hhmm) => new Date(day + 'T' + hhmm + ':00');
+  if (o.logTime) {
+    for (let d = 0; d < 7; d++) {
+      const day = addDays(o.today, d);
+      if (d === 0 && o.loggedToday) continue;
+      const at = when(day, o.logTime);
+      if (at.getTime() <= o.now + 60000) continue;
+      const c = logReminderCopy(day, o);
+      out.push({ id: LOGREM_ID + d, day, at, title: c.t, body: c.b });
+      taken.add(day);
+    }
+  }
+  if (!o.off) {
+    /* Widening gaps from the last logged day. A brand-new user (one logged day or none) hears
+       back the next day, which is what Kishore asked for; after that the first nudge waits two
+       clear days, as before, so a daily user without a reminder is not pinged every evening. */
+    const gaps = [o.logDays <= 1 ? 1 : 2, 5, 10, 20, 30];
+    gaps.forEach((g, i) => {
+      const day = addDays(o.last, g);
+      if (taken.has(day)) return;
+      const at = when(day, o.logTime || NUDGE_HOUR);
+      if (at.getTime() <= o.now + 60000) return;
+      const c = comebackCopy(g, i === gaps.length - 1);
+      out.push({ id: INACTIVITY_ID + i, day, at, title: c.t, body: c.b });
+      taken.add(day);
+    });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+function nudgeInput() {
+  const today = todayStr();
+  const lr = DB.reminders().find(isLogReminder);
+  const ents = DB.entriesRO();
+  return { now: Date.now(), today, last: lastActiveDay(), loggedToday: loggedByHand(ents[today]),
+           logDays: Object.keys(ents).filter(d => loggedByHand(ents[d])).length, logTime: lr ? lr.time : null,
+           off: localStorage.getItem('dp.nudgeOff') === '1' };
+}
+/* Kept under its old name: every save, every app open and the Settings switch call it. Never asks
+   for notification permission (checkPermissions only): onboarding's reminder step asks for it. */
 async function scheduleInactivityReminder() {
   if (!nativeShell()) return;
   const LN = window.Capacitor.Plugins.LocalNotifications;
   try {
-    await LN.cancel({ notifications: [{ id: INACTIVITY_ID }] });
-    if (localStorage.getItem('dp.nudgeOff') === '1') return;
-    const fireDay = addDays(lastActiveDay(), 2);            // 2 clear days later
-    const at = new Date(fireDay + 'T20:00:00');
-    if (at.getTime() <= Date.now() + 60000) return;         // already past → nothing to schedule
-    await LN.schedule({ notifications: [{
-      id: INACTIVITY_ID, title: 'Daylog',
-      body: "Two days since your last entry. A minute is enough, whenever you feel like it.",
-      schedule: { at, allowWhileIdle: true } }] });
+    const ids = [];
+    for (let i = 0; i < 5; i++) ids.push({ id: INACTIVITY_ID + i });
+    for (let d = 0; d < 7; d++) ids.push({ id: LOGREM_ID + d });
+    await LN.cancel({ notifications: ids });
+    const perm = LN.checkPermissions ? await LN.checkPermissions() : null;
+    if (perm && perm.display !== 'granted') return;
+    const plan = nudgePlan(nudgeInput());
+    if (!plan.length) return;
+    await LN.schedule({ notifications: plan.map(n => ({
+      id: n.id, smallIcon: NOTIF_ICON, title: n.title, body: n.body,
+      extra: { go: 'today' }, schedule: { at: n.at, allowWhileIdle: true } })) });
   } catch (e) {}
 }
+/* A tap on a log notification opens the Log, whatever the start screen is. Capacitor keeps the
+   tap event until a listener is attached, so this also works from a cold start. */
+let _nudgeTapReady = false;
+function setupNudgeTap() {
+  if (!nativeShell() || _nudgeTapReady) return;
+  try {
+    window.Capacitor.Plugins.LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
+      const go = e && e.actionId === 'tap' && e.notification && e.notification.extra && e.notification.extra.go;
+      if (go === 'today' && localStorage.getItem('dp.onboarded') === '1') { try { navigateTo('today'); } catch (_) {} }
+    });
+    _nudgeTapReady = true;
+  } catch (e) {}
+}
+setupNudgeTap();
 
 /* ---------- ntfy: real background push (rings even when the app is closed) ----------
    Uses ntfy.sh scheduled delivery: we POST each upcoming reminder occurrence with a
