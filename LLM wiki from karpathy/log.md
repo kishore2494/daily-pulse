@@ -1,3 +1,12 @@
+## 2026-11-21 — native 121 uploaded to Play production (first upload by API)
+
+Kishore picked "production, everyone at once" over a 20% rollout or internal first. `play.mjs upload
+../builds/Daylog-121.aab --track production --name "121 (81)"` (bundle sha256 7ab5d72f… = the gradle output).
+Play accepted versionCode 121; commit went through without `changesNotSentForReview`, so it was sent for
+review automatically. `status` afterwards: production = 121 completed. The API says "completed" while Google is
+still reviewing — it reaches phones after review. Release notes: widget, mood from the notification, Sunday
+recap, quicker setup. Not yet verified on a real phone: the widget and the notification mood buttons.
+
 ## 2026-11-21 — Play API upload works: `daylog-native-backup/play.mjs`
 
 Kishore: "you don't have direct access to upload this?" … "I think I have already done it". He had: a prior

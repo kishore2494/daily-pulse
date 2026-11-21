@@ -1,7 +1,7 @@
 # Play Store launch — status & handoff
 
-> **LIVE on Google Play since 2026-08-26. Production = native 120 (checked via the API 2026-11-21); alpha = 110;
-> internal empty. Native 121 (widget) built, not uploaded. Web v262.**
+> **LIVE on Google Play since 2026-08-26. Production = native 121 / "81" (widget), uploaded via play.mjs
+> 2026-11-21, full rollout, in Google review. Before that 120. Alpha = 110, internal empty. Web v262.**
 >
 > **Uploading without the Console:** `node daylog-native-backup/play.mjs status` (read-only: what is on every
 > track) and `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`.
