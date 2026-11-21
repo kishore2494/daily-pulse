@@ -2818,6 +2818,22 @@
       tick(); DB.saveTimelog(DB.timelog().filter(s => s.id !== 'tw2')); clearTimeout(timelogSyncTimer); syncTimelogNow();
       ok('deleting one of two blocks re-sums the day from the one left', !!sumTwo && /Work 1h/.test(day().timeSummary || '') && day().timeSummary !== sumTwo, [sumTwo, day().timeSummary]);
 
+      // review #2: a Log draft opened BEFORE the last block was deleted still holds the old summary;
+      // its autosave must not bring the summary back (with the deletion's newer stamp on it)
+      start(typed, [blk1]);
+      use('A'); syncTimelogNow();
+      const opened7 = JSON.parse(JSON.stringify(day()));   // what loadDraft holds
+      ok('(the opened draft holds a summary)', !!opened7.timeSummary, opened7);
+      tick(); timelogForget('tw1'); DB.saveTimelog([]); clearTimeout(timelogSyncTimer); syncTimelogNow();
+      ok('(the deletion dropped it)', !('timeSummary' in day()), day());
+      tick(); opened7.mood = 7; saveDraftNow(D, opened7);
+      ok('review #2: a stale Log draft does not bring back a deleted time summary',
+        !('timeSummary' in day()) && day().mood === 7 && +(day().autoAt || {}).timeSummary > 0, day());
+      const gymOpen = JSON.parse(JSON.stringify(Object.assign(day(), { workoutsDone: 2, workoutDetail: 'stale' })));
+      delete gymOpen.autoAt;   // a draft from before any stamp existed
+      tick(); gymOpen.mood = 5; saveDraftNow(D, gymOpen);
+      ok('review #2: …nor workout fields the stored day does not have', !('workoutsDone' in day()) && !('workoutDetail' in day()) && day().mood === 5, day());
+
       // timelogChangedDays, directly
       const D2 = addDays(D, 1), sOv = { id: 'ov', act: 'sleep', start: d0 + 23 * H, end: d0 + 31 * H };
       ok('a block across midnight marks both days', [...timelogChangedDays([], [sOv])].join() === [D, D2].join());

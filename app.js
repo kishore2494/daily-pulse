@@ -2981,9 +2981,10 @@ function saveDraftNow(date, d) {
   // Preserve fields owned by other flows (Gym writes workoutsDone/workoutDetail, Time writes
   // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot — and their
   // stamps with them: the draft's copy is from when the day was opened, and an older stamp would
-  // let the other phone's older summary win the sync merge.
+  // let the other phone's older summary win the sync merge. Absent from the stored day means
+  // absent here too: a summary deleted since the draft was opened must not come back.
   const existing = DB.entry(date) || {};
-  [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
+  [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; else delete d[k]; });
   const wrote = DB.putEntry(date, d);
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
