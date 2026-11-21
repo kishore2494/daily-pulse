@@ -1,4 +1,8 @@
-## 2026-11-21 — v261 built (branch `nudges`, merged to main, NOT deployed): come-back nudges + smarter "Log my day"
+## 2026-11-21 — v261 LIVE (tag web-v261): come-back nudges + smarter "Log my day"
+
+Deployed on Kishore's "deploy" 2026-11-21; deploy.sh confirmed the live URL serves v261 (app.js, sw.js, index.html agree).
+Not yet confirmed on a phone that the notifications fire.
+
 
 Kishore, after the Play stats (DAU ≈ 16% of MAU, uninstalls +60%): "push the notification 1 day after… it needs to
 trigger them to open it"; "we need to increase the every day users". Found two leaks: the daily "Log my day"
