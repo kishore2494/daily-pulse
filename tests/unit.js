@@ -3480,6 +3480,71 @@
     }
   })();
 
+  // ---- Home-screen widget (Play build 121): what it is sent, and its one-tap mood ----
+  (function () {
+    const T0 = todayStr();
+    const eSnap = localStorage.getItem('dp.entries'), capSnap = window.Capacitor;
+    const ent = d => (DB.entries()[d] || {});
+    const dOf = at => todayStr(new Date(at));
+    const clear = (...ds) => { const e = DB.entries(); ds.forEach(d => delete e[d]); localStorage.setItem('dp.entries', JSON.stringify(e)); };
+    const setEnt = (d, patch) => { const e = DB.entries(); e[d] = Object.assign({ habits: {} }, e[d], patch); localStorage.setItem('dp.entries', JSON.stringify(e)); };
+    try {
+      flushAutosave();
+      window.Capacitor = undefined;
+      let threw = false; try { pushWidgetData(); } catch (x) { threw = true; }
+      ok('widget: with no WidgetBridge (the web, Play builds up to 120) pushWidgetData does nothing and never throws', !threw && widgetPlugin() === null);
+
+      const sent = [];
+      window.Capacitor = { Plugins: { WidgetBridge: { update: o => { sent.push(o); return Promise.resolve({ ok: true }); } } } };
+      const last = () => sent[sent.length - 1] || {};
+      clear(T0);
+      pushWidgetData();
+      ok('widget: an unlogged today is sent as not logged, with the day it is about', last().day === T0 && last().logged === false && last().mood === null && typeof last().streak === 'number', last());
+      ok('…and no journal or other typed text is ever sent to it', !Object.keys(last()).some(k => /journal|text|note|wins|title/i.test(k)), Object.keys(last()));
+      setEnt(T0, { timeSummary: { work: 60 }, autoAt: { timeSummary: 1 } });
+      pushWidgetData();
+      ok('…a day with only an auto-filled time summary still shows as not logged', last().logged === false, last());
+
+      // every tap below is inside one calendar day, even when the suite runs just after midnight
+      let n = Date.now(); if (dOf(n - 10000) !== dOf(n)) n -= 11000;
+      const D = dOf(n);
+      let r = widgetTapsApply([{ action: 'mood', mood: 7, at: n - 4000 }], n);
+      ok('widget tap: the mood is saved on the day it was tapped, through the Log save path', ent(D).mood === 7 && !!ent(D).updatedAt && r.saved.length === 1 && r.saved[0].date === D, ent(D));
+      ok('…keeping what other screens filled in, and leaving energy alone', (D !== T0 || (ent(D).timeSummary || {}).work === 60) && ent(D).energy === undefined, ent(D));
+      ok('…and the widget is refreshed with it', D !== T0 || (last().mood === 7 && last().logged === true), last());
+
+      setEnt(D, { mood: 3, journal: 'kept', updatedAt: new Date(n - 1000).toISOString() });
+      r = widgetTapsApply([{ action: 'mood', mood: 9, at: n - 2000 }], n);
+      ok('widget tap: an older queued tap never overwrites a mood saved after it', ent(D).mood === 3 && r.kept.includes(D) && !r.saved.length, [ent(D).mood, r]);
+      r = widgetTapsApply([{ action: 'mood', mood: 9, at: n - 500 }], n);
+      ok('…a tap newer than the last edit changes it, and keeps the rest of the day', ent(D).mood === 9 && ent(D).journal === 'kept', ent(D));
+
+      setEnt(D, { updatedAt: new Date(n - 9000).toISOString() });
+      r = widgetTapsApply([{ action: 'mood', mood: 1, at: n - 1000 }, { action: 'mood', mood: 5, at: n - 3000 }], n);
+      ok('widget taps: several on one day, in any order: the newest wins', ent(D).mood === 1 && r.saved.length === 1, ent(D).mood);
+      const ua = ent(D).updatedAt;
+      r = widgetTapsApply([{ action: 'mood', mood: 1, at: n - 50 }], n);
+      ok('…a tap for the mood already set writes nothing', ent(D).updatedAt === ua && r.saved.length === 1);
+
+      const Y = addDays(D, -1), yAt = new Date(Y + 'T21:30:00').getTime();
+      clear(Y);
+      r = widgetTapsApply([{ action: 'mood', mood: 8, at: yAt }, { action: 'open', at: n - 100 }], n);
+      ok('widget tap: one tapped before midnight lands on that day, not on the day the app opened', ent(Y).mood === 8 && r.saved.some(s => s.date === Y) && r.any, ent(Y));
+      setEnt(D, { updatedAt: new Date(n - 9000).toISOString() });
+      r = widgetTapsApply([{ action: 'mood', mood: 6, at: n + 86400000 }], n);
+      ok('…a tap stamped in the future (a clock change) counts as now, on today', ent(D).mood === 6 && r.saved[0].date === D, ent(D).mood);
+
+      const before = JSON.stringify(DB.entries());
+      r = widgetTapsApply([{ action: 'mood', mood: 0, at: n }, { action: 'mood', mood: 11, at: n }, { action: 'mood', mood: 'x', at: n },
+        { action: 'mood', mood: 5 }, { action: 'nope', mood: 5, at: n }, null, 7], n);
+      ok('widget taps: out-of-range moods, missing times and unknown actions change nothing', JSON.stringify(DB.entries()) === before && !r.saved.length && !r.kept.length, r);
+      ok('…and an empty or missing queue is nothing at all', !widgetTapsApply([]).any && !widgetTapsApply(undefined).any);
+    } finally {
+      window.Capacitor = capSnap;
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+    }
+  })();
+
   // ---- v254: the app says when the Sheet's script is an old copy ----
   (function () {
     const keys = ['dp.sheetScript', 'dp.settings'];

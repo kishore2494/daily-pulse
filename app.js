@@ -1775,6 +1775,9 @@ function moodMeterHTML() {
       return `<button type="button" class="mm-word ${sel ? 'on' : ''}" data-mmword="${w}"
         style="${sel ? `background:${q.c};border-color:${q.c};color:#fff` : `border-color:${q.c}66`}">${w}</button>`; }).join('')}</div>
       <div class="hint mm-hint">Tap a word to tag today's entry — tap again to remove</div>`;
+  } else if (m != null && m !== '') {
+    // A mood with no energy yet (the home-screen widget's faces set mood only): say it is saved
+    head = `Mood ${moodFace(m)} saved · tap a square to add your energy too`;
   }
   return `<div class="card mm-card">
     <h2 class="h2-icon">${hicon('smile')}<span>How do you feel?</span>
@@ -2966,7 +2969,7 @@ function saveDraftNow(date, d) {
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
   checkNewAwardsSoon(date);                          // tiered awards can land on any date edited
-  pushWidgetData();                                  // keep the (future native) home-screen widget fresh
+  pushWidgetData();                                  // keep the home-screen widget fresh (Play build 121+)
   scheduleInactivityReminder();
   try { notifAskRefresh(); } catch (e) {}            // the one-time notification ask, after a real log
   syncEntry(date, d);
@@ -10778,24 +10781,99 @@ document.addEventListener('click', (ev) => {
 
 function hcPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.HealthConnect) || null; }
 /* Home-screen widget bridge. Android widgets are pure native (RemoteViews) — they can't
-   run web code — so the app pushes a small summary to the native side after every save;
-   the (future) native WidgetBridge plugin stores it in SharedPreferences and refreshes
-   the AppWidget. No-op until that plugin ships in a rebuild. */
+   run web code — so the app pushes a small summary to the native side: after every save, on
+   every open and when the app is left (widgetSync below). The native WidgetBridge plugin
+   (Play build 121+) keeps only what the widget shows and redraws it; on the web and on older
+   builds there is no plugin and this does nothing. `day` says which day the numbers are for,
+   so the widget can show a fresh day after midnight without the app running. */
 function widgetPlugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WidgetBridge) || null; }
 function pushWidgetData() {
   const w = widgetPlugin(); if (!w || !w.update) return;
   try {
-    const en = DB.entry(todayStr()) || {}; const tc = taskCounts(todayStr()); const h = healthFor(todayStr()) || {};
+    const T = todayStr(), en = DB.entry(T) || {}; const tc = taskCounts(T); const h = healthFor(T) || {};
     const run = runningSeg(); const act = run ? actById(run.act) : null;
-    w.update({
+    const p = w.update({
       streak: loggedStreak(), mood: en.mood ?? null,
+      logged: typeof loggedByHand === 'function' ? loggedByHand(en) : entryHasContent(en), day: T,
       tasksDone: tc.done, tasksPlanned: tc.planned,
       steps: h.steps ?? null, sleepMin: h.sleepMin ?? null,
       timing: act ? (act.emoji + ' ' + act.name) : null,
       updated: Date.now(),
     });
+    if (p && p.catch) p.catch(() => {});   // a rejected native call must not raise the crash sheet
   } catch (e) {}
 }
+/* ---------- The widget's one-tap mood (Play build 121+) ----------
+   Kishore, 2026-11-21 (Play: daily users ≈ 16% of monthly): the widget is there to bring people
+   back each day. Tapping a face on it opens the app (the visit is the point) with that mood saved.
+   The widget cannot run this code, so a tap is queued natively with the time it happened, and
+   drained here at launch and whenever the app comes back, like the timer notification's buttons
+   (drainTimerAction). The faces are the mood grid's own columns (MM_COLS: 1 3 5 7 9) on the
+   entry's 1-10 `mood`; energy is left alone (a face says nothing about it).
+   A tap never overwrites a mood saved on that day AFTER it: a queued tap can be older than what
+   the person did since (another phone, or the app opened another way first). */
+function widgetTapsApply(list, now) {
+  now = now || Date.now();
+  const out = { any: false, saved: [], kept: [] };
+  const newest = {};   // day → its latest valid tap
+  (Array.isArray(list) ? list : []).forEach(x => {
+    if (!x || typeof x !== 'object') return;
+    out.any = true;
+    if (x.action !== 'mood') return;
+    const m = Math.round(+x.mood), at = Math.min(+x.at || 0, now);
+    if (!(m >= 1 && m <= 10) || !(at > 0)) return;
+    const d = todayStr(new Date(at));   // the day it was tapped on, even if the app opened after midnight
+    if (!newest[d] || at >= newest[d].at) newest[d] = { mood: m, at };
+  });
+  const days = Object.keys(newest).sort();
+  if (!days.length) return out;
+  flushAutosave();   // pending Log typing lands first, so it is what the tap is compared with
+  days.forEach(d => {
+    const t = newest[d], cur = DB.entry(d);
+    const has = !!cur && cur.mood != null && cur.mood !== '';
+    if (has && +cur.mood === t.mood) { out.saved.push({ date: d, mood: t.mood }); return; }   // already so: no write
+    if (has && (Date.parse(cur.updatedAt) || 0) > t.at) { out.kept.push(d); return; }       // edited after the tap
+    const nd = cur ? JSON.parse(JSON.stringify(cur)) : { habits: {} };
+    nd.mood = t.mood;
+    if (saveDraftNow(d, nd) !== false) out.saved.push({ date: d, mood: t.mood });   // the Log's own save path
+  });
+  return out;
+}
+let _widgetDraining = false, _widgetAgain = false;
+async function drainWidgetActions() {
+  const W = widgetPlugin();
+  if (!W || typeof W.consumeActions !== 'function') return;
+  if (_widgetDraining) { _widgetAgain = true; return; }
+  _widgetDraining = true;
+  try {
+    let list = [];
+    try { list = ((await W.consumeActions()) || {}).actions || []; } catch (e) { return; }
+    if (!list.length) return;
+    /* Not before onboarding: a mood saved under the welcome screen is "data", and the next open
+       would skip onboarding for good. The tap still opened the app; it can be tapped again. */
+    if (needsOnboard() || document.querySelector('#onboard.on')) return;
+    const r = widgetTapsApply(list);
+    if (!r.any) return;
+    navigateTo('today');
+    const last = r.saved[r.saved.length - 1];
+    if (last) toast('Mood saved ' + moodFace(last.mood) + (last.date === todayStr() ? '' : ' for ' + relDay(last.date).toLowerCase()));
+    else if (r.kept.includes(todayStr())) toast('Today’s mood was already set. Change it here if you like');
+  } finally {
+    _widgetDraining = false;
+    pushWidgetData();   // every open refreshes the widget, a tap or not
+    if (_widgetAgain) { _widgetAgain = false; drainWidgetActions(); }
+  }
+}
+(function widgetSync() {
+  if (!widgetPlugin()) return;   // the web, or a Play build older than 121
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pushWidgetData(); else drainWidgetActions(); });
+  // A tap while the app is already running (split screen) arrives as an event instead.
+  try { const W = widgetPlugin(), l = W.addListener && W.addListener('widgetTap', () => drainWidgetActions()); if (l && l.catch) l.catch(() => {}); } catch (e) {}
+  // Open across midnight: the widget's numbers move to the new day (it also redraws itself then).
+  let day = todayStr();
+  setInterval(() => { const t = todayStr(); if (t !== day) { day = t; pushWidgetData(); } }, 60000);
+  drainWidgetActions();   // at launch: a cold start from a widget tap
+})();
 /* Auto-tracking preferences — every tracked signal can be switched on/off in
    Settings ▸ Auto-tracking. Master `on` gates everything. Defaults: all on. */
 const AUTOTRACK_DEF = { on: true, sleep: true, steps: true, calories: true, workouts: true, hr: true, screentime: true };
