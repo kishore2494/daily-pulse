@@ -33,6 +33,24 @@ Clean: planner DST/midnight, ids, widget taps, onboarding exits, recap weekdays,
 - `store/listing-hi-IN-draft.json` + `listing-hi-IN-notes.md` (helper): title `Daylog: डायरी, मूड और आदतें` (27),
   short 77, full 3846; says on line 2 that the app's screens are English. NOT published — needs Kishore's call
   (the app itself is English-only) and a native speaker's read (questions in the notes, §6).
+## 2026-11-22 — Sync fuzz harness (branch sync-fuzz, not merged): four known sync bugs found
+
+`tools/check-sync-fuzz.mjs` + `tests/sync-fuzz.js` (ported from the parked agent-ae6722… WIP onto v264): 2–3
+phones, fake Sheet (last push wins), fake clock with skew, seeded random edits through the real save paths and
+random sync orders (late pull replies, stale pulls, offline, out-of-order pushes); then every phone syncs and it
+checks converge / no-loss / no-zombie / dup-id / derived / settle / quiet. Failing seeds shrink to minimal repros.
+Wired into deploy.sh and CI; known bugs are reported, not failed (`STRICT=1` fails them). Found, NOT fixed:
+1. **day-lww-stale-save** — mood/journal share one `updatedAt`; a save of the day on a phone that has not pulled
+   (most often one Habits-screen tick → saveDraftNow) carries its old mood/journal over the other phone's newer
+   typing. Repro: C types journal; A (not pulled) ticks a habit on that day → journal lost on all phones.
+2. **day-lww-gap-fill** (3 phones) — the day merge fills a field the newer copy lacks from the older copy but
+   stamps it with the newer `updatedAt`, so it then beats a later edit on the third phone. Repro: A mood=4,
+   B mood=10 (neither pulled), C ticks a habit on that (to C, empty) day → mood 4 everywhere.
+3. **gym-count-not-rederived** — gym ticks merge per tick, but `workoutsDone`/`workoutDetail` are not re-derived
+   after a pull (v263 did this for timeSummary only): A ticks e1, B ticks e2 → day holds 2 ticks, count says 1.
+4. **summary-stale-after-kill** — deleting a day's last block and closing the app within 1.5 s (before
+   syncTimelogNow) loses `_tlDirty`; the emptied day keeps its old timeSummary on every phone.
+Bite proof: 9 of 10 injected merge bugs caught in 40 seeds; the list half of `remoteBehind` survived 600 seeds.
 
 ## 2026-11-21 (23:30) — Play listing approved and live; build 122 upload waits for Kishore's OK
 
