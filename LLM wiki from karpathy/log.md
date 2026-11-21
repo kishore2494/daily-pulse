@@ -1,3 +1,11 @@
+## 2026-11-21 — Play API upload works: `daylog-native-backup/play.mjs`
+
+Kishore: "you don't have direct access to upload this?" … "I think I have already done it". He had: a prior
+session created service account `daylog-publisher` and committed its key to `daylog-native-backup/signing/
+play-publisher.json` (2026-10-14) but never wrote an uploader. Wrote `play.mjs` (no deps: JWT → token →
+androidpublisher v3 edits). `status` verified the key: **production = 120** (so the Nov 15 release was 120),
+alpha = 110, internal empty, **121 not uploaded**. play-store.md banner updated with the commands.
+
 ## 2026-11-21 — v262 LIVE (tag web-v262); Kishore uploads native 121 next
 
 Deployed on Kishore's "deploy" (he then uploads `builds/Daylog-121.aab` himself). deploy.sh passed every check and

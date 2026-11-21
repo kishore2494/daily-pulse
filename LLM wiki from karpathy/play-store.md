@@ -1,6 +1,14 @@
 # Play Store launch — status & handoff
 
-> **LIVE on Google Play since 2026-08-26, native 118, web v253.**
+> **LIVE on Google Play since 2026-08-26. Production = native 120 (checked via the API 2026-11-21); alpha = 110;
+> internal empty. Native 121 (widget) built, not uploaded. Web v262.**
+>
+> **Uploading without the Console:** `node daylog-native-backup/play.mjs status` (read-only: what is on every
+> track) and `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`.
+> Key: `daylog-native-backup/signing/play-publisher.json`, service account `daylog-publisher` (made 2026-10-14,
+> committed to the private repo on purpose; revocable in Google Cloud ▸ IAM ▸ Service Accounts). Never print it.
+> Uploads only on Kishore's explicit OK for that build. The broad "find key files on the Mac" searches are
+> blocked by the safety check; the key is in the project, so look there.
 >
 > Play title: `Daylog: Habit Tracker & Mood` · package `io.github.kishore2494.dailypulse`
 > (the "dailypulse" id and the hosting URL deliberately keep the old name — changing either
