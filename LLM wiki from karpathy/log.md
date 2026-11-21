@@ -1,3 +1,8 @@
+## 2026-11-21 — v264 LIVE (tag web-v264): rating sheet web side
+
+Deployed on Kishore's "deploy". Only change since v263: the in-app rating code (features.md ▸ Rating asks), inert
+until build 122 is installed. No What's new item (nothing visible to announce). Build 122 upload waits for 121's approval.
+
 ## 2026-11-21 — Reddit launch plan written (store/reddit-plan-2026-11.md)
 
 Kishore asked for exact subreddits and exact posts that won't get him banned. A helper wrote the plan; I checked it
