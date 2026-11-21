@@ -2,8 +2,7 @@
 
 > **LIVE on Google Play since 2026-08-26. Production = native 121 / "81" (widget), uploaded via play.mjs
 > 2026-11-21, full rollout, in Google review. Before that 120. Alpha = 110, internal empty. Web v263.
-> Build 122 / "82" (Play in-app rating sheet) BUILT 2026-11-21, `builds/Daylog-122.aab`, same cert, no .so,
-> tagged native-122 — NOT uploaded: wait until 121 is approved (a new upload replaces the one in review).**
+> Build 122 / "82" (Play in-app rating sheet) UPLOADED to production 2026-11-21 23:40, in review.**
 >
 > **Uploading without the Console:** `node daylog-native-backup/play.mjs status` (read-only: what is on every
 > track), `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`,

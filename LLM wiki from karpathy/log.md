@@ -1,3 +1,11 @@
+## 2026-11-21 (23:40) — build 122 uploaded to Play production; Hindi listing drafted
+
+- Kishore: "upload 122". `play.mjs upload builds/Daylog-122.aab --track production --name "122 (82)"`, same notes
+  as 121 (most phones go 120 → 122). `status`: production = 122. In Google review.
+- `store/listing-hi-IN-draft.json` + `listing-hi-IN-notes.md` (helper): title `Daylog: डायरी, मूड और आदतें` (27),
+  short 77, full 3846; says on line 2 that the app's screens are English. NOT published — needs Kishore's call
+  (the app itself is English-only) and a native speaker's read (questions in the notes, §6).
+
 ## 2026-11-21 (23:30) — Play listing approved and live; build 122 upload waits for Kishore's OK
 
 Public Play page (fetched 23:28 IST): title "Daylog: Lifelog, Mood & Habits", the sunset icon, the new
