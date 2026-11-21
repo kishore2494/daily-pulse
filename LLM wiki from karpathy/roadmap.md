@@ -1,6 +1,16 @@
 # Roadmap — decided but not built
 
 ## Agreed, queued
+- **Long-form recorder (Kishore, 2026-11-21: "I need to journal a lot but can't type it").** Today: voice notes on a
+  day/note, 10-minute cap, no pause, webm/opus. Proposed:
+  - **Native (build 123):** foreground-service recorder so it keeps going with the screen off; record / pause /
+    resume, many takes; a notification with Pause/Stop; saves AAC `.m4a` (plays and imports almost everywhere).
+    Shortcuts: long-press the app icon ▸ "Record", and a mic button on the home-screen widget.
+  - **Web:** a Recordings screen (☰ menu + a button on the Log): list by day, play with a scrub bar and ±15 s,
+    rename, attach to a day, **Export / Share one recording** (Android share sheet), and **Paste transcript** →
+    saved into that day's journal. Long recordings stay on the phone and out of backup files (like videos).
+  - **Transcription:** export, then Claude on the Mac/inbook can transcribe with local Whisper (offline) and the
+    text is pasted back. Waiting on Kishore's go-ahead.
 - **Daily users (DAU) plan — proposed 2026-11-21; items 1-5 BUILT the same day (v262 + native 121, see log.md).** Play: DAU 18 / MAU 113 (16%),
   ~43% of installs never open, uninstalls +60%. In order of expected effect:
   1. **Reach more people with notifications.** Permission is asked only at onboarding's end, and only if the
