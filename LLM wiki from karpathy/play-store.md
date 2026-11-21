@@ -4,7 +4,8 @@
 > 2026-11-21, full rollout, in Google review. Before that 120. Alpha = 110, internal empty. Web v262.**
 >
 > **Uploading without the Console:** `node daylog-native-backup/play.mjs status` (read-only: what is on every
-> track) and `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`.
+> track), `... upload builds/Daylog-<code>.aab --track internal|production [--rollout 0.2] [--notes "…"]`,
+> `... images [--urls]` (read-only) and `... set-image icon|featureGraphic|phoneScreenshots <files…>` (replaces).
 > Key: `daylog-native-backup/signing/play-publisher.json`, service account `daylog-publisher` (made 2026-10-14,
 > committed to the private repo on purpose; revocable in Google Cloud ▸ IAM ▸ Service Accounts). Never print it.
 > Uploads only on Kishore's explicit OK for that build. The broad "find key files on the Mac" searches are

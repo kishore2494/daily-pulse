@@ -1,3 +1,12 @@
+## 2026-11-21 — Play listing icon + feature graphic replaced with the sunset brand (by API)
+
+Kishore: "update the logo too … OK do it". The store still showed the old pulse-line icon and the old "Habits,
+mood & screen time" feature graphic. `play.mjs set-image icon store/brand/out/play-icon-512.png` and
+`set-image featureGraphic store/brand/out/feature-graphic.png`; `images` afterwards shows both with the local
+files' exact sha256 (ba7a2843…, 699c0006…). Each was its own committed edit; listing changes go through Google
+review. Production track still 121 afterwards. **Left alone:** the 8 phone screenshots (an older design set,
+no logo in them) and the 3 tablet ones — `store/brand/out/store-1..8` is the newer set, swap only if Kishore asks.
+
 ## 2026-11-21 — native 121 uploaded to Play production (first upload by API)
 
 Kishore picked "production, everyone at once" over a 20% rollout or internal first. `play.mjs upload
