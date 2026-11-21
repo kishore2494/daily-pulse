@@ -775,5 +775,47 @@
       navigateTo('today');
     }
   }
+
+  /* ---------- review #6: the tip ask on build 122+ ----------
+     A celebration's dismissal offers the rating first and the tip only once the rating budget is
+     settled. With Play's in-app sheet the old card stands aside, so dp.rateAsk never grew and the
+     tip never came. The real celebration, the real Close button, the real timers. */
+  {
+    const capSnap = window.Capacitor, armSnap = _rateArm;
+    const ks = ['dp.entries', 'dp.tip', 'dp.rateAsk', 'dp.reviewAsk'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const on = id => { const e = document.getElementById(id); return !!e && e.classList.contains('on'); };
+    const off = () => ['tip-ask', 'rate-ask', 'milestone'].forEach(id => { const e = document.getElementById(id); if (e) e.classList.remove('on'); });
+    const LN = { checkPermissions: () => Promise.resolve({ display: 'denied' }), cancel: () => Promise.resolve(), schedule: () => Promise.resolve() };
+    const BILL = { products: () => Promise.resolve({ available: true, products: [{ id: 'daylog_tip_small', type: 'once', price: '₹99', micros: 99000000 }] }) };
+    const IAR = { request: () => Promise.resolve({}) };
+    const dismiss = async (setup) => {
+      off(); localStorage.removeItem('dp.tip'); setup();
+      showMilestone(7); _rateArm = true;
+      document.getElementById('ms-close').click();
+      await until(() => on('tip-ask') || on('rate-ask'), 1200); await sleep(20);
+      return on('tip-ask') ? 'tip' : on('rate-ask') ? 'rate' : null;
+    };
+    try {
+      const many = {}; for (let i = 0; i < 40; i++) many[addDays(T, -i)] = { mood: 7 };
+      localStorage.setItem('dp.entries', JSON.stringify(many));
+      window.Capacitor = { Plugins: { LocalNotifications: LN, DaylogBilling: BILL, InAppReview: IAR } };
+      let got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 2, last: Date.now() - 90 * 864e5 })); });
+      ok('review #6: build 122+, both rating sheets spent: a celebration\'s dismissal offers the tip', got === 'tip', got);
+      got = await dismiss(() => { localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 1, last: Date.now() - 90 * 864e5, done: false })); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 1, last: Date.now() - 70 * 864e5 })); });
+      ok('review #6: …one old card + one sheet is the same budget of two: the tip', got === 'tip', got);
+      got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 1, last: Date.now() - 70 * 864e5 })); });
+      ok('review #6: …budget not spent yet: no tip and no old card (the sheet asks after a save)', got === null && rateState().asks === 0, [got, rateState()]);
+      window.Capacitor = { Plugins: { LocalNotifications: LN, DaylogBilling: BILL } };
+      got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.removeItem('dp.reviewAsk'); });
+      ok('review #6: build ≤121 (no sheet): the old rate card still comes first', got === 'rate', got);
+    } catch (e) {
+      fail++; R.push('FAIL the tip-ask block threw: ' + (e && e.stack || e));
+    } finally {
+      off(); _rateArm = armSnap;
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+    }
+  }
   return { pass, fail, results: R };
 })();

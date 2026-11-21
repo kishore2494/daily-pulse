@@ -2968,9 +2968,11 @@ document.addEventListener('click', (ev) => {
       /* One ask per celebration, never both. The review ask comes first — it costs the user
          nothing and is worth more to the app than a few rupees. The tip is only offered on a
          celebration where the review ask has already been settled. */
+      // Settled = the shared budget of two (old card + Play's sheet) is spent, or Rate was tapped.
+      // Build 122+ never shows the old card, so its count alone never settled and the tip never came.
       const rs = rateState();
-      if (!rs.done && rs.asks < 2) setTimeout(maybeAskForReview, 450);
-      else setTimeout(maybeAskForTip, 450);
+      if (rs.done || (+rs.asks || 0) + reviewAskState().n >= 2) setTimeout(maybeAskForTip, 450);
+      else if (!reviewPlugin()) setTimeout(maybeAskForReview, 450);   // with the plugin, the sheet asks after a save
     }
   }
 });
