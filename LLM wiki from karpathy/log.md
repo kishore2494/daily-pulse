@@ -1,3 +1,14 @@
+## 2026-11-22 (04:50) — the 4 fuzzer sync bugs fixed (main, NOT deployed); one extra guard added in review
+
+Helper branch `sync-fixes` merged: per-field day stamps `fieldAt` (`entryFieldStamp` in DB.putEntry/liftWrite,
+`mergeFields` in the pull; unstamped sides fall back to `updatedAt`), `gymRederive` after a pull, `dp.tlDirty`
+persisted so a kill before the re-sum can't strand a summary. Fuzzer `KNOWN` is empty; STRICT runs pass.
+**My review found a hole and closed it:** removals now travel, so a stale Log draft saved in the background
+(syncHealth saves the global draft while the Log is off screen) deleted the other phone's journal — reproduced
+in a test (fails without the fix), fixed by `loadDraft()` after any pull that changed data (63d023d).
+1700 tests × 4 timezones, 11/11 checks, STRICT fuzz 200 seeds green. Known limit: during rollout an older app's
+edits don't stamp `fieldAt`, the same weakness habitsAt/autoAt have.
+
 ## 2026-11-22 (06:30) — the four fuzzer sync bugs fixed (branch `sync-fixes`, NOT merged, NOT deployed)
 
 - **day-lww-stale-save + day-lww-gap-fill:** every day field (not habits / ENTRY_AUTO / updatedAt) has its own
