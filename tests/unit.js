@@ -2778,6 +2778,53 @@
       applyRemoteState({ touched: Date.now() + 5000, entries: { [D]: Object.assign({}, day(), { timeSummary: 'older, from A', autoAt: { timeSummary: t4 - 1 } }) } });
       ok('…so the other phone\'s older summary does not win', day().timeSummary === sum4, day());
 
+      // 5. Both phones track the same day before either has pulled: the summary must cover both phones' blocks
+      const blkA = { id: 'tA', act: 'work', start: d0 + 9 * H, end: d0 + 11 * H, upd: now - 50000 };
+      const blkB = { id: 'tB', act: 'gymt', start: d0 + 18 * H, end: d0 + 19 * H, upd: now - 40000 };
+      start(typed, []);
+      use('A'); localStorage.setItem('dp.timelog', JSON.stringify([blkA])); syncTimelogNow();
+      const sheetA5 = push();
+      tick(); use('B'); localStorage.setItem('dp.timelog', JSON.stringify([blkB])); syncTimelogNow();
+      ok('(each phone sums only its own block; B\'s summary is the newer one)',
+        /Gym/.test(day().timeSummary || '') && !/Work/.test(day().timeSummary || ''), day());
+      sent.length = 0; applyRemoteState(sheetA5);
+      ok('two phones tracking the same day: after the pull the summary covers both phones\' blocks',
+        /Work 2h/.test(day().timeSummary || '') && /Gym 1h/.test(day().timeSummary || '') && DB.timelog().length === 2, day());
+      ok('…and the mood typed earlier is untouched', day().mood === 3 && day().journal === 'morning', day());
+      const sum5 = day().timeSummary, sheetB5 = lastState();
+      ok('…and the corrected summary is pushed', !!sheetB5 && (sheetB5.entries[D] || {}).timeSummary === sum5, sheetB5 && sheetB5.entries[D]);
+      use('A'); sent.length = 0; applyRemoteState(sheetB5);
+      ok('…so the other phone ends with the same summary', day().timeSummary === sum5, day());
+      const settledA = lastState(); use('B'); sent.length = 0;
+      if (settledA) applyRemoteState(settledA);
+      ok('…and it settles: no further push back and forth', !sent.some(x => x.type === 'state') && day().timeSummary === sum5, [sent.length, day()]);
+
+      // 6. Deleting the day's last block drops its summary, here and on the other phone
+      start(typed, [blk1]);
+      use('A'); syncTimelogNow();
+      ok('(the day has a summary)', !!day().timeSummary, day());
+      both(held());
+      tick(); use('A');
+      timelogForget('tw1'); DB.saveTimelog(DB.timelog().filter(s => s.id !== 'tw1'));
+      clearTimeout(timelogSyncTimer); syncTimelogNow();
+      ok('deleting the last block of a day removes its time summary', !('timeSummary' in day()) && +(day().autoAt || {}).timeSummary > 0, day());
+      const delRow = sent.filter(x => x.type === 'entry' && x.date === D).pop();
+      ok('…and the Sheet row is rewritten without it', !!delRow && delRow.timeSummary === undefined, delRow);
+      const sheetA6 = push();
+      use('B'); sent.length = 0; applyRemoteState(sheetA6);
+      ok('…and the other phone drops it too', !('timeSummary' in day()) && DB.timelog().length === 0 && day().mood === 3, day());
+      start(typed, [blk1, blk2]);
+      use('A'); syncTimelogNow(); const sumTwo = day().timeSummary;
+      tick(); DB.saveTimelog(DB.timelog().filter(s => s.id !== 'tw2')); clearTimeout(timelogSyncTimer); syncTimelogNow();
+      ok('deleting one of two blocks re-sums the day from the one left', !!sumTwo && /Work 1h/.test(day().timeSummary || '') && day().timeSummary !== sumTwo, [sumTwo, day().timeSummary]);
+
+      // timelogChangedDays, directly
+      const D2 = addDays(D, 1), sOv = { id: 'ov', act: 'sleep', start: d0 + 23 * H, end: d0 + 31 * H };
+      ok('a block across midnight marks both days', [...timelogChangedDays([], [sOv])].join() === [D, D2].join());
+      ok('an unchanged log marks nothing', timelogChangedDays([blk1, sOv], [blk1, sOv]).size === 0);
+      ok('a block moved to another day marks the old day and the new', (() => { const m = timelogChangedDays([blk1], [Object.assign({}, blk1, { start: d0 + 33 * H, end: d0 + 34 * H })]); return m.has(D) && m.has(D2); })());
+      ok('junk in either list is ignored', timelogChangedDays('x', [null, {}, { id: 'n' }]).size === 0);
+
       // mergeAuto, directly
       const iso = t => new Date(t).toISOString(), N = Date.now();
       let m = mergeAuto({ timeSummary: 'newer', autoAt: { timeSummary: N - 1000 }, updatedAt: iso(N - 9000) },

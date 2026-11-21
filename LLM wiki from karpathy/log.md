@@ -1,3 +1,18 @@
+## 2026-11-21 — two-phone time summary fixed (on main, NOT deployed)
+
+Kishore: "fix the two phone time bug". The bug the Nov 2 review flagged (a timer re-sum bumping
+`updatedAt`, so a stale phone's mood won) was already fixed in v257 (`autoAt`); memory still called it
+open. What was still wrong, both reproduced in tests that fail on the old code:
+- **Both phones track the same day before syncing:** the blocks merged, but the summary was the one
+  written last, so it lacked the other phone's activities until a block changed again. Now a pull
+  re-sums each day whose blocks it changed (`timelogChangedDays`, at the end of `applyRemoteState`).
+- **Deleting the last block of a day** (on either phone) left its summary for good. Now
+  `updateTimeSummary` drops it with an `autoAt` stamp (the deletion syncs; the Sheet cell blanks),
+  and `DB.saveTimelog` records changed days in `_tlDirty` so emptied/moved-from days get re-summed.
++15 tests (two-phone cases 5–6, helper cases). 1572 × 4 timezones, 10/10 checks. No UI change, so
+no browser check. Still open from that review: midnight time boxes never "now"; coverage >100% with
+overlapping blocks. architecture.md ▸ "Day fields other screens fill in".
+
 ## 2026-11-21 — Play phone screenshots replaced with store/brand/out/store-1..8 (by API)
 
 Kishore: "screenshots too". `play.mjs set-image phoneScreenshots store-1-memories … store-8-private` (1080×1920,

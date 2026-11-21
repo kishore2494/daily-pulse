@@ -139,6 +139,16 @@ Plus `google-apps-script/Code.gs` if it needs a human-readable Sheet tab.
 ## Multi-device sync (optional)
 The Google Sheet **link is the login**. `google-apps-script/Code.gs` is a Web App (Execute as Me, access Anyone). Full-state snapshot chunked into a hidden `_State` tab (cut by `cut_()` only where neither side is a character Sheets changes — see gotchas); pulled via **JSONP** (`pullState`) to dodge CORS; pushed via `no-cors` POST (`pushState`, debounced 1.2s). Readable tabs also written: `Log`, `Time Log`, `Events`, `Articles`, `Notes`, `Reminders`, `Feedback`. **When Code.gs changes, the user must re-paste it and redeploy a new version** — the Sheet's Log columns are FIXED, so brand-new custom fields sync between devices but don't auto-create Sheet columns.
 
+### Day fields other screens fill in, and the time summary (v257, v263)
+- `ENTRY_AUTO` (timeSummary, workoutsDone, workoutDetail) carry their own stamps `autoAt[field]`
+  (`entryAutoSet`) and never move `updatedAt`; `mergeAuto` gives each field to the newer stamp, and
+  a newer stamp WITHOUT the field deletes it on the other side.
+- `timeSummary` is derived from the time log, so it is re-summed, not just merged: on every local
+  time-log save (`syncTimelogNow`, all days with a block plus `_tlDirty`), and after a pull for
+  each day whose blocks the pull changed (`timelogChangedDays(before, merged)` → `updateTimeSummary`,
+  run after `reloadCfg` so new activity names are used). A day left with no block loses its
+  summary, stamped, so the deletion travels. Summaries exist only when a Sheet is linked.
+
 ### How lists sync item by item (v253)
 - **Stamps at save time.** `listSave(store, list)` diffs against what is stored and records,
   per list, `dp.listAt[list][id]` = when that item last changed and `dp.listDel[list][id]` =

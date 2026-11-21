@@ -16,6 +16,9 @@ function safeParse(raw, fb) { if (raw == null) return fb; try { const v = JSON.p
    SHARED between callers, so only code that never changes what it reads may use it — anything
    that edits and saves keeps using DB.entries() / DB.timelog(), which return a fresh copy. */
 const _roCache = new Map();
+/* Days whose time blocks changed since the last re-sum (see timelogChangedDays). Up here, before
+   anything can save the time log, so no early save meets it uninitialised. */
+const _tlDirty = new Set();
 function roParse(key, fb) {
   const raw = localStorage.getItem(key), c = _roCache.get(key);
   if (c && c.raw === raw) return c.v;
@@ -568,7 +571,12 @@ const DB = {
 
   timelog() { return safeParse(localStorage.getItem('dp.timelog'), []); },
   timelogRO() { return roParse('dp.timelog', []); },   // read-only: see roParse
-  saveTimelog(t) { const ok = safeSet('dp.timelog', JSON.stringify(t)); pushState(); syncTimelog(); return ok; },
+  saveTimelog(t) {
+    const before = roParse('dp.timelog', []);
+    const ok = safeSet('dp.timelog', JSON.stringify(t));
+    timelogChangedDays(before, t).forEach(d => _tlDirty.add(d));   // a day emptied by a delete or a move gets re-summed too
+    pushState(); syncTimelog(); return ok;
+  },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
   saveTimeacts(a) { rememberActNames(a); const ok = listSave('dp.timeacts', a); pushState(); return ok; },
 
@@ -1201,6 +1209,7 @@ function applyRemoteState(remote) {
   const remoteNewer = remote.touched > localTouched; // the other device changed more recently
   let changed = false;
   let remoteBehind = false;   // this phone holds something the Sheet's copy lacks
+  let tlDays = null;          // days whose time blocks this pull changed (re-summed at the end)
   const skippedSections = [];
 
   // Entries: FIELD-LEVEL merge by date. Newest updatedAt wins for shared fields, but fields
@@ -1247,6 +1256,7 @@ function applyRemoteState(remote) {
   if (remote.timelog && !(Array.isArray(remote.timelog))) skippedSections.push('timelog');
   else if (remote.timelog) {
     const local = DB.timelog();
+    const tlBefore = roParse('dp.timelog', []);   // untouched by the merge below (that edits `local`)
     const byId = {}; local.forEach(s => byId[s.id] = s);
     const remoteIds = new Set();
     remote.timelog.forEach(r => {
@@ -1281,6 +1291,7 @@ function applyRemoteState(remote) {
     if (merged.some(s => !rById[s.id] || (rById[s.id].upd || 0) !== (s.upd || 0)) ||
         Object.keys(dels).some(id => dels[id] !== +(rdels || {})[id])) remoteBehind = true;
     safeSet('dp.timelog', JSON.stringify(merged));
+    tlDays = timelogChangedDays(tlBefore, merged);
   }
   // Tasks, notes, money and the other lists with ids: item by item (see mergeList), whichever
   // phone saved last. A state from an older app version has no stamps, so for that one the old
@@ -1358,6 +1369,11 @@ function applyRemoteState(remote) {
   if (changed) {
     localStorage.setItem('dp.touched', String(Date.now()));
     reloadCfg();                // custom habits/activities may have changed
+    // The day merge keeps the newest time summary, but it was summed from one phone's blocks:
+    // re-sum each day whose blocks changed from the merged log (after reloadCfg, so activity names
+    // that came down in this pull are used). Both phones then sum the same blocks to the same line,
+    // so this settles instead of going back and forth.
+    if (tlDays && tlDays.size && DB.settings().syncUrl) tlDays.forEach(updateTimeSummary);
     renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
@@ -4198,7 +4214,7 @@ document.addEventListener('click', (ev) => {
 let timelogSyncTimer;
 function syncTimelog() { clearTimeout(timelogSyncTimer); timelogSyncTimer = setTimeout(syncTimelogNow, 1500); }
 function syncTimelogNow() {
-  const url = DB.settings().syncUrl; if (!url) return;
+  const url = DB.settings().syncUrl; if (!url) { _tlDirty.clear(); return; }   // no Sheet: summaries are not kept
   const items = [];
   const touchedDates = new Set();
   DB.timelog().forEach(s => {
@@ -4220,7 +4236,34 @@ function syncTimelogNow() {
   items.sort((x, y) => x.date === y.date ? (x.start < y.start ? -1 : 1) : (x.date < y.date ? -1 : 1));
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'timelog', items }) }).catch(() => {});
+  _tlDirty.forEach(d => touchedDates.add(d)); _tlDirty.clear();   // days left with no block at all
   touchedDates.forEach(updateTimeSummary);
+}
+/* Every calendar day a block covers (a running one: up to now). */
+function segDays(s, out) {
+  if (!s || !(+s.start > 0)) return out;
+  const end = s.end == null ? Date.now() : +s.end;
+  let a = +s.start, n = 0;
+  do { const d = todayStr(new Date(a)); out.add(d); a = dayEndMs(d); } while (a < end && ++n < 400);
+  return out;
+}
+/* The days whose summary a change to the time log can alter: every day an added, removed or
+   changed block covers, before and after. A day's summary was only ever re-summed from the
+   blocks still in the log, so a day whose last block was deleted, here or on the other phone,
+   kept its old line for good. And a pull merged the other phone's blocks in without re-summing
+   at all: two phones that both tracked a day kept whichever summary was written last, missing
+   the other phone's activities. */
+function timelogChangedDays(before, after) {
+  const sig = s => `${s.start}|${s.end}|${s.act}`, was = {}, seen = new Set(), out = new Set();
+  (Array.isArray(before) ? before : []).forEach(s => { if (s && s.id) was[s.id] = s; });
+  (Array.isArray(after) ? after : []).forEach(s => {
+    if (!s || !s.id) return;
+    seen.add(s.id);
+    const o = was[s.id];
+    if (!o || sig(o) !== sig(s)) { segDays(s, out); segDays(o, out); }
+  });
+  Object.keys(was).forEach(id => { if (!seen.has(id)) segDays(was[id], out); });
+  return out;
 }
 /* Write "Work 6h 20m · Travel 1h 05m" into the day's entry so it lands on the Log row. */
 function updateTimeSummary(dateStr) {
@@ -4228,7 +4271,17 @@ function updateTimeSummary(dateStr) {
   segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
   const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
     .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
-  if (!parts.length) return;
+  if (!parts.length) {
+    // No block left on the day: drop the old line, stamped, so the other phone drops it too
+    // (mergeAuto lets a newer stamp without the field remove it).
+    const en = DB.entry(dateStr);
+    if (!en || !('timeSummary' in en)) return;
+    delete en.timeSummary;
+    (en.autoAt = Object.assign({}, objOf(en.autoAt))).timeSummary = Date.now();
+    DB.putEntry(dateStr, en);
+    syncEntry(dateStr, en);   // the Sheet writes the whole row, so the missing field blanks its cell
+    return;
+  }
   const entry = DB.entry(dateStr) || { habits: {} };
   const summary = parts.join(' · ');
   if (entry.timeSummary === summary) return;     // nothing changed — skip the network call
