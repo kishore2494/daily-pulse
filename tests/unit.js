@@ -4975,7 +4975,23 @@
       onNudgeAction({ actionId: 'dp_m_8', notification: { extra: { go: 'elsewhere', day: T } } });
       onNudgeAction({ actionId: 'dp_pause', notification: { id: 770 } });
       ok('other notifications\' actions are ignored here', !DB.entry(T));
+      // review #1: Android re-delivers the launch intent on a later cold start; the same button
+      // press must not toast again or land an old mood on today
+      localStorage.removeItem('dp.notifDone'); localStorage.setItem('dp.entries', JSON.stringify({}));
+      const press = { actionId: 'dp_m_8', notification: { id: 841, extra: { go: 'today', day: Y } } };
+      onNudgeAction(press);
+      ok('(the press saves yesterday\'s mood)', (DB.entry(Y) || {}).mood === 8, DB.entry(Y));
+      localStorage.setItem('dp.entries', JSON.stringify({})); toasted = '';
+      onNudgeAction(JSON.parse(JSON.stringify(press)));   // the replay (days later it would land an old mood on today)
+      ok('review #1: a replayed notification button is ignored (no toast, no mood saved)', toasted === '' && !DB.entry(T) && !DB.entry(Y), [toasted, DB.entry(T)]);
+      onNudgeAction({ actionId: 'dp_m_5', notification: { id: 840, extra: { go: 'today', day: T } } });
+      ok('review #1: …another notification\'s press is still handled', (DB.entry(T) || {}).mood === 5 && /Mood saved/.test(toasted), DB.entry(T));
+      for (let i = 0; i < 60; i++) onNudgeAction({ actionId: 'tap', notification: { id: 760, extra: { go: 'today', day: addDays(T, -100 - i) } } });
+      const done = safeParse(localStorage.getItem('dp.notifDone'), []);
+      ok('review #1: the handled list keeps only the last 50', Array.isArray(done) && done.length === 50 && done[49] === '760|' + addDays(T, -159) + '|tap', done.length);
+      ok('review #1: the handled list is install-local, not backed up', BACKUP_EXCLUDED.includes('notifDone') && !BACKUP_KEYS.includes('notifDone'));
     } finally {
+      localStorage.removeItem('dp.notifDone');
       window.toast = tSnap;
       snap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
     }

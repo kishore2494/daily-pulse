@@ -10289,6 +10289,7 @@ const BACKUP_EXCLUDED = [
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'notifAsk',                          // the one-time notification ask; permission belongs to this device
+  'notifDone',                         // notification presses already handled here (replayed intents are ignored)
   'reviewAsk',                         // Play rating-sheet asks on this install (Google's quota is per device too)
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
@@ -13661,9 +13662,22 @@ function applyNotifMood(day, v) {
 /* A tap on a log notification opens the Log, whatever the start screen is. Capacitor keeps the
    tap event until a listener is attached, so this also works from a cold start. */
 let _nudgeTapReady = false;
+/* Android can hand the same launch intent back on a later cold start, and Capacitor reports it
+   as a new action: a stray "Mood saved" toast, or an old notification's mood landing on today.
+   Each handled press (notification id | its day | the button) is remembered, the last 50 of them
+   (dp.notifDone, this install only); a repeat is ignored. true = seen before. */
+function nudgeActionSeen(e) {
+  const n = e.notification, key = [n.id == null ? '' : n.id, n.extra.day || '', e.actionId || ''].join('|');
+  const done = safeParse(localStorage.getItem('dp.notifDone'), []), list = Array.isArray(done) ? done : [];
+  if (list.includes(key)) return true;
+  list.push(key);
+  safeSet('dp.notifDone', JSON.stringify(list.slice(-50)));   // marked before it is handled: a crash mid-way cannot replay it
+  return false;
+}
 function onNudgeAction(e) {
   const n = e && e.notification, x = n && n.extra;
   if (!x || x.go !== 'today' || localStorage.getItem('dp.onboarded') !== '1') return;
+  if (nudgeActionSeen(e)) return;
   const m = NOTIF_MOODS.find(k => k.id === e.actionId);
   try {
     if (m) applyNotifMood(x.day || todayStr(), m.v);
