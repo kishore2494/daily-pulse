@@ -2801,6 +2801,7 @@ function rateSave(st) { localStorage.setItem('dp.rateAsk', JSON.stringify(st)); 
 function maybeAskForReview() {
   try {
     if (!nativeShell()) return;                                  // only where a store rating exists
+    if (reviewPlugin()) return;   // build 122+: Play's own in-app sheet asks instead (maybeAskReview), same budget
     const st = rateState();
     if (st.done || st.asks >= 2) return;
     if (st.asks === 1 && Date.now() - st.last < 14 * 86400000) return;
@@ -13763,13 +13764,17 @@ function handLoggedDays() {
 function reviewAskDue() {
   if (!reviewPlugin()) return 0;
   if (localStorage.getItem('dp.onboarded') !== '1' || tourIdx !== -1) return 0;
-  const st = reviewAskState();
-  if (st.n >= 2) return 0;
-  if (st.n === 1 && Date.now() - st.last < 60 * 86400000) return 0;
+  // One budget with the older rate card (maybeAskForReview, dp.rateAsk), which builds <=122 without
+  // the plugin still show: two asks per person in all, and none after a tap on its Rate button.
+  const st = reviewAskState(), old = rateState();
+  if (old.done) return 0;
+  const used = st.n + Math.min(2, +old.asks || 0), last = Math.max(st.last, +old.last || 0);
+  if (used >= 2) return 0;
+  if (used === 1 && Date.now() - last < 60 * 86400000) return 0;
   const en = DB.entry(todayStr());
   if (!en || en.sample || !loggedByHand(en) || !(Number(en.mood) >= 7)) return 0;
-  if (handLoggedDays() < (st.n === 0 ? 7 : 30)) return 0;
-  return st.n + 1;
+  if (handLoggedDays() < (used === 0 ? 7 : 30)) return 0;
+  return used + 1;
 }
 function maybeAskReview() {
   try {
@@ -13787,7 +13792,7 @@ function reviewAskFire() {
     const a = document.activeElement;
     if (a && (a.isContentEditable || a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /^(text|search|url|email|number)$/.test(a.type)))) return;
     // Spend the ask first: a WebView killed mid-call must not come back and ask again.
-    if (!safeSet('dp.reviewAsk', JSON.stringify({ n, last: Date.now() }))) return;
+    if (!safeSet('dp.reviewAsk', JSON.stringify({ n: reviewAskState().n + 1, last: Date.now() }))) return;
     const p = reviewPlugin().request();
     if (p && typeof p.catch === 'function') p.catch(() => {});
   } catch (e) {}

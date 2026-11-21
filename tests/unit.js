@@ -4880,7 +4880,7 @@
     // Play's in-app rating sheet (native build 122+): maybeAskReview after a save by hand
     {
       const capSnap2 = window.Capacitor, tourSnap = tourIdx;
-      const rk = ['dp.entries', 'dp.reviewAsk', 'dp.onboarded', 'dp.milestones', 'dp.celeb'];
+      const rk = ['dp.entries', 'dp.reviewAsk', 'dp.rateAsk', 'dp.onboarded', 'dp.milestones', 'dp.celeb'];
       const rsn = rk.map(k => [k, localStorage.getItem(k)]);
       const TD = todayStr(), DAY = 86400000;
       let calls = 0, seen = null, mode = 'ok';
@@ -4898,7 +4898,7 @@
       const save = () => saveDraftNow(TD, Object.assign({}, DB.entry(TD)));
       const flush = () => { if (!_reviewAskTimer) return false; clearTimeout(_reviewAskTimer); reviewAskFire(); return true; };
       const setAsk = (n, daysAgo) => localStorage.setItem('dp.reviewAsk', JSON.stringify({ n, last: Date.now() - daysAgo * DAY }));
-      const fresh = () => { localStorage.removeItem('dp.reviewAsk'); calls = 0; seen = null; mode = 'ok'; };
+      const fresh = () => { localStorage.removeItem('dp.reviewAsk'); localStorage.removeItem('dp.rateAsk'); calls = 0; seen = null; mode = 'ok'; };
       const overlays = ['milestone', 'rate-ask'].map(id => document.getElementById(id)).filter(Boolean);
       const ovSnap = overlays.map(el => el.classList.contains('on'));
       try {
@@ -4952,6 +4952,19 @@
         fresh(); seed(7, 8); mode = 'reject';
         threw = false; try { save(); flush(); } catch (e) { threw = true; }
         ok('review ask: a plugin that rejects does not throw either', !threw && calls === 1 && reviewAskState().n === 1);
+        // one budget with the older rate card (dp.rateAsk)
+        fresh(); seed(40, 8); localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 1, last: Date.now() - 10 * DAY, done: false }));
+        ok('review ask: an earlier rate-card ask counts: the sheet waits 60 days from it', reviewAskDue() === 0);
+        localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 1, last: Date.now() - 61 * DAY, done: false }));
+        save();
+        ok('review ask: …then it is the second and last ask', flush() && calls === 1 && reviewAskDue() === 0 && reviewAskState().n === 1, reviewAskState());
+        fresh(); seed(40, 8); localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 1, last: Date.now() - 400 * DAY, done: true }));
+        ok('review ask: never after a tap on the rate card\'s Rate button', reviewAskDue() === 0);
+        fresh(); seed(40, 8); localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 2, last: Date.now() - 400 * DAY, done: false }));
+        ok('review ask: never after the rate card was shown twice', reviewAskDue() === 0);
+        fresh(); seed(40, 8); maybeAskForReview();
+        const rcard = document.getElementById('rate-ask');
+        ok('rate card: stands aside when Play\'s in-app sheet is available', !(rcard && rcard.classList.contains('on')) && rateState().asks === 0, rateState());
         ok('review ask: the counter is install-local, not backed up', BACKUP_EXCLUDED.includes('reviewAsk') && !BACKUP_KEYS.includes('reviewAsk'));
       } finally {
         if (_reviewAskTimer) { clearTimeout(_reviewAskTimer); _reviewAskTimer = null; }
