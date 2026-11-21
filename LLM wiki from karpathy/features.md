@@ -46,6 +46,19 @@ Everything is editable and hideable: theme mode (navy/black/light) + accent (6 c
     1 (brand-new users) or 2, then 5, 10, 20, 30 after the last logged day; the 30-day one says it is the last.
     Days already covered by the reminder are skipped. Time = the reminder's time, else 20:00.
   - Copy rules (tests enforce): no loss framing, no "streak", never quotes an entry on the lock screen.
+  - **Mood buttons** (v262): every log notification has action type `dp_log` = 🙂 Good (8) / 😐 Okay (5) / 😕 Low (3)
+    (`NOTIF_MOODS`). Capacitor builds actions as activity intents, so a button opens the app; `onNudgeAction` →
+    `applyNotifMood(extra.day, v)`: today, or yesterday when last night's reminder is answered after midnight,
+    older → today; a mood already set is never overwritten. Registering `dp_log` leaves the timer's types alone
+    (Capacitor's writeActionGroup stores per type id).
+  - **Sunday recap** (v262): once past 5 logged days, Sunday's "Log my day" reads "This week: N days logged, best
+    mood on <weekday>. Log today to round it off." (`weekRecapCopy`, from `nudgeInput().recent`, needs ≥2 days).
+- **One-time notification ask** (v262, `notifAskKind`/`notifAskHTML`, slot `#notif-ask-slot` under the Lift card on
+  today's Log): after the first entry logged BY HAND today (saved entry, not the draft — loadDraft pre-fills tracked
+  sleep). No "Log my day" reminder → "Want a nudge tomorrow?" + time → creates it (→ Android's prompt via
+  scheduleNativeAlarms). Reminder set but permission off → "Your reminder can't ring" → requestPermissions, else
+  opens Android's notification settings. Never during onboarding/tour, never on the web. One answer per install
+  (`dp.notifAsk`, BACKUP_EXCLUDED). `_notifPerm` refreshed at start and on every return to the app.
 - **Pomodoro** (id 750) and **Timebox** (ids 800-830) end/start alarms.
 - PWA fallbacks (no native shell): in-app foreground alarm, `.ics` calendar export, ntfy push.
 
