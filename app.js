@@ -1403,7 +1403,7 @@ let trackedInfo = { sleep: null, work: null };
 function trackedHours(date, actId) {
   // ENDED segments only — a still-running timer would freeze a partial mid-day value
   // into the entry on the next autosave (e.g. deep-work stuck at 0.5h of an eventual 6h).
-  const ms = segsForDay(date).filter(x => x.seg.act === actId && x.seg.end != null).reduce((s, x) => s + (x.b - x.a), 0);
+  const ms = coveredMs(segsForDay(date).filter(x => x.seg.act === actId && x.seg.end != null));   // overlaps once
   return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;   // ignore sub-minute noise
 }
 // Sleep is special: "last night's sleep" = the FULL sleep segments that END on this date
@@ -1415,9 +1415,9 @@ function dayStartMs(ds) { return new Date(ds + 'T00:00:00').getTime(); }
 function dayEndMs(ds) { return new Date(addDays(ds, 1) + 'T00:00:00').getTime(); }
 function trackedSleepHours(date) {
   const d0 = dayStartMs(date), d1 = dayEndMs(date);
-  const ms = DB.timelog()
+  const ms = coveredMs(DB.timelog()   // the same night on two phones counts once
     .filter(s => s.act === 'sleep' && s.end != null && s.end >= d0 && s.end < d1)
-    .reduce((sum, s) => sum + Math.min(s.end - s.start, 16 * 3600000), 0);   // cap a segment at 16h (bad edits)
+    .map(s => ({ a: Math.max(s.start, s.end - 16 * 3600000), b: s.end })));   // cap a segment at 16h (bad edits)
   return ms >= 60000 ? +(ms / 3600000).toFixed(2) : null;
 }
 function fmtH(v) { return v == null ? '' : Math.floor(v) + 'h ' + Math.round((v - Math.floor(v)) * 60) + 'm'; }
@@ -3916,6 +3916,23 @@ function segsForDay(dateStr) {
     .filter(x => x.b > x.a)
     .sort((x, y) => x.a - y.a);
 }
+/* Time covered by clips ({a, b} ms), each moment once, clamped to [lo, hi]. Blocks can overlap
+   (two phones tracking the same hour, a hand-edited time) and summing them made a day 130%
+   covered. */
+function coveredMs(clips, lo = -Infinity, hi = Infinity) {
+  let tot = 0, cur = -Infinity;
+  clips.map(c => [Math.max(c.a, lo), Math.min(c.b, hi)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0])
+    .forEach(([a, b]) => { if (b > cur) { tot += b - Math.max(a, cur); cur = b; } });
+  return tot;
+}
+/* Per-activity totals of clips ({seg, a, b}): one activity's overlapping blocks count once;
+   two different activities over the same hour each keep it (only the day total is a union). */
+function actTotalsMs(clips) {
+  const by = {}, out = {};
+  clips.forEach(c => { (by[c.seg.act] = by[c.seg.act] || []).push(c); });
+  Object.keys(by).forEach(id => { out[id] = coveredMs(by[id]); });
+  return out;
+}
 
 function timelineHTML(dateStr) {
   const d0 = dayStartMs(dateStr), dl = dayEndMs(dateStr) - d0;
@@ -3946,11 +3963,10 @@ function segListHTML(dateStr) {
   return `<details class="seg-list"${ttSelSeg ? ' open' : ''}><summary>All blocks (${clips.length})</summary>${rows}</details>`;
 }
 function timeTotalsHTML(dateStr) {
-  const totals = {};
-  segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
+  const clips = segsForDay(dateStr), totals = actTotalsMs(clips);
   const acts = Object.keys(totals).map(id => ({ act: actById(id), ms: totals[id] })).sort((x, y) => y.ms - x.ms);
   if (!acts.length) return '<div class="empty">Nothing tracked this day yet.</div>';
-  const tracked = acts.reduce((s, x) => s + x.ms, 0);
+  const tracked = coveredMs(clips);
   const max = acts[0].ms;
   const rows = acts.map(x => `<div class="bar-row"><span class="name">${x.act.emoji} ${escapeHtml(x.act.name)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${Math.round(x.ms / max * 100)}%;background:${x.act.color}"></span></span>
@@ -3958,7 +3974,7 @@ function timeTotalsHTML(dateStr) {
   // "untracked" compares against how much of the day has actually elapsed (full 24h for past days)
   const dayStart = dayStartMs(dateStr), dayLen = dayEndMs(dateStr) - dayStart;
   const elapsed = dateStr === todayStr() ? Math.min(dayLen, Date.now() - dayStart) : dayLen;
-  return rows + `<div class="hint" style="margin-top:8px">Tracked <b>${fmtDur(tracked)}</b> · untracked ${fmtDur(Math.max(0, elapsed - tracked))}</div>`;
+  return rows + `<div class="hint" style="margin-top:8px">Tracked <b>${fmtDur(tracked)}</b> · untracked ${fmtDur(Math.max(0, elapsed - coveredMs(clips, dayStart, dayStart + elapsed)))}</div>`;
 }
 
 function segEditHTML() {
@@ -4270,8 +4286,7 @@ function timelogChangedDays(before, after) {
 }
 /* Write "Work 6h 20m · Travel 1h 05m" into the day's entry so it lands on the Log row. */
 function updateTimeSummary(dateStr) {
-  const totals = {};
-  segsForDay(dateStr).forEach(({ seg, a, b }) => { totals[seg.act] = (totals[seg.act] || 0) + (b - a); });
+  const totals = actTotalsMs(segsForDay(dateStr));   // the same activity's overlapping blocks count once
   const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
     .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
   if (!parts.length) {
@@ -5127,15 +5142,14 @@ function timeStatsHTML(days) {
   const dayData = days.map(d => ({ d, clips: segsForDay(d) }));
   const totals = {};                      // actId -> ms over the whole range
   const byDay = {};                       // date -> {actId -> ms}
-  let tracked = 0, activeDays = 0;
+  let tracked = 0, covered = 0, activeDays = 0;
   dayData.forEach(({ d, clips }) => {
     if (clips.length) activeDays++;
-    byDay[d] = {};
-    clips.forEach(({ seg, a, b }) => {
-      totals[seg.act] = (totals[seg.act] || 0) + (b - a);
-      byDay[d][seg.act] = (byDay[d][seg.act] || 0) + (b - a);
-      tracked += b - a;
-    });
+    byDay[d] = actTotalsMs(clips);
+    Object.keys(byDay[d]).forEach(id => { totals[id] = (totals[id] || 0) + byDay[d][id]; });
+    // overlapping blocks (two phones) once each, and only the part of the day that has passed
+    tracked += coveredMs(clips);
+    covered += coveredMs(clips, dayStartMs(d), Math.min(dayEndMs(d), Date.now()));
   });
   const actIds = Object.keys(totals).sort((x, y) => totals[y] - totals[x]);
   if (!actIds.length) return '';          // nothing tracked in range → no time cards at all
@@ -5145,7 +5159,7 @@ function timeStatsHTML(days) {
     const d0 = dayStartMs(d);
     return s + Math.max(0, Math.min(dayEndMs(d) - d0, Date.now() - d0));
   }, 0);
-  const coverage = elapsedInRange ? Math.round(tracked / elapsedInRange * 100) : 0;
+  const coverage = elapsedInRange ? Math.round(covered / elapsedInRange * 100) : 0;
   const top = actById(actIds[0]);
   const topShare = Math.round(totals[actIds[0]] / tracked * 100);
 
@@ -5410,7 +5424,7 @@ function renderDash() {
   const bMood = bestOf(d => e[d] && e[d].mood);
   const bFocus = bestOf(d => e[d] && e[d].deepWorkHours);
   const bSteps = bestOf(d => hFor(d).steps);
-  const bTracked = bestOf(d => { const ms = segsForDay(d).reduce((s, x) => s + (x.b - x.a), 0); return ms > 0 ? ms : null; });
+  const bTracked = bestOf(d => { const ms = coveredMs(segsForDay(d)); return ms > 0 ? ms : null; });
   const bestRow = (label, best, fmt) => best ? `<div class="wow-row"><span class="name">${label}</span><span class="wow-vals">${fmt(best.v)}</span><span class="hint">${prettyDate(best.d).replace(/, \d{4}$/, '')}</span></div>` : '';
   const bestDaysCard = (bMood || bFocus || bSteps || bTracked) ? `<div class="card">
       <h2>🏅 Best days <span class="hint">${perLab}</span></h2>
@@ -5960,10 +5974,9 @@ function historyDayHTML(d) {
   let timeHTML = '';
   if (clips.length) {
     const d0 = dayStartMs(d), dl = dayEndMs(d) - d0;
-    const by = {};
-    clips.forEach(({ seg, a, b }) => { by[seg.act] = (by[seg.act] || 0) + (b - a); });
+    const by = actTotalsMs(clips);   // overlaps once
     const acts = Object.keys(by).map(k => ({ act: actById(k), ms: by[k] })).sort((x, y) => y.ms - x.ms);
-    const tot = acts.reduce((s, x) => s + x.ms, 0);
+    const tot = coveredMs(clips);
     timeHTML = `<div class="hd-tlbar">${clips.map(({ seg, a, b }) => `<i style="left:${((a - d0) / dl * 100).toFixed(2)}%;width:${Math.max(0.4, (b - a) / dl * 100).toFixed(2)}%;background:${actById(seg.act).color}"></i>`).join('')}</div>
       <div class="hd-tlax"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
       ${acts.slice(0, 6).map(x => `<div class="hd-act"><span class="hd-adot" style="background:${x.act.color}"></span><span class="hd-an">${escapeHtml(x.act.emoji || '')} ${escapeHtml(x.act.name)}</span><span class="hd-ab"><i style="width:${(x.ms / acts[0].ms * 100).toFixed(1)}%;background:${x.act.color}"></i></span><b>${fmtDur(x.ms, true)}</b></div>`).join('')}
@@ -7590,13 +7603,22 @@ function tbCopyBlocks(all, from, to) {
   return all.filter(b => b.date === from && !have.has(tbKey(b)))
     .map((b, i) => Object.assign({}, b, { id: 'tb' + base + 'c' + i, date: to }));
 }
-function timeboxHTML() {
-  const today = todayStr(), day = tbShownDay(), isToday = day === today;
+/* Is block b on at `now`? An end before the start (23:00–01:00) is the next morning's, so the
+   block is on from 23:00 on its own date until 01:00 the day after; comparing the minutes on
+   one day never matched it. Equal start and end is an empty block, not a 24-hour one. */
+function tbLive(b, now) {
+  const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + m; };
+  const s = toMin(b.start), e = toMin(b.end), cur = now.getHours() * 60 + now.getMinutes(), today = todayStr(now);
+  if (e > s) return b.date === today && cur >= s && cur < e;
+  return e < s && ((b.date === today && cur >= s) || (b.date === addDays(today, -1) && cur < e));
+}
+function timeboxHTML(now = new Date()) {
+  const today = todayStr(now), day = tbDay ? addDays(today, 1) : today, isToday = day === today;
   const all = DB.timebox();
-  const blocks = all.filter(b => b.date === day).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1);
+  // after midnight, last night's 23:00–01:00 block is still on: Today shows it first while it lasts
+  const blocks = (isToday ? all.filter(b => b.date === addDays(day, -1) && tbLive(b, now)) : [])
+    .concat(all.filter(b => b.date === day).sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1));
   const copyN = tbCopyBlocks(all, addDays(day, -1), day).length;
-  const now = new Date(); const curMin = now.getHours() * 60 + now.getMinutes();
-  const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
   const rows = blocks.map(b => {
     if (b.id === tbEdit) return `<div class="tb-row tb-editing" data-id="${b.id}">
       <div class="row2">
@@ -7608,12 +7630,12 @@ function timeboxHTML() {
         <button class="btn btn-ghost btn-sm" id="tb-e-cancel">Cancel</button></div>
     </div>`;
     const act = b.act ? actById(b.act) : null;
-    const live = isToday && curMin >= toMin(b.start) && curMin < toMin(b.end);
+    const live = isToday && tbLive(b, now);
     // ▶ starts the timer now, so it is only offered on today's blocks
     return `<div class="tb-row ${live?'live':''}" data-id="${b.id}" style="${act?`border-left:3px solid ${act.color}`:''}">
       <div class="tb-time" data-tb-edit="${b.id}">${b.start}<span>${b.end}</span></div>
       <div class="tb-main" data-tb-edit="${b.id}" role="button" tabindex="0" aria-label="Edit ${escapeHtml(b.label)}, ${b.start} to ${b.end}"><div class="tb-label">${act?act.emoji+' ':''}${escapeHtml(b.label)} ${b.alarm?'⏰':''}</div>
-        ${live?'<div class="tb-now">● now</div>':''}</div>
+        ${live?`<div class="tb-now">● now${b.date !== day ? ' · since yesterday' : ''}</div>`:''}</div>
       ${act && isToday ? `<button class="btn btn-ghost btn-sm" data-tb-start="${b.id}">▶</button>` : ''}
       <button class="del" data-tb-del="${b.id}">×</button>
     </div>`;
@@ -9193,7 +9215,7 @@ async function generatePdfReport() {
   row('Workouts logged', workouts + ' · streak ' + gymStreak()); y += 8;
   heading('Habit consistency (last 30 days)');
   HABITS.forEach(h => { const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length; row(h.label, Math.round(hits / 30 * 100) + '%  (' + hits + '/30)'); }); y += 8;
-  const tt = {}; last30.forEach(d => segsForDay(d).forEach(({ seg, a, b }) => { tt[seg.act] = (tt[seg.act] || 0) + (b - a); }));
+  const tt = {}; last30.forEach(d => { const t = actTotalsMs(segsForDay(d)); Object.keys(t).forEach(k => { tt[k] = (tt[k] || 0) + t[k]; }); });
   const actIds = Object.keys(tt).sort((x, z) => tt[z] - tt[x]);
   if (actIds.length) { heading('Where your time goes (last 30 days)'); actIds.forEach(id => row(actById(id).name, fmtDur(tt[id]) + ' · ' + fmtDur(tt[id] / 30) + '/day')); y += 8; }
   const wb = []; deepCfg().filter(s => !s.hidden).forEach(sec => (sec.scales || []).filter(f => !f.hidden).forEach(f => { const a = num(f.key); if (a != null) wb.push([f.label, fmt(a) + ' / 10']); }));
@@ -9225,7 +9247,7 @@ function downloadReport() {
   }).join('');
 
   // Time totals (last 30d)
-  const tt = {}; last30.forEach(d => segsForDay(d).forEach(({ seg, a, b }) => { tt[seg.act] = (tt[seg.act] || 0) + (b - a); }));
+  const tt = {}; last30.forEach(d => { const t = actTotalsMs(segsForDay(d)); Object.keys(t).forEach(k => { tt[k] = (tt[k] || 0) + t[k]; }); });
   const timeRows = Object.keys(tt).sort((x, y) => tt[y] - tt[x]).map(id => { const act = actById(id);
     return `<tr><td>${act.emoji} ${escapeHtml(act.name)}</td><td>${fmtDur(tt[id])}</td><td>${fmtDur(tt[id] / 30)}/day</td></tr>`; }).join('');
 
@@ -11817,18 +11839,14 @@ function monthReview(ym) {
   // time tracked per activity, one pass, clipped to the month
   const t0 = new Date(days[0] + 'T00:00:00').getTime();
   const t1 = new Date(addDays(days[days.length - 1], 1) + 'T00:00:00').getTime();
-  const byAct = {};
-  (Array.isArray(log) ? log : []).forEach(x => {
-    if (!x || x.start == null) return;
-    const a = Math.max(x.start, t0), b = Math.min(x.end == null ? Date.now() : x.end, t1);
-    if (b <= a) return;
-    byAct[x.act] = (byAct[x.act] || 0) + (b - a);
-  });
+  const mClips = (Array.isArray(log) ? log : []).filter(x => x && x.start != null)
+    .map(x => ({ seg: x, a: Math.max(x.start, t0), b: Math.min(x.end == null ? Date.now() : x.end, t1) })).filter(c => c.b > c.a);
+  const byAct = actTotalsMs(mClips);   // overlapping blocks once
   const actRows = Object.keys(byAct).map(id => {
     const a = actById(id) || { name: id, emoji: '•', color: '#888' };
     return { id, name: a.name, emoji: a.emoji, color: a.color, ms: byAct[id] };
   }).sort((x, y) => y.ms - x.ms);
-  const trackedMs = actRows.reduce((s, r) => s + r.ms, 0);
+  const trackedMs = coveredMs(mClips);
 
   const journalled = upto.filter(d => e[d] && (e[d].journal || '').trim()).length;
   const words = upto.reduce((s, d) => s + ((e[d] && e[d].journal || '').trim()
@@ -12056,11 +12074,8 @@ function vsCtx() {
     /* One pass over the timelog. A window is a CONTIGUOUS date range, so a single overlap
        per segment equals summing per-day totals — without re-parsing dp.timelog once per
        day (56 parses in year mode, on a POCO C31). */
-    trackedMs: w => (Array.isArray(log) ? log : []).reduce((s, x) => {
-      if (!x || x.start == null) return s;
-      const a = Math.max(x.start, w.t0);
-      const b = Math.min(x.end == null ? Date.now() : x.end, w.t1);
-      return s + Math.max(0, b - a); }, 0),
+    trackedMs: w => coveredMs((Array.isArray(log) ? log : []).filter(x => x && x.start != null)
+      .map(x => ({ a: x.start, b: x.end == null ? Date.now() : x.end })), w.t0, w.t1),   // overlaps once
   };
 }
 
