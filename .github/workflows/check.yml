@@ -58,6 +58,9 @@ jobs:
       - name: the sync path rejects malformed sections
         run: node tools/check-sync.mjs
 
+      - name: two or three phones syncing converge without losing data (seeded fuzz)
+        run: node tools/check-sync-fuzz.mjs
+
       - name: CSV export escaping is correct
         run: node tools/check-export.mjs
 
