@@ -17817,9 +17817,15 @@ try {
 /* ============================================================
    FIRST-RUN ONBOARDING — shown once to brand-new users only
    (any existing data or the dp.onboarded flag skips it).
-   Step 1 welcome → step 2 pick habits → step 3 pick activities.
-   Unpicked items are hidden via the same customize configs, so
-   everything remains changeable later in More ▸ Customize.
+   Two steps (2026-11-21; it was four): 1 welcome + the restore door →
+   2 checklist + the "Log my day" reminder → the Log, with the tour.
+   Short on purpose: every screen before the first log is one more
+   place to give up, and step 2 is where notifications are asked for —
+   the only place the app asks — so everyone who finishes passes it.
+   The look (Settings ▸ Style & appearance), the Deep log and custom
+   habits all start from sensible defaults and stay changeable later.
+   Dropped habits are hidden via the same customize configs, so
+   everything remains changeable in Settings ▸ Customize.
    ============================================================ */
 let obStep = 0;
 let obRestore = false;   // the welcome-back panel is open instead of the step
@@ -17871,18 +17877,18 @@ function needsOnboard() {
     && !Object.keys(DB.entries()).length && !DB.timelog().length
     && !DB.tasks().length && !DB.docs().length;
 }
+const OB_LAST = 1;   // index of the last onboarding step (two steps: 0 and 1)
 function renderOnboard() {
   const el = document.getElementById('onboard');
+  if (obStep > OB_LAST) obStep = OB_LAST;   // a step number from the four-step version lands on the last one
   let body = '';
   if (obStep === 0) body = `
     <div class="ob-emoji">🔥</div>
     <h1>Daylog</h1>
     <p class="ob-lead">Your whole life in one private tracker.</p>
-    <div class="ob-privacy">🔒 <b>No Google account. No sign-up. No cloud.</b><br>Your data lives only on this phone — nothing is ever uploaded.</div>
+    <div class="ob-privacy">🔒 <b>No account. No sign-up. No cloud.</b><br>Mood, habits, your day hour by hour, journal and plans, all kept on this phone.</div>
     <div class="ob-points">
-      <div>⏱ <b>Track anything</b> — habits, mood, your day hour-by-hour, gym, journal, plans.</div>
-      <div>🎨 <b>Make it yours</b> — every habit, field, workout and tab is customizable.</div>
-      <div>📦 <b>One thing to know</b> — because it's fully private, your data lives ONLY on this phone. Export a backup now and then (Settings ▸ Backup) — uninstalling the app erases everything.</div>
+      <div>📦 <b>One thing to know</b> — because it lives only on this phone, uninstalling the app erases it. Export a backup now and then (Settings ▸ Backup).</div>
     </div>
     <button class="btn btn-primary" data-ob-next>Get started</button>
     <button class="ob-restore-link" data-ob-restore>Already used Daylog? <b>Restore your data</b> →</button>`;
@@ -17908,60 +17914,47 @@ function renderOnboard() {
       <button class="btn btn-primary" id="ob-restore-pull" style="width:100%;margin-top:9px">Restore from the link</button>
     </div>
     <button class="ob-restore-link" data-ob-restore-back>← Start fresh instead</button>`;
-  if (obStep === 1) body = `
-    <h1>Pick your look</h1>
-    <p class="ob-lead">Five styles, each its own app. Tap to try one. You can change it any time in Settings.</p>
-    ${stylePickerHTML()}
-    <button class="btn btn-primary" data-ob-next>Next</button>`;
-  if (obStep === 2) body = `
-    <h1>Pick your daily habits</h1>
-    <p class="ob-lead">Tap to keep or drop, or add your own.</p>
+  /* Step 2: the checklist and the reminder on one screen. Both are already set — four habits
+     ticked, the reminder ticked at 9 pm — so finishing is one tap; changing either is optional.
+     Adding your own habit happens on the Log itself (its checklist has an add row and ideas).
+     The reminder copy used to read "People who set a daily reminder keep their streak 3x
+     longer." That number was invented — the app has no accounts, no server and no analytics,
+     so there is no population it could ever have been measured on. Never state a statistic
+     this app cannot compute. */
+  if (obStep === 1 && !obRestore) body = `
+    <h1>Make it yours</h1>
+    <p class="ob-lead">Two quick choices, both already set. Change either any time.</p>
+    <div class="ob-sec">Your daily checklist <span>tap to drop any</span></div>
     <div class="habits ob-grid">${habitCfg().map(h => `
       <div class="habit ${obHideH.has(h.key) ? '' : 'on'}" data-ob-habit="${h.key}">
         <span class="check">✓</span><span class="emoji">${h.emoji}</span><span>${escapeHtml(h.label)}</span>
       </div>`).join('')}</div>
-    <div class="task-add ob-add">
-      <input type="text" id="ob-new-habit" placeholder="Add your own… (e.g. 🌅 Wake at 6)" autocomplete="off">
-      <button class="btn btn-primary btn-sm" id="ob-add-habit">Add</button>
-    </div>
-    <p class="ob-note">You can rename, recolor, hide or add more anytime in <b>Settings ▸ Customize</b>.</p>
-    <button class="btn btn-primary" data-ob-next>Next</button>`;
-  if (obStep === 3) body = `
-    <div class="ob-emoji">⏰</div>
-    <h1>Never miss a day</h1>
-    ${/* This used to read "People who set a daily reminder keep their streak 3x longer."
-         That number was invented — the app has no accounts, no server and no analytics, so
-         there is no population it could ever have been measured on. Never state a statistic
-         this app cannot compute. */''}
-    <p class="ob-lead">A nudge at a fixed time makes it much easier to keep going.</p>
-    <div class="card" style="text-align:left">
+    <p class="ob-note ob-note-tight">Add your own on the Log, or later in <b>Settings ▸ Customize</b>.</p>
+    <div class="ob-sec">A daily reminder <span>one a day, at a time you pick</span></div>
+    <div class="card ob-rem">
       <label class="ev-alarm-row" style="margin:0 0 10px"><input type="checkbox" id="ob-rem-on" checked> Remind me to log my day</label>
-      <div class="field"><label>At</label><input type="time" id="ob-rem-time" value="21:00"></div>
+      <div class="field"><label for="ob-rem-time">At</label><input type="time" id="ob-rem-time" value="21:00"></div>
     </div>
-    <p class="ob-note">Change or add more anytime in <b>Settings ▸ Reminders</b>.</p>
-    <button class="btn btn-primary" data-ob-next>Let's go 🚀</button>`;
-  el.innerHTML = `<div class="ob-inner">${body}
+    <p class="ob-note ob-note-tight">A nudge at a set time makes it easier to keep going. Change it or add more in <b>Settings ▸ Reminders</b>.</p>
+    <button class="btn btn-primary" data-ob-next>Start logging</button>`;
+  el.innerHTML = `<div class="ob-inner${obStep === OB_LAST && !obRestore ? ' ob-last' : ''}">${body}
     ${obStep > 0 ? '<button class="ob-back" data-ob-back>← back</button>' : ''}
-    <div class="ob-dots">${[0, 1, 2, 3].map(i => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
+    <div class="ob-dots">${Array.from({ length: OB_LAST + 1 }, (_, i) => `<span class="${i === obStep ? 'on' : ''}"></span>`).join('')}</div></div>`;
 }
 document.addEventListener('click', (ev) => {
   const el = document.getElementById('onboard');
   if (!el || !el.classList.contains('on')) return;
   const hb = ev.target.closest('[data-ob-habit]');
-  if (hb) { const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard(); return; }
-  if (ev.target.id === 'ob-add-habit') {
-    const inp = document.getElementById('ob-new-habit'); const raw = (inp.value || '').trim(); if (!raw) return;
-    const m = raw.match(/^(\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*)\s*(.*)$/u);
-    const cfg = habitCfg();
-    cfg.push({ key: 'ch' + Date.now(), emoji: (m && m[2]) ? m[1] : '⭐', label: (m && m[2]) ? m[2] : raw, custom: true, added: todayStr() });
-    saveHabitCfg(cfg); renderOnboard(); return;   // new item shows selected (not in obHideH)
+  if (hb) {
+    /* Re-render keeps the reminder fields as the person left them: they sit on the same step. */
+    const remOn = document.getElementById('ob-rem-on'), remT = document.getElementById('ob-rem-time');
+    const keep = remOn ? { on: remOn.checked, t: remT && remT.value } : null;
+    const k = hb.dataset.obHabit; obHideH.has(k) ? obHideH.delete(k) : obHideH.add(k); renderOnboard();
+    if (keep) { const a = document.getElementById('ob-rem-on'), b = document.getElementById('ob-rem-time'); if (a) a.checked = keep.on; if (b && keep.t) b.value = keep.t; }
+    return;
   }
-  if (ev.target.id === 'ob-add-act') {
-    const inp = document.getElementById('ob-new-act'); const name = (inp.value || '').trim(); if (!name) return;
-    const acts = DB.timeacts();
-    const em = emojiSplit(name); acts.push({ id: 'ta' + Date.now(), emoji: em.emoji, name: em.name, color: CUSTOM_ACT_COLORS[acts.length % CUSTOM_ACT_COLORS.length] });
-    DB.saveTimeacts(acts); renderOnboard(); return;
-  }
+  /* The add-your-own rows (habits, activities) left onboarding on 2026-11-21: the Log's checklist has
+     its own add row and ideas, and Settings ▸ Customize covers both. */
   if (ev.target.closest('[data-ob-restore]')) { obRestore = true; renderOnboard(); return; }
   if (ev.target.closest('[data-ob-restore-back]')) { obRestore = false; renderOnboard(); return; }
   if (ev.target.id === 'ob-restore-file-btn') { const f = document.getElementById('ob-restore-file'); if (f) f.click(); return; }
@@ -17982,7 +17975,7 @@ document.addEventListener('click', (ev) => {
   }
   if (ev.target.closest('[data-ob-back]')) { obStep = Math.max(0, obStep - 1); renderOnboard(); return; }
   if (ev.target.closest('[data-ob-next]')) {
-    if (obStep < 3) { obStep++; renderOnboard(); window.scrollTo(0, 0); const ob = document.getElementById('onboard'); if (ob) ob.scrollTop = 0; return; }
+    if (obStep < OB_LAST) { obStep++; renderOnboard(); window.scrollTo(0, 0); const ob = document.getElementById('onboard'); if (ob) ob.scrollTop = 0; return; }
     // finish: apply picks as hidden-flags in the normal customize configs
     if (obHideH.size) { const cfg = habitCfg(); cfg.forEach(h => { if (obHideH.has(h.key)) h.hidden = true; }); saveHabitCfg(cfg); }
     if (obHideA.size) {
@@ -17990,7 +17983,8 @@ document.addEventListener('click', (ev) => {
       const cust = DB.timeacts(); let ch = false; cust.forEach(a => { if (obHideA.has(a.id)) { a.hidden = true; ch = true; } }); if (ch) DB.saveTimeacts(cust);
     }
     if (obHideD.size) { const dc = deepCfg(); dc.forEach(s => { if (obHideD.has(s.id)) s.hidden = true; }); saveDeepCfg(dc); }
-    // daily-log reminder from the new onboarding step (retention: streaks live on reminders)
+    // the "Log my day" reminder from step 2. setupReminders → scheduleNativeAlarms is what makes
+    // Android ask for notification permission: the only place the app asks, so keep it here.
     const remOn = document.getElementById('ob-rem-on'), remT = document.getElementById('ob-rem-time');
     if (remOn && remOn.checked) {
       const rs = DB.reminders();
@@ -18011,30 +18005,39 @@ document.addEventListener('click', (ev) => {
    GUIDED TOUR — spotlight walkthrough of the whole app.
    Auto-starts after onboarding; replayable from Settings.
    Each step navigates to the right screen, highlights the real
-   element (spotlight cutout) and explains it. ============================================================ */
+   element (spotlight cutout) and explains it.
+   Four steps (2026-11-21; it was eight): the Log first, because a first
+   log is the point, then Time, Stats and the Menu. Skip tour is the
+   first button, and the tour always ends back on the Log. Tasks,
+   auto-tracking and health charts are found where they live.
+   ============================================================ */
 const TOUR = [
-  { s: 'today', t: '.mm-card', alt: '.mm-cell', h: 'Log your day in 60 seconds', b: 'Tap your mood & energy, tick your checklist — everything saves automatically as you go.' },
-  { s: 'today', t: '.task-slim, #log-task-add', alt: '.task-summary', h: 'Tasks count themselves', b: 'Add tasks right here — your done/planned numbers fill in automatically. No typing counts by hand.' },
-  { s: 'today', t: '#health-sync', opt: true, h: 'Auto-tracking from your phone', b: 'Steps, screen time & more sync in by themselves. Pick what to track in Settings ▸ Auto-tracking.' },
-  { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your whole day becomes a 24-hour timeline. Tracked Sleep & Work auto-fill your Log.' },
-  { s: 'dash', t: '#patterns-card', h: 'Your patterns', b: 'Daylog mines your raw data for real insights — your sleep sweet spot, which habit lifts your mood, your peak focus hours. All computed on your phone.' },
-  { s: 'dash', t: '[data-dashtab="health"]', native: true, h: 'Health analytics', b: 'Steps, screen time, calories — charted and connected to your mood, so you can see what actually helps.' },
-  { s: '__menu', t: '#drawer-more-toggle', alt: '.drawer-row', h: 'Everything else lives in Menu', b: 'History and Search to reread anything you wrote, Memories, and more under “More features”. Pin any of them to the bottom bar with “Edit this menu”.' },
-  { s: 'today', t: null, h: 'You\'re all set 🔥', b: 'Make every part yours in Settings ▸ Customize. Your data stays on your phone — private, always.' },
+  { s: 'today', t: '.mm-card', alt: '.mm-cell', h: 'Start here: how is today?', b: 'Tap your mood and energy, then tick what you did. It saves as you go — that is a day logged.' },
+  { s: 'time', t: '.act-chip', h: 'The one-tap time tracker ⭐', b: 'Tap an activity to start its timer, tap another to switch — your day becomes a 24-hour timeline. Tracked Sleep and Work fill in your Log.' },
+  { s: 'dash', t: '#patterns-card', h: 'Your patterns', b: 'After about a week of logs, Daylog shows what it finds in them: your sleep sweet spot, which habit lifts your mood, your peak focus hours. Worked out on your phone.' },
+  { s: '__menu', t: '#drawer-more-toggle', alt: '.drawer-row', h: 'Everything else lives in Menu', b: 'History, Search, Memories and more under “More features”. Settings is here too: five looks to pick from, reminders, backups and Customize.' },
 ];
 let tourIdx = -1;
 function startTour() { tourIdx = 0; showTourStep(); }
+/* Every way out (Done, Skip tour, Back) lands on the Log: the tour wanders through Time,
+   Stats and the Menu, and a new person's next step is their first log. */
 function endTour() {
   tourIdx = -1; const o = document.getElementById('tour'); if (o) o.remove();
   try { closeDrawer(); } catch (_) {}
   localStorage.setItem('dp.toured', '1');
+  try { navigateTo('today'); } catch (_) {}
+}
+// The tour's last word: an invitation to the first log, or a plain sign-off once today has a mood.
+function tourEndMsg() {
+  const en = DB.entries()[todayStr()];
+  return en && en.mood != null && en.mood !== '' ? 'Enjoy Daylog 🔥' : 'Your turn: tap how today feels';
 }
 function showTourStep() {
   let st = TOUR[tourIdx];
   /* Health steps only in the Play app (the web build has no Health Connect), and a step whose
      only target is missing is skipped rather than spotlighting whatever card came first. */
   while (st && st.native && !window.Capacitor) st = TOUR[++tourIdx];
-  if (!st) { endTour(); toast('Enjoy Daylog 🔥'); return; }
+  if (!st) { endTour(); toast(tourEndMsg()); return; }
   if (st.s === '__menu') { try { openDrawer(); } catch (_) {} }
   else {
     try { closeDrawer(); } catch (_) {}
@@ -18079,10 +18082,22 @@ function renderTourOverlay(st, el) {
     <div class="tour-h">${st.h}</div>
     <div class="tour-b">${st.b}</div>
     <div class="tour-btns">
-      ${tourIdx === TOUR.length - 1 ? '' : '<button class="btn btn-ghost btn-sm" id="tour-skip">Skip</button>'}
+      ${tourIdx === TOUR.length - 1 ? '' : '<button class="btn btn-ghost btn-sm tour-skip" id="tour-skip">Skip tour</button>'}
       ${tourIdx > 0 ? '<button class="btn btn-ghost btn-sm" id="tour-back">‹ Back</button>' : ''}
       <button class="btn btn-primary btn-sm" id="tour-next">${tourIdx === TOUR.length - 1 ? 'Done 🔥' : 'Next ›'}</button>
     </div></div>`;
+  /* The card is pinned to the bottom. On a short phone it covered what it was pointing at
+     (the low-energy row of the mood grid, the Menu's "More features" row), so it moves to
+     the top whenever that covers less of the spotlight. */
+  const sp = o.querySelector('.tour-spot:not(.tour-none)'), card = o.querySelector('.tour-card');
+  if (sp && card) {
+    const s = sp.getBoundingClientRect();
+    const under = Math.max(0, s.bottom - card.getBoundingClientRect().top);
+    if (under > 0) {
+      card.classList.add('tour-card-top');
+      if (Math.max(0, card.getBoundingClientRect().bottom - s.top) >= under) card.classList.remove('tour-card-top');
+    }
+  }
 }
 document.addEventListener('click', (ev) => {
   if (ev.target.id === 'tour-next') { tourIdx++; showTourStep(); return; }

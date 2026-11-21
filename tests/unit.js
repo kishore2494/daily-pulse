@@ -1970,15 +1970,198 @@
     ok('an existing user keeps the Deep log visible',
       logSecCfg().find(x => x.id === 'deep').hidden === false);
 
-    // --- onboarding is three steps, not five ---
+    // --- onboarding is two steps (2026-11-21; it was five, then three, then four) ---
     const src = renderOnboard.toString();
     ok('onboarding no longer asks you to configure activities', !/data-ob-act/.test(src));
     ok('onboarding no longer asks you to configure the deep log', !/data-ob-deep/.test(src));
+    ok('onboarding no longer has a style step (Settings ▸ Style & appearance has it)', !/stylePickerHTML/.test(src));
     ok('it still asks for habits', /data-ob-habit/.test(src));
     ok('and still offers the reminder', /ob-rem-on/.test(src));
+    ok('onboarding is two steps', OB_LAST === 1, OB_LAST);
 
     if (nS != null) localStorage.setItem('dp.navcfg', nS); else localStorage.removeItem('dp.navcfg');
     if (lS != null) localStorage.setItem('dp.logsec', lS); else localStorage.removeItem('dp.logsec');
+  })();
+
+  /* ---- two-step onboarding (2026-11-21), driven by real clicks ----
+     Step 2 is where the "Log my day" reminder is made, and that reminder is what makes Android
+     ask for notification permission (the only place the app asks). So: everyone who finishes
+     must pass through it, its box must start ticked, and the finish must still apply every flag
+     the four-step version did. */
+  (function () {
+    const KEYS = ['dp.reminders', 'dp.habitcfg', 'dp.deepcfg', 'dp.onboarded', 'dp.whatsnew', 'dp.toured'];
+    const snap = KEYS.map(k => localStorage.getItem(k));
+    const ob = document.getElementById('onboard'), obWas = ob.classList.contains('on');
+    const stepWas = obStep, restWas = obRestore, hideWas = [...obHideH];
+    const tourSnap = window.startTour, remSnap = window.setupReminders;
+    let tours = 0, setups = 0;
+    const click = sel => { const b = ob.querySelector(sel); if (b) b.click(); return !!b; };
+    try {
+      window.startTour = () => { tours++; };
+      window.setupReminders = () => { setups++; };
+      ['dp.reminders', 'dp.habitcfg', 'dp.deepcfg', 'dp.onboarded', 'dp.toured'].forEach(k => localStorage.removeItem(k));
+      obHideH.clear(); obStep = 0; obRestore = false;
+      ob.classList.add('on'); renderOnboard();
+
+      // step 1: welcome + the restore door, nothing to configure
+      ok('onboarding step 1 offers the restore door', !!ob.querySelector('[data-ob-restore]'));
+      ok('…and one button forward', !!ob.querySelector('[data-ob-next]'));
+      ok('…with no back button on the first step', !ob.querySelector('[data-ob-back]'));
+      ok('two progress dots, the first one lit', ob.querySelectorAll('.ob-dots span').length === 2
+        && ob.querySelectorAll('.ob-dots span')[0].classList.contains('on'));
+      ok('step 1 asks nothing yet (no habits, no reminder)', !ob.querySelector('[data-ob-habit]') && !ob.querySelector('#ob-rem-on'));
+      ok('step 1 still says where the data lives and how to keep it', /only on this phone/.test(ob.textContent) && /backup/i.test(ob.textContent));
+
+      // step 2: the checklist and the reminder together, both already set
+      click('[data-ob-next]');
+      ok('one tap reaches step 2', obStep === 1, obStep);
+      const rem = ob.querySelector('#ob-rem-on'), rt = ob.querySelector('#ob-rem-time');
+      ok('step 2 holds the daily reminder, ticked by default', !!rem && rem.checked === true);
+      ok('…at 21:00', !!rt && rt.value === '21:00', rt && rt.value);
+      const chips = ob.querySelectorAll('[data-ob-habit]');
+      ok('step 2 shows every starter habit, all kept', chips.length === habitCfg().length && [...chips].every(c => c.classList.contains('on')), chips.length);
+      ok('…without the old add-your-own row (the Log has one)', !ob.querySelector('#ob-new-habit') && !ob.querySelector('#ob-add-habit'));
+      ok('…and without the style picker', !ob.querySelector('[data-uistyle]'));
+      ok('step 2 is the last: its button finishes', /Start logging/.test((ob.querySelector('[data-ob-next]') || {}).textContent || ''));
+      ok('the second dot is lit', ob.querySelectorAll('.ob-dots span')[1].classList.contains('on'));
+      ok('there is a way back to step 1', !!ob.querySelector('[data-ob-back]'));
+
+      // dropping a habit re-renders, and must not reset the reminder the person just set
+      rt.value = '20:30';
+      const dropKey = chips[0].dataset.obHabit;
+      chips[0].click();
+      ok('tapping a habit drops it', obHideH.has(dropKey) && !ob.querySelector(`[data-ob-habit="${dropKey}"]`).classList.contains('on'));
+      ok('…and keeps the reminder time as set', ob.querySelector('#ob-rem-time').value === '20:30', ob.querySelector('#ob-rem-time').value);
+      ok('…and the box still ticked', ob.querySelector('#ob-rem-on').checked === true);
+
+      click('[data-ob-back]');
+      ok('back returns to step 1, restore door and all', obStep === 0 && !!ob.querySelector('[data-ob-restore]'));
+      click('[data-ob-next]');
+      ob.querySelector('#ob-rem-time').value = '20:30';
+
+      // finish
+      click('[data-ob-next]');
+      const rs = DB.reminders();
+      const made = rs.filter(r => r.label === 'Log my day');
+      ok('finishing makes exactly one "Log my day" reminder', made.length === 1, rs);
+      ok('…in notify mode, on, at the time picked', made[0] && made[0].mode === 'notify' && made[0].enabled === true && made[0].time === '20:30', made[0]);
+      ok('…which the nudge planner recognises as the log reminder', !!made[0] && isLogReminder(made[0]));
+      ok('…and reminders are set up (on Android this is the permission prompt)', setups === 1, setups);
+      ok('the dropped habit is hidden, the rest are not', habitCfg().every(h => !!h.hidden === (h.key === dropKey)), habitCfg());
+      ok('the Deep log starts light (obHideD applied)', [...obHideD].every(id => (deepCfg().find(s => s.id === id) || { hidden: true }).hidden === true)
+        && deepCfg().some(s => !s.hidden));
+      ok('onboarding is marked done', localStorage.getItem('dp.onboarded') === '1');
+      ok('a brand-new user skips the What\'s-new card', localStorage.getItem('dp.whatsnew') === WHATS_NEW.v);
+      ok('the onboarding screen closes', !ob.classList.contains('on'));
+      ok('the tour starts', tours === 1, tours);
+      ok('…on the Log', document.getElementById('s-today').classList.contains('on'));
+
+      // unticking the box: no reminder, but everything else still happens
+      ['dp.reminders', 'dp.onboarded'].forEach(k => localStorage.removeItem(k));
+      tours = 0; setups = 0; obHideH.clear(); obStep = 0; ob.classList.add('on'); renderOnboard();
+      click('[data-ob-next]');
+      ob.querySelector('#ob-rem-on').checked = false;
+      click('[data-ob-next]');
+      ok('an unticked box makes no reminder', !DB.reminders().some(r => r.label === 'Log my day'), DB.reminders());
+      ok('…and asks for nothing', setups === 0, setups);
+      ok('…but onboarding still finishes and the tour still starts', localStorage.getItem('dp.onboarded') === '1' && tours === 1);
+
+      // a step number from the four-step version must not strand anyone past the reminder
+      obStep = 3; ob.classList.add('on'); renderOnboard();
+      ok('an old step number lands on the reminder step', obStep === OB_LAST && !!ob.querySelector('#ob-rem-on'));
+    } catch (e) {
+      fail++; R.push('FAIL the onboarding-flow block threw: ' + (e && e.stack || e));
+    } finally {
+      window.startTour = tourSnap; window.setupReminders = remSnap;
+      KEYS.forEach((k, i) => { if (snap[i] != null) localStorage.setItem(k, snap[i]); else localStorage.removeItem(k); });
+      reloadCfg();
+      obHideH.clear(); hideWas.forEach(k => obHideH.add(k));
+      obStep = stepWas; obRestore = restWas;
+      if (obWas) { ob.classList.add('on'); renderOnboard(); } else ob.classList.remove('on');
+    }
+  })();
+
+  /* ---- the tour (2026-11-21): four steps, starts on the mood card, always ends on the Log ----
+     The tour fails silently when a target is missing (gotchas.md), so every step's target is
+     checked on its real screen. Only the synchronous paths are driven here: Next on a middle
+     step schedules a render, which would leave an overlay behind for later blocks. */
+  (function () {
+    const tSnap = window.toast, eSnap = localStorage.getItem('dp.entries'), trSnap = localStorage.getItem('dp.toured');
+    const dtSnap = dashTab;
+    const toasts = [];
+    const onToday = () => document.getElementById('s-today').classList.contains('on');
+    try {
+      window.toast = m => toasts.push(m);
+      ok('the tour is short (at most 5 steps)', TOUR.length >= 3 && TOUR.length <= 5, TOUR.length);
+      ok('it starts on the Log, at the mood card', TOUR[0].s === 'today' && /\.mm-card/.test(TOUR[0].t));
+      ok('no step is Play-only, so "1 / N" is the real count everywhere', TOUR.every(st => !st.native));
+      ok('the tour copy states no statistic', !TOUR.some(st => /\d+\s*(%|x|×)/.test(st.h + st.b)));
+      TOUR.forEach((st, i) => {
+        if (st.s === '__menu') openDrawer();
+        else { closeDrawer(); if (st.s === 'dash') dashTab = 'overview'; navigateTo(st.s); }
+        const el = (st.t && document.querySelector(st.t)) || (st.alt && document.querySelector(st.alt));
+        ok(`tour step ${i + 1} (${st.s}) finds its target`, !!el, st.t);
+      });
+      closeDrawer();
+
+      // the card: a clear Skip tour, and the true count
+      tourIdx = 0; renderTourOverlay(TOUR[0], null);
+      const skip = document.getElementById('tour-skip');
+      ok('every step but the last offers "Skip tour"', !!skip && /Skip tour/.test(skip.textContent));
+      ok('…placed first, apart from Back and Next', !!skip && skip.parentElement.firstElementChild === skip);
+      ok('the counter shows the real length', new RegExp('1 / ' + TOUR.length).test(document.querySelector('#tour .tour-step').textContent));
+      tourIdx = TOUR.length - 1; renderTourOverlay(TOUR[tourIdx], null);
+      ok('the last step has no Skip, just Done', !document.getElementById('tour-skip') && /Done/.test(document.getElementById('tour-next').textContent));
+
+      /* The card must not cover what it points at. jsdom has no layout, so the rects are the ones
+         measured at 360×740 in Chromium: the card is 430–650 at the bottom, 14–234 at the top. */
+      const gbr = HTMLElement.prototype.getBoundingClientRect;
+      try {
+        HTMLElement.prototype.getBoundingClientRect = function () {
+          if (this.classList.contains('tour-card')) return this.classList.contains('tour-card-top')
+            ? { top: 14, bottom: 234, left: 14, right: 346, width: 332, height: 220 }
+            : { top: 430, bottom: 650, left: 14, right: 346, width: 332, height: 220 };
+          if (this.classList.contains('tour-spot')) { const t = parseFloat(this.style.top) || 0, h = parseFloat(this.style.height) || 0; return { top: t, bottom: t + h, left: 0, right: 0, width: 0, height: h }; }
+          return gbr.call(this);
+        };
+        const at = (top, h) => ({ getBoundingClientRect: () => ({ top, left: 61, width: 289, height: h, bottom: top + h, right: 350 }) });
+        tourIdx = 3; renderTourOverlay(TOUR[3], at(474, 55));   // the Menu's "More features" row
+        ok('a target low on the screen moves the card to the top', document.querySelector('#tour .tour-card').classList.contains('tour-card-top'));
+        tourIdx = 1; renderTourOverlay(TOUR[1], at(235, 46));   // an activity chip, clear of the card
+        ok('a target clear of the card leaves it at the bottom', !document.querySelector('#tour .tour-card').classList.contains('tour-card-top'));
+      } finally { HTMLElement.prototype.getBoundingClientRect = gbr; }
+      tourIdx = TOUR.length - 1; renderTourOverlay(TOUR[tourIdx], null);
+
+      // Done from the Menu step: back on the Log, invited to log when today has no mood yet
+      const e = safeParse(eSnap, {}) || {}; delete e[todayStr()];
+      localStorage.setItem('dp.entries', JSON.stringify(e));
+      localStorage.removeItem('dp.toured');
+      openDrawer();
+      document.getElementById('tour-next').click();
+      ok('Done ends the tour', !document.getElementById('tour') && tourIdx === -1);
+      ok('…closes the menu', !document.getElementById('drawer').classList.contains('on'));
+      ok('…lands on the Log', onToday());
+      ok('…marks the tour seen', localStorage.getItem('dp.toured') === '1');
+      ok('…and invites the first log', toasts[toasts.length - 1] === 'Your turn: tap how today feels', toasts);
+      e[todayStr()] = { mood: 7 }; localStorage.setItem('dp.entries', JSON.stringify(e));
+      ok('once today has a mood the sign-off is plain', tourEndMsg() === 'Enjoy Daylog 🔥', tourEndMsg());
+
+      // Skip tour from the middle of the tour also lands on the Log
+      localStorage.removeItem('dp.toured');
+      navigateTo('time'); tourIdx = 1; renderTourOverlay(TOUR[1], null);
+      document.getElementById('tour-skip').click();
+      ok('Skip tour ends it from any step', !document.getElementById('tour') && tourIdx === -1 && localStorage.getItem('dp.toured') === '1');
+      ok('…and lands on the Log, ready for a first log', onToday());
+    } catch (e) {
+      fail++; R.push('FAIL the tour block threw: ' + (e && e.stack || e));
+    } finally {
+      window.toast = tSnap; dashTab = dtSnap; tourIdx = -1;
+      const o = document.getElementById('tour'); if (o) o.remove();
+      closeDrawer();
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (trSnap != null) localStorage.setItem('dp.toured', trSnap); else localStorage.removeItem('dp.toured');
+      navigateTo('today');
+    }
   })();
 
   /* ---- SUPPORT ASK (Play Billing tip jar) ---- */
