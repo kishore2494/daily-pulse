@@ -1373,7 +1373,7 @@ function applyRemoteState(remote) {
     // re-sum each day whose blocks changed from the merged log (after reloadCfg, so activity names
     // that came down in this pull are used). Both phones then sum the same blocks to the same line,
     // so this settles instead of going back and forth.
-    if (tlDays && tlDays.size && DB.settings().syncUrl) tlDays.forEach(updateTimeSummary);
+    if (tlDays && tlDays.size && DB.settings().syncUrl) updateTimeSummaries(tlDays);
     renderNav(); applyTheme();
     pushState(true);            // push the merged superset back so all devices converge
     refreshStreak(); setupReminders();
@@ -2968,9 +2968,11 @@ document.addEventListener('click', (ev) => {
       /* One ask per celebration, never both. The review ask comes first — it costs the user
          nothing and is worth more to the app than a few rupees. The tip is only offered on a
          celebration where the review ask has already been settled. */
+      // Settled = the shared budget of two (old card + Play's sheet) is spent, or Rate was tapped.
+      // Build 122+ never shows the old card, so its count alone never settled and the tip never came.
       const rs = rateState();
-      if (!rs.done && rs.asks < 2) setTimeout(maybeAskForReview, 450);
-      else setTimeout(maybeAskForTip, 450);
+      if (rs.done || (+rs.asks || 0) + reviewAskState().n >= 2) setTimeout(maybeAskForTip, 450);
+      else if (!reviewPlugin()) setTimeout(maybeAskForReview, 450);   // with the plugin, the sheet asks after a save
     }
   }
 });
@@ -2981,9 +2983,10 @@ function saveDraftNow(date, d) {
   // Preserve fields owned by other flows (Gym writes workoutsDone/workoutDetail, Time writes
   // timeSummary) so a Log autosave can't blindly clobber them with a stale snapshot — and their
   // stamps with them: the draft's copy is from when the day was opened, and an older stamp would
-  // let the other phone's older summary win the sync merge.
+  // let the other phone's older summary win the sync merge. Absent from the stored day means
+  // absent here too: a summary deleted since the draft was opened must not come back.
   const existing = DB.entry(date) || {};
-  [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; });
+  [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; else delete d[k]; });
   const wrote = DB.putEntry(date, d);
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
@@ -4256,7 +4259,7 @@ function syncTimelogNow() {
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'timelog', items }) }).catch(() => {});
   _tlDirty.forEach(d => touchedDates.add(d)); _tlDirty.clear();   // days left with no block at all
-  touchedDates.forEach(updateTimeSummary);
+  updateTimeSummaries(touchedDates);
 }
 /* Every calendar day a block covers (a running one: up to now). */
 function segDays(s, out) {
@@ -4284,29 +4287,54 @@ function timelogChangedDays(before, after) {
   Object.keys(was).forEach(id => { if (!seen.has(id)) segDays(was[id], out); });
   return out;
 }
-/* Write "Work 6h 20m · Travel 1h 05m" into the day's entry so it lands on the Log row. */
-function updateTimeSummary(dateStr) {
-  const totals = actTotalsMs(segsForDay(dateStr));   // the same activity's overlapping blocks count once
-  const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
-    .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
-  if (!parts.length) {
-    // No block left on the day: drop the old line, stamped, so the other phone drops it too
-    // (mergeAuto lets a newer stamp without the field remove it).
-    const en = DB.entry(dateStr);
-    if (!en || !('timeSummary' in en)) return;
-    delete en.timeSummary;
-    (en.autoAt = Object.assign({}, objOf(en.autoAt))).timeSummary = Date.now();
-    DB.putEntry(dateStr, en);
-    syncEntry(dateStr, en);   // the Sheet writes the whole row, so the missing field blanks its cell
-    return;
-  }
-  const entry = DB.entry(dateStr) || { habits: {} };
-  const summary = parts.join(' · ');
-  if (entry.timeSummary === summary) return;     // nothing changed — skip the network call
-  entryAutoSet(entry, { timeSummary: summary });   // not updatedAt: see ENTRY_AUTO
-  DB.putEntry(dateStr, entry);
-  syncEntry(dateStr, entry);
+/* Write "Work 6h 20m · Travel 1h 05m" into each day's entry so it lands on the Log row.
+   Batched: syncTimelogNow re-sums EVERY day that has a block, and per day this used to re-scan
+   the whole time log and re-parse (and, when it changed, re-write) the whole entries store:
+   1.7 s on every timer stop with 3 years of data. Now one pass buckets the blocks by day (the
+   same clips segsForDay gives), the entries are read once, and the changed days go in one save. */
+function updateTimeSummaries(dates) {
+  const days = [...new Set(dates)].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (!days.length) return;
+  const want = new Set(days), lo = dayStartMs(days[0]), hi = dayEndMs(days[days.length - 1]), now = Date.now(), by = {};
+  DB.timelogRO().forEach(s => {
+    const end = s.end == null ? now : s.end;
+    let a = Math.max(s.start, lo), n = 0;
+    while (a < Math.min(end, hi) && n++ < 5000) {
+      const d = todayStr(new Date(a)), d1 = dayEndMs(d);
+      if (want.has(d)) {
+        const ca = Math.max(s.start, dayStartMs(d)), cb = Math.min(end, d1);
+        if (cb > ca) (by[d] = by[d] || []).push({ seg: s, a: ca, b: cb });
+      }
+      a = d1;
+    }
+  });
+  const ents = DB.entries(), changed = [];
+  days.forEach(d => {
+    const totals = actTotalsMs((by[d] || []).sort((x, y) => x.a - y.a));   // the same activity's overlapping blocks count once
+    const parts = Object.keys(totals).sort((x, y) => totals[y] - totals[x])
+      .map(id => { const act = actById(id); return `${act.emoji} ${act.name} ${fmtDur(totals[id])}`; });
+    if (!parts.length) {
+      // No block left on the day: drop the old line, stamped, so the other phone drops it too
+      // (mergeAuto lets a newer stamp without the field remove it).
+      const en = ents[d];
+      if (!en || !('timeSummary' in en)) return;
+      delete en.timeSummary;
+      (en.autoAt = Object.assign({}, objOf(en.autoAt))).timeSummary = Date.now();
+      changed.push(d);
+      return;
+    }
+    const entry = ents[d] || { habits: {} };
+    const summary = parts.join(' · ');
+    if (entry.timeSummary === summary) return;     // nothing changed — skip the write and the network call
+    entryAutoSet(entry, { timeSummary: summary });   // not updatedAt: see ENTRY_AUTO
+    ents[d] = entry; changed.push(d);
+  });
+  if (!changed.length) return;
+  DB.saveEntries(ents);
+  // the Sheet writes the whole row, so a dropped line blanks its cell
+  changed.forEach(d => syncEntry(d, ents[d]));
 }
+function updateTimeSummary(dateStr) { updateTimeSummaries([dateStr]); }
 
 /* live ticker — updates the elapsed readout each second; light-refreshes the
    timeline once a minute (skipped while you're typing in an input) */
@@ -10286,6 +10314,7 @@ const BACKUP_EXCLUDED = [
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'notifAsk',                          // the one-time notification ask; permission belongs to this device
+  'notifDone',                         // notification presses already handled here (replayed intents are ignored)
   'reviewAsk',                         // Play rating-sheet asks on this install (Google's quota is per device too)
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
@@ -10721,7 +10750,7 @@ function setupReminders() {
     reminderTimeouts.push(setTimeout(() => checkReminders(true), Math.max(0, ms) + 300));
   });
   checkReminders(true);   // check immediately too (catches an already-due one)
-  if (nativeShell()) { scheduleNativeAlarms(); refreshTimerNotif(); scheduleTimeboxAlarms(); return; }   // Android app: real native alarms, skip the workarounds
+  if (nativeShell()) { const p = scheduleNativeAlarms(); refreshTimerNotif(); scheduleTimeboxAlarms(); return p; }   // Android app: real native alarms, skip the workarounds (p: done once the permission prompt is answered)
   scheduleBackgroundNotifications();   // + OS-level alarms even when the app is closed (where supported)
   scheduleNtfy();                      // + ntfy push (rings via the ntfy app even when this app is closed)
 }
@@ -11038,13 +11067,15 @@ async function syncHealth(opts) {
     if (!hasAny) { if (!opts.silent) toast('No health data yet — grant Usage access first', true); return null; }
     saveHealthStore(store);
     // auto-fill sleep from Health Connect if the user hasn't entered it for today.
-    // Only PERSIST when the day already has an entry — a health sync alone must not
-    // create a logged day (that would award streak/milestone credit the user never earned).
+    // Only PERSIST when the day is already logged BY HAND — a health sync alone must not
+    // make a logged day (streak/milestone credit never earned, the evening "Log my day" skipped).
+    // A day holding only auto-filled fields (a time summary, workouts) keeps the fill in the
+    // draft; the first save by hand stores it.
     if (at.sleep && store[key].sleepMin && logDate === key) {
       const cur = draft.sleepHours;
       if (cur == null || cur === '') {
         draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2);
-        if (DB.entry(key)) saveDraftNow(key, draft);
+        if (loggedByHand(DB.entry(key))) saveDraftNow(key, draft);
       }
     }
     if (!opts.silent) toast('Health synced ✅');
@@ -11206,8 +11237,10 @@ async function scheduleNativeAlarms() {
       else notifs.push({ id: seq++, smallIcon: NOTIF_ICON, title, body, schedule: { at: t, allowWhileIdle: true },
         sound: alarm ? 'default' : undefined });
     };
-    // the "Log my day" reminder is scheduled by nudgePlan (scheduleInactivityReminder, below)
-    DB.reminders().filter(r => r.enabled && r.time && !isLogReminder(r)).forEach(r => {
+    // the "Log my day" reminder nudgeInput picks (the first) is scheduled by nudgePlan
+    // (scheduleInactivityReminder, below); a second one, e.g. synced from another phone, rings here
+    const rems = DB.reminders(), logRem = rems.find(isLogReminder);
+    rems.filter(r => r.enabled && r.time && r !== logRem).forEach(r => {   // that one object, not every match
       const [h, m] = r.time.split(':').map(Number);
       for (let d = 0; d < 7; d++) {
         const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0);
@@ -13505,8 +13538,9 @@ const LOGREM_ID = 840;        // 840-846: "Log my day" reminder, today + 6 days
 const NUDGE_HOUR = '20:00';   // come-back time when there is no log reminder
 const INSIGHT_DAYS = 5;       // Stats ▸ Connected insights unlocks at 5 logged days (renderDash)
 function lastActiveDay() {
-  const days = contentDates();
-  DB.timelog().forEach(s => days.push(todayStr(new Date(s.start))));
+  // the sample preview's demo rows (entries and time blocks marked sample) are not activity
+  const e = DB.entriesRO(), days = contentDates(e).filter(d => !e[d].sample);
+  DB.timelog().forEach(s => { if (!s.sample) days.push(todayStr(new Date(s.start))); });
   DB.gym && Object.keys(DB.gym()).forEach(d => days.push(d));
   return days.sort().slice(-1)[0] || todayStr();
 }
@@ -13576,7 +13610,8 @@ function nudgePlan(o) {
       const day = addDays(o.today, d);
       if (d === 0 && o.loggedToday) continue;
       const at = when(day, o.logTime);
-      if (at.getTime() <= o.now + 60000) continue;
+      // <= now, not now + 1 min: a save in the minute before 21:00 re-plans, and today's must survive it
+      if (at.getTime() <= o.now) continue;
       const c = logReminderCopy(day, o);
       out.push({ id: LOGREM_ID + d, day, at, title: c.t, body: c.b });
       taken.add(day);
@@ -13603,7 +13638,7 @@ function nudgeInput() {
   const today = todayStr();
   const lr = DB.reminders().find(isLogReminder);
   const ents = DB.entriesRO();
-  const hand = Object.keys(ents).filter(d => loggedByHand(ents[d]));
+  const hand = Object.keys(ents).filter(d => ents[d] && !ents[d].sample && loggedByHand(ents[d]));   // demo rows aren't logs
   const recent = {}, from = addDays(today, -14);
   hand.filter(d => d >= from).forEach(d => { const m = ents[d].mood; recent[d] = m == null || m === '' || isNaN(+m) ? null : +m; });
   return { now: Date.now(), today, last: lastActiveDay(), loggedToday: loggedByHand(ents[today]), recent,
@@ -13656,9 +13691,22 @@ function applyNotifMood(day, v) {
 /* A tap on a log notification opens the Log, whatever the start screen is. Capacitor keeps the
    tap event until a listener is attached, so this also works from a cold start. */
 let _nudgeTapReady = false;
+/* Android can hand the same launch intent back on a later cold start, and Capacitor reports it
+   as a new action: a stray "Mood saved" toast, or an old notification's mood landing on today.
+   Each handled press (notification id | its day | the button) is remembered, the last 50 of them
+   (dp.notifDone, this install only); a repeat is ignored. true = seen before. */
+function nudgeActionSeen(e) {
+  const n = e.notification, key = [n.id == null ? '' : n.id, n.extra.day || '', e.actionId || ''].join('|');
+  const done = safeParse(localStorage.getItem('dp.notifDone'), []), list = Array.isArray(done) ? done : [];
+  if (list.includes(key)) return true;
+  list.push(key);
+  safeSet('dp.notifDone', JSON.stringify(list.slice(-50)));   // marked before it is handled: a crash mid-way cannot replay it
+  return false;
+}
 function onNudgeAction(e) {
   const n = e && e.notification, x = n && n.extra;
   if (!x || x.go !== 'today' || localStorage.getItem('dp.onboarded') !== '1') return;
+  if (nudgeActionSeen(e)) return;
   const m = NOTIF_MOODS.find(k => k.id === e.actionId);
   try {
     if (m) applyNotifMood(x.day || todayStr(), m.v);
@@ -13725,19 +13773,27 @@ function notifAskRefresh() {
 document.addEventListener('click', async (ev) => {
   const b = ev.target.closest && ev.target.closest('[data-notif-ask]'); if (!b) return;
   const a = b.dataset.notifAsk;
-  safeSet('dp.notifAsk', a + ':' + todayStr());
+  // The one answer is spent on "No" or once notifications are really on. Refused, the
+  // "can't ring" card ('enable') shows instead, until it is turned on or dismissed.
+  const spend = () => safeSet('dp.notifAsk', a + ':' + todayStr());
+  if (a === 'no') spend();
   if (a === 'yes') {
     const t = (document.getElementById('notif-ask-time') || {}).value || '21:00';
     const rs = DB.reminders();
-    rs.push({ id: 'rem' + Date.now(), time: t, label: 'Log my day', enabled: true, mode: 'notify' });
-    DB.saveReminders(rs); setupReminders();   // → scheduleNativeAlarms → Android's permission prompt
-    toast('Reminder set for ' + t + ' 🔔');
+    // a "Log my day" that is switched off or in alarm mode becomes this one, never a second one
+    const lr = rs.find(r => r && /^log my day$/i.test(String(r.label || '').trim()));
+    if (lr) Object.assign(lr, { time: t, enabled: true, mode: 'notify' });
+    else rs.push({ id: 'rem' + Date.now(), time: t, label: 'Log my day', enabled: true, mode: 'notify' });
+    DB.saveReminders(rs);
+    await setupReminders();   // → scheduleNativeAlarms → Android's permission prompt, answered
+    if (await refreshNotifPerm() === 'granted') { spend(); toast('Reminder set for ' + t + ' 🔔'); }
+    else toast('Reminder saved, but notifications are off for Daylog, so it can\'t ring yet');
   } else if (a === 'on') {
     try {
       const LN = window.Capacitor.Plugins.LocalNotifications;
       const p = await LN.requestPermissions();
-      if (p && p.display === 'granted') { setupReminders(); toast('Notifications on 🔔'); }
-      else { const FS = fullScreenPlugin(); if (FS && FS.openNotificationSettings) await FS.openNotificationSettings(); toast('Allow notifications for Daylog, then come back'); }
+      if (p && p.display === 'granted') { spend(); setupReminders(); toast('Notifications on 🔔'); }
+      else { const FS = fullScreenPlugin(); if (FS && FS.openNotificationSettings) await FS.openNotificationSettings(); toast('Notifications are still off. Allow them for Daylog, then come back'); }
     } catch (e) {}
   }
   await refreshNotifPerm();

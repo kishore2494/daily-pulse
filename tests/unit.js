@@ -2818,6 +2818,22 @@
       tick(); DB.saveTimelog(DB.timelog().filter(s => s.id !== 'tw2')); clearTimeout(timelogSyncTimer); syncTimelogNow();
       ok('deleting one of two blocks re-sums the day from the one left', !!sumTwo && /Work 1h/.test(day().timeSummary || '') && day().timeSummary !== sumTwo, [sumTwo, day().timeSummary]);
 
+      // review #2: a Log draft opened BEFORE the last block was deleted still holds the old summary;
+      // its autosave must not bring the summary back (with the deletion's newer stamp on it)
+      start(typed, [blk1]);
+      use('A'); syncTimelogNow();
+      const opened7 = JSON.parse(JSON.stringify(day()));   // what loadDraft holds
+      ok('(the opened draft holds a summary)', !!opened7.timeSummary, opened7);
+      tick(); timelogForget('tw1'); DB.saveTimelog([]); clearTimeout(timelogSyncTimer); syncTimelogNow();
+      ok('(the deletion dropped it)', !('timeSummary' in day()), day());
+      tick(); opened7.mood = 7; saveDraftNow(D, opened7);
+      ok('review #2: a stale Log draft does not bring back a deleted time summary',
+        !('timeSummary' in day()) && day().mood === 7 && +(day().autoAt || {}).timeSummary > 0, day());
+      const gymOpen = JSON.parse(JSON.stringify(Object.assign(day(), { workoutsDone: 2, workoutDetail: 'stale' })));
+      delete gymOpen.autoAt;   // a draft from before any stamp existed
+      tick(); gymOpen.mood = 5; saveDraftNow(D, gymOpen);
+      ok('review #2: …nor workout fields the stored day does not have', !('workoutsDone' in day()) && !('workoutDetail' in day()) && day().mood === 5, day());
+
       // timelogChangedDays, directly
       const D2 = addDays(D, 1), sOv = { id: 'ov', act: 'sleep', start: d0 + 23 * H, end: d0 + 31 * H };
       ok('a block across midnight marks both days', [...timelogChangedDays([], [sOv])].join() === [D, D2].join());
@@ -3497,6 +3513,65 @@
     } catch (e) {
       ok('overlapping time blocks: the block ran without throwing', false, String(e && e.stack || e).slice(0, 300));
     } finally {
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+    }
+  })();
+
+  // ---- review #9: the time re-sum reads the entries once and writes the changed days in one save ----
+  /* syncTimelogNow re-sums EVERY day that has a block. Per day it re-scanned the whole time log
+     and re-parsed the whole entries store (and re-wrote it for each changed day): 1.7 s on every
+     timer stop with 3 years of data. The lines must stay exactly what the per-day sum gave. */
+  (function () {
+    const keys = ['dp.timelog', 'dp.entries', 'dp.settings', 'dp.timelogDel'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, eSnap = DB.entries, sSnap = DB.saveEntries;
+    const H = 3600000, T = todayStr(), now = Date.now();
+    let reads = 0, writes = 0;
+    try {
+      window.fetch = () => Promise.resolve({ ok: true });
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const tl = [], ents = {}, acts = ['work', 'sleep', 'gymt', 'learn'];
+      for (let i = 1; i <= 30; i++) {
+        const d = addDays(T, -i), d0 = dayStartMs(d);
+        tl.push({ id: 'rs' + i + 'a', act: 'sleep', start: d0 - 2 * H, end: d0 + 6 * H, upd: 1 });           // across midnight
+        tl.push({ id: 'rs' + i + 'b', act: acts[i % 4], start: d0 + 9 * H, end: d0 + (10 + i % 3) * H, upd: 1 });
+        if (i % 5 === 0) tl.push({ id: 'rs' + i + 'c', act: acts[i % 4], start: d0 + 9.5 * H, end: d0 + 11 * H, upd: 1 });   // overlap
+        if (i % 7 === 0) ents[d] = { mood: 6, habits: {}, timeSummary: 'stale line', autoAt: { timeSummary: 1 } };
+      }
+      ents[addDays(T, -40)] = { mood: 4, habits: {}, timeSummary: 'a day with no block left' };   // dropped
+      tl.push({ id: 'rsRun', act: 'work', start: now - 2 * H, end: null, upd: 1 });                 // running
+      tl.push({ id: 'rsLong', act: 'learn', start: dayStartMs(addDays(T, -12)) + 20 * H, end: dayStartMs(addDays(T, -10)) + 3 * H, upd: 1 });   // 3 days
+      localStorage.setItem('dp.timelog', JSON.stringify(tl));
+      localStorage.setItem('dp.entries', JSON.stringify(ents));
+      const days = new Set(); tl.forEach(s => segDays(s, days)); days.add(addDays(T, -40));
+      // the reference: the per-day sum, from segsForDay
+      const ref = {};
+      days.forEach(d => { const t = actTotalsMs(segsForDay(d));
+        ref[d] = Object.keys(t).sort((x, y) => t[y] - t[x]).map(id => { const a = actById(id); return `${a.emoji} ${a.name} ${fmtDur(t[id])}`; }).join(' · ') || undefined; });
+      DB.entries = function () { reads++; return eSnap.call(this); };
+      DB.saveEntries = function (e) { writes++; return sSnap.call(this, e); };
+      _tlDirty.add(addDays(T, -40)); clearTimeout(timelogSyncTimer); syncTimelogNow();
+      DB.entries = eSnap; DB.saveEntries = sSnap;
+      const got = DB.entriesRO(), bad = [...days].filter(d => (got[d] || {}).timeSummary !== ref[d]);
+      ok('review #9: the batched re-sum gives every day the same line as the per-day sum', bad.length === 0 && days.size > 30,
+        bad.slice(0, 3).map(d => [d, (got[d] || {}).timeSummary, ref[d]]));
+      ok('review #9: …a day with no block left loses its line, stamped', !('timeSummary' in got[addDays(T, -40)]) && +(got[addDays(T, -40)].autoAt || {}).timeSummary > 0 && got[addDays(T, -40)].mood === 4);
+      ok('review #9: …the rest of a day is untouched', got[addDays(T, -7)].mood === 6 && +got[addDays(T, -7)].autoAt.timeSummary > 1);
+      ok('review #9: the entries are read once and written once for the whole re-sum', reads === 1 && writes === 1, { reads, writes, days: days.size });
+      reads = writes = 0;
+      DB.entries = function () { reads++; return eSnap.call(this); };
+      DB.saveEntries = function (e) { writes++; return sSnap.call(this, e); };
+      const before = localStorage.getItem('dp.entries');
+      syncTimelogNow();
+      DB.entries = eSnap; DB.saveEntries = sSnap;
+      ok('review #9: nothing changed: one read, no write', reads === 1 && writes === 0 && localStorage.getItem('dp.entries') === before, { reads, writes });
+      ok('review #9: updateTimeSummary(day) still re-sums one day', (() => {
+        const d = addDays(T, -3), e = DB.entries(); delete e[d]; localStorage.setItem('dp.entries', JSON.stringify(e));
+        updateTimeSummary(d); return (DB.entry(d) || {}).timeSummary === ref[d]; })());
+    } catch (e) {
+      ok('review #9: the block ran without throwing', false, String(e && e.stack || e).slice(0, 300));
+    } finally {
+      DB.entries = eSnap; DB.saveEntries = sSnap; window.fetch = fSnap; _tlDirty.clear();
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
     }
   })();
@@ -4848,6 +4923,12 @@
     ok('once today is logged, today\'s Log my day is skipped', !loggedNow.some(n => n.day === T) && loggedNow.filter(n => n.id >= 840).length === 6);
     const late = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T22:00:00').getTime(), logDays: 12, logTime: '21:00' }));
     ok('a time already past today is not scheduled', !late.some(n => n.day === T) && late.every(n => n.at.getTime() > late[0].at.getTime() - 1));
+    // review #5: a save 30 s before 21:00 re-plans; today's occurrence is still ahead and must stay
+    const justBefore = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T20:59:30').getTime(), logDays: 12, logTime: '21:00' }));
+    ok('review #5: rescheduled in the minute before, today\'s Log my day is kept',
+       justBefore.some(n => n.day === T && n.id === LOGREM_ID), JSON.stringify(days(justBefore)));
+    const onTheDot = nudgePlan(Object.assign({}, base, { now: new Date(T + 'T21:00:00').getTime(), logDays: 12, logTime: '21:00' }));
+    ok('review #5: …but not once its minute has come', !onTheDot.some(n => n.day === T));
     const off = nudgePlan(Object.assign({}, base, { logDays: 12, logTime: '21:00', off: true }));
     ok('nudges off: only the user\'s own reminder remains', off.length === 7 && off.every(n => n.id >= 840));
     ok('nudges off and no reminder: nothing at all', nudgePlan(Object.assign({}, base, { off: true })).length === 0);
@@ -4866,7 +4947,7 @@
        !isLogReminder({ time: '21:00', label: 'Log my day', enabled: true, mode: 'alarm' }) &&
        !isLogReminder({ time: '21:00', label: 'Take meds', enabled: true, mode: 'notify' }) &&
        !isLogReminder({ time: '21:00', label: 'Log my day', enabled: false, mode: 'notify' }));
-    ok('scheduleNativeAlarms leaves the Log my day reminder to nudgePlan', /!isLogReminder\(r\)/.test(scheduleNativeAlarms.toString()));
+    ok('scheduleNativeAlarms leaves the Log my day reminder to nudgePlan', /logRem = rems\.find\(isLogReminder\)/.test(scheduleNativeAlarms.toString()));   // behaviour: unit-async.js, review #7
     ok('an auto-filled time summary is not a log by hand', !loggedByHand({ timeSummary: { sleep: 420 }, autoAt: { timeSummary: 1 } }) && loggedByHand({ mood: 4 }));
 
     const kSnap = ['dp.reminders', 'dp.nudgeOff', 'dp.entries'].map(k => [k, localStorage.getItem(k)]);
@@ -4876,6 +4957,21 @@
       const inp = nudgeInput();
       ok('nudgeInput reads the reminder time and the off switch', inp.logTime === '21:30' && inp.off === true && inp.today === T);
     } finally { kSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
+    // review #4: the sample preview's demo rows (entries and time blocks marked sample) are not logged days
+    const sSnap = ['dp.entries', 'dp.timelog', 'dp.gym'].map(k => [k, localStorage.getItem(k)]);
+    try {
+      const smp = {}; [3, 4, 5, 6, 8].forEach(i => { smp[addDays(T, -i)] = { mood: 8, journal: 'demo', habits: {}, sample: true }; });
+      const d3 = new Date(addDays(T, -3) + 'T09:00:00').getTime();
+      localStorage.setItem('dp.entries', JSON.stringify(smp)); localStorage.setItem('dp.gym', '{}');
+      localStorage.setItem('dp.timelog', JSON.stringify([{ id: 'smpX', act: 'work', start: d3, end: d3 + 3600000, upd: d3, sample: true }]));
+      const si = nudgeInput();
+      ok('review #4: sample days do not count as logged days in the nudge plan',
+         si.logDays === 0 && Object.keys(si.recent).length === 0, { logDays: si.logDays, recent: si.recent });
+      ok('review #4: …nor as the last active day (entries or time blocks)', lastActiveDay() === T && si.last === T, [lastActiveDay(), si.last]);
+      smp[addDays(T, -10)] = { mood: 6, habits: {} }; localStorage.setItem('dp.entries', JSON.stringify(smp));
+      const ri = nudgeInput();
+      ok('review #4: …a real day among them still counts', ri.logDays === 1 && ri.last === addDays(T, -10) && Object.keys(ri.recent).join() === addDays(T, -10), ri);
+    } finally { sSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
   })();
 
 
@@ -4938,7 +5034,23 @@
       onNudgeAction({ actionId: 'dp_m_8', notification: { extra: { go: 'elsewhere', day: T } } });
       onNudgeAction({ actionId: 'dp_pause', notification: { id: 770 } });
       ok('other notifications\' actions are ignored here', !DB.entry(T));
+      // review #1: Android re-delivers the launch intent on a later cold start; the same button
+      // press must not toast again or land an old mood on today
+      localStorage.removeItem('dp.notifDone'); localStorage.setItem('dp.entries', JSON.stringify({}));
+      const press = { actionId: 'dp_m_8', notification: { id: 841, extra: { go: 'today', day: Y } } };
+      onNudgeAction(press);
+      ok('(the press saves yesterday\'s mood)', (DB.entry(Y) || {}).mood === 8, DB.entry(Y));
+      localStorage.setItem('dp.entries', JSON.stringify({})); toasted = '';
+      onNudgeAction(JSON.parse(JSON.stringify(press)));   // the replay (days later it would land an old mood on today)
+      ok('review #1: a replayed notification button is ignored (no toast, no mood saved)', toasted === '' && !DB.entry(T) && !DB.entry(Y), [toasted, DB.entry(T)]);
+      onNudgeAction({ actionId: 'dp_m_5', notification: { id: 840, extra: { go: 'today', day: T } } });
+      ok('review #1: …another notification\'s press is still handled', (DB.entry(T) || {}).mood === 5 && /Mood saved/.test(toasted), DB.entry(T));
+      for (let i = 0; i < 60; i++) onNudgeAction({ actionId: 'tap', notification: { id: 760, extra: { go: 'today', day: addDays(T, -100 - i) } } });
+      const done = safeParse(localStorage.getItem('dp.notifDone'), []);
+      ok('review #1: the handled list keeps only the last 50', Array.isArray(done) && done.length === 50 && done[49] === '760|' + addDays(T, -159) + '|tap', done.length);
+      ok('review #1: the handled list is install-local, not backed up', BACKUP_EXCLUDED.includes('notifDone') && !BACKUP_KEYS.includes('notifDone'));
     } finally {
+      localStorage.removeItem('dp.notifDone');
       window.toast = tSnap;
       snap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
     }

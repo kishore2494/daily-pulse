@@ -709,5 +709,177 @@
       closeDrawer(); navigateTo('today');
     }
   }
+
+  /* ---------- review #3: the one-time notification ask, when Android says no ----------
+     "Remind me" toasted "Reminder set" and spent dp.notifAsk even when the permission prompt was
+     refused, so the "can't ring" card could never show. The real card, the real click handler. */
+  {
+    const capSnap = window.Capacitor, permSnap = _notifPerm, tSnap = window.toast, tourSnap = tourIdx;
+    const ks = ['dp.entries', 'dp.reminders', 'dp.notifAsk', 'dp.onboarded'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const toasts = [];
+    let answer = 'denied', asked = 0;
+    const LN = {
+      requestPermissions: () => { asked++; return Promise.resolve({ display: answer }); },
+      checkPermissions: () => Promise.resolve({ display: answer }),
+      getPending: () => Promise.resolve({ notifications: [] }), cancel: () => Promise.resolve(),
+      schedule: () => Promise.resolve(), registerActionTypes: () => Promise.resolve(), addListener: () => {},
+    };
+    const logRems = () => DB.reminders().filter(r => /^log my day$/i.test(String(r.label || '').trim()));
+    const tap = async (which) => {
+      toasts.length = 0; renderToday();
+      const b = document.querySelector(`#notif-ask-slot [data-notif-ask="${which}"]`);
+      if (!b) return false;
+      b.click(); await until(() => toasts.length > 0); await sleep(20);
+      return true;
+    };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN } }; window.toast = m => toasts.push(m);
+      localStorage.setItem('dp.onboarded', '1'); localStorage.removeItem('dp.notifAsk'); tourIdx = -1;
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 7 } }));
+      localStorage.setItem('dp.reminders', '[]');
+      navigateTo('today'); _notifPerm = 'prompt';
+
+      // Android's prompt refused
+      ok('(the ask offers a reminder)', await tap('yes') || notifAskKind() === 'remind');
+      ok('review #3: "Remind me" with notifications refused does not say "Reminder set"',
+         asked > 0 && !toasts.some(m => /Reminder set/.test(m)) && toasts.some(m => /notifications are off/i.test(m)), toasts);
+      ok('review #3: …and does not spend the one-time ask', localStorage.getItem('dp.notifAsk') === null);
+      ok('review #3: …so the "can\'t ring" card shows next', logRems().length === 1 && notifAskKind() === 'enable'
+         && /can't ring/.test((document.getElementById('notif-ask-slot') || {}).textContent || ''), [logRems(), notifAskKind()]);
+      ok('review #3: "Turn on notifications" still refused: says so, ask not spent',
+         await tap('on') && toasts.some(m => /off/i.test(m)) && localStorage.getItem('dp.notifAsk') === null && notifAskKind() === 'enable', toasts);
+      answer = 'granted';
+      ok('review #3: …allowed this time: "Notifications on", the ask is spent',
+         await tap('on') && toasts.some(m => /Notifications on/.test(m)) && /^on:/.test(localStorage.getItem('dp.notifAsk') || ''), toasts);
+
+      // a "Log my day" that exists but is switched off, or in alarm mode: reused, never a second one
+      for (const old of [{ id: 'old', time: '20:00', label: 'Log my day', enabled: false, mode: 'notify' },
+                         { id: 'old', time: '07:30', label: 'Log my day', enabled: true, mode: 'alarm' }]) {
+        localStorage.removeItem('dp.notifAsk'); _notifPerm = 'granted';
+        localStorage.setItem('dp.reminders', JSON.stringify([old]));
+        ok('(the ask offers a reminder: ' + (old.enabled ? 'alarm mode' : 'switched off') + ')', notifAskKind() === 'remind');
+        await tap('yes');
+        const lr = logRems();
+        ok('review #3: "Remind me" reuses the existing Log my day (' + (old.enabled ? 'alarm mode' : 'switched off') + '), no duplicate',
+           lr.length === 1 && lr[0].id === 'old' && lr[0].enabled && lr[0].time === '21:00' && isLogReminder(lr[0]), lr);
+        ok('review #3: …allowed: "Reminder set", the ask is spent', toasts.some(m => /Reminder set for 21:00/.test(m)) && /^yes:/.test(localStorage.getItem('dp.notifAsk') || ''), toasts);
+      }
+    } catch (e) {
+      fail++; R.push('FAIL the notification-ask block threw: ' + (e && e.stack || e));
+    } finally {
+      clearInterval(reminderInterval); reminderTimeouts.forEach(clearTimeout); reminderTimeouts = [];
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      _notifPerm = permSnap; window.toast = tSnap; tourIdx = tourSnap;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
+  }
+
+  /* ---------- review #6: the tip ask on build 122+ ----------
+     A celebration's dismissal offers the rating first and the tip only once the rating budget is
+     settled. With Play's in-app sheet the old card stands aside, so dp.rateAsk never grew and the
+     tip never came. The real celebration, the real Close button, the real timers. */
+  {
+    const capSnap = window.Capacitor, armSnap = _rateArm;
+    const ks = ['dp.entries', 'dp.tip', 'dp.rateAsk', 'dp.reviewAsk'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const on = id => { const e = document.getElementById(id); return !!e && e.classList.contains('on'); };
+    const off = () => ['tip-ask', 'rate-ask', 'milestone'].forEach(id => { const e = document.getElementById(id); if (e) e.classList.remove('on'); });
+    const LN = { checkPermissions: () => Promise.resolve({ display: 'denied' }), cancel: () => Promise.resolve(), schedule: () => Promise.resolve() };
+    const BILL = { products: () => Promise.resolve({ available: true, products: [{ id: 'daylog_tip_small', type: 'once', price: '₹99', micros: 99000000 }] }) };
+    const IAR = { request: () => Promise.resolve({}) };
+    const dismiss = async (setup) => {
+      off(); localStorage.removeItem('dp.tip'); setup();
+      showMilestone(7); _rateArm = true;
+      document.getElementById('ms-close').click();
+      await until(() => on('tip-ask') || on('rate-ask'), 1200); await sleep(20);
+      return on('tip-ask') ? 'tip' : on('rate-ask') ? 'rate' : null;
+    };
+    try {
+      const many = {}; for (let i = 0; i < 40; i++) many[addDays(T, -i)] = { mood: 7 };
+      localStorage.setItem('dp.entries', JSON.stringify(many));
+      window.Capacitor = { Plugins: { LocalNotifications: LN, DaylogBilling: BILL, InAppReview: IAR } };
+      let got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 2, last: Date.now() - 90 * 864e5 })); });
+      ok('review #6: build 122+, both rating sheets spent: a celebration\'s dismissal offers the tip', got === 'tip', got);
+      got = await dismiss(() => { localStorage.setItem('dp.rateAsk', JSON.stringify({ asks: 1, last: Date.now() - 90 * 864e5, done: false })); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 1, last: Date.now() - 70 * 864e5 })); });
+      ok('review #6: …one old card + one sheet is the same budget of two: the tip', got === 'tip', got);
+      got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.setItem('dp.reviewAsk', JSON.stringify({ n: 1, last: Date.now() - 70 * 864e5 })); });
+      ok('review #6: …budget not spent yet: no tip and no old card (the sheet asks after a save)', got === null && rateState().asks === 0, [got, rateState()]);
+      window.Capacitor = { Plugins: { LocalNotifications: LN, DaylogBilling: BILL } };
+      got = await dismiss(() => { localStorage.removeItem('dp.rateAsk'); localStorage.removeItem('dp.reviewAsk'); });
+      ok('review #6: build ≤121 (no sheet): the old rate card still comes first', got === 'rate', got);
+    } catch (e) {
+      fail++; R.push('FAIL the tip-ask block threw: ' + (e && e.stack || e));
+    } finally {
+      off(); _rateArm = armSnap;
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+    }
+  }
+
+  /* ---------- review #7: two "Log my day" reminders (e.g. one synced from another phone) ----------
+     nudgePlan schedules only the FIRST one (nudgeInput's find); scheduleNativeAlarms skipped
+     EVERY reminder matching isLogReminder, so the second never rang at all. */
+  {
+    const capSnap = window.Capacitor, rSnap = localStorage.getItem('dp.reminders'), eSnap = localStorage.getItem('dp.events');
+    const sched = [];
+    const LN = {
+      requestPermissions: () => Promise.resolve({ display: 'granted' }), checkPermissions: () => Promise.resolve({ display: 'granted' }),
+      getPending: () => Promise.resolve({ notifications: [] }), cancel: () => Promise.resolve(),
+      schedule: (o) => { sched.push(...o.notifications); return Promise.resolve(); },
+    };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN } };
+      localStorage.setItem('dp.events', '[]');
+      localStorage.setItem('dp.reminders', JSON.stringify([
+        { id: 'lmA', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' },
+        { id: 'lmB', time: '07:45', label: 'Log my day', enabled: true, mode: 'notify' }]));
+      await scheduleNativeAlarms(); await until(() => sched.some(n => n.id >= 840)); await sleep(20);
+      const hm = n => { const d = new Date(n.schedule.at); return d.getHours() + ':' + d.getMinutes(); };
+      const plain = sched.filter(n => n.id < 700), planned = sched.filter(n => n.id >= 840 && n.id <= 846);
+      ok('review #7: the first Log my day stays with nudgePlan (not scheduled twice)', planned.length >= 6 && planned.every(n => hm(n) === '21:0') && !plain.some(n => hm(n) === '21:0'), sched.map(n => n.id + '@' + hm(n)));
+      ok('review #7: the second Log my day still rings, as an ordinary reminder', plain.length >= 6 && plain.every(n => hm(n) === '7:45' && /Log my day/.test(n.title)), plain.map(hm));
+    } catch (e) {
+      fail++; R.push('FAIL the two-reminders block threw: ' + (e && e.stack || e));
+    } finally {
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      if (rSnap != null) localStorage.setItem('dp.reminders', rSnap); else localStorage.removeItem('dp.reminders');
+      if (eSnap != null) localStorage.setItem('dp.events', eSnap); else localStorage.removeItem('dp.events');
+    }
+  }
+
+  /* ---------- review #8: Health Connect's sleep fill is not a log by hand ----------
+     syncHealth persisted the sleep it read into any entry that existed for today. A day holding
+     only auto-filled fields (a time summary, e.g. pulled from the Sheet) then counted as logged
+     by hand: the evening "Log my day" was skipped and the asks fired. */
+  {
+    const capSnap = window.Capacitor, logSnap = logDate;
+    const ks = ['dp.entries', 'dp.health', 'dp.settings', 'dp.timelog'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const LN = { checkPermissions: () => Promise.resolve({ display: 'denied' }), cancel: () => Promise.resolve(), schedule: () => Promise.resolve() };
+    const HC = { today: () => Promise.resolve({ sleepMinutes: 450, steps: 3000 }) };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN, HealthConnect: HC } };
+      const st = DB.settings(); st.autoTrack = Object.assign({}, st.autoTrack || {}, { on: true, sleep: true, steps: true }); DB.saveSettings(st);
+      localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.health', '{}');
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { habits: {}, timeSummary: '💼 Work 1h 00m', autoAt: { timeSummary: Date.now() - 1000 } } }));
+      logDate = T; loadDraft();
+      ok('(today holds only an auto-filled time summary)', !loggedByHand(DB.entry(T)));
+      await syncHealth({ silent: true });
+      ok('review #8: the sleep fill shows in the Log draft', +draft.sleepHours === 7.5, draft.sleepHours);
+      ok('review #8: …but is not saved into a day nobody logged by hand, so it stays unlogged',
+         !loggedByHand(DB.entry(T)) && !('sleepHours' in (DB.entry(T) || {})), DB.entry(T));
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 6, habits: {}, updatedAt: new Date(Date.now() - 5000).toISOString() } }));
+      loadDraft(); await syncHealth({ silent: true });
+      ok('review #8: a day already logged by hand still gets its sleep filled', +(DB.entry(T) || {}).sleepHours === 7.5 && DB.entry(T).mood === 6, DB.entry(T));
+    } catch (e) {
+      fail++; R.push('FAIL the health-fill block threw: ' + (e && e.stack || e));
+    } finally {
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      logDate = logSnap; loadDraft();
+    }
+  }
   return { pass, fail, results: R };
 })();
