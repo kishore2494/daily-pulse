@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v261';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v262';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1529,6 +1529,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w31',
   items: [
+    '🏠 <b>Home-screen widget</b> (with Play update 121) — see today at a glance and tap a face to log your mood. The tap opens Daylog with your mood saved. Long-press your home screen ▸ Widgets ▸ Daylog to add it.',
     '🙂 <b>Log from the notification</b> — your reminders now carry three buttons, Good, Okay and Low. One tap saves your mood and opens the Log, so a whole log can start right there. On Sundays the reminder is a short look at your week: how many days you logged and your best mood day.',
     '🔔 <b>Friendlier reminders</b> — your “Log my day” reminder now says something different each day, skips today once you have logged, and opens straight on the Log. If you stop logging for a while, Daylog checks in a few times, further and further apart, and never after 30 days. Turn these off in Settings ▸ Come-back nudges.',
     '🌱 <b>Lift, for heavy days</b> — log a low mood and a gentle card offers a few small things: a one-minute guided breath, a 5-4-3-2-1 grounding exercise, tiny doable actions, your own words from good days, and a place to write it out. It is in the menu any time, for any mood. If the last few days have been heavy, it shows free 24/7 support first (Tele-MANAS, 14416).',

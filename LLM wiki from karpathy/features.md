@@ -24,6 +24,21 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 ## Customization engine (More ▸ Customize, renderCustom)
 Everything is editable and hideable: theme mode (navy/black/light) + accent (6 colors), nav tabs (reorder/rename/hide), core Log fields, deep-log sections/fields (add/rename/hide, incl. tick-list options), habits, time activities, gym exercises + sets + custom groups + the 6-day split. Deep-log: add/rename/hide fields AND **add or delete whole custom sections** (v58, ids `cs*`). `reloadCfg()` rebuilds the live `HABITS`, `TIME_ACTS_ALL`, `DEEP_SECTIONS` from their configs. Hidden items keep their history.
 
+## Home-screen widget (Play build 121+, v262 web)
+- Native (daily-pulse-native, `WidgetBridgePlugin.java` + `DaylogWidgetProvider.java`, layouts `widget_full` 4x2 /
+  `widget_compact` 4x1 / `widget_narrow` 3x1, `xml/daylog_widget_info.xml`): deep-ink card, sunrise mark, "Not logged
+  yet / Logged today / Feeling good", 🔥 streak chip, tasks hint, 5 faces 😣😕😐🙂😄 = mood 1/3/5/7/9 (the mood grid's
+  MM_COLS). No journal text. Redraws for a new day after midnight without the app (inexact, 3-hour backstop).
+- Data in: `pushWidgetData()` → `WidgetBridge.update({streak, mood, logged, day, tasksDone, tasksPlanned, …})` after
+  every save, on open, when the app is left, and across midnight (`widgetSync`).
+- Taps out: a face opens MainActivity, which queues `{mood, at}` natively (per-install secret on the intent so other
+  apps can't inject; newest 20 kept). `drainWidgetActions()` at launch / on return / on the `widgetTap` event →
+  `widgetTapsApply`: newest tap per day, saved via `saveDraftNow`; never overwrites a mood saved after the tap;
+  energy untouched; dropped during onboarding. Then the Log + "Mood saved 🙂"; the grid says "Mood 🙂 saved · tap a
+  square to add your energy too".
+- The plugin also has `requestPin` and `status`: an "Add widget to home screen" button can ship web-only later.
+- Not yet seen on a real device (as of 2026-11-21). A layout mistake shows as "Problem loading widget".
+
 ## Onboarding (first run only)
 **2 steps since v262 (was 4):** (1) welcome + privacy + backup note + the restore door; (2) "Make it yours": the 4
 starter habits (tap to drop) and "Remind me to log my day" ticked at 21:00 → "Start logging". Step 2 is the only

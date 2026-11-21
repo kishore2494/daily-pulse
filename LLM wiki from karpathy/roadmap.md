@@ -1,7 +1,7 @@
 # Roadmap — decided but not built
 
 ## Agreed, queued
-- **Daily users (DAU) plan — proposed 2026-11-21, after v261's nudges.** Play: DAU 18 / MAU 113 (16%),
+- **Daily users (DAU) plan — proposed 2026-11-21; items 1-5 BUILT the same day (v262 + native 121, see log.md).** Play: DAU 18 / MAU 113 (16%),
   ~43% of installs never open, uninstalls +60%. In order of expected effect:
   1. **Reach more people with notifications.** Permission is asked only at onboarding's end, and only if the
      reminder box stays ticked; quitting onboarding early or unticking = unreachable forever. Ask once after the

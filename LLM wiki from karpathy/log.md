@@ -1,3 +1,20 @@
+## 2026-11-21 — v262 + native 121 BUILT (NOT deployed / NOT uploaded): the daily-users push
+
+Kishore: "there are lots of tokens, can you use that to build it" (the DAU plan in roadmap.md). Built in parallel,
+merged one at a time into main:
+- **Mine (notifications):** 🙂/😐/😕 mood buttons on every log notification (`NOTIF_MOODS`, `applyNotifMood`);
+  Sunday "Log my day" = week recap (`weekRecapCopy`); one-time Log card after the first real log asking for a
+  reminder / to switch notifications on (`notifAskKind`, `dp.notifAsk`). features.md ▸ Alarms & notifications.
+- **Agent: onboarding 2 steps (was 4), tour 4 steps (was 8).** Style picker and add-your-own rows left onboarding.
+  features.md ▸ Onboarding. Open question for Kishore: keep the style picker out?
+- **Agent: home-screen widget**, native build **121 / versionName 81** (`builds/Daylog-121.aab/.apk`, same signing
+  cert as 120, no .so files, backed up + tagged `native-121`). features.md ▸ Home-screen widget.
+- What's new w31 (widget, log from the notification + Sunday recap). APP_VERSION v262.
+Verified: 1557 unit tests × 4 timezones, every tools/check-*.mjs; agents checked onboarding at 360/412 px and the
+widget's web side at 412 px with a fake plugin. NOT verified: the widget on a real phone; the notification buttons
+on a real phone. **Order:** deploy web v262 first (or together), then upload 121 — otherwise widget taps wait in the
+native queue until the web side arrives.
+
 ## 2026-11-21 — v261 LIVE (tag web-v261): come-back nudges + smarter "Log my day"
 
 Deployed on Kishore's "deploy" 2026-11-21; deploy.sh confirmed the live URL serves v261 (app.js, sw.js, index.html agree).
