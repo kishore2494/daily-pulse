@@ -495,6 +495,71 @@
       }
     }
 
+    /* Play build 121: the home-screen widget's one-tap mood, drained at launch and on return */
+    {
+      const capSnap4 = window.Capacitor, eSnap4 = localStorage.getItem('dp.entries'), obSnap4 = localStorage.getItem('dp.onboarded');
+      const errSnap4 = localStorage.getItem('dp.errlog'), ob4 = document.getElementById('onboard'), obWas4 = ob4.classList.contains('on');
+      let queue = [];
+      const sent = [];
+      window.Capacitor = { Plugins: { WidgetBridge: {
+        update: async o => { sent.push(o); throw new Error('widget-refused'); },   // a refusal must not raise the crash sheet
+        consumeActions: async () => { const a = queue; queue = []; return { actions: a }; } } } };
+      try {
+        localStorage.setItem('dp.onboarded', '1'); ob4.classList.remove('on');
+        localStorage.removeItem('dp.errlog');
+        flushAutosave();
+        let n = Date.now(); if (todayStr(new Date(n - 10000)) !== todayStr(new Date(n))) { await sleep(11000); n = Date.now(); }
+        const D = todayStr();
+        const e = DB.entries(); delete e[D]; localStorage.setItem('dp.entries', JSON.stringify(e));
+        navigateTo('settings');
+        queue = [{ action: 'mood', mood: 9, at: n - 2000 }];
+        await drainWidgetActions();
+        ok('widget: a face tapped while the app was closed is saved when it opens', (DB.entry(D) || {}).mood === 9, DB.entry(D));
+        ok('…the app opens on the Log, on today', document.getElementById('s-today').classList.contains('on') && logDate === D);
+        ok('…the Log shows the mood just saved (no stale draft over it)', draft.mood === 9, draft.mood);
+        const mmh = document.querySelector('#s-today .mm-card .mm-head');
+        ok('…and the mood grid says the mood is saved, energy still to add', !!mmh && /Mood .+ saved/.test(mmh.textContent), mmh && mmh.textContent);
+        ok('…says so in a short toast', /Mood saved/.test(document.getElementById('toast').textContent), document.getElementById('toast').textContent);
+        ok('…and the queue is emptied, so a tap applies once', queue.length === 0);
+        ok('every open refreshes the widget', sent.length > 0 && sent[sent.length - 1].mood === 9 && sent[sent.length - 1].day === D, sent[sent.length - 1]);
+        await sleep(30);
+        ok('a refused widget update never raises the crash sheet', !/widget-refused/.test(localStorage.getItem('dp.errlog') || ''), localStorage.getItem('dp.errlog'));
+
+        // a return with nothing queued: no navigation, still a refresh
+        navigateTo('settings'); const k = sent.length;
+        await drainWidgetActions();
+        ok('…a return with no taps stays where it was and only refreshes the widget', document.getElementById('s-settings').classList.contains('on') && sent.length > k);
+
+        // an "open" tap (the widget's body) lands on the Log without saving anything
+        const before = JSON.stringify(DB.entries());
+        queue = [{ action: 'open', at: Date.now() }];
+        await drainWidgetActions();
+        ok('widget: tapping its body opens the Log and changes nothing', document.getElementById('s-today').classList.contains('on') && JSON.stringify(DB.entries()) === before);
+
+        // not before onboarding: a mood saved under the welcome screen would skip it for good
+        localStorage.removeItem('dp.onboarded'); ob4.classList.add('on');
+        const e2 = DB.entries(); delete e2[D]; localStorage.setItem('dp.entries', JSON.stringify(e2));
+        queue = [{ action: 'mood', mood: 3, at: Date.now() }];
+        await drainWidgetActions();
+        ok('widget: a tap during onboarding saves nothing, and is not kept for later', !DB.entry(D) && queue.length === 0, DB.entry(D));
+        localStorage.setItem('dp.onboarded', '1'); ob4.classList.remove('on');
+
+        // an older native build: a WidgetBridge with update() but no consumeActions
+        delete window.Capacitor.Plugins.WidgetBridge.consumeActions;
+        let threw = false; try { await drainWidgetActions(); } catch (x) { threw = true; }
+        ok('…an older native build without consumeActions is left alone', !threw);
+      } catch (err) {
+        fail++; R.push('FAIL the widget block threw: ' + (err && err.stack || err));
+      } finally {
+        window.Capacitor = capSnap4;
+        if (eSnap4 != null) localStorage.setItem('dp.entries', eSnap4); else localStorage.removeItem('dp.entries');
+        if (obSnap4 != null) localStorage.setItem('dp.onboarded', obSnap4); else localStorage.removeItem('dp.onboarded');
+        if (errSnap4 != null) localStorage.setItem('dp.errlog', errSnap4); else localStorage.removeItem('dp.errlog');
+        if (obWas4) ob4.classList.add('on'); else ob4.classList.remove('on');
+        navigateTo('today');
+      }
+    }
+
     // v253: "Push all to Sheet" sends every tab the Sheet has, Calendar events and articles included
     {
       const fSnap = window.fetch, setSnap = localStorage.getItem('dp.settings'), entSnap = localStorage.getItem('dp.entries'), sent = [];
