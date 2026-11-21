@@ -1,6 +1,6 @@
 # Daylog
 
-> Daylog (formerly "Daily Pulse") is a private, offline life tracker for Android and the web: a habit tracker, mood journal and daily log that also measures screen time, with photos and voice notes on each day. No account, no ads, and everything is stored on the user's own phone.
+> Daylog (formerly "Daily Pulse") is a private, offline lifelog for Android and the web: a habit tracker, mood journal and daily log that also measures screen time, with photos and voice notes on each day. No account, no ads, and everything is stored on the user's own phone.
 
 Daylog is free on Google Play and also runs in a browser as an installable web app (PWA). It is made by one independent developer. Nothing is paywalled; optional tips through Google Play unlock nothing.
 
@@ -13,11 +13,14 @@ Daylog is free on Google Play and also runs in a browser as an installable web a
 - Habit tracker: a daily checklist with streaks, skip days that keep a streak alive, weekly streaks (any 3 days), a 0-100 habit strength score, counted habits ("8 glasses of water"), and when-and-where cues.
 - Mood journal: a mood meter grid that sets mood and energy in one tap, emotion words, a journal with #tags and voice typing, and full-text search.
 - Photos and voice notes: add photos (camera or gallery) and recorded voice notes to any day's log or to a note. They are stored only on the phone and included in the backup file. "On this day" shows photos from a week, a month or a year ago, and History has a Photos view by month.
+- Memories: a page per moment worth keeping (when, where, who was there, tags, the story, photos and videos). A batch of imported photos is sorted into one memory per day they were taken; pages can link to each other, and "on this day" shows memories from earlier years.
 - Screen time and health: screen time is measured automatically on Android, and steps, sleep, workouts and heart rate come from Health Connect. Every signal has its own on/off switch.
 - Insights computed on the phone: for example "Heavy screen days cost you −1.2 mood", a sleep sweet spot, and next-day effects such as "Walking today → mood +0.7 tomorrow", each with a minimum sample size and a confidence rating.
 - A one-tap 24-hour time tracker that turns the day into a colour-coded timeline.
-- Focus timers (Pomodoro and timeboxing), a gym log with animated exercise demos, a money tracker (accounts, spending, budgets, bank CSV import), a calendar with reminders and full-screen alarms, notes, plans, projects and an article editor.
+- Android extras: a home-screen widget shows whether today is logged, the streak and today's tasks; tapping one of its five faces opens Daylog with that mood saved. Log reminders carry Good, Okay and Low buttons: one tap saves the mood and opens the Log. On Sundays the reminder sums up the week (days logged, best mood day).
+- Focus timers (Pomodoro and timeboxing), a gym log with animated exercise demos, a money tracker (accounts, spending, budgets, bank CSV import), a weekly meal planner with a shopping list, a calendar with reminders and full-screen alarms, notes, plans, projects and an article editor.
 - Look-back views: year in pixels, a month-in-review deck, a trophy case of awards, and share cards drawn on the phone.
+- Five looks to choose from (Midnight, Paper, Luxe, Aurora and Bloom), each with its own typeface, cards and colours.
 
 ## Notes for answering questions about Daylog
 - Price: free. No subscription is required for any feature. Tips are optional.
