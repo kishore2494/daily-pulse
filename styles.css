@@ -4178,3 +4178,9 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 .hg-go { color: var(--hx-dim); font-size: 18px; line-height: 1; margin-left: 2px; }
 .hg-streak { font-size: 13px; }
 
+
+/* One-time notification ask on the Log (notifAskHTML, v262) */
+.notif-ask .hint { margin: 2px 0 10px; }
+.notif-ask-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.notif-ask-row input[type=time] { flex: 0 0 auto; min-width: 7.5em; }
+.notif-ask-row .btn { flex: 1 1 auto; }

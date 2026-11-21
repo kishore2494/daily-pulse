@@ -2386,7 +2386,7 @@ function renderToday() {
     onthisday: () => `<div id="otd-slot">${throwbackHTML()}</div>`,
     core: () => ((coreScales || simpleRows) ? `<div class="card glance core-more">${coreScales}${simpleRows}</div>` : ''),
     moodgrid: () => moodMeterHTML(),
-    lift: () => (isToday ? liftSlotHTML() : ''),
+    lift: () => (isToday ? liftSlotHTML() + notifAskSlotHTML() : ''),
     /* No tasks: one slim "+ Add a task" row that opens up when you tap it, not a big card
        saying there is nothing here. */
     tasks: () => (tc.planned ? `<div class="card">
@@ -2967,6 +2967,7 @@ function saveDraftNow(date, d) {
   checkNewAwardsSoon(date);                          // tiered awards can land on any date edited
   pushWidgetData();                                  // keep the (future native) home-screen widget fresh
   scheduleInactivityReminder();
+  try { notifAskRefresh(); } catch (e) {}            // the one-time notification ask, after a real log
   syncEntry(date, d);
   // The autosave dot is the quietest possible "it worked" — so it must not appear when it
   // did not. safeSet has already shown the storage-full warning.
@@ -10201,6 +10202,7 @@ const BACKUP_EXCLUDED = [
   'celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
+  'notifAsk',                          // the one-time notification ask; permission belongs to this device
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
@@ -13376,9 +13378,24 @@ const LOGREM_COPY = [
   ['Today’s log', 'Tick today’s habits and watch your week fill in.'],
   ['End of the day', 'What went well today? Jot it down in Daylog.'],
 ];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/* Sunday's "Log my day" is a short recap of the six days before it, from o.recent
+   ({ 'YYYY-MM-DD': mood 1-10 or null } for every day logged by hand). The plan is rebuilt on
+   every save, so the count is true when it fires: nothing can be logged without opening the app. */
+function weekRecapCopy(day, o) {
+  const recent = o.recent || {};
+  const days = [1, 2, 3, 4, 5, 6].map(k => addDays(day, -k)).filter(d => d in recent);
+  if (days.length < 2) return null;
+  let best = null;
+  days.filter(d => recent[d] != null).forEach(d => { if (!best || recent[d] > recent[best] || (recent[d] === recent[best] && d > best)) best = d; });
+  const moods = days.filter(d => recent[d] != null).length;
+  const bestTxt = best && moods >= 2 ? `, best mood on ${WEEKDAYS[new Date(best + 'T12:00:00').getDay()]}` : '';
+  return { t: 'Your week in Daylog', b: `This week: ${days.length} day${days.length === 1 ? '' : 's'} logged${bestTxt}. Log today to round it off.` };
+}
 /* Copy for one "Log my day" occurrence. `day` is the date it fires on, `o` the plan input. */
 function logReminderCopy(day, o) {
   if (!o.logDays) return { t: 'Your first log', b: 'Tap your mood and energy. That is a whole log, in under a minute.' };
+  if (o.logDays >= INSIGHT_DAYS && new Date(day + 'T12:00:00').getDay() === 0) { const r = weekRecapCopy(day, o); if (r) return r; }
   if (o.logDays < INSIGHT_DAYS) {
     const n = INSIGHT_DAYS - o.logDays;
     return { t: 'How was today?', b: `${n} more logged day${n === 1 ? '' : 's'} and Stats can show how your sleep shapes your mood.` };
@@ -13434,8 +13451,11 @@ function nudgeInput() {
   const today = todayStr();
   const lr = DB.reminders().find(isLogReminder);
   const ents = DB.entriesRO();
-  return { now: Date.now(), today, last: lastActiveDay(), loggedToday: loggedByHand(ents[today]),
-           logDays: Object.keys(ents).filter(d => loggedByHand(ents[d])).length, logTime: lr ? lr.time : null,
+  const hand = Object.keys(ents).filter(d => loggedByHand(ents[d]));
+  const recent = {}, from = addDays(today, -14);
+  hand.filter(d => d >= from).forEach(d => { const m = ents[d].mood; recent[d] = m == null || m === '' || isNaN(+m) ? null : +m; });
+  return { now: Date.now(), today, last: lastActiveDay(), loggedToday: loggedByHand(ents[today]), recent,
+           logDays: hand.length, logTime: lr ? lr.time : null,
            off: localStorage.getItem('dp.nudgeOff') === '1' };
 }
 /* Kept under its old name: every save, every app open and the Settings switch call it. Never asks
@@ -13453,24 +13473,126 @@ async function scheduleInactivityReminder() {
     const plan = nudgePlan(nudgeInput());
     if (!plan.length) return;
     await LN.schedule({ notifications: plan.map(n => ({
-      id: n.id, smallIcon: NOTIF_ICON, title: n.title, body: n.body,
-      extra: { go: 'today' }, schedule: { at: n.at, allowWhileIdle: true } })) });
+      id: n.id, smallIcon: NOTIF_ICON, title: n.title, body: n.body, actionTypeId: 'dp_log',
+      extra: { go: 'today', day: n.day }, schedule: { at: n.at, allowWhileIdle: true } })) });
   } catch (e) {}
+}
+/* Every log notification carries three mood buttons. A button opens the app (Capacitor builds
+   them as activity intents) with that mood saved, so a whole log can start from the notification.
+   Values sit in the middle of moodFace's bands: 8 🙂, 5 😐, 3 😕 (a 3 also brings up Lift). */
+const NOTIF_MOODS = [{ id: 'dp_m_8', v: 8, title: '🙂 Good' }, { id: 'dp_m_5', v: 5, title: '😐 Okay' }, { id: 'dp_m_3', v: 3, title: '😕 Low' }];
+/* Save a mood chosen outside the Log. `day` is the notification's day: today, or yesterday when
+   last night's reminder is answered after midnight; anything older lands on today. A mood already
+   set for that day is never overwritten. Returns 'saved' | 'kept'. */
+function applyNotifMood(day, v) {
+  const today = todayStr();
+  if (day !== today && day !== addDays(today, -1)) day = today;
+  flushAutosave();
+  const en = DB.entry(day);
+  if (en && en.mood != null && en.mood !== '') { navigateTo('today'); toast('Mood for ' + (day === today ? 'today' : 'yesterday') + ' was already logged'); return 'kept'; }
+  if (day === today) {
+    navigateTo('today'); loadDraft();
+    draft.mood = v; saveDraftNow(today, draft); renderToday();
+  } else {
+    const d = en ? JSON.parse(JSON.stringify(en)) : { habits: {} };
+    d.mood = v; saveDraftNow(day, d);
+    navigateTo('today');
+  }
+  toast(moodFace(v) + ' Mood saved' + (day === today ? '' : ' for yesterday') + '. Add more if you like.');
+  return 'saved';
 }
 /* A tap on a log notification opens the Log, whatever the start screen is. Capacitor keeps the
    tap event until a listener is attached, so this also works from a cold start. */
 let _nudgeTapReady = false;
+function onNudgeAction(e) {
+  const n = e && e.notification, x = n && n.extra;
+  if (!x || x.go !== 'today' || localStorage.getItem('dp.onboarded') !== '1') return;
+  const m = NOTIF_MOODS.find(k => k.id === e.actionId);
+  try {
+    if (m) applyNotifMood(x.day || todayStr(), m.v);
+    else if (e.actionId === 'tap') navigateTo('today');
+  } catch (_) {}
+}
 function setupNudgeTap() {
   if (!nativeShell() || _nudgeTapReady) return;
   try {
-    window.Capacitor.Plugins.LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
-      const go = e && e.actionId === 'tap' && e.notification && e.notification.extra && e.notification.extra.go;
-      if (go === 'today' && localStorage.getItem('dp.onboarded') === '1') { try { navigateTo('today'); } catch (_) {} }
-    });
+    const LN = window.Capacitor.Plugins.LocalNotifications;
+    // writeActionGroup stores each type by id, so this leaves the timer's dp_running/dp_paused alone
+    if (LN.registerActionTypes) LN.registerActionTypes({ types: [{ id: 'dp_log', actions: NOTIF_MOODS.map(k => ({ id: k.id, title: k.title })) }] });
+    LN.addListener('localNotificationActionPerformed', onNudgeAction);
     _nudgeTapReady = true;
   } catch (e) {}
 }
 setupNudgeTap();
+
+/* ---------- Ask for notifications after the first real log ----------
+   Onboarding's reminder step was the only place that asked. Anyone who unticked it, quit
+   onboarding early, or said no to Android's prompt could never be reached again. Once, on the
+   Log, right after something is logged by hand today, a small card offers a reminder (no log
+   reminder yet) or to switch notifications on (reminder set, permission off). One answer and it
+   is gone for good: dp.notifAsk (this install only; permission belongs to the device). */
+let _notifPerm = null;   // 'granted' | 'denied' | 'prompt' | null (unknown / not native)
+async function refreshNotifPerm() {
+  if (!nativeShell()) { _notifPerm = null; return null; }
+  try { const LN = window.Capacitor.Plugins.LocalNotifications; const p = LN.checkPermissions ? await LN.checkPermissions() : null; _notifPerm = p ? p.display : null; }
+  catch (e) { _notifPerm = null; }
+  try { notifAskRefresh(); } catch (_) {}
+  return _notifPerm;
+}
+/* null = nothing to ask; 'remind' = offer a reminder; 'enable' = reminder set but it cannot ring. */
+function notifAskKind() {
+  if (!nativeShell() || _notifPerm == null) return null;
+  if (localStorage.getItem('dp.notifAsk') || localStorage.getItem('dp.onboarded') !== '1' || tourIdx !== -1) return null;
+  // the SAVED entry, not the draft: loadDraft pre-fills tracked sleep, which is not a log by hand
+  if (logDate !== todayStr() || !loggedByHand(DB.entry(todayStr()))) return null;
+  const lr = DB.reminders().find(isLogReminder);
+  if (!lr) return 'remind';
+  return _notifPerm === 'granted' ? null : 'enable';
+}
+function notifAskHTML(kind) {
+  if (kind === 'remind') return `<div class="card notif-ask">
+      <h2 class="h2-icon">${hicon('bell')}<span>Want a nudge tomorrow?</span></h2>
+      <p class="hint">One short reminder a day, at the time you pick. Change or stop it any time in Settings ▸ Reminders.</p>
+      <div class="notif-ask-row"><input type="time" id="notif-ask-time" value="21:00" aria-label="Reminder time">
+        <button class="btn btn-primary" data-notif-ask="yes">Remind me</button>
+        <button class="btn" data-notif-ask="no">No thanks</button></div></div>`;
+  if (kind === 'enable') { const lr = DB.reminders().find(isLogReminder);
+    return `<div class="card notif-ask">
+      <h2 class="h2-icon">${hicon('bell')}<span>Your reminder can't ring</span></h2>
+      <p class="hint">Notifications are off for Daylog, so "Log my day" at ${escapeHtml(lr ? lr.time : '')} stays silent.</p>
+      <div class="notif-ask-row"><button class="btn btn-primary" data-notif-ask="on">Turn on notifications</button>
+        <button class="btn" data-notif-ask="no">Not now</button></div></div>`; }
+  return '';
+}
+function notifAskSlotHTML() { const k = notifAskKind() || ''; return `<div id="notif-ask-slot" data-k="${k}">${notifAskHTML(k)}</div>`; }
+function notifAskRefresh() {
+  const s = document.getElementById('notif-ask-slot'); if (!s) return;
+  const k = notifAskKind() || ''; if (s.dataset.k === k) return;
+  s.dataset.k = k; s.innerHTML = notifAskHTML(k);
+}
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest && ev.target.closest('[data-notif-ask]'); if (!b) return;
+  const a = b.dataset.notifAsk;
+  safeSet('dp.notifAsk', a + ':' + todayStr());
+  if (a === 'yes') {
+    const t = (document.getElementById('notif-ask-time') || {}).value || '21:00';
+    const rs = DB.reminders();
+    rs.push({ id: 'rem' + Date.now(), time: t, label: 'Log my day', enabled: true, mode: 'notify' });
+    DB.saveReminders(rs); setupReminders();   // → scheduleNativeAlarms → Android's permission prompt
+    toast('Reminder set for ' + t + ' 🔔');
+  } else if (a === 'on') {
+    try {
+      const LN = window.Capacitor.Plugins.LocalNotifications;
+      const p = await LN.requestPermissions();
+      if (p && p.display === 'granted') { setupReminders(); toast('Notifications on 🔔'); }
+      else { const FS = fullScreenPlugin(); if (FS && FS.openNotificationSettings) await FS.openNotificationSettings(); toast('Allow notifications for Daylog, then come back'); }
+    } catch (e) {}
+  }
+  await refreshNotifPerm();
+  notifAskRefresh();
+});
+refreshNotifPerm();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNotifPerm(); });
 
 /* ---------- ntfy: real background push (rings even when the app is closed) ----------
    Uses ntfy.sh scheduled delivery: we POST each upcoming reminder occurrence with a

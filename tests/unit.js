@@ -4461,7 +4461,7 @@
     const week = [0, 1, 2, 3, 4].map(d => logReminderCopy(addDays(T, d), { logDays: 20 }).b);
     ok('…after that the copy changes from day to day', new Set(week).size === 5, JSON.stringify(week));
     ok('no notification uses loss framing', noLoss(fresh) && noLoss(withRem) && noLoss(settled));
-    ok('every notification opens the Log', /extra: \{ go: 'today' \}/.test(scheduleInactivityReminder.toString()) && /navigateTo\('today'\)/.test(setupNudgeTap.toString()));
+    ok('every notification opens the Log', /extra: \{ go: 'today'/.test(scheduleInactivityReminder.toString()) && /navigateTo\('today'\)/.test(onNudgeAction.toString()));
     ok('scheduling never asks for permission', !/requestPermissions/.test(scheduleInactivityReminder.toString()));
 
     ok('isLogReminder: the onboarding reminder', isLogReminder({ id: 'r', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' }));
@@ -4479,6 +4479,108 @@
       const inp = nudgeInput();
       ok('nudgeInput reads the reminder time and the off switch', inp.logTime === '21:30' && inp.off === true && inp.today === T);
     } finally { kSnap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); }); }
+  })();
+
+
+  // ---- v262: Sunday recap, mood buttons on log notifications, the one-time notification ask ----
+  (() => {
+    const T = todayStr();
+    // find the next Sunday on/after T + 1 so it is in the future
+    let sun = addDays(T, 1); while (new Date(sun + 'T12:00:00').getDay() !== 0) sun = addDays(sun, 1);
+    const recent = {}; recent[addDays(sun, -1)] = 6; recent[addDays(sun, -3)] = 9; recent[addDays(sun, -5)] = 4; recent[addDays(sun, -6)] = null;
+    const rc = logReminderCopy(sun, { logDays: 20, recent });
+    ok('Sunday\'s Log my day is a week recap', rc.t === 'Your week in Daylog' && /^This week: 4 days logged, best mood on /.test(rc.b), JSON.stringify(rc));
+    ok('…naming the best-mood weekday', rc.b.includes(WEEKDAYS[new Date(addDays(sun, -3) + 'T12:00:00').getDay()]));
+    ok('…with no loss framing', !/streak|lose|miss|behind/i.test(rc.b));
+    ok('a quiet week (under 2 logged days) gets the normal copy', logReminderCopy(sun, { logDays: 20, recent: { [addDays(sun, -2)]: 7 } }).t !== 'Your week in Daylog');
+    ok('early days keep the count-to-insights line on Sunday too', /more logged day/.test(logReminderCopy(sun, { logDays: 2, recent }).b));
+    const mon = addDays(sun, 1);
+    ok('other days are not a recap', logReminderCopy(mon, { logDays: 20, recent }).t !== 'Your week in Daylog');
+    const plan = nudgePlan({ now: new Date(T + 'T10:00:00').getTime(), today: T, last: T, loggedToday: false, logDays: 20, logTime: '21:00', off: false, recent });
+    ok('nudgeInput carries recent hand-logged moods', (() => {
+      const snapE = localStorage.getItem('dp.entries');
+      try {
+        localStorage.setItem('dp.entries', JSON.stringify({ [addDays(T, -1)]: { mood: 7 }, [addDays(T, -2)]: { journal: 'x' }, [addDays(T, -3)]: { timeSummary: { a: 1 } }, [addDays(T, -30)]: { mood: 2 } }));
+        const r = nudgeInput().recent;
+        return r[addDays(T, -1)] === 7 && r[addDays(T, -2)] === null && !(addDays(T, -3) in r) && !(addDays(T, -30) in r);
+      } finally { if (snapE != null) localStorage.setItem('dp.entries', snapE); else localStorage.removeItem('dp.entries'); }
+    })());
+    ok('the plan still has one notification a day with the recap in it', new Set(plan.map(n => n.day)).size === plan.length);
+
+    // mood buttons
+    const src = scheduleInactivityReminder.toString();
+    ok('every log notification carries the mood buttons and its day', /actionTypeId: 'dp_log'/.test(src) && /day: n\.day/.test(src));
+    ok('three moods, mid-band values', NOTIF_MOODS.map(m => m.v).join() === '8,5,3' && NOTIF_MOODS.every(m => moodFace(m.v)));
+    ok('the action type is registered without touching the timer\'s types', (() => {
+      const cs = window.Capacitor, rs = _nudgeTapReady; let got = null, listened = false;
+      try {
+        window.Capacitor = { Plugins: { LocalNotifications: { registerActionTypes: (o) => { got = o; }, addListener: () => { listened = true; } } } };
+        _nudgeTapReady = false; setupNudgeTap();
+        return !!got && got.types.map(t => t.id).join() === 'dp_log' && got.types[0].actions.length === 3 && listened;
+      } finally { window.Capacitor = cs; _nudgeTapReady = rs; }
+    })());
+    const keys = ['dp.entries', 'dp.onboarded'];
+    const snap = keys.map(k => [k, localStorage.getItem(k)]);
+    const tSnap = window.toast; let toasted = '';
+    window.toast = (m) => { toasted = m; };
+    try {
+      localStorage.setItem('dp.onboarded', '1');
+      localStorage.setItem('dp.entries', JSON.stringify({}));
+      onNudgeAction({ actionId: 'dp_m_8', notification: { extra: { go: 'today', day: T } } });
+      ok('a mood button saves that mood for today and opens the Log', (DB.entry(T) || {}).mood === 8 && document.getElementById('s-today').classList.contains('on'), JSON.stringify(DB.entry(T)));
+      ok('…and says so', /Mood saved/.test(toasted));
+      onNudgeAction({ actionId: 'dp_m_3', notification: { extra: { go: 'today', day: T } } });
+      ok('a second tap never overwrites a mood already set', DB.entry(T).mood === 8 && /already logged/.test(toasted));
+      const Y = addDays(T, -1);
+      onNudgeAction({ actionId: 'dp_m_5', notification: { extra: { go: 'today', day: Y } } });
+      ok('last night\'s reminder answered after midnight lands on yesterday', (DB.entry(Y) || {}).mood === 5 && /yesterday/.test(toasted));
+      localStorage.setItem('dp.entries', JSON.stringify({}));
+      onNudgeAction({ actionId: 'dp_m_3', notification: { extra: { go: 'today', day: addDays(T, -9) } } });
+      ok('an old notification\'s mood lands on today, not 9 days ago', (DB.entry(T) || {}).mood === 3 && !DB.entry(addDays(T, -9)));
+      localStorage.setItem('dp.entries', JSON.stringify({}));
+      onNudgeAction({ actionId: 'dp_m_8', notification: { extra: { go: 'elsewhere', day: T } } });
+      onNudgeAction({ actionId: 'dp_pause', notification: { id: 770 } });
+      ok('other notifications\' actions are ignored here', !DB.entry(T));
+    } finally {
+      window.toast = tSnap;
+      snap.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+    }
+
+    // the one-time notification ask
+    const capSnap = window.Capacitor, permSnap = _notifPerm;
+    const ks = ['dp.entries', 'dp.reminders', 'dp.notifAsk', 'dp.onboarded'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: { checkPermissions: () => Promise.resolve({ display: 'prompt' }) } } };
+      localStorage.setItem('dp.onboarded', '1'); localStorage.removeItem('dp.notifAsk');
+      localStorage.setItem('dp.reminders', '[]'); localStorage.setItem('dp.entries', '{}');
+      navigateTo('today'); _notifPerm = 'prompt';
+      ok('no ask before anything is logged today', notifAskKind() === null);
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { timeSummary: { s: 1 } } }));
+      ok('…nor for an auto-filled time summary', notifAskKind() === null);
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 7 } }));
+      ok('after a real log with no reminder: offer one', notifAskKind() === 'remind');
+      renderToday();
+      const slot = document.getElementById('notif-ask-slot');
+      ok('the card shows on today\'s Log', !!slot && /Want a nudge tomorrow/.test(slot.textContent) && !!slot.querySelector('#notif-ask-time'));
+      localStorage.setItem('dp.reminders', JSON.stringify([{ id: 'r', time: '21:00', label: 'Log my day', enabled: true, mode: 'notify' }]));
+      _notifPerm = 'denied';
+      ok('reminder set but notifications off: offer to switch them on', notifAskKind() === 'enable' && /can't ring/.test(notifAskHTML('enable')) && /21:00/.test(notifAskHTML('enable')));
+      _notifPerm = 'granted';
+      ok('reminder set and allowed: nothing to ask', notifAskKind() === null);
+      _notifPerm = 'prompt'; localStorage.setItem('dp.reminders', '[]');
+      renderToday();
+      const no = document.querySelector('#notif-ask-slot [data-notif-ask="no"]');
+      if (no) no.click();
+      ok('one answer and it never comes back', /^no:/.test(localStorage.getItem('dp.notifAsk') || '') && notifAskKind() === null);
+      ok('the ask is install-local, not backed up', BACKUP_EXCLUDED.includes('notifAsk') && !BACKUP_KEYS.includes('notifAsk'));
+      window.Capacitor = undefined; localStorage.removeItem('dp.notifAsk');
+      ok('the web app (no native shell) never shows it', notifAskKind() === null);
+    } finally {
+      window.Capacitor = capSnap; _notifPerm = permSnap;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      navigateTo('today');
+    }
   })();
 
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
