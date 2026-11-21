@@ -1,3 +1,19 @@
+## 2026-11-22 (00:05) — review of v260..v264: 9 findings, NOT fixed yet (fix next session)
+
+Helper review (read-only; scratch repros in the session scratchpad). Ranked:
+1. Notification mood button REPLAYS on a later cold start (launch intent re-delivered; `onNudgeAction` ~13659):
+   stray toast, or an old mood saved to today. Fix: remember handled `notifId|extra.day|actionId`. PLAUSIBLE.
+2. Deleted time summary comes back from a stale Log draft (`saveDraftNow` ~2986 copies ENTRY_AUTO only when the
+   stored entry has them). Fix: copy-or-delete each ENTRY_AUTO key + autoAt from the stored entry. CONFIRMED.
+3. Ask card toasts "Reminder set" when permission is denied, and spends `dp.notifAsk`. Re-check after the request. CONFIRMED.
+4. Sample data counts as logged days in `nudgeInput`/`lastActiveDay` (recap from demo rows). Filter `.sample`. CONFIRMED.
+5. Today's "Log my day" dropped when rescheduled in the minute before (`at <= now + 60000`, ~13579). Use `<= now`. CONFIRMED.
+6. Tip ask never appears on build 122+ (rate card returns early, `asks` never grows). Settle on combined budget. CONFIRMED.
+7. Two synced "Log my day" reminders: only one rings. Exclude only the one nudgeInput picked, by id. PLAUSIBLE.
+8. Health Connect sleep fill makes `loggedByHand` true for Sheet users. Persist fill only if already hand-logged. PLAUSIBLE.
+9. Time re-sum slow with years of data (3 y ≈ 7–9 s on a Mac); phones in different time zones overwrite summaries.
+Clean: planner DST/midnight, ids, widget taps, onboarding exits, recap weekdays, rating budget math.
+
 ## 2026-11-22 (00:00) — merged to main, NOT deployed: time-tracker fixes + website refresh
 
 - `time-fixes-2` (helper, reviewed): midnight time boxes are "now" (`tbLive`; last night's block leads Today as
