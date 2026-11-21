@@ -17,8 +17,12 @@ function safeParse(raw, fb) { if (raw == null) return fb; try { const v = JSON.p
    that edits and saves keeps using DB.entries() / DB.timelog(), which return a fresh copy. */
 const _roCache = new Map();
 /* Days whose time blocks changed since the last re-sum (see timelogChangedDays). Up here, before
-   anything can save the time log, so no early save meets it uninitialised. */
+   anything can save the time log, so no early save meets it uninitialised. Kept on disk too
+   (dp.tlDirty) until a re-sum takes them: killed in the 1.5 s before the re-sum, the days a delete
+   emptied kept their old summary on every phone (a phone that never held the block has no change
+   in its log to re-sum on a pull). */
 const _tlDirty = new Set();
+function tlDirtyKept() { const v = safeParse(localStorage.getItem('dp.tlDirty'), []); return Array.isArray(v) ? v.map(String) : []; }
 function roParse(key, fb) {
   const raw = localStorage.getItem(key), c = _roCache.get(key);
   if (c && c.raw === raw) return c.v;
@@ -574,7 +578,8 @@ const DB = {
   saveTimelog(t) {
     const before = roParse('dp.timelog', []);
     const ok = safeSet('dp.timelog', JSON.stringify(t));
-    timelogChangedDays(before, t).forEach(d => _tlDirty.add(d));   // a day emptied by a delete or a move gets re-summed too
+    const days = timelogChangedDays(before, t);   // a day emptied by a delete or a move gets re-summed too
+    if (days.size) { days.forEach(d => _tlDirty.add(d)); safeSet('dp.tlDirty', JSON.stringify([...new Set([...tlDirtyKept(), ..._tlDirty])].sort())); }
     pushState(); syncTimelog(); return ok;
   },
   timeacts() { return safeParse(localStorage.getItem('dp.timeacts'), []); },   // custom activities
@@ -4261,7 +4266,7 @@ document.addEventListener('click', (ev) => {
 let timelogSyncTimer;
 function syncTimelog() { clearTimeout(timelogSyncTimer); timelogSyncTimer = setTimeout(syncTimelogNow, 1500); }
 function syncTimelogNow() {
-  const url = DB.settings().syncUrl; if (!url) { _tlDirty.clear(); return; }   // no Sheet: summaries are not kept
+  const url = DB.settings().syncUrl; if (!url) { _tlDirty.clear(); localStorage.removeItem('dp.tlDirty'); return; }   // no Sheet: summaries are not kept
   const items = [];
   const touchedDates = new Set();
   DB.timelog().forEach(s => {
@@ -4283,8 +4288,10 @@ function syncTimelogNow() {
   items.sort((x, y) => x.date === y.date ? (x.start < y.start ? -1 : 1) : (x.date < y.date ? -1 : 1));
   fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ type: 'timelog', items }) }).catch(() => {});
-  _tlDirty.forEach(d => touchedDates.add(d)); _tlDirty.clear();   // days left with no block at all
+  tlDirtyKept().forEach(d => touchedDates.add(d));                  // days left with no block at all,
+  _tlDirty.forEach(d => touchedDates.add(d)); _tlDirty.clear();   // from before a kill or from now
   updateTimeSummaries(touchedDates);
+  localStorage.removeItem('dp.tlDirty');
 }
 /* Every calendar day a block covers (a running one: up to now). */
 function segDays(s, out) {
@@ -10345,6 +10352,7 @@ const BACKUP_EXCLUDED = [
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
   'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel', 'gymAt',
+  'tlDirty',                           // days whose time summary waits for a re-sum on this install
   'sheetScript',                       // which script version this device's sync link answered with
   'rateAsk', 'backupNudge', 'awardsInit',
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
@@ -18427,6 +18435,7 @@ document.getElementById('nav').classList.add('ready');   // reveal the bar now t
 const _topbar = document.querySelector('.topbar');
 addEventListener('scroll', () => { if (_topbar) _topbar.classList.toggle('scrolled', scrollY > 4); }, { passive: true });
 refreshStreak();
+if (localStorage.getItem('dp.tlDirty')) syncTimelog();   // days a time-log change left un-summed when the app was killed
 // A delete-everything whose photo database did not finish going is finished first.
 if (localStorage.getItem('dp.mediaWipe') === '1' && mediaSupported()) {
   Promise.race([mediaWipe().then(ok => { if (ok) localStorage.removeItem('dp.mediaWipe'); }), new Promise(r => setTimeout(r, 5000))])

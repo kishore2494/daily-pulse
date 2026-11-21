@@ -2864,7 +2864,7 @@
 
   // ---- two phones: what the sync fuzzer found (tests/sync-fuzz.js, 2026-11-22) ----
   (function () {
-    const PK = ['dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.touched', 'dp.gym', 'dp.gymAt'];
+    const PK = ['dp.entries', 'dp.timelog', 'dp.timelogDel', 'dp.touched', 'dp.gym', 'dp.gymAt', 'dp.tlDirty'];
     const keys = [...PK, 'dp.settings', 'dp.listAt', 'dp.listDel'];
     const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
     const fSnap = window.fetch, sent = [];
@@ -2908,6 +2908,24 @@
       use('B'); pull(sheetA2);
       ok('gym: an un-tick pulled from the other phone lowers the count', day().workoutsDone === 1 && !/e1/.test(day().workoutDetail || ''), day());
 
+      // summary-stale-after-kill: the days a delete emptied survive the app being killed
+      const blk = { id: 'tk1', act: 'work', start: d0 + 9 * H, end: d0 + 10 * H, upd: now - 3 * H };
+      start(typed, []);
+      use('A'); DB.saveTimelog([blk]); clearTimeout(timelogSyncTimer); syncTimelogNow(); const sum = day().timeSummary;
+      ok('(A tracked an hour: the day has a summary)', !!sum, day());
+      tick(); timelogForget('tk1'); DB.saveTimelog([]);
+      clearTimeout(timelogSyncTimer); _tlDirty.clear();   // killed before the debounced re-sum: memory is gone
+      ok('kill: the day the delete emptied is remembered on disk', JSON.parse(localStorage.getItem('dp.tlDirty') || '[]').includes(D), localStorage.getItem('dp.tlDirty'));
+      const sheetK = push();
+      use('B'); pull(sheetK);
+      ok('(B never held the block: its log did not change, so it did not re-sum the day)', day().timeSummary === sum && !DB.timelog().length, day());
+      use('A'); syncTimelogNow();   // the next open (or the next re-sum)
+      ok('kill: the next re-sum drops the emptied day\'s summary, stamped', !('timeSummary' in day()) && +(day().autoAt || {}).timeSummary > 0, day());
+      ok('…and forgets the dirty days once summed', localStorage.getItem('dp.tlDirty') == null, localStorage.getItem('dp.tlDirty'));
+      const sheetK2 = push();
+      use('B'); pull(sheetK2);
+      ok('…and the other phone drops the summary too', !('timeSummary' in day()) && day().mood === 3, day());
+      ok('the dirty days are install state, not backed up', BACKUP_EXCLUDED.includes('tlDirty') && !BACKUP_KEYS.includes('tlDirty'));
     } finally {
       window.fetch = fSnap; window.toast = tSnap; clearTimeout(pushTimer); _pushPending = null; clearTimeout(timelogSyncTimer); _tlDirty.clear();
       keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });

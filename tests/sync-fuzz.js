@@ -95,12 +95,6 @@
        lacks from the older copy, but stamps the merged day with the NEWER updatedAt, so that old
        value now beats a later edit on the third phone. */
     'day-lww-gap-fill': { match: f => f.inv === 'no-loss' && /^field:/.test(f.key || '') && !f.clob && f.gap && f.seen },
-    /* A time-log save re-sums the days it touched 1.5 s later (syncTimelog → syncTimelogNow), and
-       the days a delete emptied are only remembered in memory (_tlDirty). Killed in between, the
-       emptied day keeps its old summary: the next open re-sums only days that still have a
-       block, and a phone that never held the block sees no change in its log on the pull, so it
-       does not re-sum the day either. pagehide flushes the push, not this. */
-    'summary-stale-after-kill': { match: f => f.inv === 'derived' && /^sum:/.test(f.key || '') && !!f.afterKill },
   };
 
   /* ---------------- deterministic clock ---------------- */
@@ -141,7 +135,7 @@
   let base = null;
   function fresh() {
     const o = Object.assign({}, base);
-    ['dp.touched', 'dp.listAt', 'dp.listDel', 'dp.timelogDel', 'dp.timelog', 'dp.entries', 'dp.gym', 'dp.gymAt'].concat(STORES.map(s => 'dp.' + s)).forEach(k => delete o[k]);
+    ['dp.touched', 'dp.listAt', 'dp.listDel', 'dp.timelogDel', 'dp.timelog', 'dp.entries', 'dp.gym', 'dp.gymAt', 'dp.tlDirty'].concat(STORES.map(s => 'dp.' + s)).forEach(k => delete o[k]);
     const st = JSON.parse(o['dp.settings'] || '{}'); st.syncUrl = 'https://sheet.invalid/exec'; o['dp.settings'] = JSON.stringify(st);
     return o;
   }
@@ -248,8 +242,8 @@
   }
   function timeSaved(op) {
     // the debounced syncTimelogNow (DB.saveTimelog → syncTimelog, 1.5 s) — unless the app is
-    // killed first, which loses _tlDirty (memory) and the re-sum; the next open re-sums days
-    // that still have a block (visibilitychange → syncTimelog)
+    // killed first, which loses _tlDirty (memory) and the re-sum but not dp.tlDirty (disk); the
+    // next open re-sums days that still have a block and the days kept on disk
     if (op.r[3] < 0.08) { _tlDirty.forEach(d => killedDays.add(d)); _tlDirty.clear(); phones[cur].killed = true; return ' (killed before the re-sum)'; }
     syncTimelogNow(); return '';
   }
