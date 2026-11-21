@@ -848,5 +848,38 @@
       if (eSnap != null) localStorage.setItem('dp.events', eSnap); else localStorage.removeItem('dp.events');
     }
   }
+
+  /* ---------- review #8: Health Connect's sleep fill is not a log by hand ----------
+     syncHealth persisted the sleep it read into any entry that existed for today. A day holding
+     only auto-filled fields (a time summary, e.g. pulled from the Sheet) then counted as logged
+     by hand: the evening "Log my day" was skipped and the asks fired. */
+  {
+    const capSnap = window.Capacitor, logSnap = logDate;
+    const ks = ['dp.entries', 'dp.health', 'dp.settings', 'dp.timelog'];
+    const sn = ks.map(k => [k, localStorage.getItem(k)]);
+    const LN = { checkPermissions: () => Promise.resolve({ display: 'denied' }), cancel: () => Promise.resolve(), schedule: () => Promise.resolve() };
+    const HC = { today: () => Promise.resolve({ sleepMinutes: 450, steps: 3000 }) };
+    try {
+      window.Capacitor = { Plugins: { LocalNotifications: LN, HealthConnect: HC } };
+      const st = DB.settings(); st.autoTrack = Object.assign({}, st.autoTrack || {}, { on: true, sleep: true, steps: true }); DB.saveSettings(st);
+      localStorage.setItem('dp.timelog', '[]'); localStorage.setItem('dp.health', '{}');
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { habits: {}, timeSummary: '💼 Work 1h 00m', autoAt: { timeSummary: Date.now() - 1000 } } }));
+      logDate = T; loadDraft();
+      ok('(today holds only an auto-filled time summary)', !loggedByHand(DB.entry(T)));
+      await syncHealth({ silent: true });
+      ok('review #8: the sleep fill shows in the Log draft', +draft.sleepHours === 7.5, draft.sleepHours);
+      ok('review #8: …but is not saved into a day nobody logged by hand, so it stays unlogged',
+         !loggedByHand(DB.entry(T)) && !('sleepHours' in (DB.entry(T) || {})), DB.entry(T));
+      localStorage.setItem('dp.entries', JSON.stringify({ [T]: { mood: 6, habits: {}, updatedAt: new Date(Date.now() - 5000).toISOString() } }));
+      loadDraft(); await syncHealth({ silent: true });
+      ok('review #8: a day already logged by hand still gets its sleep filled', +(DB.entry(T) || {}).sleepHours === 7.5 && DB.entry(T).mood === 6, DB.entry(T));
+    } catch (e) {
+      fail++; R.push('FAIL the health-fill block threw: ' + (e && e.stack || e));
+    } finally {
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      sn.forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); });
+      logDate = logSnap; loadDraft();
+    }
+  }
   return { pass, fail, results: R };
 })();

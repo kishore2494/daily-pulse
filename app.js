@@ -11042,13 +11042,15 @@ async function syncHealth(opts) {
     if (!hasAny) { if (!opts.silent) toast('No health data yet — grant Usage access first', true); return null; }
     saveHealthStore(store);
     // auto-fill sleep from Health Connect if the user hasn't entered it for today.
-    // Only PERSIST when the day already has an entry — a health sync alone must not
-    // create a logged day (that would award streak/milestone credit the user never earned).
+    // Only PERSIST when the day is already logged BY HAND — a health sync alone must not
+    // make a logged day (streak/milestone credit never earned, the evening "Log my day" skipped).
+    // A day holding only auto-filled fields (a time summary, workouts) keeps the fill in the
+    // draft; the first save by hand stores it.
     if (at.sleep && store[key].sleepMin && logDate === key) {
       const cur = draft.sleepHours;
       if (cur == null || cur === '') {
         draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2);
-        if (DB.entry(key)) saveDraftNow(key, draft);
+        if (loggedByHand(DB.entry(key))) saveDraftNow(key, draft);
       }
     }
     if (!opts.silent) toast('Health synced ✅');
