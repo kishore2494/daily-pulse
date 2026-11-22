@@ -36,6 +36,13 @@
      Needs a native build.
   4. **Sunday recap notification** — "This week: 5 days logged, best mood Tuesday" (gain framing, local data).
   5. **Shorter onboarding** (4 steps today) so more people reach the reminder step and the first log.
+  **Next, proposed 2026-11-23 (Kishore asked "what do we need to do to keep the users?"):** judge items 1-5 on
+  2026-12-21 first (they shipped after the baseline window). Daylog has no analytics by design, so "why they
+  leave" is unknown; ways to learn it without tracking: Play Console search terms + retained-installers by day
+  (screenshots, or bulk reports once AG-31 permission is ticked); an opt-in one-question check-in on day 5
+  ("What would make Daylog worth opening every day?", sent only if the user taps Send); reply to every review.
+  Product ideas after that: a first insight after 3 logged days (not waiting for Sunday); the ~43 % who never
+  open cannot be reached in-app (no notifications before first launch), only by the listing promise.
 - **Cloud sync — DECIDED 2026-08-19 (Kishore's plan, supersedes both earlier designs).**
   **Flow:** post-launch update → one What's-new popup + a Settings card → **"Sign in with
   Google"** (native one-tap; accounts chosen deliberately — a lost sync-code means lost data,
