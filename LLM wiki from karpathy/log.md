@@ -1,3 +1,16 @@
+## 2026-11-22 (21:25) — Play demo video recorded on an emulator on inbook; recorder verified on Android 14
+
+- Kishore: "inbook emulator". Set up user-level on the Windows laptop (no admin needed in the end: WHPX was already
+  usable, so the queued reboot was dropped): `tools/inbook-emu/` has the setup, boot and demo scripts + README.
+  Boot ~2 min, taps instant — the Mac could not do this.
+- **Build 123 verified on Android 14 (x86_64):** installs, loads v267, first-run pages + tour, Recordings screen,
+  RecorderService notification with a running timer, keeps recording on the home screen, Stop and save → a 1:30
+  / 725 KB .m4a appears in the list. First native run of the recorder outside unit tests.
+- **Video:** `docs/daylog-123-fgs-demo.mp4` (1080×2400, 103 s): start in app → timer → notification shade on the
+  home screen → save. Pause/Resume via the notification is not shown (the collapsed notification hides its
+  buttons; a second take mis-tapped). Good enough for the Play form. Kishore uploads it unlisted and fills the
+  Foreground service permissions form (`store/play-fgs-microphone-123.md`), then the 123 internal upload is re-queued.
+
 ## 2026-11-22 (20:35) — second emulator attempt for the Play demo video: still unusable on this Mac
 
 - Kishore asked to "use the emulator". Retried `ciena_phone` with hw.ramSize 1024 / 2 cores / host GPU, first at
