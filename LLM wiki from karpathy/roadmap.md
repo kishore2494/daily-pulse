@@ -132,7 +132,7 @@ Still unbuilt: PIN lock (S) · flexible habit schedules e.g. 3x/week (M) · CSV 
 - **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).
 - **Consistency**: (Done: `dp.exercises` is a live list store (LIST_SYNC, merged on pull); fonts are self-hosted, so the privacy claim holds; custom number fields show in Stats as averages; 'Push all to Sheet' sends Events/Articles since v253.)
 
-## Ather scooter data in Daylog (asked 2026-11-22; researched, not built)
+## Ather scooter data in Daylog (asked 2026-11-22; researched, not built; PARKED by Kishore 2026-11-23: "leave it")
 
 Kishore wants charge alarms ("charge the bike tonight"), km driven and analytics from his Ather scooter.
 Findings (2026-11-22):

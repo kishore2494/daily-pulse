@@ -24,3 +24,4 @@ last-28-days view against the 28 days before it.
 | Date read | Period | Source | Listing visitors/day | Conversion | Acquisitions | First opens | Total installs | Active devices | DAU (avg) | MAU | User loss/day | Rating |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-11-21 | Oct 23 – Nov 19 (28d) | Kishore's Play Console screenshots | 8.6 | 47.1% (+15.3 pp) | 127 (+59%) | 73 (+38%) | 232 | ~82 | 18.2 | 113 | 2.96 (+60%) | 5★ |
+| 2026-11-23 | all-time | Kishore (chat) | | | | | 242 | 84 (installed audience) | | | | |
