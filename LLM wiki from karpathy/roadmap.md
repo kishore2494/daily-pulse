@@ -131,3 +131,26 @@ Still unbuilt: PIN lock (S) · flexible habit schedules e.g. 3x/week (M) · CSV 
 - **Native**: fill the SCHEDULE_EXACT_ALARM Play declaration. (Done, build 109: BOOT_COMPLETED receiver, POST_NOTIFICATIONS.)
 - **Perf**: renderToday re-renders whole screen per tap; layoutGraph O(N²) on main thread; pushState serializes all stores per keystroke (debounce note-save).
 - **Consistency**: (Done: `dp.exercises` is a live list store (LIST_SYNC, merged on pull); fonts are self-hosted, so the privacy claim holds; custom number fields show in Stats as averages; 'Push all to Sheet' sends Events/Articles since v253.)
+
+## Ather scooter data in Daylog (asked 2026-11-22; researched, not built)
+
+Kishore wants charge alarms ("charge the bike tonight"), km driven and analytics from his Ather scooter.
+Findings (2026-11-22):
+- **No official API.** Ather's forum thread "Open API and Platform" (2019→) has owners asking for SoC/stats
+  endpoints; Ather has not hosted any vehicle feature as an API. Android app id: `com.athermobileapp`.
+- **Unofficial API** (blog "Collect Ather Ride Logs using API", anbuchelva.github.io): logs in as the owner and
+  calls the app's private endpoints for ride logs. Needs the app's API token, which was captured from `adb logcat`
+  until app 11.3.0 removed it (a workaround exists); Ather blocked server-side callers (Apps Script) on
+  2024-10-05 and revokes keys periodically. Verdict: works for a hobby bot, too fragile for a Daylog feature, and
+  needs Kishore's login (OTP) on a real phone, so it cannot be tested in the emulator alone.
+- **Notification route (recommended):** the Ather app pushes "charged to 100 %" (and other) notifications. A
+  `NotificationListenerService` in the native shell (user grants "Notification access" once) can read them and
+  hand events to the web app: log a charge event, ride summaries if Ather posts them, and raise Daylog's own
+  alarm ("charge tonight" rule from the last charge time / days since). No API, no ToS problem, survives app
+  updates as long as the texts stay similar. Limit: only what Ather chooses to notify; no live SoC/odometer.
+- **Screen reading** (AccessibilityService over the Ather app) would give SoC/km but is heavy and brittle; last resort.
+Plan if Kishore says go: native plugin `AtherNotifications` (listener + whitelist `com.athermobileapp`), web side
+"Vehicle" section with charge log + "days since charge" alarm; test on Kishore's phone (needs Ather app + login).
+Sources: https://forum.atherenergy.com/t/open-api-and-platform/1803 ,
+https://anbuchelva.github.io/posts/appscript/collect-ather-logs-using-api/ ,
+https://forum.atherenergy.com/t/notification-of-charge-completion/42587
