@@ -2,49 +2,49 @@
   "habit-tracker-for-students": {
     "intro": "They rush from an 8 am lecture to a crowded library, trying to squeeze a quick stretch between problem sets, but habit logging slips through the cracks. Daylog captures each routine in a single tap, right on their phone today.",
     "why": "Students juggle back‑to‑back classes, lab reports, and late‑night revision, leaving little mental bandwidth for tracking habits manually. Forgetting a water break or a quick review derails momentum and adds stress. Daylog’s one‑tap log fits into those gaps, giving them a clear, private view of consistency without extra effort.",
-    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets students log up to ten daily routines with a single tap, view streaks, and see a 90‑day heatmap, all without leaving their study flow while staying private and under control.",
+    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets students log their own daily routines with a single tap, view streaks, and see a 90‑day heatmap, all without leaving their study flow while staying private and under control.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-software-developers": {
     "intro": "When a developer finishes a 90‑minute deep‑work sprint, the urge to log a quick stretch or water break vanishes because opening another app feels like a context switch. Daylog captures that habit in a single tap, right from the keyboard, without breaking flow.",
     "why": "Long coding blocks push sleep and movement to the background, and during crunch weeks even basic habits like posture checks or evening walks disappear from memory. A habit tracker that lives inside the dev environment lets you note each slip instantly, turning invisible loss into visible data you can act on without extra steps.",
-    "quickAnswer": "Daylog is a one‑tap habit tracker built for developers that logs stretch, water, posture, and sleep habits during deep work, shows streaks per habit, and visualizes 90‑day consistency in a heatmap and syncs to Sheets across your devices daily",
+    "quickAnswer": "Daylog is a one‑tap habit tracker built for developers that logs stretch, water, posture, and sleep habits during deep work, shows streaks per habit, and visualizes 90‑day consistency in a heatmap.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-remote-workers": {
     "intro": "You sip coffee at the kitchen table, then stare at the same screen until lunch, with no commute to mark the start or end of work. That blur makes it easy to lose track of healthy habits. Daylog logs each habit in one tap.",
-    "why": "Remote workers miss the physical cues that structure a day, so habits slip when the screen stays on. A ten‑item checklist with per‑habit streaks shows exactly where you’re consistent, and the 90‑day heatmap reveals patterns you can’t feel. Seeing those streaks builds the routine you need without leaving your desk.",
-    "quickAnswer": "Daylog is a private on‑device habit tracker that lets remote workers tick a ten‑habit checklist, view per‑habit streaks, and watch a 90‑day consistency heatmap appear after each tap, and keeps your data strictly on your phone, never leaving it.",
+    "why": "Remote workers miss the physical cues that structure a day, so habits slip when the screen stays on. A checklist of your own habits with per‑habit streaks shows exactly where you’re consistent, and the 90‑day heatmap reveals patterns you can’t feel. Seeing those streaks builds the routine you need without leaving your desk.",
+    "quickAnswer": "Daylog is a private on‑device habit tracker that lets remote workers tick a checklist of their own habits, view per‑habit streaks, and watch a 90‑day consistency heatmap appear after each tap, with your data kept on your phone.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-entrepreneurs": {
     "intro": "At 7 a.m. you're answering investor emails while your coffee cools, and the habit you meant to track slips into the 'later' pile. Juggling dev, sales, and team check‑ins makes logging feel like extra work. Daylog lets you tick each habit in one tap.",
-    "why": "Entrepreneurs wear every hat, from product to payroll, so health and habit work gets pushed to 'later' and never happens. Missing a day breaks streaks, and without a quick visual you can't see where consistency drifts. Daylog gives a ten‑habit checklist, per‑habit streaks, and a 90‑day heatmap that shows gaps instantly.",
-    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets entrepreneurs log up to ten habits with a single tap, view per‑habit streaks, and see a 90‑day consistency heatmap to spot missed days instantly from lock screen, one tap only.",
+    "why": "Entrepreneurs wear every hat, from product to payroll, so health and habit work gets pushed to 'later' and never happens. Missing a day breaks streaks, and without a quick visual you can't see where consistency drifts. Daylog gives a checklist of your own habits, per‑habit streaks, and a 90‑day heatmap that shows gaps instantly.",
+    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets entrepreneurs log their own habits with a single tap, view per‑habit streaks, and see a 90‑day consistency heatmap to spot missed days instantly, one tap at a time.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-adhd": {
     "intro": "Morning alarm blares, you stare at a half‑filled coffee mug while the to‑do list looms like a wall. Remembering to log each habit feels like another chore you can’t afford. Daylog lets you tick every habit with a single tap.",
     "why": "People with ADHD often abandon habit plans after a few days because each step drains focus and motivation. They need a tracker that asks nothing more than a tap, shows streaks instantly, and builds a 90‑day heatmap so progress is visible without added work. All data stays on your phone, so there’s no sync anxiety.",
-    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets people with ADHD log up to ten habits with a single tap, view live streaks, and see a 90‑day consistency heatmap without any extra steps or mental load for you",
+    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets people with ADHD log their own habits with a single tap, view live streaks, and see a 90‑day consistency heatmap without any extra steps or mental load for you",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-busy-parents": {
     "intro": "At 6:15 am, you’re juggling a crying toddler while trying to sip cold coffee, and your hands are too full to tap through menus. Daylog lets you log any habit with a single tap, so you never miss a check-in even when you’re rushed.",
     "why": "Busy parents snatch minutes between school drop-offs, work calls, and bedtime stories, leaving no room for habit apps that demand multiple screens or internet sync. Daylog stays on-device, logs in one tap, shows streaks and a 90-day heatmap so you see progress instantly, fitting habit tracking into the cracks of a hectic day.",
-    "quickAnswer": "Daylog is a ten-habit daily checklist that lets busy parents tap each habit once, tracks individual streaks, and displays a 90-day consistency heatmap, giving a clear, private picture of progress without extra steps or online sync for your family.",
+    "quickAnswer": "Daylog is a daily habit checklist that lets busy parents tap each habit once, tracks individual streaks, and displays a 90-day consistency heatmap, giving a clear, private picture of progress without extra steps or online sync for your family.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-freelancers": {
     "intro": "You begin each freelance day juggling client pings, a half‑finished sketch, and a coffee that’s gone lukewarm, then realize you missed your morning stretch because there’s no boss to remind you. Daylog captures that habit in a single tap, right on your phone.",
     "why": "Freelancers set their own schedule, so missed meals, skipped workouts, or forgotten invoices slip into the day unnoticed. Without a manager’s cue, small gaps become big losses - lost focus, uneven income, and creeping fatigue. Daylog gives you a quick, private log that shows where time really goes, helping you rebuild a steady rhythm.",
-    "quickAnswer": "Daylog is a habit tracker that lets freelancers log up to ten routines (like stretching, invoicing, or water intake) with tap, view streaks, and see a 90‑day heatmap to spot patterns and keep their unstructured work life on track.",
+    "quickAnswer": "Daylog is a habit tracker that lets freelancers log their own routines (like stretching, invoicing, or water intake) with tap, view streaks, and see a 90‑day heatmap to spot patterns and keep their unstructured work life on track.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-medical-residents": {
-    "intro": "After a 3 a.m. sign-out, you sip lukewarm coffee while your pager buzzes for the next admit. Remembering if you took meds, stretched, or drank water feels impossible. Daylog lets you tap each habit once on your lock screen and records it instantly.",
+    "intro": "After a 3 a.m. sign-out, you sip lukewarm coffee while your pager buzzes for the next admit. Remembering if you took meds, stretched, or drank water feels impossible. Daylog lets you tap each habit once and records it instantly.",
     "why": "Residents survive on fractured sleep, back-to-back rounds, and endless paperwork, so any routine collapses by hour two of a shift. Missing sleep, exercise, or hydration quickly erodes focus and patient safety. A frictionless, on-device log that works even without Wi-Fi keeps you honest when every minute is claimed by the hospital.",
-    "quickAnswer": "Daylog is a habit tracker for medical residents: a ten-item checklist with per-habit streaks, a 90-day consistency heatmap, one-tap logging, optional Google Sheet sync, and works offline to keep you daily consistent through brutal shifts and unpredictable call schedules.",
+    "quickAnswer": "Daylog is a habit tracker for medical residents: a checklist of your own habits with per-habit streaks, a 90-day consistency heatmap and one-tap logging, and it works offline to keep you daily consistent through brutal shifts and unpredictable call schedules.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "habit-tracker-for-designers": {
@@ -55,8 +55,8 @@
   },
   "habit-tracker-for-fitness-beginners": {
     "intro": "Morning alarm rings, you stare at your sneakers by the door, unsure whether to start with squats or a walk. You waste minutes scrolling videos trying to find a safe beginner routine. Daylog logs that choice in one tap.",
-    "why": "Fitness beginners often copy random moves from videos, end up sore or confused, and quit after a few missed days. Without a simple way to see which exercises they actually did and how often, progress stays hidden. Daylog's ten-habit checklist, streak counters, and 90-day heatmap turn guesswork into visible proof.",
-    "quickAnswer": "Daylog is a ten-habit daily checklist with per-habit streaks and a 90-day consistency heatmap that lets fitness beginners log their chosen workout in one tap, see which moves they completed, track streaks, and visualize progress over three months today",
+    "why": "Fitness beginners often copy random moves from videos, end up sore or confused, and quit after a few missed days. Without a simple way to see which exercises they actually did and how often, progress stays hidden. Daylog's habit checklist, streak counters, and 90-day heatmap turn guesswork into visible proof.",
+    "quickAnswer": "Daylog is a daily habit checklist with per-habit streaks and a 90-day consistency heatmap that lets fitness beginners log their chosen workout in one tap, see which moves they completed, track streaks, and visualize progress over three months today",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "mood-tracker-for-students": {
@@ -80,7 +80,7 @@
   "mood-tracker-for-entrepreneurs": {
     "intro": "Your 7 a.m. inbox ping pulls you into back‑to‑back calls before you’ve even had coffee, and you barely notice how your mood swings from excited pitch to draining admin. Daylog captures that swing with a single tap every day to see patterns.",
     "why": "Entrepreneurs juggle product dev, sales, and family duties, often postponing sleep or exercise until burnout hits. Without a quick log, the subtle mood dips that precede poor decisions go unnoticed, making it hard to adjust workload or recover before stress compounds. It reveals patterns so you can schedule recovery before fatigue spikes.",
-    "quickAnswer": "Daylog is a private, one‑tap mood and energy logger that builds personal trend charts, lets entrepreneurs see how daily habits affect feelings, and syncs optionally to Google Sheets without ever leaving the device while keeping data private on device.",
+    "quickAnswer": "Daylog is a private, one‑tap mood and energy logger that builds personal trend charts, lets entrepreneurs see how daily habits affect feelings, and keeps your data private on the device.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "mood-tracker-for-adhd": {
@@ -127,8 +127,8 @@
   },
   "workout-log-for-software-developers": {
     "intro": "You've just wrapped a 90-minute debugging sprint, eyes tired, and you notice you haven't left your chair all morning. Fitting a workout into those fractured focus blocks feels impossible, but Daylog lets you log every set with a single tap.",
-    "why": "Developers spend hours locked in deep work, then crash with irregular sleep, making it easy to skip exercise when deadlines loom. A workout log that fits into broken-up moments, tracks reps and weight, and shows a gym streak helps turn intention into action without extra friction and syncs optionally to Google Sheets for backup.",
-    "quickAnswer": "Daylog is a private on-device habit tracker that lets software developers log workouts in one tap, view animated demos for 42 exercises, track reps, weight, and maintain a gym streak, all without leaving the app and optional Google sync.",
+    "why": "Developers spend hours locked in deep work, then crash with irregular sleep, making it easy to skip exercise when deadlines loom. A workout log that fits into broken-up moments, tracks reps and weight, and shows a gym streak helps turn intention into action without extra friction.",
+    "quickAnswer": "Daylog is a private on-device habit tracker that lets software developers log workouts in one tap, view animated demos for 42 exercises, track reps, weight, and maintain a gym streak, all without leaving the app.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "workout-log-for-remote-workers": {
@@ -164,7 +164,7 @@
   "workout-log-for-freelancers": {
     "intro": "Freelancers often start their day with a coffee at 9 am, then stare at a blank calendar while juggling client calls, unsure when to squeeze in a workout. Daylog logs set in one tap and builds a gym streak that fits into your freelance flow.",
     "why": "Freelancers face days that shift from client calls to deep work without a fixed schedule, making it easy to let exercise slip. A simple log tied to each session creates a rhythm, signals progress, and protects mental energy, turning sporadic movement into a reliable part of their workflow for long-term health.",
-    "quickAnswer": "Daylog is an 8‑group, 42‑exercise gym plan that includes animated how‑to demos, lets you log reps and weight after each set, and tracks a continuous gym streak to show your consistency, private on-device works offline syncs to Google Sheets.",
+    "quickAnswer": "Daylog is an 8‑group, 42‑exercise gym plan that includes animated how‑to demos, lets you log reps and weight after each set, and tracks a continuous gym streak to show your consistency, private on your device and offline.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "workout-log-for-medical-residents": {
@@ -176,19 +176,19 @@
   "workout-log-for-designers": {
     "intro": "You spend the morning tweaking pixel grids, then get pulled into back‑to‑back client calls that leave your shoulders tight. Forgetting to log your workout while juggling sketches and deadlines is a real friction. Daylog logs it in one tap.",
     "why": "Designers pour mental energy into visual problem‑solving, yet they rarely see how movement impacts that focus. Skipping exercise leads to stiffness, foggy thinking, and missed deadlines. Logging workouts makes the connection visible, helping you schedule breaks that restore clarity and keep your creative flow steady. It also gives you a quick streak to celebrate consistency.",
-    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets designers log workouts in one tap, view animated demos, track reps/weight, and maintain a gym streak all without leaving the creative flow while keeping your data safe and synced optionally.",
+    "quickAnswer": "Daylog is a private, on‑device habit tracker that lets designers log workouts in one tap, view animated demos, track reps/weight, and maintain a gym streak all without leaving the creative flow while keeping your data on your device.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "journal-for-students": {
     "intro": "You open your laptop at 8 am, a half‑finished essay waiting, and your coffee’s already cold. Trying to recall what went well and what to improve after each study session feels like guesswork. Daylog logs that reflection in one tap, right where you are.",
     "why": "Students juggle lectures, labs, assignments and revision while trying to keep any routine. Without a quick way to note what worked and what didn’t, patterns stay hidden, stress builds, and study time slips. Daylog gives a one‑tap journal that captures those insights, helping you adjust habits before burnout hits.",
-    "quickAnswer": "Daylog is a private on‑device habit and life tracker that lets students log mood, energy, tasks, workouts and a structured journal in one tap, with optional Google Sheet sync for backup, and review trends offline to stay balanced daily.",
+    "quickAnswer": "Daylog is a private on‑device habit and life tracker that lets students log mood, energy, tasks, workouts and a structured journal in one tap, and review trends offline to stay balanced daily.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "journal-for-software-developers": {
     "intro": "You spend three hours staring at a terminal, then realize you skipped lunch and your back aches. Forgetting to jot down how you felt or what you nailed leaves gaps in your self‑review. Daylog captures that note in one tap, right on your phone.",
     "why": "During a sprint you might code for four straight hours, then crash with irregular sleep that throws off your mood and energy. When crunch hits, habits like stretching or water intake vanish, making it hard to spot patterns that affect performance. A dedicated journal lets you see those links quickly.",
-    "quickAnswer": "Daylog is a private, on‑device habit and life tracker that lets developers log mood, energy, habits, workouts, tasks and a structured journal in one tap, with optional Google Sheet sync and keeps your data private and secure for you",
+    "quickAnswer": "Daylog is a private, on‑device habit and life tracker that lets developers log mood, energy, habits, workouts, tasks and a structured journal in one tap and keeps your data private on your device",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   "journal-for-remote-workers": {
@@ -217,7 +217,7 @@
   },
   "journal-for-busy-parents": {
     "intro": "Morning rush: you’re wiping cereal off the kitchen counter while the baby cries, wishing you could jot down what went well without digging for a notebook. Daylog captures your went‑well, to‑improve, and free‑journal thoughts in a single tap, right where you stand.",
-    "why": "Busy parents juggle feeding, chores, and sleep‑deprived moments, leaving no mental bandwidth for lengthy reflections. A quick journal helps spot patterns in mood, energy, and habits without stealing time from family. Daylog’s one‑tap entry fits into those fleeting seconds, turning chaos into usable insight. It also syncs optional Google Sheet for later review.",
+    "why": "Busy parents juggle feeding, chores, and sleep‑deprived moments, leaving no mental bandwidth for lengthy reflections. A quick journal helps spot patterns in mood, energy, and habits without stealing time from family. Daylog’s one‑tap entry fits into those fleeting seconds, turning chaos into usable insight.",
     "quickAnswer": "Daylog is a habit and life‑tracker that lets busy parents log went‑well, to‑improve, and free‑journal notes plus structured Mind, Wellbeing, Health, Work, Learning, Finance, Digital, and Growth entries with a single tap, keeping data securely always on the phone.",
     "_model": "nvidia/nemotron-3-super-120b-a12b:free"
   },

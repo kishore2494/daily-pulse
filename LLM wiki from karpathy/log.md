@@ -1,3 +1,20 @@
+## 2026-11-22 (13:00) — SEO pages: iOS, Sheet-sync and habit-count claims removed (branch `seo-sweep`, NOT merged, NOT deployed)
+
+Closes the open item from the landing-refresh entry. A scripted sweep (counted exact-string rules; nothing
+written unless every count matched) changed 140 files: 128 factory pages, 8 `daily-pulse-vs-*`, use-cases.html,
+llms.txt, and the generator inputs `factory-data.json` + `copy-cache.json`.
+- **iOS:** `operatingSystem` "Android, iOS, Web" → "Android, Web" (128 JSON-LD blocks); comparison Platform row
+  "Android, iOS, web" → Android (Google Play) + any modern browser, no iOS app, add to the iPhone home screen (8).
+- **Sheet sync:** new users are not offered it (`SHOW_SYNC = !!s.syncUrl`; only reconnect doors for old users),
+  so it is gone from the one-liner (→ "private on your device, with no account"), the offline / private FAQs
+  (→ export a backup file; no account, no Daylog server), "Private by default", the comparison rows/FAQs
+  (→ backup or CSV export) and 10 hand-written persona lines. It also said "one-way"; the sync is two-way.
+- **Other:** "10-habit checklist" / "up to ten habits" → a checklist of your own habits (4 starters, no cap);
+  two "lock screen" claims dropped; llms.txt privacy line no longer says the Sheet is the only network feature
+  (ntfy too) and points to the privacy policy. Kept: sheets-setup.html, privacy.html, the photo pages' "not sent
+  to the Sheet" lines. Rules + a lint grep in distribution.md ▸ Rules.
+11/11 checks, 1700 unit tests (UTC), sitemap check, 264 JSON-LD blocks parse; 3 pages looked at 360 px.
+
 ## 2026-11-22 (12:10) — web v265 DEPLOYED (Kishore: "deploy")
 
 Live and confirmed (app.js, sw.js, index.html all v265; tag `web-v265` on both repos). Contents: per-field day

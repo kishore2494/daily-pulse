@@ -53,7 +53,13 @@ to "Ads and referrals".
   - landing.html leads with Play; it used to have no Play link at all.
   - The SEO pages make Play the primary button on Android.
 - **SEO.**
-  - 128 factory pages.
+  - 128 factory pages (`<feature>-for-<audience>.html`: 8 features × 16 audiences), 8 comparison
+    pages (`daily-pulse-vs-*.html`, file names kept for their URLs) and the `use-cases.html` hub.
+    The generator is gone; its inputs `factory-data.json` (product one-liner, feature and audience
+    lines) and `copy-cache.json` (hand-written hero / why / quick-answer copy for 39 pages) are
+    still kept in step with the pages, so edit both together. Swept 2026-11-22 (log.md):
+    `operatingSystem` is "Android, Web"; the Platform row says Android (Google Play) + any modern
+    browser, no iOS app, add the web app to the iPhone home screen; no Sheet sync pitch.
   - `lifelog-app.html` targets "lifelog", the softest term in the 2026-11-01 Play search.
   - `photo-voice-journal.html` covers the new feature.
   - llms.txt is the summary that AI assistants and Ask Play read. Keep it in step with features.
@@ -66,6 +72,19 @@ to "Ads and referrals".
   - AI (insights are on-device statistics)
   - "nothing ever leaves the phone": the optional Google Sheet sync and ntfy reminders do send
     data. Use "stays on your phone" or "no account".
+  - Google Sheet sync as a feature a new user can turn on. It is not offered to new users:
+    `SHOW_SYNC = !!s.syncUrl` (renderSettings) shows the Sync card only once a link is saved, until
+    the Play Data Safety form ("collects no data") is updated. New users only see the reconnect
+    doors for people who used it before (onboarding "Already used Daylog? Restore your data" and
+    Settings ▸ Backup & restore ▸ "Used Google Sheet sync on an old phone? Reconnect"). Pitch
+    Export backup / Export CSV instead. Saying photos are *not* sent to the Sheet (privacy copy) is fine.
+    When SHOW_SYNC goes back to `true`, the pitch can come back, as two-way sync (it was never one-way).
+  - A habit count ("10-habit checklist", "up to ten habits"): there are 4 starter habits and no cap.
+  - Lock-screen habit logging (does not exist; the widget is on the home screen).
+- **Lint grep before shipping SEO copy** (all must find nothing in `*.html llms.txt factory-data.json copy-cache.json`,
+  except sheets-setup.html / privacy.html / photo-voice-journal.html's "not sent to the Sheet"):
+  `"operatingSystem":"[^"]*iOS`, `Android, iOS`, `one-way sync`, `optional Google Sheet sync`,
+  `(10|ten)[-‑ ](habit|item)`, `up to ten`.
 - **Quote insights in the app's actual wording.**
   - "Your mood is +1.4 higher on workout days" (app.js:4313)
   - "Heavy screen days cost you −1.2 mood"
