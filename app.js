@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v266';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v267';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1617,7 +1617,7 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w31',
+  v: 'w32',
   items: [
     '🎙️ <b>Recordings</b> — talk instead of typing. Record for as long as you like (up to three hours), pause, carry on, and stop. With Play update 123 it keeps going with the screen off; before that, keep Daylog open while you record. Find them in ☰ Menu ▸ Recordings or tap <b>Recordings</b> under your journal. Play them back, rename them, move one to another day, share one as an audio file, and paste its words back with <b>Add transcript</b>: they go into that day\'s journal. Recordings stay on this phone and are not in backup files.',
     '🏠 <b>Home-screen widget</b> (with Play update 121) — see today at a glance and tap a face to log your mood. The tap opens Daylog with your mood saved. Long-press your home screen ▸ Widgets ▸ Daylog to add it.',
