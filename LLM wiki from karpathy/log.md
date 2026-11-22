@@ -1,3 +1,13 @@
+## 2026-11-22 (12:10) — web v265 DEPLOYED (Kishore: "deploy")
+
+Live and confirmed (app.js, sw.js, index.html all v265; tag `web-v265` on both repos). Contents: per-field day
+sync (`fieldAt`), gym re-derive after a pull, persisted `dp.tlDirty`, stale-draft reload after a pull, the 9
+review fixes, midnight timebox "now" + coverage never over 100%, landing refresh. One WHATS_NEW line added to w31
+("Two phones, field by field") without bumping `WHATS_NEW.v` (fixes don't warrant a popup). Play production track
+shows 122 "completed" (the API doesn't say whether Google's review has finished). Metrics bucket still 403.
+Started on branches (not merged): recorder (web + native, spec in the `recorder` worktree's RECORDER-SPEC.md),
+an adversarial review of the v265 sync, and the SEO-page claims sweep (`seo-sweep`).
+
 ## 2026-11-22 (04:50) — the 4 fuzzer sync bugs fixed (main, NOT deployed); one extra guard added in review
 
 Helper branch `sync-fixes` merged: per-field day stamps `fieldAt` (`entryFieldStamp` in DB.putEntry/liftWrite,
