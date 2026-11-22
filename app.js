@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v264';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v265';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1613,6 +1613,7 @@ const WHATS_NEW = {
     '🙂 <b>Log from the notification</b> — your reminders now carry three buttons, Good, Okay and Low. One tap saves your mood and opens the Log, so a whole log can start right there. On Sundays the reminder is a short look at your week: how many days you logged and your best mood day.',
     '🔔 <b>Friendlier reminders</b> — your “Log my day” reminder now says something different each day, skips today once you have logged, and opens straight on the Log. If you stop logging for a while, Daylog checks in a few times, further and further apart, and never after 30 days. Turn these off in Settings ▸ Come-back nudges.',
     '⏱️ <b>Time on two phones</b> — if you track time on two phones, the day\'s time line now adds up both phones\' blocks after they sync, and deleting a day\'s last block clears its line on both.',
+    '🔄 <b>Two phones, field by field</b> — when both phones change the same day, each part of it (mood, journal, sleep, habits…) now keeps the phone that changed it last, instead of one phone\'s whole day winning. Also fixed: Timebox\'s “now” line just after midnight, and time totals that could add up to more than 100%.',
     '🌱 <b>Lift, for heavy days</b> — log a low mood and a gentle card offers a few small things: a one-minute guided breath, a 5-4-3-2-1 grounding exercise, tiny doable actions, your own words from good days, and a place to write it out. It is in the menu any time, for any mood. If the last few days have been heavy, it shows free 24/7 support first (Tele-MANAS, 14416).',
     '🍽️ <b>Meals</b> — plan breakfast, lunch, dinner and snacks for the week, with everyday ideas built in (idli, poha, dal rice, biryani…). Your plan becomes a shopping list, and the Log gets a Today\'s meals card to tick off what you ate. Turn it on in ☰ Menu ▸ More features.',
     '\u2728 <b>A fresh look</b> \u2014 the Log opens on one panel: a greeting, your progress ring, and the sleep and deep work your phone already counted. On this day is a strip you swipe, the mood grid is a colour field, ticks pop and the tab bar floats. Stats and Habits got the same care, in all five styles.',
