@@ -5354,6 +5354,152 @@
     }
   })();
 
+  /* ---- Recordings (2026-11-22): the pure parts. The IndexedDB, recorder and native-plugin
+     flows are in tests/unit-async.js. ---- */
+  (function () {
+    // durations and sizes
+    ok('rec length: 0 → 0:00', fmtRecLen(0) === '0:00', fmtRecLen(0));
+    ok('rec length: 5.4 s → 0:05 (floored: a live timer never jumps back)', fmtRecLen(5400) === '0:05' && fmtRecLen(59999) === '0:59', [fmtRecLen(5400), fmtRecLen(59999)]);
+    ok('rec length: 12:34', fmtRecLen(754000) === '12:34', fmtRecLen(754000));
+    ok('rec length: over an hour shows hours, 1:02:03', fmtRecLen(3723000) === '1:02:03' && fmtRecLen(3 * 3600000) === '3:00:00', [fmtRecLen(3723000), fmtRecLen(3 * 3600000)]);
+    ok('rec length: junk and negatives are 0:00', fmtRecLen(-5) === '0:00' && fmtRecLen(NaN) === '0:00' && fmtRecLen(undefined) === '0:00');
+    ok('rec size: uses the app\'s byte format', fmtBytes(2202010) === '2.1 MB' && fmtBytes(5000) === '5 KB', fmtBytes(2202010));
+
+    // names
+    const at = (h, m) => new Date(2026, 10, 22, h, m).getTime();
+    ok('rec default name: "Recording · 9:40 pm"', recTitle({ ts: at(21, 40) }) === 'Recording · 9:40 pm', recTitle({ ts: at(21, 40) }));
+    ok('rec clock: midnight and noon read 12', recClock(at(0, 5)) === '12:05 am' && recClock(at(12, 0)) === '12:00 pm', [recClock(at(0, 5)), recClock(at(12, 0))]);
+    const r0 = { id: 'r1', ts: at(9, 7), day: '2026-11-22', state: 'done' };
+    const rn = recRenamed(r0, '  Walk   with   Asha ');
+    ok('rename: spaces are tidied and the original is not changed', rn.title === 'Walk with Asha' && r0.title === undefined && rn.id === 'r1', rn);
+    ok('rename: an empty name goes back to the default', recRenamed(rn, '   ').title === undefined && recTitle(recRenamed(rn, '')) === 'Recording · 9:07 am');
+    ok('rename: typing the default name back stores no name', recRenamed(r0, 'Recording · 9:07 am').title === undefined);
+    ok('rename: at most 80 characters', recRenamed(r0, 'x'.repeat(200)).title.length === 80);
+
+    // which day
+    const T = todayStr();
+    ok('move: to an earlier day gives a copy on that day', (recMoved(r0, '2026-01-05', T) || {}).day === '2026-01-05' && r0.day === '2026-11-22');
+    ok('move: not to a future day, nor to junk', recMoved(r0, addDays(T, 1), T) === null && recMoved(r0, '2026-13-45', T) === null && recMoved(r0, 'soon', T) === null && recMoved(r0, '', T) === null);
+    ok('move: today is fine', (recMoved(r0, T, T) || {}).day === T);
+
+    // the list
+    const L = [
+      { id: 'a', day: '2026-11-20', ts: 100, state: 'done' }, { id: 'b', day: '2026-11-22', ts: 300, state: 'done' },
+      { id: 'c', day: '2026-11-22', ts: 500, state: 'done' }, { id: 'd', day: '2026-11-22', ts: 900, state: 'live' },
+      { id: 'e', day: '2026-11-21', ts: 200, state: 'done', del: Date.now() }, null];
+    const G = recGroups(L);
+    ok('list: grouped by day, newest day first', G.map(g => g.day).join() === '2026-11-22,2026-11-20', G.map(g => g.day));
+    ok('list: newest recording first within a day', G[0].items.map(r => r.id).join() === 'c,b', G[0].items.map(r => r.id));
+    ok('list: a recording still going, or waiting out its Undo, is not listed', !G.some(g => g.items.some(r => r.id === 'd' || r.id === 'e')));
+    ok('list: empty in, empty out', recGroups([]).length === 0 && recGroups(undefined).length === 0);
+
+    // the live timer and the cap
+    ok('elapsed: paused counts only what was recorded', recElapsed({ state: 'paused', acc: 61000, from: 0 }, 999999) === 61000);
+    ok('elapsed: recording adds the current run', recElapsed({ state: 'recording', acc: 1000, from: 5000 }, 9000) === 5000);
+    ok('elapsed: nothing live is 0', recElapsed(null) === 0);
+    ok('cap: three hours with a warning ten minutes before', recCapState(0) === 'ok' && recCapState(REC_WARN_MS - 1) === 'ok' && recCapState(REC_WARN_MS) === 'warn'
+      && recCapState(REC_MAX_MS - 1) === 'warn' && recCapState(REC_MAX_MS) === 'stop' && REC_MAX_MS === 3 * 3600000);
+
+    // the widget / shortcut queue
+    const n = Date.now();
+    let q = widgetRecordRoute([{ action: 'record', at: n - 5000 }], n);
+    ok('record tap: a fresh one opens Recordings and starts recording', q.open && q.start, q);
+    q = widgetRecordRoute([{ action: 'record', at: n - 3 * 60000 }], n);
+    ok('record tap: one older than two minutes only opens the screen', q.open && !q.start, q);
+    q = widgetRecordRoute([{ action: 'record' }], n);
+    ok('record tap: one with no time only opens the screen', q.open && !q.start, q);
+    q = widgetRecordRoute([{ action: 'record', at: n + 86400000 }], n);
+    ok('record tap: one stamped in the future (a clock change) counts as now', q.open && q.start, q);
+    q = widgetRecordRoute([{ action: 'record', at: n - 9 * 60000 }, { action: 'record', at: n - 1000 }, { action: 'record', at: n - 2000 }], n);
+    ok('record taps: several queued start ONE recording', q.open && q.start === true && Object.keys(q).length === 2, q);
+    q = widgetRecordRoute([{ action: 'mood', mood: 7, at: n }, { action: 'open', at: n }, null, 7, 'record'], n);
+    ok('record route: mood taps, other actions and junk are not record taps', !q.open && !q.start, q);
+    ok('record route: an empty or missing queue is nothing', !widgetRecordRoute([]).open && !widgetRecordRoute(undefined).open);
+    // mood taps go through widgetTapsApply exactly as before; the drain filters record taps out first
+    const eSnap = localStorage.getItem('dp.entries');
+    try {
+      let n2 = Date.now(); if (todayStr(new Date(n2 - 10000)) !== todayStr(new Date(n2))) n2 -= 11000;
+      const D2 = todayStr(new Date(n2)), mixed = [{ action: 'record', at: n2 - 1000 }, { action: 'mood', mood: 7, at: n2 - 2000 }];
+      const ents = DB.entries(); delete ents[D2]; DB.saveEntries(ents);
+      const wr = widgetTapsApply(mixed.filter(x => !(x && x.action === 'record')), n2);
+      ok('record + mood in one queue: the mood is saved as before', (DB.entry(D2) || {}).mood === 7 && wr.saved.length === 1 && wr.any, wr);
+      ok('…and a queue of only record taps saves no mood and does not open the Log', !widgetTapsApply([{ action: 'record', at: n2 }].filter(x => !(x && x.action === 'record')), n2).any);
+    } finally { if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries'); }
+
+    // crash recovery
+    const B = s => new Blob([s]);
+    const ch = (rid, seq, s, ms) => ({ k: rid + ':' + seq, rid, seq, blob: B(s), ms });
+    let pl = recRecoverPlan({ id: 'rA' }, [ch('rA', 2, 'cc', 12000), ch('rA', 0, 'aaaa', 4000), ch('rB', 0, 'zz', 4000), ch('rA', 1, 'bbb', 8000), ch('rA', 1, 'bbb', 8000)]);
+    ok('recovery: slices in order, each once, only this recording\'s', pl.parts.length === 3 && pl.bytes === 9 && pl.keep, pl.bytes);
+    ok('recovery: the length is the time stamped on the last slice', pl.dur === 12000, pl.dur);
+    pl = recRecoverPlan({ id: 'rA' }, [ch('rA', 0, 'aaaa', 0), ch('rA', 1, 'bb', 0)]);
+    ok('recovery: no stamps → slices × slice length', pl.dur === 2 * REC_SLICE_MS, pl.dur);
+    ok('recovery: nothing on disk is not kept', !recRecoverPlan({ id: 'rA' }, []).keep && !recRecoverPlan({ id: 'rA' }, [ch('rA', 0, '', 4000)]).keep && !recRecoverPlan({ id: 'rA' }, null).keep);
+    ok('recovery: a mis-tap (under 0.7 s) is not kept', !recRecoverPlan({ id: 'rA' }, [ch('rA', 0, 'a', 300)]).keep);
+
+    // the transcript into the journal
+    const blk = recTrBlock({ ts: at(21, 40) }, '  I walked to the lake.  ');
+    ok('transcript paragraph: the recording\'s name, then the words', blk === '🎙️ Recording · 9:40 pm\nI walked to the lake.', blk);
+    ok('transcript paragraph: no words, no paragraph', recTrBlock({ ts: 1 }, '   ') === '');
+    ok('journal merge: into an empty journal it is the journal', recJournalMerge('', '', 'X') === 'X');
+    ok('journal merge: after what is there, with one blank line', recJournalMerge('Morning.\n\n  ', '', 'X') === 'Morning.\n\nX');
+    ok('journal merge: an edited transcript replaces its old paragraph, not a second copy', recJournalMerge('A\n\nOLD\n\nB', 'OLD', 'NEW') === 'A\n\nNEW\n\nB');
+    ok('journal merge: if the old paragraph was changed by hand, the new one is added', recJournalMerge('A\n\nOLD edited', 'OLD!', 'NEW') === 'A\n\nOLD edited\n\nNEW');
+    ok('journal merge: emptied, it takes its paragraph out cleanly', recJournalMerge('A\n\nOLD', 'OLD', '') === 'A' && recJournalMerge('OLD\n\nB', 'OLD', '') === 'B' && recJournalMerge('OLD', 'OLD', '') === '');
+    ok('journal merge: a $ in the words is kept as typed', recJournalMerge('A\n\nOLD', 'OLD', 'cost $& and $1') === 'A\n\ncost $& and $1');
+
+    const eSnap2 = localStorage.getItem('dp.entries'), logSnap = logDate;
+    try {
+      const D = addDays(todayStr(), -2);
+      const ents = DB.entries(); ents[D] = { mood: 6, journal: 'Morning walk.', habits: {}, updatedAt: new Date(Date.now() - 60000).toISOString() }; DB.saveEntries(ents);
+      logDate = D; loadDraft();
+      const r = { id: 'rT', ts: at(21, 40), day: D, title: 'Evening' };
+      let res = recTranscriptToDay(r, 'Talked about the week.');
+      ok('add transcript: appended to that day\'s journal through the Log save path', (DB.entry(D) || {}).journal === 'Morning walk.\n\n🎙️ Evening\nTalked about the week.' && res.ok && res.changed, DB.entry(D));
+      ok('…keeping the rest of the day and stamping the edit', DB.entry(D).mood === 6 && Date.parse(DB.entry(D).updatedAt) > Date.now() - 5000);
+      ok('…and the Log open on that day shows it', draft.journal === DB.entry(D).journal);
+      Object.assign(r, { trBlock: res.block, trDay: D });
+      res = recTranscriptToDay(r, 'Talked about the week. And Sunday.');
+      ok('edit transcript: replaced in the journal, not added twice', DB.entry(D).journal === 'Morning walk.\n\n🎙️ Evening\nTalked about the week. And Sunday.', DB.entry(D).journal);
+      Object.assign(r, { trBlock: res.block });
+      res = recTranscriptToDay(r, '');
+      ok('empty transcript: its paragraph comes out of the journal', DB.entry(D).journal === 'Morning walk.' && res.block === '', DB.entry(D).journal);
+      const D3 = addDays(todayStr(), -3); const e3 = DB.entries(); delete e3[D3]; DB.saveEntries(e3);
+      recTranscriptToDay({ id: 'rU', ts: at(8, 0), day: D3 }, 'First words.');
+      ok('add transcript: a day with nothing logged gets a journal', (DB.entry(D3) || {}).journal === '🎙️ Recording · 8:00 am\nFirst words.', DB.entry(D3));
+      ok('recordings write no dp.* key (they are in IndexedDB, out of backups and sync)', !Object.keys(localStorage).some(k => /^dp\.rec/i.test(k)));
+    } finally {
+      if (eSnap2 != null) localStorage.setItem('dp.entries', eSnap2); else localStorage.removeItem('dp.entries');
+      logDate = logSnap; loadDraft();
+    }
+
+    // files, storage, backups
+    ok('file name: day, name and the container', recFileName({ day: '2026-11-22', ts: at(21, 40), mime: 'audio/webm;codecs=opus' }) === 'daylog-2026-11-22-recording-9-40-pm.webm'
+      && recFileName({ day: '2026-11-22', ts: 1, title: 'Lake / Asha!', mime: 'audio/mp4' }) === 'daylog-2026-11-22-lake-asha.m4a', recFileName({ day: '2026-11-22', ts: at(21, 40), mime: 'audio/webm' }));
+    ok('recordings have their own database, apart from photos', REC_DB !== MEDIA_DB && !BACKUP_KEYS.some(k => /^rec/i.test(k)) && !BACKUP_EXTRA.some(k => /rec/i.test(k)));
+    _recs.set('rS', { id: 'rS', src: 'native', state: 'done', ts: 1, day: '2026-11-22', size: 3 * 1048576, dur: 600000 });
+    try {
+      const row = storageRows().rows.find(x => x.k === 'recordings');
+      ok('Storage: a Recordings row, said to be not in backups', !!row && row.bytes === 3 * 1048576 && /not in backups/.test(row.sub) && /10:00/.test(row.sub), row);
+      ok('Storage: recordings are not counted as backed-up media', mediaTotals().bytes < 3 * 1048576);
+      ok('backup file: no recording in it', !JSON.stringify(backupBlob().data).includes('rS'));
+      const ws = _wipeStage; _wipeStage = 1;
+      try { ok('Delete everything warns that recordings are in no backup', /1 recording<\/b>|1 recording is in no backup/.test(wipeStageHTML()) && /in no backup/.test(wipeStageHTML()), wipeStageHTML().slice(0, 0)); }
+      finally { _wipeStage = ws; }
+    } finally { _recs.delete('rS'); }
+
+    // the screen, the menu and the Log
+    show('recordings');
+    ok('Recordings screen renders with a Record button', !!document.querySelector('#s-recordings [data-rec-start]') && document.getElementById('screen-title').textContent === 'Recordings');
+    const idbS = window.indexedDB; window.indexedDB = {};   // jsdom has none; the list only needs to think it can store
+    try { ok('…and its list says recordings stay on this phone, out of backups', /stay on this phone/.test(recListHTML()) && /not in backup files/.test(recListHTML()) && /No recordings yet/.test(recListHTML())); }
+    finally { if (idbS === undefined) delete window.indexedDB; else window.indexedDB = idbS; }
+    renderDrawer();
+    ok('☰ menu lists Recordings', !!document.querySelector('#drawer-list [data-screen="recordings"]'));
+    navigateTo('today');
+    ok('the Log has a Record button next to Speak', !!document.querySelector('#s-today .jr-acts [data-rec-open]') && !!document.querySelector('#s-today .jr-acts [data-mic]'));
+  })();
+
   if (snapshot != null) localStorage.setItem('dp.tasks', snapshot); else localStorage.removeItem('dp.tasks');
 
   const summary = { pass, fail, results: R };
