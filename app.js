@@ -1609,6 +1609,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w31',
   items: [
+    '🎙️ <b>Recordings</b> — talk instead of typing. Record for as long as you like (up to three hours), pause, carry on, and stop. With Play update 123 it keeps going with the screen off; before that, keep Daylog open while you record. Find them in ☰ Menu ▸ Recordings or tap <b>Recordings</b> under your journal. Play them back, rename them, move one to another day, share one as an audio file, and paste its words back with <b>Add transcript</b>: they go into that day\'s journal. Recordings stay on this phone and are not in backup files.',
     '🏠 <b>Home-screen widget</b> (with Play update 121) — see today at a glance and tap a face to log your mood. The tap opens Daylog with your mood saved. Long-press your home screen ▸ Widgets ▸ Daylog to add it.',
     '🙂 <b>Log from the notification</b> — your reminders now carry three buttons, Good, Okay and Low. One tap saves your mood and opens the Log, so a whole log can start right there. On Sundays the reminder is a short look at your week: how many days you logged and your best mood day.',
     '🔔 <b>Friendlier reminders</b> — your “Log my day” reminder now says something different each day, skips today once you have logged, and opens straight on the Log. If you stop logging for a while, Daylog checks in a few times, further and further apart, and never after 30 days. Turn these off in Settings ▸ Come-back nudges.',
@@ -2458,7 +2459,7 @@ function renderToday() {
         <button type="button" class="jt-chip" data-jt="idea">💡 Idea</button>
       </div>
       <textarea data-txt="journal" placeholder="How was your day?" style="min-height:110px">${escapeHtml(draft.journal || '')}</textarea>
-      <button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button></div>` : '';
+      <div class="jr-acts"><button type="button" class="mic-btn" data-mic="[data-txt=journal]">🎤 Speak</button>${recLogBtnHTML()}</div></div>` : '';
 
   // Each Log card is a named section; the user controls order and visibility
   // (Customize ▸ Log screen sections). Build them as a map, then emit in their order.
@@ -8737,6 +8738,8 @@ function storageRows() {
   rows.push({ k: 'photos', l: 'Photos', c: '#6d8cff', bytes: pb, sub: pn ? pn + ' photo' + (pn === 1 ? '' : 's') : '' });
   rows.push({ k: 'videos', l: 'Videos', c: '#f472b6', bytes: xb, sub: xn ? xn + ' video' + (xn === 1 ? '' : 's') + (xms ? ' · ' + fmtClipLen(xms) : '') + ' · not in backups' : '' });
   rows.push({ k: 'voice', l: 'Voice notes', c: '#4ad6c0', bytes: vb, sub: vn ? vn + ' note' + (vn === 1 ? '' : 's') + ' · ' + fmtClipLen(vms) : '' });
+  const rt = recTotals();   // recordings live in their own database (daylog-rec), and a native file's size is on its record
+  rows.push({ k: 'recordings', l: 'Recordings', c: 'var(--bad)', bytes: rt.bytes, sub: rt.n ? rt.n + ' recording' + (rt.n === 1 ? '' : 's') + (rt.ms ? ' · ' + fmtRecLen(rt.ms) : '') + ' · not in backups' : '' });
   if (_stCache > 0) rows.push({ k: 'app', l: 'App files', c: '#64748b', bytes: _stCache, sub: 'the offline copy of Daylog' });
   return { rows: rows.filter(r => r.bytes > 0).sort((a, b) => b.bytes - a.bytes), chars: t.chars };
 }
@@ -9251,7 +9254,7 @@ document.addEventListener('click', async (ev) => {
     // The photo database must really go too. A flag survives the reload so a delete that was
     // blocked or slow is finished at the next start; the time limit means the reload always comes.
     try { localStorage.setItem('dp.mediaWipe', '1'); } catch (e) {}
-    const wiped = mediaWipe().then(ok => { if (ok) localStorage.removeItem('dp.mediaWipe'); });
+    const wiped = Promise.all([mediaWipe(), recWipe()]).then(([ok, ok2]) => { if (ok && ok2) localStorage.removeItem('dp.mediaWipe'); });
     Promise.all([Promise.race([wiped, new Promise(r => setTimeout(r, 5000))]), new Promise(r => setTimeout(r, 900))])
       .then(() => location.reload());
     return;
@@ -9607,7 +9610,7 @@ function mediaRestoreDoc(ctx) {
 }
 /* Things that must not be cut off by an app-update reload (see the controllerchange handler). */
 let _mediaBusy = 0, _reloadWhenIdle = false;
-function mediaBusyNow() { return !!(_rec || _recStarting || _mediaBusy); }
+function mediaBusyNow() { return !!(_rec || _recStarting || _mediaBusy || recBusy()); }
 function mediaIdleCheck() {
   if (_reloadWhenIdle && !mediaBusyNow()) { _reloadWhenIdle = false; toast('Daylog updated — reloading'); setTimeout(() => { try { flushAutosave(); } catch (e) {} location.reload(); }, 1500); }
 }
@@ -9868,6 +9871,7 @@ function voiceMime() {
 }
 async function voiceStart(ctx, day) {
   if (_rec || _recStarting) return;
+  if (_lr || _lrStarting) { toast('A recording is going — stop it in Recordings first', true); return; }   // one microphone
   if (!mediaSupported() || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || voiceMime() === null) {
     toast('Voice notes need a newer browser or Android System WebView', true); return;
   }
@@ -10365,6 +10369,927 @@ function mediaWipe() {
   }));
 }
 
+/* ============================================================
+   SCREEN: RECORDINGS — long recordings you talk into (2026-11-22)
+   Kishore, 2026-11-21: "I need to journal a lot but can't type it." Talk for as long as you
+   like, pause, leave the app and come back, stop; keep many recordings; share one as a single
+   audio file (he gives it to Claude to write out) and paste the text back into the day.
+   RECORDER-SPEC.md (repo root of the branch) is the contract with the Android side.
+
+   Two engines behind one screen:
+   - the native `LongRecorder` plugin (Play build 123+): a foreground service keeps recording
+     with the screen off and the app closed. The file is <filesDir>/recordings/<id>.<ext>; we
+     keep the `uri` it gives us and never guess the extension. At start-up `status()` reattaches
+     to a recording that kept going while the app was closed, and `recorderState` events carry
+     Pause/Resume/Stop pressed on the notification.
+   - MediaRecorder everywhere else (a browser, Play builds 122 and older): pause/resume, the
+     screen kept on (wake lock), "keep Daylog open", and a slice written to IndexedDB every
+     REC_SLICE_MS. A crash or a kill keeps what was said: recRecover() glues the slices back
+     together at the next start.
+
+   Storage: IndexedDB `daylog-rec` (stores `recs` and `chunks`), apart from `daylog-media` on
+   purpose: nothing that reads photos and voice notes (backups, restore, History, the photo
+   rows in Storage) can pick a recording up by accident. Recordings stay on this phone, like
+   videos: never in a backup file (no dp.* key, not in mediaForBackup) and never synced
+   (pushState names what it sends). The export toast, Storage and Delete everything say so.
+   A record: { id, src:'web'|'native', state:'live'|'done', ts, day, title?, mime?, blob? (web),
+   uri? (native), dur (ms), size (bytes), transcript?, trBlock?, trDay?, del?, cut? }.
+   ============================================================ */
+const REC_DB = 'daylog-rec';
+const REC_SLICE_MS = 4000;                        // what a kill can lose at most
+const REC_MAX_MS = 3 * 3600 * 1000;               // three hours, then it saves itself
+const REC_WARN_MS = REC_MAX_MS - 10 * 60 * 1000;  // with ten minutes' warning
+const REC_STALE_TAP_MS = 2 * 60 * 1000;           // a widget/shortcut tap older than this only opens the screen
+const REC_UNDO_MS = 6500;                         // a delete is final once the 6 s Undo toast has gone
+const REC_TR_MAX = 100000;                        // characters of transcript kept on one recording
+let _recDbP = null, _recBootP = null, _recReady = false;
+const _recs = new Map();                          // id → record
+/* `var`, not `let`: these are read by other screens (the Log's button, the drawer, the update
+   reload guard), and a `let` read before this line has run throws instead of saying "none". */
+var _lr = null;          // the live recording: { id, src, state:'recording'|'paused', acc, from, … }
+var _lrStarting = false; // set before any await, so a double tap (or tap + widget) starts one
+var _recSaving = 0;      // finishing writes in flight: an app-update reload waits for them
+var _recFor = null;      // the Log's day, when Recordings was opened from a past day's Log
+let _recOpen = null;     // the row whose player and actions are showing
+let _recEdit = null;     // { id, kind:'title'|'tr', text }: kept here so a redraw never loses typing
+let _rp = null;          // the player: { id, a, url, ready, want, fix, seekTo }
+let _recTick = null, _recScrub = false;
+const _recFinishing = new Set();
+
+/* ---------- pure parts (tests/unit.js) ---------- */
+function recId() { return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+/* 0:05 · 12:34 · 1:02:03 — a live timer must never jump backwards, so seconds are floored. */
+function fmtRecLen(ms) {
+  const s = Math.max(0, Math.floor((+ms || 0) / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
+}
+function recClock(ts) {
+  const d = new Date(+ts); if (isNaN(d)) return '';
+  const h = d.getHours();
+  return ((h + 11) % 12 + 1) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + (h >= 12 ? 'pm' : 'am');
+}
+function recTitle(r) { return (r && r.title) || 'Recording · ' + recClock(r && r.ts); }
+function recCleanTitle(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80); }
+function recDayOk(d, today) {
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(new Date(d + 'T12:00:00')) && d <= (today || todayStr());
+}
+/* A copy with the new name; an empty name (or the default one typed back) goes back to the default. */
+function recRenamed(r, title) {
+  const o = Object.assign({}, r), t = recCleanTitle(title);
+  delete o.title;
+  if (t && t !== recTitle(o)) o.title = t;
+  return o;
+}
+/* A copy on another day, or null for a day that is not a real past (or present) date. */
+function recMoved(r, day, today) { return recDayOk(day, today) ? Object.assign({}, r, { day }) : null; }
+/* What the list shows: finished, not waiting out an Undo. */
+function recShown(list) { return (list || []).filter(r => r && r.state === 'done' && !r.del); }
+/* Newest day first, newest recording first within a day. */
+function recGroups(list) {
+  const by = {};
+  recShown(list).forEach(r => { (by[r.day] = by[r.day] || []).push(r); });
+  return Object.keys(by).sort().reverse().map(day => ({ day, items: by[day].sort((a, b) => (b.ts || 0) - (a.ts || 0)) }));
+}
+function recCapState(ms) { return ms >= REC_MAX_MS ? 'stop' : ms >= REC_WARN_MS ? 'warn' : 'ok'; }
+/* Time recorded so far: what earlier runs added, plus the current run if it is going. */
+function recElapsed(lr, now) {
+  if (!lr) return 0;
+  return Math.max(0, (+lr.acc || 0) + (lr.state === 'recording' && lr.from ? (now || Date.now()) - lr.from : 0));
+}
+/* `{ action:'record', at }` items in the widget queue (the widget's mic, the launcher's
+   "Record" shortcut): open Recordings, and start recording only for a fresh tap — one found
+   in the queue much later (the app was opened another way first) only opens the screen. */
+function widgetRecordRoute(list, now) {
+  now = now || Date.now();
+  const out = { open: false, start: false };
+  (Array.isArray(list) ? list : []).forEach(x => {
+    if (!x || typeof x !== 'object' || x.action !== 'record') return;
+    out.open = true;
+    const at = +x.at || 0;
+    if (at > 0 && now - Math.min(at, now) <= REC_STALE_TAP_MS) out.start = true;   // a future stamp (clock change) counts as now
+  });
+  return out;
+}
+/* A recording cut off part-way (the app killed, the battery gone) comes back from its slices.
+   They are MediaRecorder's own pieces of one stream, so in order they ARE the file; a slice
+   written twice counts once. Its length is the recorded time stamped on the last slice. */
+function recRecoverPlan(meta, chunks) {
+  const mine = (chunks || []).filter(c => c && c.blob && (!meta || c.rid === meta.id)).sort((a, b) => a.seq - b.seq);
+  const seen = new Set(), parts = [];
+  let bytes = 0, ms = 0;
+  mine.forEach(c => {
+    if (seen.has(c.seq)) return;
+    seen.add(c.seq); parts.push(c.blob); bytes += c.blob.size || 0; ms = Math.max(ms, +c.ms || 0);
+  });
+  const dur = ms || parts.length * REC_SLICE_MS;
+  return { parts, bytes, dur, keep: bytes > 0 && dur >= VOICE_MIN_MS };
+}
+/* The transcript goes into the day's journal as its own paragraph, under the recording's name.
+   Saved again after an edit, it replaces the paragraph it added last time (if that is still
+   there word for word) instead of adding a second copy; emptied, it takes that paragraph out. */
+function recTrBlock(r, text) { text = String(text || '').trim(); return text ? '🎙️ ' + recTitle(r) + '\n' + text : ''; }
+function recJournalMerge(journal, oldBlock, newBlock) {
+  const j = String(journal || '');
+  if (oldBlock && j.includes(oldBlock)) {
+    if (newBlock) return j.replace(oldBlock, () => newBlock);
+    for (const cut of ['\n\n' + oldBlock, oldBlock + '\n\n', oldBlock]) if (j.includes(cut)) return j.replace(cut, () => '');
+  }
+  if (!newBlock) return j;
+  return j.trim() ? j.replace(/\s+$/, '') + '\n\n' + newBlock : newBlock;
+}
+function recExt(r) {
+  const m = String((r && r.mime) || '');
+  return /ogg/.test(m) ? 'ogg' : /mp4|m4a|aac/.test(m) ? 'm4a' : 'webm';
+}
+function recFileName(r) {
+  const slug = recTitle(r).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'recording';
+  return 'daylog-' + r.day + '-' + slug + '.' + recExt(r);
+}
+
+/* ---------- storage ---------- */
+function recSupported() { return mediaSupported(); }
+function recDbOpen() {
+  if (_recDbP) return _recDbP;
+  _recDbP = new Promise((res, rej) => {
+    let rq;
+    try { rq = indexedDB.open(REC_DB, 1); } catch (e) { _recDbP = null; rej(e); return; }
+    rq.onupgradeneeded = () => {
+      rq.result.createObjectStore('recs', { keyPath: 'id' });
+      rq.result.createObjectStore('chunks', { keyPath: 'k' });   // k = '<rid>:<seq, 6 digits>'
+    };
+    rq.onsuccess = () => { const db = rq.result; db.onversionchange = () => { db.close(); _recDbP = null; }; res(db); };
+    rq.onerror = () => { _recDbP = null; rej(rq.error); };
+  });
+  return _recDbP;
+}
+/* Resolves when the transaction COMMITS (a quota abort lands after the request "succeeded"). */
+async function recTx(store, fn) {
+  const db = await recDbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    fn(tx.objectStore(store));
+    tx.oncomplete = () => res(true);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error || new Error('aborted'));
+  });
+}
+async function recGetAll(store) {
+  const db = await recDbOpen();
+  return new Promise((res, rej) => {
+    const rq = db.transaction(store, 'readonly').objectStore(store).getAll();
+    rq.onsuccess = () => res(rq.result || []);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function recPut(r) { await recTx('recs', s => s.put(r)); _recs.set(r.id, r); return true; }
+async function recForget(id) { await recTx('recs', s => s.delete(id)); _recs.delete(id); }
+async function recDropChunks(id) {
+  let all = [];
+  try { all = await recGetAll('chunks'); } catch (e) { return; }
+  const ks = all.filter(c => c && (id == null ? true : c.rid === id)).map(c => c.k);
+  if (ks.length) { try { await recTx('chunks', s => ks.forEach(k => s.delete(k))); } catch (e) {} }
+}
+function recBusy() { return !!(_lrStarting || _recSaving || (_lr && _lr.src === 'web')); }
+
+/* ---------- start-up ---------- */
+function recBoot() {
+  if (_recBootP) return _recBootP;
+  _recBootP = (async () => {
+    if (recSupported()) {
+      try { (await recGetAll('recs')).forEach(r => { if (r && r.id) _recs.set(r.id, r); }); } catch (e) {}
+      try { await recRecover(); } catch (e) {}
+      for (const r of [..._recs.values()]) if (r.del && Date.now() - r.del > REC_UNDO_MS) { try { await recHardDelete(r.id); } catch (e) {} }
+    }
+    _recReady = true;
+    try { await recNativeAttach(); } catch (e) {}
+    recRefresh();
+    recProbeDurations();
+  })();
+  return _recBootP;
+}
+/* Web recordings that were still running when the app died: glue their slices back together. */
+async function recRecover() {
+  let chunks = [];
+  try { chunks = await recGetAll('chunks'); } catch (e) { return; }
+  const lost = [..._recs.values()].filter(r => r.src === 'web' && r.state === 'live' && !(_lr && _lr.id === r.id));
+  let saved = null;
+  for (const m of lost) {
+    const plan = recRecoverPlan(m, chunks);
+    if (!plan.keep) { try { await recForget(m.id); } catch (e) {} continue; }
+    const blob = new Blob(plan.parts, { type: m.mime || 'audio/webm' });
+    const done = Object.assign({}, m, { state: 'done', blob, dur: plan.dur, size: blob.size, cut: true });
+    try { await recPut(done); saved = done; } catch (e) { continue; }   // a full disk: the slices stay for next time
+  }
+  // Slices nobody needs any more: of a finished recording (its cleanup was cut off) or of none.
+  const dead = chunks.filter(c => { const r = c && _recs.get(c.rid); return !r || r.state === 'done'; }).map(c => c.k);
+  if (dead.length) { try { await recTx('chunks', s => dead.forEach(k => s.delete(k))); } catch (e) {} }
+  if (saved) setTimeout(() => toast('A recording that was cut off is saved · ' + fmtRecLen(saved.dur)), 1800);
+}
+
+/* ---------- the native engine ---------- */
+function recNative() {
+  const p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LongRecorder;
+  return p && typeof p.start === 'function' ? p : null;
+}
+function recCan(m) { const p = recNative(); return !!(p && typeof p[m] === 'function'); }
+function recFileSrc(uri) {
+  try { return window.Capacitor && typeof window.Capacitor.convertFileSrc === 'function' ? window.Capacitor.convertFileSrc(uri) : uri; }
+  catch (e) { return uri; }
+}
+let _recNativeHooked = false;
+async function recNativeAttach() {
+  const LR = recNative(); if (!LR) return;
+  if (!_recNativeHooked && typeof LR.addListener === 'function') {
+    _recNativeHooked = true;
+    try { const l = LR.addListener('recorderState', recOnNativeState); if (l && l.catch) l.catch(() => {}); } catch (e) {}
+  }
+  let st = null;
+  if (recCan('status')) { try { st = await LR.status(); } catch (e) {} }
+  const liveId = st && (st.state === 'recording' || st.state === 'paused') && st.id ? st.id : null;
+  if (liveId) recNativeLive(st);
+  else if (st && _lr && _lr.src === 'native' && !_lr.stopping) { _lr = null; recTickStop(); }   // stopped while we were away
+  // Cut short by the process dying (OEM killer, crash, power off) and finished from disk: said once.
+  const rv = st && st.recovered;
+  if (rv && rv.id && rv.id !== liveId) await recNativeFinish(rv.id, Object.assign({ reason: 'recovered' }, rv));
+  /* Records still 'live' that are not the running one were stopped while the app was closed
+     (from the notification, or by the system): finish them from the file list. Files with no
+     record at all (a record that could not be saved) are taken in, never left invisible. The
+     final file is a different one from the one start() named (.aac while recording, .m4a after),
+     so the uri is always taken from the list. */
+  let files = null;
+  if (recCan('list')) { try { files = ((await LR.list()) || {}).items || []; } catch (e) {} }
+  if (!files) return;
+  files = files.filter(f => f && f.id && !f.recording && f.id !== liveId);   // the one being recorded is not a finished file
+  const byId = new Map(files.map(f => [f.id, f]));
+  for (const m of [..._recs.values()].filter(r => r.src === 'native' && r.id !== liveId)) {
+    const f = byId.get(m.id);
+    try {
+      if (m.state === 'live') {
+        if (f && +f.bytes > 0) await recPut(Object.assign({}, m, { state: 'done', uri: f.uri || m.uri, size: +f.bytes, dur: m.dur || 0, mime: f.mime || m.mime }));
+        else await recForget(m.id);
+      } else if (f && f.uri && (f.uri !== m.uri || +f.bytes !== m.size)) {
+        await recPut(Object.assign({}, m, { uri: f.uri, size: +f.bytes || m.size, mime: f.mime || m.mime }));   // finished into .m4a since
+      }
+    } catch (e) {}
+  }
+  for (const f of files) {
+    if (_recs.has(f.id) || !(+f.bytes > 0)) continue;
+    const ts = +f.modifiedAt || Date.now();
+    try { await recPut({ id: f.id, src: 'native', state: 'done', ts, day: todayStr(new Date(ts)), uri: f.uri, size: +f.bytes, dur: 0, mime: f.mime }); } catch (e) {}
+  }
+}
+function recNativeLive(st) {
+  const now = Date.now(), el = Math.max(0, +st.elapsedMs || 0);
+  if (!_lr || _lr.id !== st.id) {
+    _lr = { id: st.id, src: 'native', state: st.state, acc: el, from: st.state === 'recording' ? now : 0 };
+    if (!_recs.has(st.id)) {
+      const ts = +st.startedAt || now - el;
+      recPut({ id: st.id, src: 'native', state: 'live', ts, day: todayStr(new Date(ts)), uri: st.uri || '' }).catch(() => {});
+    }
+  } else if (!_lr.stopping) { _lr.state = st.state; _lr.acc = el; _lr.from = st.state === 'recording' ? now : 0; }
+  recTickStart();
+  recRefresh();
+}
+function recOnNativeState(ev) {
+  if (!ev) return;
+  if (ev.state === 'recording' || ev.state === 'paused') { if (ev.id) recNativeLive(ev); return; }
+  const id = ev.id || (_lr && _lr.src === 'native' ? _lr.id : null);   // anything else is a stop
+  const mine = !!(_lr && _lr.src === 'native' && (!id || _lr.id === id));
+  if (mine && _lr.stopping) return;   // our own Stop: recStop finishes it with stop()'s answer
+  if (mine) { _lr = null; recTickStop(); }
+  if (id && ev.empty) { recForget(id).catch(() => {}); toast('Nothing was recorded', true); }
+  else if (id && ev.uri) recNativeFinish(id, ev);
+  else if (id) recNativeAttach().then(recRefresh).catch(() => {});   // no details: the file list has them
+  recRefresh();
+}
+async function recNativeFinish(id, res) {
+  const m0 = _recs.get(id);
+  if ((m0 && m0.state === 'done') || _recFinishing.has(id)) return;
+  _recFinishing.add(id); _recSaving++;
+  try {
+    const dur = +res.durationMs || +res.elapsedMs || 0;
+    const m = m0 || { id, src: 'native', ts: Date.now() - dur, day: todayStr() };
+    if (dur && dur < VOICE_MIN_MS) {
+      if (recCan('remove')) { try { await recNative().remove({ id }); } catch (e) {} }
+      try { await recForget(id); } catch (e) {}
+      toast('Too short to keep — talk a little longer', true);
+      return;
+    }
+    const done = Object.assign({}, m, { state: 'done', uri: res.uri || m.uri || '', dur, size: +res.bytes || m.size || 0 });
+    if (res.mime) done.mime = res.mime;
+    if (res.reason === 'recovered') done.cut = true;
+    try { await recPut(done); } catch (e) { _recs.set(id, done); }   // the file is safe; the list shows it either way
+    buzz(8);
+    toast(_lrCapped === id ? 'Three hours is the limit for one recording — saved'
+      : res.reason === 'recovered' ? 'A recording that was cut off is saved · ' + fmtRecLen(dur)
+      : res.reason === 'error' || res.reason === 'system' ? 'Recording stopped (the phone took the microphone). What you said is saved · ' + fmtRecLen(dur)
+      : 'Recording saved · ' + fmtRecLen(dur));
+    if (!dur) recProbeDurations();
+  } finally { _recFinishing.delete(id); _recSaving--; recRefresh(); mediaIdleCheck(); }
+}
+let _lrCapped = null;
+
+/* ---------- start / pause / resume / stop ---------- */
+function recMicErr(e) {
+  return e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+    ? 'Microphone is off for Daylog — allow it in your phone’s Settings ▸ Apps ▸ Daylog ▸ Permissions'
+    : 'Could not start the microphone' + (e && e.name === 'NotReadableError' ? ' — another app is using it' : '');
+}
+async function recAskMic() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { stream: null, err: 'unsupported' };
+  try { return { stream: await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }) }; }
+  catch (e) { return { stream: null, err: e }; }
+}
+function recNewDay() { const d = _recFor && recDayOk(_recFor) ? _recFor : todayStr(); _recFor = null; return d; }
+async function recStart() {
+  if (_lr || _lrStarting) return;
+  if (_rec || _recStarting) { toast('Finish the voice note first', true); return; }
+  _lrStarting = true; recRefresh();
+  try {
+    await recBoot();   // reattached first, so a recording already running is never started twice
+    if (_lr) return;
+    if (recNative()) await recStartNative(); else await recStartWeb();
+  } finally { _lrStarting = false; recRefresh(); mediaIdleCheck(); }
+}
+async function recStartNative() {
+  const LR = recNative();
+  // Asking through the web grants RECORD_AUDIO to the app; the service then has it.
+  const mic = await recAskMic();
+  if (mic.stream) mic.stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+  else if (mic.err !== 'unsupported') { toast(recMicErr(mic.err), true); return; }
+  // Android 13+ hides the notification (and its Pause/Stop) without this. Asked once, only if never answered.
+  try { const LN = window.Capacitor.Plugins.LocalNotifications; if (LN && LN.checkPermissions && LN.requestPermissions && (await LN.checkPermissions()).display === 'prompt') await LN.requestPermissions(); } catch (e) {}
+  const now = Date.now(), meta = { id: recId(), src: 'native', state: 'live', ts: now, day: recNewDay() };
+  try { await recPut(meta); } catch (e) { toast(mediaQuotaMsg(e) + ' — nothing was recorded', true); return; }
+  let res;
+  try { res = await LR.start({ id: meta.id, title: recTitle(meta) }); }
+  catch (e) {
+    try { await recForget(meta.id); } catch (_) {}
+    const code = String((e && e.code) || '');
+    if (code === 'busy') { await recNativeAttach(); toast('A recording is already going'); return; }
+    toast(code === 'permission' ? recMicErr({ name: 'NotAllowedError' })
+      : code === 'storage' ? 'Your phone is almost full. Free up some space to record'
+      : code === 'start_failed' ? 'Android would not start the recording. Open Daylog and tap Record again'
+      : 'Could not start recording', true);
+    return;
+  }
+  if (res && res.uri) { meta.uri = res.uri; recPut(meta).catch(() => {}); }
+  if (!_lr || _lr.id !== meta.id) _lr = { id: meta.id, src: 'native', state: 'recording', acc: 0, from: Date.now() };
+  recTickStart(); buzz(12);
+}
+async function recStartWeb() {
+  if (!recSupported() || voiceMime() === null || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('Recording needs a newer browser or Android System WebView', true); return;
+  }
+  const mic = await recAskMic();
+  if (!mic.stream) { toast(recMicErr(mic.err), true); return; }
+  const stream = mic.stream, mime0 = voiceMime(), quit = () => { try { stream.getTracks().forEach(t => t.stop()); } catch (e) {} };
+  let mr;
+  try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: VOICE_BPS }, mime0 ? { mimeType: mime0 } : {})); }
+  catch (e) { quit(); toast('This phone cannot record audio here', true); return; }
+  const mime = mr.mimeType || mime0 || 'audio/webm', now = Date.now();
+  const meta = { id: recId(), src: 'web', state: 'live', ts: now, day: recNewDay(), mime };
+  try { await recPut(meta); } catch (e) { quit(); toast(mediaQuotaMsg(e) + ' — nothing was recorded', true); return; }
+  const lr = _lr = { id: meta.id, src: 'web', state: 'recording', acc: 0, from: Date.now(), mr, stream, mime, seq: 0, parts: [], writes: Promise.resolve(), peak: 0 };
+  try {   // the level meter: a recording of silence is invisible until it is played back
+    const AC = window.AudioContext || window.webkitAudioContext;
+    lr.ac = new AC(); lr.an = lr.ac.createAnalyser(); lr.an.fftSize = 512;
+    lr.ac.createMediaStreamSource(stream).connect(lr.an); lr.buf = new Uint8Array(lr.an.fftSize);
+  } catch (e) { lr.an = null; }
+  mr.ondataavailable = e => recWebSlice(lr, e && e.data);
+  mr.onstop = () => recWebFinish(lr);
+  mr.onerror = () => { if (_lr === lr) recStop(); };
+  try { mr.start(REC_SLICE_MS); }
+  catch (e) {
+    _lr = null; quit(); try { if (lr.ac) lr.ac.close(); } catch (_) {}
+    recForget(meta.id).catch(() => {}); toast('Could not start recording', true); return;
+  }
+  recWake(lr);
+  recTickStart(); buzz(12);
+}
+/* Each slice goes to disk as it arrives, in order (the writes are chained), so stop can wait for
+   the last one and a kill loses at most one slice. */
+function recWebSlice(lr, blob) {
+  if (!blob || !blob.size) return;
+  const seq = lr.seq++, c = { k: lr.id + ':' + String(seq).padStart(6, '0'), rid: lr.id, seq, blob, ms: recElapsed(lr) };
+  lr.parts.push(blob);
+  lr.writes = lr.writes.then(() => recTx('chunks', s => s.put(c))).catch(e => {
+    if (lr.diskErr) return; lr.diskErr = true;
+    toast(mediaQuotaMsg(e) + '. Keep Daylog open and stop when you are done', true);
+  });
+}
+async function recWebFinish(lr) {
+  if (lr.done) return; lr.done = true;
+  if (lr.from) { lr.acc = recElapsed(lr); lr.from = 0; }
+  try { lr.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  try { if (lr.ac) lr.ac.close(); } catch (e) {}
+  try { if (lr.wake) lr.wake.release(); } catch (e) {}
+  if (_lr === lr) { _lr = null; recTickStop(); }
+  _recSaving++; recRefresh();
+  try {
+    await lr.writes;
+    const blob = new Blob(lr.parts, { type: lr.mime }), dur = lr.acc;
+    if (lr.cancel || !blob.size || dur < VOICE_MIN_MS) {
+      try { await recForget(lr.id); } catch (e) {}
+      await recDropChunks(lr.id);
+      if (!lr.cancel) toast('Too short to keep — talk a little longer', true);
+      return;
+    }
+    const done = Object.assign({}, _recs.get(lr.id) || { id: lr.id, src: 'web', ts: Date.now() - dur, day: todayStr() },
+      { state: 'done', blob, dur, size: blob.size, mime: lr.mime });
+    try { await recPut(done); }
+    catch (e) { toast(mediaQuotaMsg(e) + '. What you said is kept and is saved the next time Daylog opens', true); return; }
+    await recDropChunks(lr.id);
+    buzz(8);
+    if (lr.an && lr.peak < 0.02) toast('Saved, but it sounds silent — check the microphone is not blocked or covered', true);
+    else toast(_lrCapped === lr.id ? 'Three hours is the limit for one recording — saved' : 'Recording saved · ' + fmtRecLen(dur));
+  } finally { _recSaving--; recRefresh(); mediaIdleCheck(); }
+}
+async function recPause() {
+  const lr = _lr; if (!lr || lr.state !== 'recording' || lr.stopping) return;
+  if (lr.src === 'web') {
+    try { lr.mr.pause(); } catch (e) { return; }
+    lr.acc = recElapsed(lr); lr.from = 0; lr.state = 'paused';
+    try { lr.mr.requestData(); } catch (e) {}   // what was said so far goes to disk now
+  } else {
+    if (!recCan('pause')) return;
+    try { recNativeLive(Object.assign({ id: lr.id, state: 'paused', elapsedMs: recElapsed(lr) }, await recNative().pause())); }
+    catch (e) { if (String((e && e.code) || '') === 'not_recording') { await recNativeAttach().catch(() => {}); recRefresh(); return; } toast('Could not pause — try the notification', true); return; }
+  }
+  buzz(8); recRefresh();
+}
+async function recResume() {
+  const lr = _lr; if (!lr || lr.state !== 'paused' || lr.stopping) return;
+  if (lr.src === 'web') {
+    try { lr.mr.resume(); } catch (e) { return; }
+    lr.state = 'recording'; lr.from = Date.now();
+  } else {
+    if (!recCan('resume')) return;
+    try { recNativeLive(Object.assign({ id: lr.id, state: 'recording', elapsedMs: recElapsed(lr) }, await recNative().resume())); }
+    catch (e) { if (String((e && e.code) || '') === 'not_recording') { await recNativeAttach().catch(() => {}); recRefresh(); return; } toast('Could not resume — try the notification', true); return; }
+  }
+  buzz(8); recRefresh();
+}
+async function recStop(cancel) {
+  const lr = _lr; if (!lr || lr.stopping) return;
+  lr.stopping = true; lr.cancel = !!cancel; recRefresh();
+  if (lr.src === 'web') {
+    try { if (lr.mr.state !== 'inactive') lr.mr.stop(); else recWebFinish(lr); } catch (e) { recWebFinish(lr); }
+    return;
+  }
+  try {
+    const res = (await recNative().stop()) || {};
+    if (_lr === lr) { _lr = null; recTickStop(); }
+    await recNativeFinish(res.id || lr.id, res);
+  } catch (e) {
+    const code = String((e && e.code) || '');
+    if (code === 'empty' || code === 'not_recording') {   // nothing captured, or it had already ended
+      if (_lr === lr) { _lr = null; recTickStop(); }
+      if (code === 'empty') { await recForget(lr.id).catch(() => {}); toast('Nothing was recorded', true); }
+      else await recNativeAttach().catch(() => {});
+    } else { lr.stopping = false; toast('Could not stop — try again, or stop it from the notification', true); }
+  }
+  recRefresh();
+}
+/* The screen stays on while a web recording runs: a screen timeout would hide the page, and a
+   hidden page may be frozen or killed. The lock is dropped whenever the page hides, so it is
+   asked for again on every return. */
+function recWake(lr) {
+  try {
+    if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen')
+      .then(l => { if (_lr === lr && !lr.done) lr.wake = l; else l.release(); }).catch(() => {});
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  const lr = _lr;
+  if (document.visibilityState === 'hidden') {
+    if (lr && lr.src === 'web' && lr.mr && lr.mr.state === 'recording') { try { lr.mr.requestData(); } catch (e) {} }
+    return;
+  }
+  if (lr && lr.src === 'web' && !lr.done) {
+    if (lr.mr.state === 'inactive') recWebFinish(lr);   // the system took the microphone away
+    else if (!lr.wake || lr.wake.released) recWake(lr);
+  }
+  if (recNative() && _recReady) recNativeAttach().then(recRefresh).catch(() => {});
+  recRefresh();
+});
+window.addEventListener('pagehide', () => { const lr = _lr; if (lr && lr.src === 'web' && lr.mr && lr.mr.state === 'recording') { try { lr.mr.requestData(); } catch (e) {} } });
+
+/* ---------- the live timer ---------- */
+function recTickStart() { if (!_recTick) _recTick = setInterval(recTick, 500); recTick(); }
+function recTickStop() { clearInterval(_recTick); _recTick = null; }
+function recTick() {
+  const lr = _lr; if (!lr) { recTickStop(); return; }
+  const ms = recElapsed(lr), t = fmtRecLen(ms);
+  document.querySelectorAll('[data-rec-live-t]').forEach(el => { el.textContent = t; });
+  if (lr.an && lr.state === 'recording') {
+    lr.an.getByteTimeDomainData(lr.buf);
+    let sum = 0; for (let i = 0; i < lr.buf.length; i++) { const v = (lr.buf[i] - 128) / 128; sum += v * v; }
+    const lvl = Math.min(1, Math.sqrt(sum / lr.buf.length) * 4);
+    lr.peak = Math.max(lr.peak, lvl);
+    const m = document.getElementById('rec-lvl'); if (m) m.style.width = Math.round(lvl * 100) + '%';
+  }
+  const cap = recCapState(ms);
+  if (cap === 'warn' && !lr.warned) { lr.warned = true; toast('Ten minutes left: a recording saves itself at three hours'); }
+  if (cap === 'stop' && !lr.stopping) { _lrCapped = lr.id; recStop(); }
+}
+
+/* ---------- edit, move, delete ---------- */
+async function recRename(id, title) {
+  const r = _recs.get(id); if (!r) return;
+  const n = recRenamed(r, title);
+  try { await recPut(n); } catch (e) { toast('Could not save the name — try again', true); return; }
+  recRefresh();
+}
+async function recMove(id, day) {
+  const r = _recs.get(id); if (!r) return false;
+  const n = recMoved(r, day);
+  if (!n) { toast('Pick a day up to today', true); recRefresh(); return false; }
+  if (n.day === r.day) return true;
+  try { await recPut(n); } catch (e) { toast('Could not move it — try again', true); return false; }
+  toast('Moved to ' + (n.day === todayStr() ? 'today' : prettyDate(n.day)));
+  recRefresh();
+  return true;
+}
+/* Gone from the list at once, with Undo. The flag is saved, so a kill inside the Undo window
+   still finishes the delete at the next start (recBoot), and a native file outlives no record. */
+async function recDelete(id) {
+  const r = _recs.get(id); if (!r || r.del) return;
+  if (_rp && _rp.id === id) recPlayHalt();
+  if (_recOpen === id) _recOpen = null;
+  if (_recEdit && _recEdit.id === id) _recEdit = null;
+  r.del = Date.now();
+  recPut(r).catch(() => {});
+  recRefresh();
+  const t = setTimeout(() => { const x = _recs.get(id); if (x && x.del) recHardDelete(id).then(recRefresh, recRefresh); }, REC_UNDO_MS);
+  undoToast('Recording deleted', () => {
+    clearTimeout(t);
+    const x = _recs.get(id); if (!x) return;
+    delete x.del; recPut(x).catch(() => {}); recRefresh();
+  });
+}
+async function recHardDelete(id) {
+  const r = _recs.get(id); if (!r) return;
+  if (r.src === 'native') {
+    const LR = recNative();
+    if (!LR) return;   // keep the record (flagged) until a build that can delete the file
+    if (typeof LR.remove === 'function') {
+      try { await LR.remove({ id }); }
+      catch (e) {
+        // Gone already is fine; still there means try again next start, or the file would come back unlisted.
+        let still = true;
+        if (recCan('list')) { try { still = (((await LR.list()) || {}).items || []).some(f => f && f.id === id); } catch (_) {} }
+        if (still) return;
+      }
+    }
+  }
+  if (_rp && _rp.id === id) recPlayHalt();
+  await recForget(id);
+  await recDropChunks(id);
+}
+/* The transcript into that day's journal, through the Log's own save path, so streaks, sync,
+   the widget and the stamps all see an ordinary edit. Synchronous; the record is saved after. */
+function recTranscriptToDay(r, text) {
+  text = String(text || '').replace(/\r\n?/g, '\n').trim().slice(0, REC_TR_MAX);
+  const day = r.day;
+  flushAutosave();   // typing still waiting on the Log lands first, so it is merged, not lost
+  const cur = DB.entry(day);
+  const oldBlock = r.trDay === day ? r.trBlock || '' : '';
+  const newBlock = recTrBlock(r, text);
+  const j0 = (cur && cur.journal) || '', j1 = recJournalMerge(j0, oldBlock, newBlock);
+  if (j1 !== j0) {
+    const nd = cur ? JSON.parse(JSON.stringify(cur)) : { habits: {} };
+    nd.journal = j1;
+    if (saveDraftNow(day, nd) === false) return { ok: false };
+    if (logDate === day) loadDraft();
+  }
+  return { ok: true, text, block: newBlock, day, changed: j1 !== j0 };
+}
+async function recSaveTranscript(id, text) {
+  const r = _recs.get(id); if (!r) return false;
+  const res = recTranscriptToDay(r, text);
+  if (!res.ok) return false;   // safeSet has said the phone is full
+  const n = Object.assign({}, r, { transcript: res.text || undefined, trBlock: res.block || undefined, trDay: res.block ? res.day : undefined });
+  Object.keys(n).forEach(k => { if (n[k] === undefined) delete n[k]; });
+  try { await recPut(n); } catch (e) { _recs.set(id, n); }
+  toast(res.text ? (res.day === todayStr() ? 'Added to today’s journal' : 'Added to the journal of ' + prettyDate(res.day)) : 'Transcript taken out of the journal');
+  return true;
+}
+
+/* ---------- share ---------- */
+async function recShare(id) {
+  const r = _recs.get(id); if (!r) return;
+  if (r.src === 'native') {
+    if (recCan('share')) { try { await recNative().share({ id: r.id, title: recTitle(r) }); } catch (e) { toast('Could not open the share sheet', true); } return; }
+    toast('Sharing recordings needs the latest Daylog from the Play Store', true); return;
+  }
+  if (!r.blob) { toast('This recording is not on this phone any more', true); return; }
+  const name = recFileName(r);
+  try {
+    const f = new File([r.blob], name, { type: String(r.mime || 'audio/webm').split(';')[0] });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: recTitle(r) }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  if (!window.Capacitor) {
+    const u = URL.createObjectURL(r.blob), a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 60000);
+    toast('Saved to your downloads'); return;
+  }
+  // The Play app's share plugin (builds ≤122) takes pictures and text only.
+  toast('Sharing this recording needs the next Daylog update from the Play Store', true);
+}
+
+/* ---------- the player ---------- */
+function recDurOf(r) { return (r && r.dur) || (_rp && r && _rp.id === r.id && isFinite(_rp.a.duration) ? _rp.a.duration * 1000 : 0); }
+function recPlayLoad(id, want, seekTo) {
+  recPlayHalt();
+  const r = _recs.get(id); if (!r) return null;
+  const src = r.src === 'native' ? (r.uri ? recFileSrc(r.uri) : '') : (r.blob ? URL.createObjectURL(r.blob) : '');
+  if (!src) { toast('This recording is not on this phone any more', true); return null; }
+  const a = new Audio();
+  const p = _rp = { id, a, url: r.src === 'web' ? src : null, ready: false, want: !!want, fix: false, seekTo: seekTo || 0 };
+  a.preload = 'auto';
+  a.onloadedmetadata = () => {
+    if (_rp !== p) return;
+    if (isFinite(a.duration) && a.duration > 0) { recPlayReady(p); return; }
+    // webm from MediaRecorder carries no length; seeking to the very end makes the browser find it
+    p.fix = true; try { a.currentTime = 1e101; } catch (e) { recPlayReady(p); }
+  };
+  const fixed = () => { if (_rp === p && p.fix && isFinite(a.duration) && a.duration > 0) { p.fix = false; recPlayReady(p); } };
+  a.ondurationchange = fixed;
+  a.ontimeupdate = () => { if (p.fix) { fixed(); return; } recPlayPaint(); };
+  a.onplay = recPlayPaint; a.onpause = recPlayPaint;
+  a.onended = () => { if (!p.fix) { try { a.currentTime = 0; } catch (e) {} a.pause(); recPlayPaint(); } };
+  a.onerror = () => { if (_rp !== p) return; toast('This recording cannot be played on this phone', true); recPlayHalt(); };
+  setTimeout(() => { if (_rp === p && !p.ready) { p.fix = false; recPlayReady(p); } }, 4000);   // never stuck waiting
+  a.src = src;
+  try { a.load(); } catch (e) {}
+  return p;
+}
+function recPlayReady(p) {
+  if (p.ready) return; p.ready = true;
+  const r = _recs.get(p.id);
+  if (r && !r.dur && isFinite(p.a.duration) && p.a.duration > 0) { r.dur = Math.round(p.a.duration * 1000); recPut(r).catch(() => {}); }
+  try { p.a.currentTime = (p.seekTo || 0) / 1000; } catch (e) {}
+  if (p.want) p.a.play().catch(() => {});
+  recPlayPaint();
+}
+function recPlayToggle(id) {
+  if (_rp && _rp.id === id) {
+    if (!_rp.ready) { _rp.want = !_rp.want; recPlayPaint(); return; }
+    if (_rp.a.paused) _rp.a.play().catch(() => {}); else _rp.a.pause();
+    return;
+  }
+  if (_rec) voiceStop(false);
+  voiceHalt();
+  if (recPlayLoad(id, true, 0)) { if (_recOpen !== id) { _recOpen = id; recRefresh(); } }
+}
+function recPlayPos(id) { return _rp && _rp.id === id ? (_rp.ready ? _rp.a.currentTime * 1000 : _rp.seekTo || 0) : 0; }
+function recSeek(id, ms) {
+  const r = _recs.get(id); if (!r) return;
+  const dur = recDurOf(r);
+  ms = Math.max(0, dur ? Math.min(ms, dur - 250) : ms);
+  if (_rp && _rp.id === id) {
+    if (_rp.ready) { try { _rp.a.currentTime = ms / 1000; } catch (e) {} } else _rp.seekTo = ms;
+  } else recPlayLoad(id, false, ms);
+  recPlayPaint(ms);
+}
+function recPlayHalt() {
+  const p = _rp; if (!p) return;
+  _rp = null;
+  try { p.a.pause(); p.a.removeAttribute('src'); p.a.load(); } catch (e) {}
+  if (p.url) { try { URL.revokeObjectURL(p.url); } catch (e) {} }
+  recPlayPaint();
+}
+function recPlayPaint(atMs) {
+  document.querySelectorAll('[data-rec-id]').forEach(el => {
+    const id = el.dataset.recId, r = _recs.get(id); if (!r) return;
+    const on = !!(_rp && _rp.id === id), playing = on && (_rp.ready ? !_rp.a.paused : _rp.want);
+    el.classList.toggle('playing', playing);
+    el.querySelectorAll('[data-rec-play]').forEach(b => {
+      b.innerHTML = playing ? icon('pause', 18) : icon('playFill', 18);
+      b.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    });
+    const dur = recDurOf(r), pos = on ? (typeof atMs === 'number' ? atMs : recPlayPos(id)) : 0;
+    const sc = el.querySelector('[data-rec-scrub]');
+    if (sc && !(_recScrub && document.activeElement === sc)) { if (dur) sc.max = String(Math.round(dur)); sc.value = String(Math.round(pos)); }
+    const pt = el.querySelector('.rec-pos'); if (pt) pt.textContent = fmtRecLen(pos);
+    const dt = el.querySelector('.rec-dur'); if (dt) dt.textContent = fmtRecLen(dur);
+  });
+}
+/* Recordings taken in from a file list have no length yet; the player finds it, one at a time. */
+let _recProbing = false; const _recNoDur = new Set();   // asked once a session
+async function recProbeDurations() {
+  if (_recProbing) return; _recProbing = true;
+  try {
+    for (const r of recShown([..._recs.values()])) {
+      if (r.dur || r.src !== 'native' || !r.uri || _recNoDur.has(r.id)) continue;
+      const d = await new Promise(res => {
+        const a = new Audio(); let t = null;
+        const end = v => { clearTimeout(t); a.onloadedmetadata = a.onerror = null; try { a.removeAttribute('src'); a.load(); } catch (e) {} res(v); };
+        a.preload = 'metadata';
+        a.onloadedmetadata = () => end(isFinite(a.duration) && a.duration > 0 ? Math.round(a.duration * 1000) : 0);
+        a.onerror = () => end(0);
+        t = setTimeout(() => end(0), 8000);
+        a.src = recFileSrc(r.uri);
+      });
+      const x = _recs.get(r.id); if (!x) continue;
+      if (d) { x.dur = d; recPut(x).catch(() => {}); } else _recNoDur.add(r.id);
+    }
+  } finally { _recProbing = false; recRefresh(); }
+}
+
+/* ---------- rendering ---------- */
+function recLogBtnHTML() {
+  const live = !!_lr;
+  return `<button type="button" class="mic-btn rec-log-btn${live ? ' live' : ''}" data-rec-open title="Talk for as long as you like">${live
+    ? `<span class="rec-dot-s on" aria-hidden="true"></span>${_lr.state === 'paused' ? 'Paused' : 'Recording'} <span data-rec-live-t>${fmtRecLen(recElapsed(_lr))}</span>`
+    : `<span class="rec-dot-s" aria-hidden="true"></span>Recordings`}</button>`;   // not "Record": the voice-note card below has that
+}
+function recDrawerHTML(cur) {
+  return `<button class="drawer-row${cur === 'recordings' ? ' on' : ''}" data-screen="recordings">
+      <span class="drawer-ico">${icon('mic', 21)}</span>
+      <span class="drawer-lbl"><span>Recordings</span><span class="drawer-peek">${_lr ? (_lr.state === 'paused' ? 'Paused' : 'Recording now') : 'Talk instead of typing'}</span></span></button>`;
+}
+function recTopHTML() {
+  const lr = _lr, nat = !!recNative();
+  const note = nat ? 'It keeps recording with the screen off or in another app. Stop it here or from the notification.'
+    : 'Keep Daylog open while you record. The screen stays on, and what you say is saved every few seconds.';
+  if (!lr) {
+    const busy = _lrStarting || !!_recSaving;
+    return `<div class="card rec-card">
+      <button class="rec-big" data-rec-start ${busy ? 'disabled' : ''} aria-label="Start recording"><span class="rec-big-dot"></span></button>
+      <div class="rec-idle-t"><b>${_lrStarting ? 'Starting…' : _recSaving ? 'Saving…' : 'Tap to record'}</b><span>Talk for as long as you like. Pause any time.</span></div>
+      ${_recFor && recDayOk(_recFor) && _recFor !== todayStr() ? `<div class="hint rec-for">It will be saved on ${escapeHtml(prettyDate(_recFor))}.</div>` : ''}
+      <div class="hint rec-note">${note}</div>
+    </div>`;
+  }
+  const paused = lr.state === 'paused';
+  return `<div class="card rec-card live${paused ? ' paused' : ''}">
+      <div class="rec-live-h"><span class="vrec-dot"></span>${lr.stopping ? 'Saving…' : paused ? 'Paused' : 'Recording'}</div>
+      <div class="rec-live-t" data-rec-live-t>${fmtRecLen(recElapsed(lr))}</div>
+      ${lr.src === 'web' ? `<div class="vrec-lvl rec-lvl" aria-hidden="true"><span id="rec-lvl"></span></div>` : ''}
+      <div class="rec-live-btns">
+        ${paused ? `<button class="btn btn-ghost" data-rec-resume ${lr.stopping ? 'disabled' : ''}>${icon('mic', 18)} Resume</button>`
+          : `<button class="btn btn-ghost" data-rec-pause ${lr.stopping ? 'disabled' : ''}>${icon('pause', 18)} Pause</button>`}
+        <button class="btn btn-primary rec-stop" data-rec-stop ${lr.stopping ? 'disabled' : ''}><span class="rec-stop-ic" aria-hidden="true"></span> Stop and save</button>
+      </div>
+      <div class="hint rec-note">${note}</div>
+    </div>`;
+}
+function recItemHTML(r) {
+  const open = _recOpen === r.id, ed = _recEdit && _recEdit.id === r.id ? _recEdit : null;
+  const dur = recDurOf(r), pos = recPlayPos(r.id);
+  const meta = [dur ? fmtRecLen(dur) : '', r.size ? fmtBytes(r.size) : '', r.cut ? 'saved after Daylog closed' : ''].filter(Boolean).join(' · ');
+  const title = ed && ed.kind === 'title'
+    ? `<div class="rec-edit"><input type="text" data-rec-title-in="${r.id}" value="${escapeHtml(ed.text)}" maxlength="80" aria-label="Name" enterkeyhint="done">
+        <div class="btn-row rec-edit-btns"><button class="btn btn-ghost btn-sm" data-rec-edit-cancel>Cancel</button><button class="btn btn-primary btn-sm" data-rec-title-save="${r.id}">Save name</button></div></div>`
+    : '';
+  const trEd = ed && ed.kind === 'tr'
+    ? `<div class="rec-edit"><textarea data-rec-tr-in="${r.id}" placeholder="Paste or type what was said">${escapeHtml(ed.text)}</textarea>
+        <div class="hint">Saving adds it to the journal of ${r.day === todayStr() ? 'today' : escapeHtml(prettyDate(r.day))}${r.transcript && r.trDay === r.day ? ', in place of what it added before' : ''}. It stays here too.</div>
+        <div class="btn-row rec-edit-btns"><button class="btn btn-ghost btn-sm" data-rec-edit-cancel>Cancel</button><button class="btn btn-primary btn-sm" data-rec-tr-save="${r.id}">Save to journal</button></div></div>`
+    : '';
+  return `<div class="rec-item${open ? ' on' : ''}" data-rec-id="${r.id}">
+      <div class="rec-row">
+        <button class="vplay" data-rec-play="${r.id}" aria-label="Play">${icon('playFill', 18)}</button>
+        <button class="rec-main" data-rec-toggle="${r.id}" aria-expanded="${open}">
+          <span class="rec-title">${escapeHtml(recTitle(r))}</span><span class="rec-meta">${escapeHtml(meta)}</span></button>
+        <button class="rec-more" data-rec-toggle="${r.id}" aria-label="${open ? 'Less' : 'More'}">${icon(open ? 'x' : 'chevR', 18)}</button>
+      </div>
+      ${title}
+      ${open ? `<div class="rec-player">
+          <input type="range" class="rec-scrub" data-rec-scrub="${r.id}" min="0" max="${Math.max(1, Math.round(dur))}" step="1000" value="${Math.round(pos)}" aria-label="Position">
+          <div class="rec-ptime"><span class="rec-pos">${fmtRecLen(pos)}</span><span class="rec-dur">${fmtRecLen(dur)}</span></div>
+          <div class="rec-skip">
+            <button data-rec-skip="-15" data-rec-for="${r.id}" aria-label="Back 15 seconds">${icon('back15', 18)}15</button>
+            <button data-rec-skip="15" data-rec-for="${r.id}" aria-label="Forward 15 seconds">15${icon('fwd15', 18)}</button>
+          </div>
+        </div>
+        <div class="rec-acts">
+          <button class="rec-act" data-rec-rename="${r.id}">${icon('pencil', 16)} Rename</button>
+          <label class="rec-act rec-day-pick"><span>Day</span><input type="date" data-rec-day="${r.id}" value="${r.day}" max="${todayStr()}" aria-label="Which day it belongs to"></label>
+          <button class="rec-act" data-rec-share="${r.id}">${icon('share', 16)} Share</button>
+          <button class="rec-act" data-rec-tr="${r.id}">${icon('note', 16)} ${r.transcript ? 'Edit transcript' : 'Add transcript'}</button>
+          <button class="rec-act danger" data-rec-del="${r.id}">${icon('trash', 16)} Delete</button>
+        </div>` : ''}
+      ${trEd || (r.transcript ? `<div class="rec-tr">${escapeHtml(r.transcript)}</div>` : '')}
+    </div>`;
+}
+function recListHTML() {
+  if (!recSupported()) return '<div class="card"><div class="hint">This browser cannot keep recordings.</div></div>';
+  if (!_recReady) return '<div class="hint rec-empty">Loading…</div>';
+  const groups = recGroups([..._recs.values()]);
+  const foot = '<div class="hint rec-foot">Recordings stay on this phone. They are not in backup files and are not synced. Share one to keep a copy somewhere else.</div>';
+  if (!groups.length) return `<div class="rec-empty"><b>No recordings yet</b><span>Talk about your day. You can add the words to your journal later.</span></div>${foot}`;
+  return groups.map(g => {
+    const tot = g.items.reduce((s, r) => s + (recDurOf(r) || 0), 0);
+    const rd = relDay(g.day), lbl = rd === 'Today' || rd === 'Yesterday' ? rd : prettyDate(g.day);
+    return `<section class="rec-group"><h3 class="rec-day-h">${escapeHtml(lbl)}
+        <span>${g.items.length === 1 ? '1 recording' : g.items.length + ' recordings'}${tot ? ' · ' + fmtRecLen(tot) : ''}</span></h3>
+      ${g.items.map(recItemHTML).join('')}</section>`;
+  }).join('') + foot;
+}
+function renderRecordings() {
+  document.getElementById('screen-title').textContent = 'Recordings';
+  document.getElementById('screen-sub').textContent = _lr ? (_lr.state === 'paused' ? 'Paused' : 'Recording now') : 'Talk instead of typing';
+  const sc = document.getElementById('s-recordings'); if (!sc) return;
+  sc.innerHTML = `<div id="rec-top">${recTopHTML()}</div><div id="rec-list">${recListHTML()}</div>`;
+  if (_recReady) recPlayPaint();
+  if (!_recBootP) recBoot();
+}
+/* Redraw what changed, in place. The list is left alone while the open name or transcript box
+   has the cursor (its text also lives in _recEdit, so a later redraw shows it again). */
+function recRefresh() {
+  document.querySelectorAll('[data-rec-open]').forEach(b => { b.outerHTML = recLogBtnHTML(); });
+  if (!isOn('recordings')) return;
+  const sub = document.getElementById('screen-sub');
+  if (sub) sub.textContent = _lr ? (_lr.state === 'paused' ? 'Paused' : 'Recording now') : 'Talk instead of typing';
+  const top = document.getElementById('rec-top'); if (top) top.innerHTML = recTopHTML();
+  const list = document.getElementById('rec-list'), a = document.activeElement, e = _recEdit;
+  const typing = !!(e && a && a.dataset && (e.kind === 'tr' ? a.dataset.recTrIn : a.dataset.recTitleIn) === e.id);
+  if (list && !typing) list.innerHTML = recListHTML();
+  recPlayPaint();
+}
+function recEditFocus(sel) {
+  setTimeout(() => { const el = document.querySelector(sel); if (el) { el.focus(); try { const n = el.value.length; el.setSelectionRange(n, n); } catch (e) {} } }, 30);
+}
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-rec-open],[data-rec-start],[data-rec-pause],[data-rec-resume],[data-rec-stop],[data-rec-play],[data-rec-toggle],[data-rec-skip],[data-rec-rename],[data-rec-title-save],[data-rec-edit-cancel],[data-rec-share],[data-rec-tr],[data-rec-tr-save],[data-rec-del]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.recOpen !== undefined) {
+    _recFor = typeof logDate === 'string' && logDate !== todayStr() ? logDate : null;
+    navigateTo('recordings'); return;
+  }
+  if (d.recStart !== undefined) { recStart(); return; }
+  if (d.recPause !== undefined) { recPause(); return; }
+  if (d.recResume !== undefined) { recResume(); return; }
+  if (d.recStop !== undefined) { recStop(); return; }
+  if (d.recPlay) { recPlayToggle(d.recPlay); return; }
+  if (d.recToggle) { _recOpen = _recOpen === d.recToggle ? null : d.recToggle; if (_recEdit && _recEdit.id !== _recOpen) _recEdit = null; recRefresh(); return; }
+  if (d.recSkip) { const id = d.recFor; recSeek(id, recPlayPos(id) + (+d.recSkip) * 1000); return; }
+  if (d.recRename) { const r = _recs.get(d.recRename); if (!r) return; _recEdit = { id: r.id, kind: 'title', text: recTitle(r) }; recRefresh(); recEditFocus(`[data-rec-title-in="${r.id}"]`); return; }
+  if (d.recTitleSave) { const e = _recEdit; _recEdit = null; if (e) recRename(e.id, e.text); else recRefresh(); return; }
+  if (d.recEditCancel !== undefined) { _recEdit = null; recRefresh(); return; }
+  if (d.recShare) { recShare(d.recShare); return; }
+  if (d.recTr) { const r = _recs.get(d.recTr); if (!r) return; _recEdit = { id: r.id, kind: 'tr', text: r.transcript || '' }; recRefresh(); recEditFocus(`[data-rec-tr-in="${r.id}"]`); return; }
+  if (d.recTrSave) {
+    const e = _recEdit; if (!e) return;
+    const ta = document.querySelector(`[data-rec-tr-in="${e.id}"]`); if (ta) e.text = ta.value;
+    _recEdit = null;
+    if (ta) ta.blur();
+    recSaveTranscript(e.id, e.text).then(ok => { if (!ok) _recEdit = e; recRefresh(); });
+    return;
+  }
+  if (d.recDel) { recDelete(d.recDel); return; }
+});
+document.addEventListener('input', (ev) => {
+  const t = ev.target;
+  if (t.dataset && (t.dataset.recTitleIn || t.dataset.recTrIn) && _recEdit) { _recEdit.text = t.value; return; }
+  if (t.dataset && t.dataset.recScrub) { _recScrub = true; const el = t.closest('[data-rec-id]'), pt = el && el.querySelector('.rec-pos'); if (pt) pt.textContent = fmtRecLen(+t.value); }
+});
+document.addEventListener('change', (ev) => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.recScrub) { _recScrub = false; recSeek(t.dataset.recScrub, +t.value); return; }
+  if (t.dataset && t.dataset.recDay) { recMove(t.dataset.recDay, t.value); return; }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.recTitleIn) { ev.preventDefault(); const e = _recEdit; _recEdit = null; if (e) recRename(e.id, ev.target.value); }
+  if (ev.key === 'Escape' && _recEdit && ev.target.closest && ev.target.closest('.rec-edit')) { _recEdit = null; recRefresh(); }
+});
+/* Delete everything: stop, remove the phone's files, then the database itself. */
+async function recWipe() {
+  const lr = _lr; _lr = null; recTickStop(); recPlayHalt();
+  if (lr && lr.src === 'web') {   // dropped, not saved: nothing may write to the database being deleted
+    lr.done = true;
+    try { lr.mr.ondataavailable = lr.mr.onstop = null; if (lr.mr.state !== 'inactive') lr.mr.stop(); } catch (e) {}
+    try { lr.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { if (lr.ac) lr.ac.close(); } catch (e) {}
+    try { if (lr.wake) lr.wake.release(); } catch (e) {}
+  }
+  const LR = recNative();
+  if (LR) {
+    if (lr && lr.src === 'native' && recCan('stop')) { try { await LR.stop(); } catch (e) {} }
+    const ids = new Set([..._recs.values()].filter(r => r.src === 'native').map(r => r.id));
+    if (recCan('list')) { try { (((await LR.list()) || {}).items || []).forEach(f => { if (f && f.id) ids.add(f.id); }); } catch (e) {} }
+    if (recCan('remove')) for (const id of ids) { try { await LR.remove({ id }); } catch (e) {} }
+  }
+  _recs.clear();
+  if (!recSupported()) return true;
+  const closing = _recDbP ? _recDbP.then(db => db.close()).catch(() => {}) : Promise.resolve();
+  _recDbP = null;
+  return closing.then(() => new Promise(res => {
+    try { const rq = indexedDB.deleteDatabase(REC_DB); rq.onsuccess = () => res(true); rq.onerror = () => res(false); }
+    catch (e) { res(false); }
+  }));
+}
+function recTotals() {
+  let n = 0, bytes = 0, ms = 0;
+  recShown([..._recs.values()]).forEach(r => { n++; bytes += r.size || 0; ms += r.dur || 0; });
+  return { n, bytes, ms };
+}
+
 /* Everything the app stores, for a COMPLETE backup/restore. */
 const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames', 'actnames', 'gapskip', 'cardratio',
   'finaccts', 'fintx', 'finmarks', 'finbudget', 'fincats', 'finset', 'gym', 'exercises', 'reminders', 'timelog', 'timeacts', 'events', 'docs', 'habitcfg', 'actcfg', 'deepcfg', 'gymcfg', 'corecfg', 'daycfg', 'gymgroups', 'navcfg', 'pomo', 'timebox', 'pomohist', 'health', 'goals', 'logsec', 'awards', 'freshSeen',
@@ -10454,7 +11379,7 @@ function wipeStageHTML() {
         and everything else Daylog holds on this phone.</div>
       <div class="hint" style="margin:8px 0">${lb
         ? `Your last backup was <b>${days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago'}</b>.`
-        : `<b>You have never exported a backup.</b>`} Anything logged since then is gone for good.${mediaTotals().videos ? ` <b>Your ${mediaTotals().videos} video${mediaTotals().videos === 1 ? '' : 's'} are in no backup</b> and go for good either way.` : ''}</div>
+        : `<b>You have never exported a backup.</b>`} Anything logged since then is gone for good.${mediaTotals().videos ? ` <b>Your ${mediaTotals().videos} video${mediaTotals().videos === 1 ? '' : 's'} are in no backup</b> and go for good either way.` : ''}${recTotals().n ? ` <b>Your ${plural(recTotals().n, 'recording')} ${recTotals().n === 1 ? 'is' : 'are'} in no backup</b> and go${recTotals().n === 1 ? 'es' : ''} for good either way.` : ''}</div>
       <div class="btn-row">
         <button class="btn btn-primary btn-sm" id="wipe-export">⬇ Export a backup first</button>
         ${back}
@@ -10534,8 +11459,11 @@ async function exportData() {
   } else if (saveOk(r) && media.skipped) {
     toast(media.skipped < 0 ? 'Backed up, but your photos and voice notes could not be read and are NOT in this file'
       : `Backed up, but ${media.skipped} photo(s)/voice note(s) could not be read and were left out`, true);
-  } else if (saveOk(r) && vids) {
+  } else if (saveOk(r) && vids && !recTotals().n) {
     toast(`Backed up. Your ${vids} video${vids === 1 ? '' : 's'} stay${vids === 1 ? 's' : ''} on this phone only: backup files do not carry videos.`);
+  } else if (saveOk(r) && recTotals().n) {
+    const rn = recTotals().n;
+    toast(`Backed up. Your ${vids ? plural(vids, 'video') + ' and ' : ''}${plural(rn, 'recording')} stay on this phone only: backup files do not carry ${vids ? 'videos or recordings' : 'recordings'}.`);
   }
   return r;
 }
@@ -11052,9 +11980,12 @@ async function drainWidgetActions() {
     /* Not before onboarding: a mood saved under the welcome screen is "data", and the next open
        would skip onboarding for good. The tap still opened the app; it can be tapped again. */
     if (needsOnboard() || document.querySelector('#onboard.on')) return;
-    const r = widgetTapsApply(list);
-    if (!r.any) return;
-    navigateTo('today');
+    // The widget's mic and the launcher's "Record" shortcut queue { action: 'record' } here too.
+    // They are routed apart, so mood taps go through widgetTapsApply exactly as before.
+    const r = widgetTapsApply(list.filter(x => !(x && x.action === 'record'))), rr = widgetRecordRoute(list);
+    if (!r.any && !rr.open) return;
+    navigateTo(rr.open ? 'recordings' : 'today');
+    if (rr.start && !_lr) recStart();
     const last = r.saved[r.saved.length - 1];
     if (last) toast('Mood saved ' + moodFace(last.mood) + (last.date === todayStr() ? '' : ' for ' + relDay(last.date).toLowerCase()));
     else if (r.kept.includes(todayStr())) toast('Today’s mood was already set. Change it here if you like');
@@ -17660,7 +18591,7 @@ function renderDrawer() {
       }).join('')}</div>` : ''}
     </div>` : '';
   document.getElementById('drawer-list').innerHTML =
-    (items.length ? `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}` : '') + liftDrawerHTML(cur) + more;
+    `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}${recDrawerHTML(cur)}` + liftDrawerHTML(cur) + more;
   const st = navCfg().find(n => n.k === 'settings');
   document.getElementById('drawer-foot').innerHTML =
     `<button class="drawer-row ${cur === 'settings' || cur === 'custom' ? 'on' : ''}" data-screen="settings">
@@ -17784,6 +18715,7 @@ function handleBack() {
   if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   if (cur === 'settings' && settingsPage) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
   if (cur === 'history' && histDay) { histDayClose(); return; }
+  if (cur === 'recordings' && _recEdit) { _recEdit = null; recRefresh(); return; }   // a name or transcript being typed closes first
   if (cur === 'today' && _editFromHist) { histReturnFromEdit(); return; }   // came from History ▸ Edit
   // 3) not on the home tab → go back to it
   const home = defaultTab();
@@ -17978,7 +18910,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, recordings: renderRecordings, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 RENDER.meals = renderMeals;   // Meals (see the Meals block)
 /* The entrance: the screen's top-level blocks rise in, staggered. Marked per element and only
    once, after the render: an element a later re-render creates just appears, and nothing is
@@ -17997,10 +18929,11 @@ function show(name) {
   if (name !== 'today') _editFromHist = null;          // "back to the day" only from the Log it opened
   if (name !== 'custom') _customFrom = null;          // "back to Habits" only from the Customize page Habits opened
   if (name !== 'today' && name !== 'history') _dayFrom = null;
+  if (name !== 'recordings') _recFor = null;          // "save it on that day" only from the Log that opened Recordings
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
   if (leaving) { const was = (document.querySelector('.screen.on') || {}).id;
     try { if (was === 's-memories' && curMem) docDiscardIfEmpty(curMem); if (was === 's-write' && curDoc) docDiscardIfEmpty(curDoc); } catch (e) {} }
-  if (leaving) { voiceSaveIfRecording(); voiceHalt(); }
+  if (leaving) { voiceSaveIfRecording(); voiceHalt(); recPlayHalt(); }   // a long recording itself keeps going
   mediaViewClose();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   const sec = document.getElementById('s-' + name);
@@ -18081,6 +19014,8 @@ function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<
 const ICONS = {
   utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',   // Meals
   play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
+  back15: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',    // Recordings: back 15 s
+  fwd15: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',  // …and forward
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/>',
@@ -18496,9 +19431,9 @@ refreshStreak();
 if (localStorage.getItem('dp.tlDirty')) syncTimelog();   // days a time-log change left un-summed when the app was killed
 // A delete-everything whose photo database did not finish going is finished first.
 if (localStorage.getItem('dp.mediaWipe') === '1' && mediaSupported()) {
-  Promise.race([mediaWipe().then(ok => { if (ok) localStorage.removeItem('dp.mediaWipe'); }), new Promise(r => setTimeout(r, 5000))])
-    .then(() => mediaLoad());
-} else mediaLoad();
+  Promise.race([Promise.all([mediaWipe(), recWipe()]).then(([ok, ok2]) => { if (ok && ok2) localStorage.removeItem('dp.mediaWipe'); }), new Promise(r => setTimeout(r, 5000))])
+    .then(() => { mediaLoad(); recBoot(); });
+} else { mediaLoad(); recBoot(); }   // recBoot: reattach to a recording that kept going while the app was closed
 // Returning from the standalone How-to guide (index.html?go=settings) lands on Settings, not home.
 const _go = new URLSearchParams(location.search).get('go');
 navigateTo((_go && RENDER[_go]) ? _go : defaultTab());
