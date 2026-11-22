@@ -4276,3 +4276,192 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 .rec-foot { margin: 14px 8px 8px; text-align: center; font-size: 12.5px; line-height: 1.5; color: var(--text-faint); }
 @media (prefers-reduced-motion: reduce) { .rec-dot-s.on { animation: none; } }
 /* ===== end Recordings ===== */
+
+/* ======================================================================
+   v268 — three more UI styles (Kishore 2026-11-23): CLAY (warm ivory and
+   terracotta, serif titles), DOT (pure black, dot-matrix numbers, one red
+   light) and GLASS (frosted bars, grouped grey, crisp blue; light or dark).
+   Written last on purpose so each style's rules win over the shared ones.
+   Fonts are free (SIL OFL: Fraunces, Doto), self-hosted and precached in sw.js.
+   ====================================================================== */
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 500 700; font-display: swap; src: url('fonts/self/fraunces.woff2') format('woff2'); }
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 400 900; font-display: swap; src: url('fonts/self/doto.woff2') format('woff2'); }
+
+/* ======================= CLAY — warm ivory, terracotta, serif ======================= */
+:root[data-style="clay"] {
+  --bg: #f4f2ea; --bg-elev: #faf9f5; --bg-card: #faf9f5; --bg-card-2: #faf9f5ee; --bg-input: #ece9df;
+  --border: #e3dfd3; --border-hi: #d6d1c3; --line: #e3dfd3;
+  --text: #1f1e1c; --text-dim: #5b5a55; --text-faint: #6c6a63;
+  --accent: #b5532f; --accent-ink: #9a4325; --accent-2: #5f8a69; --accent2: #8e7cc3;
+  --good: #5f8a69; --good-ink: #3d6646; --warn-ink: #8f5a0c; --bad-ink: #b3361f;
+  --grad-accent: linear-gradient(180deg, #c45f3a 0%, #b5532f 100%);
+  --glow-accent: 0 6px 16px -8px rgba(181, 83, 47, .55);
+  --shadow: 0 16px 40px -18px rgba(60, 45, 30, .28); --shadow-card: 0 1px 2px rgba(60, 45, 30, .06);
+  --radius: 14px; --radius-sm: 10px;
+  --font-display: 'Fraunces', 'Twemoji Mozilla', Georgia, 'Times New Roman', serif;
+  --font-ui: 'DM Sans', 'Twemoji Mozilla', -apple-system, system-ui, sans-serif;
+  --mesh-a: rgba(217, 119, 87, .16); --mesh-b: rgba(203, 170, 120, .14); --mesh-c: rgba(95, 138, 105, .10);
+  --ring-a: #d97757; --ring-b: #b5532f; --ring-track: #ebe7dc; --ring-full-a: #5f8a69; --ring-full-b: #4a7553;
+  --nav-bg: rgba(250, 249, 245, .93); --nav-r: 18px;
+  --nav-shadow: 0 0 0 1px #e3dfd3, 0 12px 28px -14px rgba(60, 45, 30, .30);
+  --nav-ind: #f1e2d8; --nav-ind-shadow: none; --nav-ink: #9a4325; --nav-dim: var(--text-dim);
+  --flame-bg: #f3dfd3; --flame-ink: #9a4325; --flame-glow: none;
+  --lift-a: #f6e6dc; --lift-b: #f1ebe0; --lift-c: #e6eee5; --lift-glow: #d97757;
+  --lift-orb-a: #f2c9b4; --lift-orb-b: #d97757; --lift-orb-c: #a9c2a8;
+}
+:root[data-style="clay"] body::before { opacity: 1; background: radial-gradient(70% 36% at 50% -8%, rgba(217, 119, 87, .11), transparent 70%); }
+:root[data-style="clay"] body::after { opacity: .035; }
+:root[data-style="clay"] .topbar h1 { font-size: 31px; font-weight: 560; letter-spacing: -.4px; }
+:root[data-style="clay"] .card { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-card); }
+:root[data-style="clay"] .card h2 { font-size: 19px; font-weight: 580; letter-spacing: -.2px; }
+:root[data-style="clay"] .card .hint, :root[data-style="clay"] .hint { font-family: var(--font-ui); }
+:root[data-style="clay"] .btn { font-family: var(--font-ui); font-weight: 600; letter-spacing: 0; border-radius: 10px; }
+:root[data-style="clay"] .btn-primary { background: var(--accent); color: #fff; box-shadow: none; }
+:root[data-style="clay"] .btn-ghost { background: var(--bg-card); border: 1px solid var(--border-hi); color: var(--text); }
+:root[data-style="clay"] .streak-badge { background: #f3dfd3; border: 0; box-shadow: none; color: #9a4325; font-family: var(--font-ui); }
+:root[data-style="clay"] .habit { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; }
+:root[data-style="clay"] .habit .check { border-radius: 6px; border-color: #cbc5b5; }
+:root[data-style="clay"] .habit.on { background: #f6e6dc; border-color: #e5b9a3; box-shadow: none; }
+:root[data-style="clay"] .habit.on .check { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-style="clay"] .seg-row { background: var(--bg-input); border-color: transparent; border-radius: 10px; }
+:root[data-style="clay"] .seg-btn { border-radius: 8px; }
+:root[data-style="clay"] .seg-btn.on { background: var(--bg-card); color: var(--text); box-shadow: 0 1px 2px rgba(60, 45, 30, .14), 0 0 0 1px var(--border); }
+:root[data-style="clay"] .toast { background: #2b2925; color: #f4f2ea; border-color: transparent; }
+:root[data-style="clay"] .toast-undo { background: #f3dfd3; color: #2b2925; }
+:root[data-style="clay"] .onboard { background: var(--bg); }
+:root[data-style="clay"] .ob-inner h1 { font-size: 34px; font-weight: 560; letter-spacing: -.5px; }
+:root[data-style="clay"] .lh-greet { font-size: 34px; font-weight: 530; letter-spacing: -.5px; }
+:root[data-style="clay"] .lh-date { letter-spacing: .04em; text-transform: none; font-size: 13.5px; font-weight: 500; }
+:root[data-style="clay"] .gl-v { font-weight: 560; letter-spacing: -.5px; }
+:root[data-style="clay"] .mm-cell { border-radius: 10px; }
+:root[data-style="clay"] .heat.heat-wk .cell { border-radius: 4px; }
+:root[data-style="clay"] .drawer { box-shadow: -1px 0 0 var(--border), -16px 0 40px rgba(60, 45, 30, .14); }
+
+/* ======================= DOT — black, dot matrix, one red light ======================= */
+:root[data-style="dot"] {
+  --bg: #000000; --bg-elev: #0b0b0b; --bg-card: #0c0c0c; --bg-card-2: #0c0c0cee; --bg-input: #151515;
+  --border: #262626; --border-hi: #3a3a3a; --line: #262626;
+  --text: #f2f2f2; --text-dim: #a8a8a8; --text-faint: #8c8c8c;
+  --accent: #d71921; --accent-ink: #ff4b52; --accent-2: #e8e8e8; --accent2: #9a9a9a;
+  --good: #e8e8e8; --good-ink: #ffffff; --warn-ink: #ffb648; --bad: #d71921; --bad-ink: #ff4b52;
+  --grad-accent: linear-gradient(#d71921, #d71921); --glow-accent: none;
+  --shadow: 0 18px 50px rgba(0, 0, 0, .7); --shadow-card: none;
+  --radius: 22px; --radius-sm: 14px;
+  --font-display: 'DM Sans', 'Twemoji Mozilla', -apple-system, system-ui, sans-serif;
+  --font-ui: 'DM Sans', 'Twemoji Mozilla', -apple-system, system-ui, sans-serif;
+  --font-dot: 'Doto', 'DM Sans', monospace;
+  --mesh-a: rgba(255, 255, 255, .05); --mesh-b: rgba(215, 25, 33, .12); --mesh-c: rgba(255, 255, 255, .03);
+  --ring-a: #ffffff; --ring-b: #d71921; --ring-track: #1c1c1c; --ring-full-a: #ffffff; --ring-full-b: #e8e8e8;
+  --nav-bg: rgba(10, 10, 10, .9); --nav-r: 30px;
+  --nav-shadow: 0 0 0 1px #2a2a2a, 0 16px 36px -14px rgba(0, 0, 0, .9);
+  --nav-ind: #1d1d1d; --nav-ind-shadow: inset 0 0 0 1px #3a3a3a; --nav-ink: #ffffff; --nav-dim: #8c8c8c;
+  --flame-bg: #d71921; --flame-ink: #ffffff; --flame-glow: none;
+  --lift-a: #0b0b0b; --lift-b: #141414; --lift-c: #1c1c1c; --lift-glow: #d71921;
+  --lift-orb-a: #ffffff; --lift-orb-b: #8c8c8c; --lift-orb-c: #d71921;
+}
+/* the dot grid behind everything */
+:root[data-style="dot"] body::before { opacity: 1; animation: none; filter: none; inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, .075) 1px, transparent 1.5px) 0 0 / 16px 16px; }
+:root[data-style="dot"] body::after { display: none; }
+/* dot-matrix type only where it is big: titles, the greeting and the numbers */
+:root[data-style="dot"] .topbar h1, :root[data-style="dot"] .lh-greet, :root[data-style="dot"] .ob-inner h1,
+:root[data-style="dot"] .gl-v, :root[data-style="dot"] .rec-live-t, :root[data-style="dot"] .progress-ring .big,
+:root[data-style="dot"] .stat .v, :root[data-style="dot"] .pomo-time, :root[data-style="dot"] .tt-now-elapsed,
+:root[data-style="dot"] .tb-time { font-family: var(--font-dot); font-weight: 800; letter-spacing: .02em; }
+:root[data-style="dot"] .topbar h1 { font-size: 26px; letter-spacing: 0; text-transform: uppercase; }
+:root[data-style="dot"] .lh-greet { font-size: 34px; line-height: 1.08; }
+:root[data-style="dot"] .ob-inner h1 { font-size: 34px; text-transform: uppercase; }
+:root[data-style="dot"] .rec-live-t { font-size: 54px; letter-spacing: .04em; }
+:root[data-style="dot"] .lh-date { letter-spacing: .22em; }
+:root[data-style="dot"] .card { background: var(--bg-card); border: 1px solid var(--border); box-shadow: none; }
+:root[data-style="dot"] .card h2 { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim); }
+:root[data-style="dot"] .btn { border-radius: 999px; font-weight: 600; letter-spacing: .02em; }
+:root[data-style="dot"] .btn-primary { background: #ffffff; color: #000000; box-shadow: none; }
+:root[data-style="dot"] .btn-ghost { background: transparent; border: 1px solid var(--border-hi); color: var(--text); }
+:root[data-style="dot"] .streak-badge { background: transparent; border: 1px solid var(--border-hi); box-shadow: none; color: #ffffff; }
+:root[data-style="dot"] .habit { background: transparent; border: 1px solid var(--border-hi); border-radius: 14px; }
+:root[data-style="dot"] .habit .check { border-radius: 50%; border-color: #5a5a5a; }
+:root[data-style="dot"] .habit.on { background: #141414; border-color: #ffffff; box-shadow: none; }
+:root[data-style="dot"] .habit.on .check { background: #d71921; border-color: #d71921; color: #ffffff; }
+:root[data-style="dot"] .seg-row { background: transparent; border: 1px solid var(--border-hi); border-radius: 999px; }
+:root[data-style="dot"] .seg-btn { border-radius: 999px; }
+:root[data-style="dot"] .seg-btn.on { background: #ffffff; color: #000000; box-shadow: none; }
+:root[data-style="dot"] .toast { background: #ffffff; color: #000000; border-color: transparent; }
+:root[data-style="dot"] .toast-undo { background: #000000; color: #ffffff; }
+:root[data-style="dot"] .onboard { background: var(--bg); }
+:root[data-style="dot"] .drawer { background: #0a0a0a; border-left: 1px solid var(--border); }
+:root[data-style="dot"] .gl-tile { background: transparent; }
+:root[data-style="dot"] .mm-cell { border-radius: 10px; }
+:root[data-style="dot"] .heat.heat-wk .cell { border-radius: 50%; }
+:root[data-style="dot"] input[type=text], :root[data-style="dot"] input:not([type]), :root[data-style="dot"] input[type=number],
+:root[data-style="dot"] input[type=date], :root[data-style="dot"] input[type=time], :root[data-style="dot"] textarea,
+:root[data-style="dot"] select { background: #0f0f0f; border-color: #2c2c2c; }
+:root[data-style="dot"] select option { background: #111111; }
+
+/* ======================= GLASS — frosted bars, grouped grey, blue ======================= */
+:root[data-style="glass"] {
+  --bg: #f2f2f7; --bg-elev: #ffffff; --bg-card: #ffffff; --bg-card-2: #ffffffee; --bg-input: #ebebf0;
+  --border: #e5e5ea; --border-hi: #d1d1d6; --line: #e5e5ea;
+  --text: #000000; --text-dim: #545458; --text-faint: #6c6c70;
+  --accent: #007aff; --accent-ink: #0062cc; --accent-2: #34c759; --accent2: #af52de;
+  --good: #34c759; --good-ink: #1d7f37; --warn-ink: #a65800; --bad: #ff3b30; --bad-ink: #d70015;
+  --grad-accent: linear-gradient(#007aff, #007aff); --glow-accent: none;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .12); --shadow-card: none;
+  --radius: 16px; --radius-sm: 12px;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Twemoji Mozilla', system-ui, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Twemoji Mozilla', system-ui, sans-serif;
+  --mesh-a: rgba(0, 122, 255, .10); --mesh-b: rgba(175, 82, 222, .08); --mesh-c: rgba(52, 199, 89, .08);
+  --ring-a: #007aff; --ring-b: #5ac8fa; --ring-track: #e5e5ea; --ring-full-a: #34c759; --ring-full-b: #30d158;
+  --nav-bg: rgba(249, 249, 249, .8); --nav-r: 0px; --nav-shadow: 0 -.5px 0 rgba(0, 0, 0, .2);
+  --nav-ind: transparent; --nav-ind-shadow: none; --nav-ink: #007aff; --nav-dim: #8e8e93;
+  --flame-bg: linear-gradient(145deg, #ff9f0a, #ff3b30); --flame-ink: #ffffff; --flame-glow: none;
+  --lift-a: #e8f1ff; --lift-b: #f1eafd; --lift-c: #e6f7ea; --lift-glow: #5ac8fa;
+  --lift-orb-a: #9fd3ff; --lift-orb-b: #007aff; --lift-orb-c: #af52de;
+}
+:root[data-style="glass"]:not([data-mode="light"]) {
+  --bg: #000000; --bg-elev: #1c1c1e; --bg-card: #1c1c1e; --bg-card-2: #1c1c1eee; --bg-input: #2c2c2e;
+  --border: #38383a; --border-hi: #48484a; --line: #38383a;
+  --text: #ffffff; --text-dim: #aeaeb2; --text-faint: #8e8e93;
+  --accent: #0a84ff; --accent-ink: #4aa3ff; --good: #30d158; --good-ink: #30d158; --warn-ink: #ffb340; --bad: #ff453a; --bad-ink: #ff6961;
+  --grad-accent: linear-gradient(#0a84ff, #0a84ff); --shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  --ring-track: #2c2c2e; --nav-bg: rgba(22, 22, 24, .8); --nav-shadow: 0 -.5px 0 rgba(255, 255, 255, .16); --nav-ink: #0a84ff;
+  --lift-a: #0b1a33; --lift-b: #1d1433; --lift-c: #0f2616;
+}
+:root[data-style="glass"] body::before, :root[data-style="glass"] body::after { display: none; }
+:root[data-style="glass"]:not(.lh-top) .topbar { background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); }
+:root[data-style="glass"] .topbar h1 { font-size: 30px; font-weight: 700; letter-spacing: .2px; }
+:root[data-style="glass"] .card { background: var(--bg-card); border: 0; box-shadow: none; border-radius: 16px; }
+:root[data-style="glass"] .card h2 { font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+:root[data-style="glass"] .btn { font-weight: 600; letter-spacing: -.1px; border-radius: 12px; }
+:root[data-style="glass"] .btn-primary { background: var(--accent); color: #ffffff; box-shadow: none; }
+:root[data-style="glass"] .btn-ghost { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 0; color: var(--accent-ink); }
+:root[data-style="glass"] .streak-badge { background: color-mix(in srgb, #ff9500 16%, var(--bg-card)); border: 0; box-shadow: none; color: #b45400; }
+:root[data-style="glass"]:not([data-mode="light"]) .streak-badge { color: #ffb340; }
+:root[data-style="glass"] .habit { background: var(--bg); border: 1px solid transparent; border-radius: 12px; }
+:root[data-style="glass"] .habit .check { border-radius: 50%; border-color: #c7c7cc; }
+:root[data-style="glass"] .habit.on { background: color-mix(in srgb, var(--good) 15%, var(--bg-card)); border-color: transparent; box-shadow: none; }
+:root[data-style="glass"] .habit.on .check { background: var(--good); border-color: var(--good); color: #ffffff; }
+:root[data-style="glass"] .seg-row { background: rgba(118, 118, 128, .12); border: 0; border-radius: 9px; }
+:root[data-style="glass"] .seg-btn { border-radius: 7px; }
+:root[data-style="glass"] .seg-btn.on { background: var(--bg-card); color: var(--text); box-shadow: 0 3px 8px rgba(0, 0, 0, .12), 0 3px 1px rgba(0, 0, 0, .04); }
+:root[data-style="glass"]:not([data-mode="light"]) .seg-btn.on { background: #636366; }
+/* a docked, full-width frosted tab bar with no pill, like a phone's own tab bar */
+:root[data-style="glass"] .nav { left: 0; right: 0; bottom: 0; padding: 4px 0 calc(4px + var(--safe-bottom)); border-radius: 0; }
+:root[data-style="glass"] .nav::before { display: none; }
+:root[data-style="glass"] .nav button { font-size: 10px; font-weight: 500; }
+:root[data-style="glass"] .nav button.on { font-weight: 600; }
+:root[data-style="glass"] .nav button.on .ico { transform: none; }
+:root[data-style="glass"] .toast { background: rgba(30, 30, 32, .88); color: #ffffff; border-color: transparent;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+:root[data-style="glass"] .toast-undo { background: transparent; color: #4aa3ff; }
+:root[data-style="glass"] .onboard { background: var(--bg); }
+:root[data-style="glass"] .ob-inner h1 { font-size: 34px; font-weight: 700; letter-spacing: .3px; }
+:root[data-style="glass"] .lh-greet { font-size: 34px; font-weight: 700; letter-spacing: .2px; }
+:root[data-style="glass"] .lh-date { letter-spacing: .02em; font-size: 13px; font-weight: 600; }
+:root[data-style="glass"] .gl-v { font-weight: 700; letter-spacing: -.5px; }
+:root[data-style="glass"] .gl-tile { background: var(--bg); border: 0; }
+:root[data-style="glass"] .mm-cell { border-radius: 10px; }
+:root[data-style="glass"] .drawer { background: color-mix(in srgb, var(--bg-card) 86%, transparent); border-left: 0;
+  backdrop-filter: blur(24px) saturate(1.8); -webkit-backdrop-filter: blur(24px) saturate(1.8); }
+/* ===== end v268 styles ===== */

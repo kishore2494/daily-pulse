@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v267';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v268';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1617,8 +1617,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w32',
+  v: 'w33',
   items: [
+    '🎨 <b>Three new styles</b> — <b>Clay</b> (warm ivory, terracotta and serif titles), <b>Dot</b> (pure black with dot-matrix numbers and one red light) and <b>Glass</b> (frosted bars, soft grey and crisp blue, in light or dark). Try them in Settings ▸ Style & appearance.',
     '🎙️ <b>Recordings</b> — talk instead of typing. Record for as long as you like (up to three hours), pause, carry on, and stop. With Play update 123 it keeps going with the screen off; before that, keep Daylog open while you record. Find them in ☰ Menu ▸ Recordings or tap <b>Recordings</b> under your journal. Play them back, rename them, move one to another day, share one as an audio file, and paste its words back with <b>Add transcript</b>: they go into that day\'s journal. Recordings stay on this phone and are not in backup files.',
     '🏠 <b>Home-screen widget</b> (with Play update 121) — see today at a glance and tap a face to log your mood. The tap opens Daylog with your mood saved. Long-press your home screen ▸ Widgets ▸ Daylog to add it.',
     '🙂 <b>Log from the notification</b> — your reminders now carry three buttons, Good, Okay and Low. One tap saves your mood and opens the Log, so a whole log can start right there. On Sundays the reminder is a short look at your week: how many days you logged and your best mood day.',
@@ -7124,7 +7125,7 @@ function cfgSectionHTML(page) {
     return `<div class="card"><h2>✨ Style</h2>
       <p class="hint" style="margin:-4px 0 12px">The whole look of the app: type, cards, colours and the bottom bar. Tap one to try it.</p>
       ${stylePickerHTML()}</div>
-      ${st.mode ? `<div class="card"><h2>🌗 Light or dark</h2><p class="hint" style="margin:0">${st.name} is always ${st.mode}. Pick Midnight or Paper to choose light, dark or black.</p></div>`
+      ${st.mode ? `<div class="card"><h2>🌗 Light or dark</h2><p class="hint" style="margin:0">${st.name} is always ${st.mode}. Pick Midnight, Paper or Glass to choose light, dark or black.</p></div>`
       : `<div class="card"><h2>🌗 Light or dark</h2>
       <div class="mode-row">${THEME_MODES.map(m => `<button class="mode-btn ${m.id === curMode ? 'on' : ''}" data-thememode="${m.id}">
         <span class="mode-chip" style="background:${m.chip}"></span>${m.label}</button>`).join('')}</div></div>`}
@@ -18890,7 +18891,7 @@ const THEMES = [
 ];
 /* UI styles (v256). Not colour swaps: each one is its own typeface, card shape, texture,
    buttons and bottom bar, so people can pick the app they want to open every day. A style may
-   fix the light/dark mode (Luxe and Aurora are dark, Bloom is light); Midnight and Paper follow
+   fix the light/dark mode (Luxe, Aurora and Dot are dark, Bloom and Clay are light); Midnight, Paper and Glass follow
    the Light / Dark choice. The `pv` values only draw the picker's preview tiles. */
 const UI_STYLES = [
   { id: 'midnight', name: 'Midnight', tag: 'The original. Deep navy and glowing colour.', mode: null, tc: { light: '#f4f6fb', dark: '#070b14' },
@@ -18905,6 +18906,14 @@ const UI_STYLES = [
   { id: 'bloom', name: 'Bloom', tag: 'Soft cream and coral. Round, warm and friendly.', mode: 'light', tc: { light: '#fff6ee' },
     pv: { bg: '#fff6ee', card: '#ffffff', line: '#f6dcc8', text: '#3b2a24', dim: '#7a6258', grad: 'linear-gradient(135deg,#ff8a65,#ff5f8f)', on: '#e3f7ee', onB: '#9fdcc2', font: "'Fredoka', sans-serif", r: 16,
       glow: 'radial-gradient(60% 50% at 0% 0%, rgba(255,182,150,.55), transparent 70%), radial-gradient(50% 40% at 100% 40%, rgba(200,180,255,.45), transparent 70%)' } },
+  /* v268: three more (Kishore 2026-11-23). Neutral names on purpose: each borrows a familiar mood, never a brand. */
+  { id: 'clay', name: 'Clay', tag: 'Warm ivory and terracotta. Serif titles, calm and thoughtful.', mode: 'light', tc: { light: '#f4f2ea' },
+    pv: { bg: '#f4f2ea', card: '#faf9f5', line: '#e3dfd3', text: '#1f1e1c', dim: '#5b5a55', grad: '#b5532f', on: '#f6e6dc', onB: '#e5b9a3', font: "'Fraunces', Georgia, serif", r: 12, glow: 'none' } },
+  { id: 'dot', name: 'Dot', tag: 'Pure black, dot-matrix numbers and one red light.', mode: 'dark', tc: { dark: '#000000' },
+    pv: { bg: '#000000', card: '#0d0d0d', line: '#3a3a3a', text: '#f2f2f2', dim: '#8a8a8a', grad: '#ffffff', on: '#141414', onB: '#d71921', font: "'Doto', monospace", r: 16, pill: true,
+      glow: 'radial-gradient(circle at center, rgba(255,255,255,.16) 1px, transparent 1.5px) 0 0 / 9px 9px' } },
+  { id: 'glass', name: 'Glass', tag: 'Frosted bars, soft grey and crisp blue. Light or dark.', mode: null, tc: { light: '#f2f2f7', dark: '#000000' },
+    pv: { bg: '#f2f2f7', card: '#ffffff', line: '#e5e5ea', text: '#000000', dim: '#8e8e93', grad: '#007aff', on: '#dff5e4', onB: '#34c759', font: "-apple-system, 'SF Pro Display', 'Segoe UI', Roboto, system-ui, sans-serif", r: 14, glow: 'none' } },
 ];
 function uiStyle() { const id = DB.settings().style; return UI_STYLES.find(x => x.id === id) || UI_STYLES[0]; }
 function stylePickerHTML() {
@@ -18917,7 +18926,7 @@ function stylePickerHTML() {
           <span class="st-l" style="background:${v.dim}"></span><span class="st-l s" style="background:${v.dim}"></span>
           <span class="st-chips"><span style="background:${v.on};border-color:${v.onB};border-radius:${Math.min(v.r, 8)}px"></span><span style="border-color:${v.line};border-radius:${Math.min(v.r, 8)}px"></span></span>
         </span>
-        <span class="st-btn" style="background:${v.grad};border-radius:${st.id === 'bloom' ? 99 : v.r}px"></span>
+        <span class="st-btn" style="background:${v.grad};border-radius:${st.id === 'bloom' || v.pill ? 99 : v.r}px"></span>
       </span>
       <span class="st-name" style="font-family:${v.font}">${st.name}${st.id === cur ? ' <span class="st-tick">✓</span>' : ''}</span>
       <span class="st-tag">${st.tag}</span>

@@ -4394,7 +4394,7 @@
     const tSnap = window.toast; window.toast = () => {};
     try {
       const root = document.documentElement;
-      ok('five styles, Midnight first (the look nobody chose stays the default)', UI_STYLES.length === 5 && UI_STYLES[0].id === 'midnight' && uiStyle().id === (DB.settings().style || 'midnight'));
+      ok('eight styles, Midnight first (the look nobody chose stays the default)', UI_STYLES.length === 8 && UI_STYLES[0].id === 'midnight' && uiStyle().id === (DB.settings().style || 'midnight'));
       setUiStyle('paper');
       ok('choosing a style saves it and sets <html data-style>', DB.settings().style === 'paper' && root.dataset.style === 'paper');
       ok('…and drops Midnight\'s accent so the style\'s own palette shows', !root.style.getPropertyValue('--accent'));
@@ -4404,12 +4404,25 @@
       setUiStyle('bloom');
       { const s2 = DB.settings(); s2.mode = 'black'; DB.saveSettings(s2); } applyTheme();
       ok('Bloom is always light, even with Black chosen', root.dataset.mode === 'light');
+      // v268: Clay is always light, Dot always dark, Glass follows the Light / Dark choice
+      setUiStyle('clay');
+      ok('Clay is always light, even with Black chosen', root.dataset.style === 'clay' && root.dataset.mode === 'light');
+      setUiStyle('dot');
+      { const s3 = DB.settings(); s3.mode = 'light'; DB.saveSettings(s3); } applyTheme();
+      ok('Dot is always dark, even with Light chosen', root.dataset.style === 'dot' && root.dataset.mode !== 'light');
+      setUiStyle('glass');
+      ok('Glass follows Light', root.dataset.mode === 'light');
+      { const s4 = DB.settings(); s4.mode = 'black'; DB.saveSettings(s4); } applyTheme();
+      ok('…and Black', root.dataset.style === 'glass' && root.dataset.mode === 'black');
+      ok('the new styles keep their own palette (no Midnight accent)', !root.style.getPropertyValue('--accent'));
+      ok('no brand names in the style list', !UI_STYLES.some(x => /claude|anthropic|nothing|apple|iphone|ios\b/i.test(x.name + ' ' + x.tag)));
+      setUiStyle('bloom');
       setUiStyle('nope');
       ok('an unknown style is ignored', DB.settings().style === 'bloom');
       setUiStyle('midnight');
       ok('back on Midnight the accent colour returns', !!root.style.getPropertyValue('--accent') && root.dataset.mode === 'black');
       const tmp = document.createElement('div'); tmp.innerHTML = stylePickerHTML();
-      ok('the picker shows every style with a live preview, the current one marked', tmp.querySelectorAll('[data-uistyle]').length === 5 && tmp.querySelector('.style-tile.on').dataset.uistyle === 'midnight' && tmp.querySelectorAll('.st-prev').length === 5);
+      ok('the picker shows every style with a live preview, the current one marked', tmp.querySelectorAll('[data-uistyle]').length === 8 && tmp.querySelector('.style-tile.on').dataset.uistyle === 'midnight' && tmp.querySelectorAll('.st-prev').length === 8);
       navigateTo('settings');
       ok('Settings opens with "Style & appearance"', !!document.getElementById('open-style') && /Midnight/.test(document.getElementById('open-style').textContent));
       document.getElementById('open-style').click();

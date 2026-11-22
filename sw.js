@@ -1,7 +1,7 @@
 /* Daylog service worker
    Strategy: NETWORK-FIRST for the app's own files (so you ALWAYS get the latest
    when online), with cache fallback so it still works fully offline. */
-const CACHE = 'daily-pulse-v267';
+const CACHE = 'daily-pulse-v268';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js',
   './workout-anims.js', './workout-plan.js',
@@ -10,6 +10,8 @@ const ASSETS = [
   './fonts/self/dm-sans.woff2', './fonts/self/sora.woff2',
   // v256 UI styles: Paper, Luxe, Aurora, Bloom — precached so a style looks the same offline
   './fonts/self/newsreader.woff2', './fonts/self/cormorant.woff2', './fonts/self/bricolage.woff2', './fonts/self/fredoka.woff2',
+  // v268 styles: Clay (Fraunces) and Dot (Doto); Glass uses the system font
+  './fonts/self/fraunces.woff2', './fonts/self/doto.woff2',
   './libs/jspdf.min.js', './libs/qrcode.js',
 ];
 

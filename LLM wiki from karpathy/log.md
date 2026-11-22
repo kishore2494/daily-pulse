@@ -1,3 +1,13 @@
+## 2026-11-23 (03:20) — v268 built: three new UI styles, Clay, Dot and Glass (NOT deployed yet)
+
+- Kishore asked for styles in the spirit of Claude, Nothing and Apple; built as **Clay**, **Dot** and **Glass** with
+  neutral names (details + gotchas in features.md "UI styles"). WHATS_NEW w33, bump → v268, tests 4 zones (1857) +
+  11/11 checks green; looked at every new style at 360×800 (Log + picker, Glass light and dark).
+- Found and fixed during the look: Glass frosted the Log top bar over the greeting; the forced date colour was grey on
+  the night card; dot-matrix page titles were too big for long titles.
+- Ran from the session schedule after the weekly usage reset. Kishore said before sleeping (00:57): "Yes, deploy it
+  and then test it… I give you the permission", so the 03:47 job deploys after the 02:53 features job.
+
 ## 2026-11-22 (21:25) — Play demo video recorded on an emulator on inbook; recorder verified on Android 14
 
 - Kishore: "inbook emulator". Set up user-level on the Windows laptop (no admin needed in the end: WHPX was already

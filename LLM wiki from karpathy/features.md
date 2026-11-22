@@ -24,6 +24,21 @@ Nav = **5 pinned tabs + a More overflow grid** (v56). `dp.navcfg` items carry `p
 ## Customization engine (More ▸ Customize, renderCustom)
 Everything is editable and hideable: theme mode (navy/black/light) + accent (6 colors), nav tabs (reorder/rename/hide), core Log fields, deep-log sections/fields (add/rename/hide, incl. tick-list options), habits, time activities, gym exercises + sets + custom groups + the 6-day split. Deep-log: add/rename/hide fields AND **add or delete whole custom sections** (v58, ids `cs*`). `reloadCfg()` rebuilds the live `HABITS`, `TIME_ACTS_ALL`, `DEEP_SECTIONS` from their configs. Hidden items keep their history.
 
+## UI styles (Settings ▸ Style & appearance; v256, three more in v268)
+
+`UI_STYLES` in app.js (id, name, tag, fixed `mode` or null, status-bar `tc`, picker preview `pv`) + one CSS block per
+style keyed on `<html data-style>`; `applyTheme()` sets data-style/data-mode, and Midnight alone uses the accent picker.
+Eight styles: **Midnight** (default), **Paper**, **Luxe** (dark), **Aurora** (dark), **Bloom** (light), and from v268
+**Clay** (light; ivory #f4f2ea, terracotta #b5532f, Fraunces titles), **Dot** (dark; pure black, dot grid behind
+everything, red #d71921 accent, white pill buttons, Doto dot-matrix only on big text: page titles, greeting, numbers,
+the recorder timer) and **Glass** (follows light/dark; grouped grey, white 16px cards, blue #007aff, system font,
+frosted top bar, a docked full-width tab bar with no pill). The v268 blocks sit at the very end of styles.css so they
+win over the shared polish rules. Names stay neutral on purpose (no brand names, logos or brand fonts; a unit test
+checks the list). Fonts are OFL, self-hosted in `fonts/self/` and precached in sw.js (Fraunces 37 KB, Doto 5 KB).
+Gotchas: on the Log the top bar must stay transparent while the greeting card is at the top (`:root.lh-top`), so a
+style that frosts `.topbar` must use `:not(.lh-top)`; never force `.lh-date` colour (the greeting card is dark at
+night in every style); no apostrophes in sw.js comments inside ASSETS (check-release parses that list naively).
+
 ## Home-screen widget (Play build 121+, v262 web)
 - Native (daily-pulse-native, `WidgetBridgePlugin.java` + `DaylogWidgetProvider.java`, layouts `widget_full` 4x2 /
   `widget_compact` 4x1 / `widget_narrow` 3x1, `xml/daylog_widget_info.xml`): deep-ink card, sunrise mark, "Not logged
@@ -201,7 +216,7 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
 - **Open items:** roadmap.md ▸ Photos & voice.
 
 
-## Recordings (built 2026-11-22 on branch `recorder`, NOT deployed)
+## Recordings (built 2026-11-22; live since web v267)
 
 Kishore, 2026-11-21: "I need to journal a lot but can't type it." Long voice entries: record, pause, leave the app,
 come back, stop; share one as an audio file (he gives it to Claude to transcribe) and paste the text back.
