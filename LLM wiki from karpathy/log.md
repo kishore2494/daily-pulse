@@ -1,3 +1,13 @@
+## 2026-11-22 (20:35) — second emulator attempt for the Play demo video: still unusable on this Mac
+
+- Kishore asked to "use the emulator". Retried `ciena_phone` with hw.ramSize 1024 / 2 cores / host GPU, first at
+  720×1600 (display never composed: screencap black, host-side `adb emu screenrecord` showed a stale launcher
+  frame), then at the stock 1080×2400 (renders, but guest load 40–60 from host paging: a tap took up to 9 minutes
+  to show, `input tap` landed as long-presses, uiautomator dumps timed out). Build 123 itself ran fine on
+  Android 16 (installs, launches, loads v267 from the live site, onboarding shows). AVD config restored from
+  backup; `hide_error_dialogs=1` and stay-awake remain set inside the AVD. Verdict unchanged: needs a phone, or
+  an x86_64 emulator on inbook (admin: Windows Hypervisor Platform + reboot, ~2 GB download).
+
 ## 2026-11-22 (15:45) — v267 LIVE (Recordings); Play refused build 123 until the Foreground-service form is filled
 
 - **v267 live** via board cmd 13 (`run 13`, Kishore). `deploy.sh` reported a failed Pages build, but that was the
