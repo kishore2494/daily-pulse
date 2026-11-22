@@ -27,9 +27,17 @@ Every rejection is `call.reject(message, code)`: read `err.code`; `err.message` 
 Event `recorderState` → `{ state, id, elapsedMs }` on every change, including Pause/Resume/Stop from the
 notification. When a recording ends (from any source) the event has `state: 'idle'` and also carries
 `uri, durationMs, bytes, mime` and `reason`: `'user'` (stop()), `'notification'`, `'error'` (the mic
-failed or was taken; what was recorded is kept), `'system'` (Android stopped the service) or
-`'recovered'` (finished after a crash, see status()). If nothing was captured it carries `empty: true`
-and no `uri`. Events only reach a running WebView: on launch, reconcile with `status()` + `list()`.
+failed or was taken, or the file stopped growing for 30 s of recording, i.e. the writer died; what was
+recorded is kept), `'system'` (Android stopped the service), `'recovered'` (finished after a crash, see
+status()), `'cap'` (3 hours recorded, pauses excluded: the native side enforces the web's 3-hour cap
+because the web timer does not run in the background) or `'storage'` (less than 30 MB free). If nothing
+was captured it carries `empty: true` and no `uri`. Events only reach a running WebView: on launch,
+reconcile with `status()` + `list()`. For `cap`/`storage`/`error`/`system` the native side also posts a
+one-time "Recording stopped" notification (it may have happened with Daylog closed).
+
+Backup: `files/recordings/` and the recorder's state are excluded from Android Auto Backup and device
+transfer (`res/xml/data_extraction_rules.xml`, `full_backup_content.xml`), so recordings really stay on
+this phone and cannot blow the 25 MB backup quota; everything else is backed up as before.
 
 Files: `<filesDir>/recordings/<id>.<ext>`. The native side picks the container (`.m4a` AAC, or ADTS
 `.aac` if it prefers crash safety) and documents why; the web must not assume the extension (use the
@@ -84,11 +92,21 @@ applied today), so build 123 is safe before the web half is live.
   from stop() / the ending event / recovered / list() and refreshes a stored uri when list() shows a new one.
 - Event handling: `recording`/`paused` update the screen; any other state is an end. While the web's own stop() is
   in flight the ending event is ignored (stop()'s answer is used). `empty: true` → nothing kept. `reason` picks the
-  toast (`recovered`, `error`/`system`, else "Recording saved").
+  toast: `recovered`, `error`/`system`, `storage` ("Recording stopped: phone storage is almost full"), `cap`
+  ("Recording stopped at 3 hours"), else "Recording saved".
+- Start-up/return reconcile leaves alone: the running id, ids `list()` marks `recording: true`, ids whose stop or
+  finish is in flight, and (when `status()` failed or a start is pending) every live record. A finished record
+  whose file is not in `list()` (e.g. after a phone transfer, since the files are excluded from Android backup) is
+  kept and marked "The file is not on this phone"; Delete removes the row; the mark clears if the file returns.
+- `remove()` answering `{ removed: false }` is treated like a rejection: the record goes only once `list()` no
+  longer has the file. A start rejected `start_failed` is retried once after 300 ms (Android 7-9 can still hold
+  the mic the web probe just released).
 - Rejection codes read from `err.code`: start `busy` (reattach), `permission`, `storage`, `start_failed`; stop
   `empty`, `not_recording` (reconcile); pause/resume `not_recording` (reconcile).
 - Asks for notification permission once before the first native recording when Android reports `prompt`.
-- Under 0.7 s the web calls `remove({id})` and drops it. Three-hour cap is enforced by the web only while it runs.
+- Under 0.7 s the web calls `remove({id})` and drops it. The three-hour cap: the native side enforces it (`cap`);
+  the web also stops at 3 h while it is running.
+- Browser only: a web recording holds a Web Lock `daylog-rec-<id>` so another tab's start-up does not recover it.
 - Gap: a recording made by the web engine (browser, or Play ≤122) cannot be shared from the Play app: DaylogShare is
   image/text only and LongRecorder shares files in its own folder only. Fine for now; a future
   `LongRecorder.importFile`/`shareFile({base64,mime,filename})` would close it.

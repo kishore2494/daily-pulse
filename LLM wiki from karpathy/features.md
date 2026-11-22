@@ -232,6 +232,10 @@ Contract with the Android side: `RECORDER-SPEC.md`. Code: app.js `SCREEN: RECORD
 - **Tests:** unit.js (formatting, names, day moves, grouping, cap, queue routing, recovery plan, journal merge,
   storage/backup exclusion, screen/menu/Log) and unit-async.js (web engine with a fake MediaRecorder, crash
   recovery, Undo, native engine/reattach/notification events with a fake plugin, widget drain, wipe).
+- **Edge rules (review, 2026-11-22):** a native record whose file is not in `list()` is marked "The file is not on
+  this phone" (Android backup excludes the files), not dropped; a web recording holds a Web Lock so a second tab
+  does not recover it; 🎤 Speak and voice notes are refused while a recording runs; the native side also stops at
+  3 h (`cap`) and on low storage (`storage`).
 - **Open:** run in the Play app with build 123; History's day page could list that day's recordings.
 
 ## History ▸ one day, read-only (v252, 2026-11-01)

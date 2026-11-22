@@ -10744,7 +10744,7 @@ async function recNativeFinish(id, res) {
     toast(_lrCapped === id || res.reason === 'cap' ? 'Recording stopped at 3 hours. Saved · ' + fmtRecLen(dur)
       : res.reason === 'recovered' ? 'A recording that was cut off is saved · ' + fmtRecLen(dur)
       : res.reason === 'storage' ? 'Recording stopped: phone storage is almost full. Saved · ' + fmtRecLen(dur)
-      : res.reason === 'error' || res.reason === 'system' ? 'Recording stopped (the phone took the microphone). What you said is saved · ' + fmtRecLen(dur)
+      : res.reason === 'error' || res.reason === 'system' ? 'Recording stopped: the microphone stopped working. What you said is saved · ' + fmtRecLen(dur)
       : 'Recording saved · ' + fmtRecLen(dur));
     if (!dur) recProbeDurations();
   } finally { _recFinishing.delete(id); _recSaving--; recRefresh(); mediaIdleCheck(); }
