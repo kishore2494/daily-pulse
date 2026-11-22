@@ -161,3 +161,19 @@ Plan if Kishore says go: native plugin `AtherNotifications` (listener + whitelis
 Sources: https://forum.atherenergy.com/t/open-api-and-platform/1803 ,
 https://anbuchelva.github.io/posts/appscript/collect-ather-logs-using-api/ ,
 https://forum.atherenergy.com/t/notification-of-charge-completion/42587
+
+## Be different, not another tracker (Kishore 2026-11-23: "we need to be different… no body expected")
+
+Ideas proposed 2026-11-23, none built yet. Kishore picks:
+1. **Daylog calls you.** Each evening at the user's time, a call-style heads-up notification ("Daylog · your day,
+   one minute") with Answer / Not now. Answer opens the recorder; the clip becomes today's entry. Reuses the build-123
+   recorder. Doubles as the reminder that fixes the first-3-days drop-off. Play limits true full-screen call screens
+   to calling/alarm apps, so it is a high-priority notification styled like a call, not a lock-screen takeover.
+2. **Sealed letters to future you.** Write or record a message locked until a chosen date (birthday, New Year, one
+   year on); a countdown shows on the Log; it opens only that day. Cheap (journal + recorder exist).
+3. **Your month as a film.** On the 1st, a private 30-second story of last month made on the phone: mood colours,
+   best day, a voice clip, a photo, sleep. Optional share as video.
+4. **The anti-streak promise.** No broken-streak guilt: a "days remembered" count that only goes up (the Log's 🔥
+   streak badge would change). A positioning line the store listing can lead with.
+Also asked the same day: three more UI styles, Claude-like (Clay), Nothing-like (Dot), Apple-like (Glass), with
+neutral names and free look-alike fonts; scheduled to build after the weekly usage reset (board AG-82).
