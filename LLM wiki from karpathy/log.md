@@ -1,3 +1,17 @@
+## 2026-11-22 (13:10) — recorder built on branches (web `recorder`, native in the live folder); NOT released
+
+- **Web half:** branch `recorder` (pushed to origin; main merged in). Recordings screen, both engines, widget/shortcut
+  `record` tap, transcript into the journal. 1816 tests. Details in that branch's log.md/features.md/RECORDER-SPEC.md.
+- **Native half:** written straight into `daily-pulse-native/` (LongRecorderPlugin, RecorderService (FGS type
+  microphone), RecordShortcutActivity, widget mic, manifest perms FOREGROUND_SERVICE(_MICROPHONE)). versionCode
+  still 122. assembleDebug OK, emulator-tested. Backed up on `daylog-native` branch **`recorder-native`** (0af0595);
+  `daylog-native` main still = released 122. Pre-change snapshot: session scratchpad `native-src-before-recorder.tgz`.
+- **⚠ Any native build from the live folder now includes the recorder** and its microphone foreground service, so
+  Play will require the App content ▸ Foreground service permissions form (Microphone, "Background Audio Access",
+  description + a 30-60 s video) before review. Needed for 123 anyway.
+- An independent review of both halves is running; ship order: v266 hotfix → review fixes → merge `recorder` →
+  build 123 (Kishore's OK + the FGS form) → deploy web.
+
 ## 2026-11-22 (12:55) — HIGH data-loss bug found in live v265, fixed on main (needs "deploy")
 
 Adversarial review of the v265 per-field sync (repro harness + scenarios in the session scratchpad `review/`).
