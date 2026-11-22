@@ -1,3 +1,19 @@
+## 2026-11-22 (13:40) — recorder review fixes done; native build 123 built (NOT uploaded)
+
+- Review of both halves: no audio-loss bugs; 1 medium (Android Auto Backup copied `files/recordings/` and
+  would blow the 25 MB quota, silently stopping the app's whole cloud backup) + 8 low. All fixed: native
+  `data_extraction_rules.xml` + `full_backup_content.xml` exclude `recordings/` and `dp_recorder.xml`; native
+  60 s watchdog ends with reason `cap` (3 h) / `storage` (<30 MB) / `error` (writer stalled 30 s) plus a "Recording
+  stopped" notice; remux keeps the .aac unless the .m4a is complete. Web: reconcile races, widget start always on
+  today, Speak blocked while recording, reload guard, `removed:false`, Web Locks across tabs, missing-file rows,
+  one start retry. Branch `recorder` @ 34c1d72 (1846 tests × 4 zones, 11/11 checks); native backup branch
+  `recorder-native` @ 591b7b1.
+- **Build 123** (versionName 83) = live native folder incl. the recorder: `builds/Daylog-123.aab/.apk`, signed
+  with the same upload key as 122 (SHA256 14:4D:1F…), `sync.sh` → daylog-native main 1d0aef6, tag `native-123`.
+- Play needs the Foreground service permissions form (Microphone) before review: exact answers and the video
+  script in `store/play-fgs-microphone-123.md`. Ship order: v266 hotfix → merge `recorder`, deploy v267 → upload
+  123 to internal testing → Kishore records the video + fills the form → promote 123 to production.
+
 ## 2026-11-22 (13:10) — recorder built on branches (web `recorder`, native in the live folder); NOT released
 
 - **Web half:** branch `recorder` (pushed to origin; main merged in). Recordings screen, both engines, widget/shortcut
