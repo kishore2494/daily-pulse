@@ -1,3 +1,24 @@
+## 2026-11-22 (12:55) — HIGH data-loss bug found in live v265, fixed on main (needs "deploy")
+
+Adversarial review of the v265 per-field sync (repro harness + scenarios in the session scratchpad `review/`).
+- **HIGH (live):** `syncHealth` saved the GLOBAL Log draft into today. The draft is `{}` after a cold start on a
+  non-Log default tab (only `openToday`/a changed pull/habit or notification taps load it) and still yesterday's
+  after midnight with the Log off screen. With `fieldAt` a missing field is a removal, so the day's mood, journal
+  etc. were deleted on every phone and the Sheet (v264 lost them only on that phone; a single phone loses them
+  in both). **Fix:** `syncHealth` decides from the stored day and saves a fresh copy of it (and never overwrites a
+  stored sleep value); plus a general guard, `draftRebase` in `saveDraftNow`: `loadDraft` records the stored day
+  each draft came from (`_draftBase`, a WeakMap) and every field/habit the draft has not changed since then takes
+  the day as stored now. Also fixes **two tabs of one browser** (tab 1's mood tap deleted tab 2's journal) and the
+  **midnight rollover** variant. Drafts not made by `loadDraft` (widget, Lift, gym…) have no base and save as is.
+- **Clock skew:** `entryFieldStamp`, `entryAutoSet`, `habitTouch` stamp `max(now, old + 1)` so an edit made after
+  seeing a value wins even on a phone whose clock is behind. The fuzzer oracle now reads the app's own
+  `fieldAt`/`habitsAt` for day fields/habits (it used the writer's skewed clock and flagged the correct result).
+- Rollout-only effects accepted: a v264 phone counts a day holding only `fieldAt` as logged; v264 edits can lose
+  to v265 stamps until every phone updates.
+- Tests: section 8 in the two-phones block (never-loaded draft, two tabs, rollover, skew); 4 fail with the rebase
+  commented out. 1707 × 4 timezones, 11/11 checks, `STRICT=1 SEEDS=200` fuzz green. Reviewer's scenarios s1/s3/s4/s5
+  all correct on main.
+
 ## 2026-11-22 (13:00) — SEO pages: iOS, Sheet-sync and habit-count claims removed (branch `seo-sweep`, NOT merged, NOT deployed)
 
 Closes the open item from the landing-refresh entry. A scripted sweep (counted exact-string rules; nothing

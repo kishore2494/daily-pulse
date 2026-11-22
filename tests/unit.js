@@ -2847,6 +2847,49 @@
       const sheetA7 = push(); use('B'); applyRemoteState(sheetA7);
       ok('…and nothing is deleted on the other phone', day().journal === 'evening, typed on B', day());
 
+      // 8. review 2026-11-22: a Log draft staler than storage cannot delete or revert what it never saw.
+      //    (With per-field stamps such a save removed the fields it lacked on every phone.)
+      const draftSnap8 = draft, logSnap8 = logDate;
+      try {
+        // 8a. a cold start on another tab never loads the draft; a background save of it (the old syncHealth)
+        start(typed, []);
+        use('A'); const a8 = day(); a8.habits = { gym: true }; saveDraftNow(D, a8);
+        tick(); logDate = D; draft = {}; _draftBase.set(draft, {});    // the app's never-loaded draft
+        draft.sleepHours = 7.2; saveDraftNow(D, draft);
+        ok('review 2026-11-22: a never-loaded draft saved in the background keeps the stored mood, journal and habits',
+          day().mood === 3 && day().journal === 'morning' && day().habits.gym === true && day().sleepHours === 7.2, day());
+        const sheetA8 = push(); use('B'); applyRemoteState(sheetA8);
+        ok('…and the other phone keeps them too', day().mood === 3 && day().journal === 'morning' && day().sleepHours === 7.2, day());
+
+        // 8b. two tabs of one browser: tab 2 wrote the journal after tab 1 loaded its draft
+        start(typed, []);
+        use('A'); logDate = D; loadDraft();                           // tab 1 opens the Log
+        tick(); const t2 = day(); t2.journal = 'long entry typed in tab 2'; DB.putEntry(D, Object.assign(t2, { updatedAt: new Date().toISOString() }));
+        tick(); draft.mood = 8; saveDraftNow(D, draft);               // one mood tap in tab 1
+        ok('review 2026-11-22: a mood tap in a tab opened earlier keeps the journal another tab wrote since',
+          day().journal === 'long entry typed in tab 2' && day().mood === 8, day());
+        tick(); draft.journal = 'tab 1 rewrote it'; saveDraftNow(D, draft);
+        ok('…but a field the draft itself changed is saved as typed', day().journal === 'tab 1 rewrote it' && day().mood === 8, day());
+
+        // 8c. midnight with the Log off screen: yesterday's draft is saved into today
+        const Dy = addDays(D, -1);
+        start(typed, []);
+        use('A'); DB.putEntry(Dy, { mood: 2, journal: 'rough day', habits: { gym: true }, updatedAt: new Date(now - 20 * H).toISOString() });
+        localStorage.setItem('dp.entries', JSON.stringify({ [D]: { journal: 'grateful for coffee', habits: {}, updatedAt: new Date().toISOString() }, [Dy]: DB.entry(Dy) }));
+        logDate = Dy; loadDraft(); logDate = D;                       // logRollover moves the date, keeps the object
+        tick(); draft.sleepHours = 7; saveDraftNow(D, draft);
+        ok('review 2026-11-22: yesterday\'s draft saved into today keeps today\'s journal and brings none of yesterday',
+          day().journal === 'grateful for coffee' && day().mood === undefined && !(day().habits || {}).gym && day().sleepHours === 7, day());
+
+        // 8d. a phone whose clock runs behind still makes the person's latest edit win
+        const ahead = Date.now() + 3600000;
+        const st = entryFieldStamp({ mood: 8, fieldAt: { mood: ahead } }, { mood: 3 });
+        ok('review 2026-11-22: an edit on a phone whose clock is behind is stamped after the stamp it replaces',
+          st.fieldAt.mood > ahead, st.fieldAt);
+        const au = entryAutoSet({ workoutsDone: 1, autoAt: { workoutsDone: ahead } }, { workoutsDone: 2 });
+        ok('…and so is a gym count or time summary', au.autoAt.workoutsDone > ahead, au.autoAt);
+      } finally { draft = draftSnap8; logDate = logSnap8; }
+
       // timelogChangedDays, directly
       const D2 = addDays(D, 1), sOv = { id: 'ov', act: 'sleep', start: d0 + 23 * H, end: d0 + 31 * H };
       ok('a block across midnight marks both days', [...timelogChangedDays([], [sOv])].join() === [D, D2].join());

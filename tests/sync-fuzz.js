@@ -55,7 +55,10 @@
                   running timer skipped: that line depends on "now"), and each gym day's
                   workoutsDone is the number of ticks the merged gym day holds
    "Latest" is by stamp, in the clock of the phone that wrote it — which is what the merge
-   compares; under skew the property is about stamps, not wall time. A time block the merge itself
+   compares; under skew the property is about stamps, not wall time. Day fields and habits use the
+   stamp the app wrote (fieldAt / habitsAt): since 2026-11-22 an edit is stamped after the stamp it
+   replaces even on a phone whose clock is behind (max(now, old + 1)), so an edit made after seeing a
+   value wins over it, as it should. A time block the merge itself
    closed (two phones each had a timer running) is a machine write and is left out of no-loss /
    no-zombie.
 
@@ -199,10 +202,10 @@
     const e = DB.entries();
     DAYS.forEach(d => {
       const x = objOf(e[d]), y = objOf(b.entries[d]);
-      MANUAL.forEach(f => { if (JSON.stringify(x[f]) !== JSON.stringify(y[f])) stampIt(truth.field, d + '|' + f, { stamp: now, phone: p, val: x[f], has: f in x }); });
+      MANUAL.forEach(f => { if (JSON.stringify(x[f]) !== JSON.stringify(y[f])) stampIt(truth.field, d + '|' + f, { stamp: +objOf(x.fieldAt)[f] || now, phone: p, val: x[f], has: f in x }); });
       const hx = objOf(x.habits), hy = objOf(y.habits);
       new Set([...Object.keys(hx), ...Object.keys(hy), ...Object.keys(objOf(x.habitsAt))]).forEach(k => {
-        if (JSON.stringify(hx[k]) !== JSON.stringify(hy[k]) || +objOf(x.habitsAt)[k] !== +objOf(y.habitsAt)[k]) stampIt(truth.habit, d + '|' + k, { stamp: now, phone: p, val: hx[k] });
+        if (JSON.stringify(hx[k]) !== JSON.stringify(hy[k]) || +objOf(x.habitsAt)[k] !== +objOf(y.habitsAt)[k]) stampIt(truth.habit, d + '|' + k, { stamp: +objOf(x.habitsAt)[k] || now, phone: p, val: hx[k] });
       });
       // A save of the day carries every manual field this phone holds, with a new updatedAt (the
       // day merge once gave every shared field to the newer updatedAt; fieldAt fixed that). Kept
