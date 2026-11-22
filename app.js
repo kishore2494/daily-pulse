@@ -1137,7 +1137,7 @@ function entryAutoSet(en, vals) {
   Object.keys(vals).forEach(k => {
     if (en[k] === vals[k]) return;   // unchanged: a stamp of now would claim this copy is the newest
     en[k] = vals[k];
-    (en.autoAt = Object.assign({}, objOf(en.autoAt)))[k] = now;
+    (en.autoAt = Object.assign({}, objOf(en.autoAt)))[k] = Math.max(now, (+objOf(en.autoAt)[k] || 0) + 1);   // as entryFieldStamp
   });
   return en;
 }
@@ -1182,7 +1182,9 @@ function entryFieldStamp(prev, next) {
   const was = objOf(prev.fieldAt), at = {}, now = Date.now(), old = Date.parse(prev.updatedAt) || 1;
   const moved = next.updatedAt !== prev.updatedAt, has = (e, k) => e[k] !== undefined;
   entryFields(prev, next, was).forEach(k => {
-    if (has(prev, k) !== has(next, k) || canonJSON(prev[k]) !== canonJSON(next[k])) at[k] = now;
+    // max(now, old + 1): a phone whose clock runs behind the one that last wrote this field still
+    // stamps the edit as newer, so what the person just did is what both phones keep.
+    if (has(prev, k) !== has(next, k) || canonJSON(prev[k]) !== canonJSON(next[k])) at[k] = Math.max(now, (+was[k] || 0) + 1);
     else if (+was[k]) at[k] = +was[k];
     else if (moved && has(next, k)) at[k] = old;
   });
@@ -1459,6 +1461,12 @@ function applyRemoteState(remote) {
    ============================================================ */
 let logDate = todayStr();
 let draft = {};
+/* The stored day each draft object was loaded from (review 2026-11-22). saveDraftNow rebases a draft
+   onto the day as stored NOW: a field (or habit) the draft did not change since it was loaded
+   follows the stored day, so a draft staler than storage (never loaded, another day's, another
+   tab's) cannot delete or revert what it never saw. */
+const _draftBase = new WeakMap();
+_draftBase.set(draft, {});
 
 /* One source of truth: if you tracked Sleep/Work on the Time tab, the Log's
    sleep & deep-work fields fill themselves from it (manual entry still wins —
@@ -1486,12 +1494,13 @@ function trackedSleepHours(date) {
 }
 function fmtH(v) { return v == null ? '' : Math.floor(v) + 'h ' + Math.round((v - Math.floor(v)) * 60) + 'm'; }
 /* When this habit last changed on this day — what the sync merge compares (mergeHabits). */
-function habitTouch(k) { draft.habitsAt = draft.habitsAt || {}; draft.habitsAt[k] = Date.now(); }
+function habitTouch(k) { draft.habitsAt = draft.habitsAt || {}; draft.habitsAt[k] = Math.max(Date.now(), (+draft.habitsAt[k] || 0) + 1); }   // as entryFieldStamp
 function loadDraft() {
   flushAutosave();
   const existing = DB.entry(logDate);
   draft = existing ? JSON.parse(JSON.stringify(existing)) : { habits: {} };
   if (!draft.habits) draft.habits = {};
+  _draftBase.set(draft, existing ? JSON.parse(JSON.stringify(existing)) : {});
   trackedInfo = { sleep: trackedSleepHours(logDate), work: trackedHours(logDate, 'work') };
   if ((draft.sleepHours == null || draft.sleepHours === '') && trackedInfo.sleep) draft.sleepHours = trackedInfo.sleep;
   if ((draft.deepWorkHours == null || draft.deepWorkHours === '') && trackedInfo.work) draft.deepWorkHours = trackedInfo.work;
@@ -3042,7 +3051,26 @@ document.addEventListener('click', (ev) => {
     }
   }
 });
+/* A draft staler than storage (never loaded, another day's, another tab's) must not delete or revert
+   what it never saw: each field and habit the draft has not changed since it was loaded takes the day
+   as stored now. Drafts not made by loadDraft have no base and are saved as they are. */
+function draftRebase(date, d) {
+  const base = _draftBase.get(d); if (!base) return;
+  const cur = DB.entry(date) || {}, cl = v => v === undefined ? v : JSON.parse(JSON.stringify(v));
+  const same = (x, y, k) => (x[k] !== undefined) === (y[k] !== undefined) && canonJSON(x[k]) === canonJSON(y[k]);
+  entryFields(base, d, cur).forEach(k => { if (same(d, base, k)) { if (cur[k] !== undefined) d[k] = cl(cur[k]); else delete d[k]; } });
+  const H = e => objOf(e.habits), HA = e => objOf(e.habitsAt);
+  const dh = Object.assign({}, H(d)), da = Object.assign({}, HA(d));
+  new Set([...Object.keys(H(base)), ...Object.keys(HA(base)), ...Object.keys(dh), ...Object.keys(da), ...Object.keys(H(cur)), ...Object.keys(HA(cur))]).forEach(k => {
+    const untouched = canonJSON(dh[k]) === canonJSON(H(base)[k]) && (+da[k] || 0) === (+HA(base)[k] || 0);   // || 0: no stamp on either side is the same (NaN never equals itself)
+    if (!untouched) return;
+    if (k in H(cur)) dh[k] = H(cur)[k]; else delete dh[k];
+    if (HA(cur)[k]) da[k] = HA(cur)[k]; else delete da[k];
+  });
+  d.habits = dh; if (Object.keys(da).length) d.habitsAt = da; else delete d.habitsAt;
+}
 function saveDraftNow(date, d) {
+  draftRebase(date, d);
   d.updatedAt = new Date().toISOString();
   delete d.sample;   // a sample day you wrote in is yours now: "Clear sample" must not delete it
   d.tasks = tasksForDate(date);
@@ -3054,6 +3082,7 @@ function saveDraftNow(date, d) {
   const existing = DB.entry(date) || {};
   [...ENTRY_AUTO, 'autoAt'].forEach(k => { if (existing[k] !== undefined) d[k] = existing[k]; else delete d[k]; });
   const wrote = DB.putEntry(date, d);
+  if (_draftBase.has(d)) _draftBase.set(d, JSON.parse(JSON.stringify(d)));
   refreshStreak();
   if (date === todayStr()) checkStreakMilestone();   // full-screen reward at 3/5/7/10/14… days
   checkNewAwardsSoon(date);                          // tiered awards can land on any date edited
@@ -12093,11 +12122,14 @@ async function syncHealth(opts) {
     // make a logged day (streak/milestone credit never earned, the evening "Log my day" skipped).
     // A day holding only auto-filled fields (a time summary, workouts) keeps the fill in the
     // draft; the first save by hand stores it.
+    // Decide from the STORED day and save a fresh copy of it, never the global draft: the draft can be
+    // empty (a cold start on another tab never loads it) or still yesterday's (midnight with the Log off
+    // screen), and with per-field stamps a save from it removed every field it lacked — on every phone.
     if (at.sleep && store[key].sleepMin && logDate === key) {
-      const cur = draft.sleepHours;
-      if (cur == null || cur === '') {
-        draft.sleepHours = +(store[key].sleepMin / 60).toFixed(2);
-        if (loggedByHand(DB.entry(key))) saveDraftNow(key, draft);
+      const hrs = +(store[key].sleepMin / 60).toFixed(2), stored = DB.entry(key), blank = v => v == null || v === '';
+      if (blank(draft.sleepHours) && (!stored || blank(stored.sleepHours))) {
+        draft.sleepHours = hrs;   // shown on the Log; the first save by hand stores it
+        if (loggedByHand(stored)) { const nd = JSON.parse(JSON.stringify(stored)); nd.sleepHours = hrs; saveDraftNow(key, nd); }
       }
     }
     if (!opts.silent) toast('Health synced ✅');

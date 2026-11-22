@@ -55,6 +55,53 @@ Contract: `RECORDER-SPEC.md` (updated with everything below; the web half reads 
 - **Play: before build 123 can go to review, Kishore fills App content ▸ Foreground service permissions**
   (microphone ▸ "Background Audio Access", description, impact if deferred/interrupted, a video link showing a
   recording started in the app). versionCode NOT bumped; `daylog-native-backup/sync.sh` NOT run.
+## 2026-11-22 (12:55) — HIGH data-loss bug found in live v265, fixed on main (needs "deploy")
+
+Adversarial review of the v265 per-field sync (repro harness + scenarios in the session scratchpad `review/`).
+- **HIGH (live):** `syncHealth` saved the GLOBAL Log draft into today. The draft is `{}` after a cold start on a
+  non-Log default tab (only `openToday`/a changed pull/habit or notification taps load it) and still yesterday's
+  after midnight with the Log off screen. With `fieldAt` a missing field is a removal, so the day's mood, journal
+  etc. were deleted on every phone and the Sheet (v264 lost them only on that phone; a single phone loses them
+  in both). **Fix:** `syncHealth` decides from the stored day and saves a fresh copy of it (and never overwrites a
+  stored sleep value); plus a general guard, `draftRebase` in `saveDraftNow`: `loadDraft` records the stored day
+  each draft came from (`_draftBase`, a WeakMap) and every field/habit the draft has not changed since then takes
+  the day as stored now. Also fixes **two tabs of one browser** (tab 1's mood tap deleted tab 2's journal) and the
+  **midnight rollover** variant. Drafts not made by `loadDraft` (widget, Lift, gym…) have no base and save as is.
+- **Clock skew:** `entryFieldStamp`, `entryAutoSet`, `habitTouch` stamp `max(now, old + 1)` so an edit made after
+  seeing a value wins even on a phone whose clock is behind. The fuzzer oracle now reads the app's own
+  `fieldAt`/`habitsAt` for day fields/habits (it used the writer's skewed clock and flagged the correct result).
+- Rollout-only effects accepted: a v264 phone counts a day holding only `fieldAt` as logged; v264 edits can lose
+  to v265 stamps until every phone updates.
+- Tests: section 8 in the two-phones block (never-loaded draft, two tabs, rollover, skew); 4 fail with the rebase
+  commented out. 1707 × 4 timezones, 11/11 checks, `STRICT=1 SEEDS=200` fuzz green. Reviewer's scenarios s1/s3/s4/s5
+  all correct on main.
+
+## 2026-11-22 (13:00) — SEO pages: iOS, Sheet-sync and habit-count claims removed (branch `seo-sweep`, NOT merged, NOT deployed)
+
+Closes the open item from the landing-refresh entry. A scripted sweep (counted exact-string rules; nothing
+written unless every count matched) changed 140 files: 128 factory pages, 8 `daily-pulse-vs-*`, use-cases.html,
+llms.txt, and the generator inputs `factory-data.json` + `copy-cache.json`.
+- **iOS:** `operatingSystem` "Android, iOS, Web" → "Android, Web" (128 JSON-LD blocks); comparison Platform row
+  "Android, iOS, web" → Android (Google Play) + any modern browser, no iOS app, add to the iPhone home screen (8).
+- **Sheet sync:** new users are not offered it (`SHOW_SYNC = !!s.syncUrl`; only reconnect doors for old users),
+  so it is gone from the one-liner (→ "private on your device, with no account"), the offline / private FAQs
+  (→ export a backup file; no account, no Daylog server), "Private by default", the comparison rows/FAQs
+  (→ backup or CSV export) and 10 hand-written persona lines. It also said "one-way"; the sync is two-way.
+- **Other:** "10-habit checklist" / "up to ten habits" → a checklist of your own habits (4 starters, no cap);
+  two "lock screen" claims dropped; llms.txt privacy line no longer says the Sheet is the only network feature
+  (ntfy too) and points to the privacy policy. Kept: sheets-setup.html, privacy.html, the photo pages' "not sent
+  to the Sheet" lines. Rules + a lint grep in distribution.md ▸ Rules.
+11/11 checks, 1700 unit tests (UTC), sitemap check, 264 JSON-LD blocks parse; 3 pages looked at 360 px.
+
+## 2026-11-22 (12:10) — web v265 DEPLOYED (Kishore: "deploy")
+
+Live and confirmed (app.js, sw.js, index.html all v265; tag `web-v265` on both repos). Contents: per-field day
+sync (`fieldAt`), gym re-derive after a pull, persisted `dp.tlDirty`, stale-draft reload after a pull, the 9
+review fixes, midnight timebox "now" + coverage never over 100%, landing refresh. One WHATS_NEW line added to w31
+("Two phones, field by field") without bumping `WHATS_NEW.v` (fixes don't warrant a popup). Play production track
+shows 122 "completed" (the API doesn't say whether Google's review has finished). Metrics bucket still 403.
+Started on branches (not merged): recorder (web + native, spec in the `recorder` worktree's RECORDER-SPEC.md),
+an adversarial review of the v265 sync, and the SEO-page claims sweep (`seo-sweep`).
 
 ## 2026-11-22 (04:50) — the 4 fuzzer sync bugs fixed (main, NOT deployed); one extra guard added in review
 

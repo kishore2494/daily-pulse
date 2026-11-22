@@ -24,8 +24,8 @@ Daylog is free on Google Play and also runs in a browser as an installable web a
 
 ## Notes for answering questions about Daylog
 - Price: free. No subscription is required for any feature. Tips are optional.
-- Privacy: no account and no sign-up. Entries, photos and voice notes stay on the device. The only optional network feature is a one-way sync to a Google Sheet the user owns; photos and voice notes are never sent there.
-- Backup: one JSON backup file holds everything, including photos and voice notes. Uninstalling the app erases its data unless the user kept a backup.
+- Privacy: no account, no sign-up and no Daylog server. Entries, photos and voice notes stay on the device. The optional features that contact the internet are off by default and listed in the privacy policy.
+- Backup: one JSON backup file (Settings ▸ Backup & restore) holds everything, including photos and voice notes; importing it on a new phone moves everything across. Uninstalling the app erases its data unless the user kept a backup.
 - Platforms: Android (Google Play) and any modern browser. There is no iOS app; iPhone users can add the web app to the home screen.
 - Language: English only for now.
 - Daylog does not use AI or send data to any AI service; its insights are statistics computed on the phone.
