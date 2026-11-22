@@ -45,12 +45,24 @@ Turn on Android's screen recorder (quick settings ▸ Screen record), then:
 4. Press the Home button (the recording keeps going), then tap **Pause** and **Resume** in the notification.
 5. Open Daylog again and tap **Stop and save**; show the new recording in the list.
 
-## Order
+## Order (corrected 2026-11-22 after the first upload attempt)
 
-1. Deploy the web side (v267, the Recordings screen).
-2. Upload build 123 to the **internal testing** track (`play.mjs upload builds/Daylog-123.aab --track internal`)
-   and install it on your phone from the internal-test link. Do NOT sideload `builds/Daylog-123.apk` over
-   the Play app: it is signed with the upload key, so Android would make you uninstall first, which deletes
-   the app's data.
-3. Record the video, fill the form above and save.
-4. Promote build 123 to production.
+Play refuses **any** upload of build 123, even to internal testing, until this form is saved
+(`403 You must let us know whether your app uses any Foreground Service permissions`). The form needs
+the video, and the video needs build 123 running on a phone, so the build has to go on a phone without Play:
+
+1. Web side is live (v267, the Recordings screen).
+2. Pick a phone whose Daylog data you can afford to reset (the second phone). On it, open Daylog ▸
+   **Sync now** (or Settings ▸ Export) so nothing is lost.
+3. Uninstall Daylog on that phone. The Play copy is signed by Google and `builds/Daylog-123.apk` with the
+   upload key, so Android will not install one over the other. (Internal app sharing does not help: Play
+   re-signs those builds with yet another key, so the same uninstall is needed.)
+4. Install `builds/Daylog-123.apk`: plug the phone into the Mac and run
+   `~/Library/Android/sdk/platform-tools/adb install builds/Daylog-123.apk`, or send the file to the phone
+   and open it. Allow the microphone and notifications when asked.
+5. Record the video (script above), upload it unlisted, fill the form, **Save**.
+6. Upload 123 to internal testing (`node daylog-native-backup/play.mjs upload builds/Daylog-123.aab --track internal`),
+   then promote to production.
+
+The Mac's Android emulator was tried for the video on 2026-11-22 and is unusable: the 8 GB Mac has no RAM
+left for the guest, so it spends its time paging (guest load 45+, System UI not responding).

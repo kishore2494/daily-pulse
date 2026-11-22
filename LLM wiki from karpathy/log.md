@@ -1,3 +1,20 @@
+## 2026-11-22 (15:45) — v267 LIVE (Recordings); Play refused build 123 until the Foreground-service form is filled
+
+- **v267 live** via board cmd 13 (`run 13`, Kishore). `deploy.sh` reported a failed Pages build, but that was the
+  *dispatched* run hitting GitHub's "No artifacts named github-pages" flake; the push-triggered run 4 s earlier
+  had already deployed. Live app.js / sw.js / index.html all say v267. Tag `web-v267` on both repos.
+- **Build 123 → internal testing refused** (board cmd 14): Play accepted the bundle and the internal release, then
+  the edit commit came back `403 You must let us know whether your app uses any Foreground Service permissions`.
+  `play.mjs` deletes an uncommitted edit, so nothing changed on Play and versionCode 123 is still free. This is
+  the Play Console ▸ App content ▸ Foreground service permissions declaration (`store/play-fgs-microphone-123.md`);
+  it blocks even internal-testing uploads, and it wants a demo video — which needs build 123 running somewhere.
+  Tried to make the video on this Mac's Android 16 emulator (`ciena_phone`, arm64, headless, host GPU, build 123
+  sideloaded): unusable — the 8 GB host had ~100 MB free and 3.3 GB compressed, the kernel spent 60 % CPU paging,
+  guest load sat at 45–50 and System UI kept ANR-ing. Stopped it. Internal app sharing is no way round either
+  (Play re-signs those builds with its own key). **Path now:** Kishore sideloads `builds/Daylog-123.apk` on a phone
+  he can reset (Sync now → uninstall → install), records the video, saves the form, then the internal upload
+  is re-queued. `store/play-fgs-microphone-123.md` has the corrected order.
+
 ## 2026-11-22 (14:10) — v266 LIVE (hotfix + SEO sweep); v267 (Recordings) committed, deploy queued
 
 - **v266 live** (Kishore: "deploy"): the stale-draft data-loss fix + Lamport-style stamps + the SEO claims sweep.
