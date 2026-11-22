@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v268';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v269';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1619,6 +1619,7 @@ function renderDeepSections() {
 const WHATS_NEW = {
   v: 'w33',
   items: [
+    '🔎 <b>Your first pattern</b> — after your third logged day, the Log shows what was different about your best day so far: sleep, habits, deep work. A few days in, Daylog also asks one question: what would make it worth opening every day? Nothing is sent unless you tap Send, and it opens your own email app first.',
     '🎨 <b>Three new styles</b> — <b>Clay</b> (warm ivory, terracotta and serif titles), <b>Dot</b> (pure black with dot-matrix numbers and one red light) and <b>Glass</b> (frosted bars, soft grey and crisp blue, in light or dark). Try them in Settings ▸ Style & appearance.',
     '🎙️ <b>Recordings</b> — talk instead of typing. Record for as long as you like (up to three hours), pause, carry on, and stop. With Play update 123 it keeps going with the screen off; before that, keep Daylog open while you record. Find them in ☰ Menu ▸ Recordings or tap <b>Recordings</b> under your journal. Play them back, rename them, move one to another day, share one as an audio file, and paste its words back with <b>Add transcript</b>: they go into that day\'s journal. Recordings stay on this phone and are not in backup files.',
     '🏠 <b>Home-screen widget</b> (with Play update 121) — see today at a glance and tap a face to log your mood. The tap opens Daylog with your mood saved. Long-press your home screen ▸ Widgets ▸ Daylog to add it.',
@@ -2480,7 +2481,7 @@ function renderToday() {
      that are real form fields (1-10 scales, plain numbers) as a card at its own position. */
   const glOpen = wideNums.find(f => f.key === _glanceOpen);
   const SEC = {
-    fresh: () => freshHTML(),
+    fresh: () => freshHTML() + nudgeCardHTML(),
     ring: () => '',
     onthisday: () => `<div id="otd-slot">${throwbackHTML()}</div>`,
     core: () => ((coreScales || simpleRows) ? `<div class="card glance core-more">${coreScales}${simpleRows}</div>` : ''),
@@ -11405,6 +11406,7 @@ const BACKUP_EXCLUDED = [
   'celeb',   // which day's one-per-day celebration budget is spent — meaningless on another install
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
+  'firstSeen', 'insightSeen', 'checkin',   // v269: first open here, first-pattern card seen, day-5 question answered
   'notifAsk',                          // the one-time notification ask; permission belongs to this device
   'notifDone',                         // notification presses already handled here (replayed intents are ignored)
   'reviewAsk',                         // Play rating-sheet asks on this install (Google's quota is per device too)
@@ -12653,6 +12655,130 @@ document.addEventListener('click', (ev) => {
   const card = b.closest('.fresh-card');
   if (card) card.remove();
   buzz(6);
+});
+
+/* ============================================================
+   FIRST INSIGHT + DAY-5 QUESTION (v269, Kishore 2026-11-23: "show value sooner",
+   "ask instead of track").
+
+   Play's numbers say most people who leave do it in the first few days, before the app has
+   shown them anything about themselves, and Daylog has no analytics to ask why. So:
+     - After the THIRD day logged by hand, one card shows a first pattern from their own data
+       (their best mood day and what was different about it). Thin data gets a plain line,
+       never an invented pattern. Shown until dismissed, then never again.
+     - From day 5 after the first open, one card asks a single question. Nothing leaves the
+       phone unless they tap Send, which opens their own mail app with the answer filled in,
+       so they see exactly what is sent. Not now or Send = never again.
+   Both live in the Log's top slot with the fresh-start card, on today only, and only one card
+   at a time: a landmark day, the notification ask or the first-run tour each take the slot.
+   ============================================================ */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+/* The first day this install was opened. Not stored before v269, so an existing user is dated
+   from their earliest entry (they are well past day 5) and a new one from today. */
+function firstSeenDate() {
+  let d = '';
+  try { d = localStorage.getItem('dp.firstSeen') || ''; } catch (e) {}
+  if (ISO_DAY.test(d)) return d;
+  const keys = Object.keys(DB.entries()).filter(k => ISO_DAY.test(k)).sort();
+  d = keys.length && keys[0] < todayStr() ? keys[0] : todayStr();
+  try { safeSet('dp.firstSeen', d); } catch (e) {}
+  return d;
+}
+
+/* The first pattern, from local entries only. null until three days are logged by hand. */
+function firstInsight(e) {
+  e = e || DB.entries();
+  const days = Object.keys(e).filter(d => ISO_DAY.test(d) && loggedByHand(e[d])).sort();
+  if (days.length < 3) return null;
+  const n = (d, k) => { const v = e[d] && e[d][k]; return (v != null && v !== '' && !isNaN(+v)) ? +v : null; };
+  const hkeys = habitCfg().filter(h => !h.hidden).map(h => h.key);
+  const ticks = d => hkeys.filter(k => hVal(e[d], k) === H_DONE).length;
+  const avg = (ds, f) => { const v = ds.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const r1 = x => Math.round(x * 10) / 10;
+  const withMood = days.filter(d => n(d, 'mood') != null);
+  if (withMood.length >= 3) {
+    const moods = withMood.map(d => n(d, 'mood'));
+    const top = Math.max(...moods);
+    if (top > Math.min(...moods)) {
+      const best = withMood.filter(d => n(d, 'mood') === top).pop();   // the latest of the best
+      const rest = withMood.filter(d => d !== best);
+      const lines = [`Your best day so far was <b>${prettyDate(best)}</b>, mood ${top} of 10.`];
+      const sB = n(best, 'sleepHours'), sR = avg(rest, d => n(d, 'sleepHours'));
+      if (sB != null && sR != null && Math.abs(sB - sR) >= 0.5) lines.push(`Sleep that day: <b>${r1(sB)} h</b>, against ${r1(sR)} h on your other days.`);
+      if (hkeys.length) { const tB = ticks(best), tR = avg(rest, ticks); if (tR != null && tB - tR >= 1) lines.push(`Habits ticked: <b>${tB}</b>, against ${r1(tR)} on your other days.`); }
+      const dB = n(best, 'deepWorkHours'), dR = avg(rest, d => n(d, 'deepWorkHours'));
+      if (lines.length < 3 && dB != null && dR != null && dB - dR >= 0.5) lines.push(`Deep work: <b>${r1(dB)} h</b>, against ${r1(dR)} h on your other days.`);
+      if (lines.length === 1) lines.push('Nothing else stood out yet. A few more days and the patterns get clearer.');
+      return { kind: 'best', title: 'Your first pattern', lines, best };
+    }
+  }
+  return { kind: 'plain', title: `${days.length} days logged`,
+    lines: ['Log a few more and Daylog starts showing you what your good days have in common.'] };
+}
+
+/* Which card the Log's top slot shows besides the fresh-start one: 'insight', 'ask' or ''. */
+function nudgeCardKind() {
+  if (logDate !== todayStr()) return '';
+  if (localStorage.getItem('dp.onboarded') !== '1' || tourIdx !== -1) return '';
+  if (freshLandmark() && !freshSeen()[freshLandmark().k]) return '';   // a landmark card owns today
+  try { if (notifAskKind()) return ''; } catch (e) {}
+  const seen = localStorage.getItem('dp.insightSeen') || '';
+  if (!seen && firstInsight()) return 'insight';
+  if (seen === todayStr()) return '';                                   // one card a day
+  const ci = localStorage.getItem('dp.checkin') || '';
+  if (!ci && addDays(firstSeenDate(), 4) <= todayStr()) return 'ask';
+  return '';
+}
+let _ciDraft = '';   // the half-written answer survives a Log re-render
+function nudgeCardHTML() {
+  const k = nudgeCardKind();
+  if (k === 'insight') {
+    const ins = firstInsight();
+    return `<div class="card fresh-card ins-card">
+      <div class="fresh-body">
+        <div class="fresh-ico">🔎</div>
+        <div class="fresh-txt"><div class="fresh-t">${ins.title}</div><div class="fresh-l">${ins.lines.join('<br>')}</div></div>
+        <button type="button" class="fresh-x" data-ins-x aria-label="Dismiss">✕</button>
+      </div>
+    </div>`;
+  }
+  if (k === 'ask') {
+    return `<div class="card ci-card">
+      <div class="fresh-t">One question, if you have a minute</div>
+      <div class="ci-q">What would make Daylog worth opening every day?</div>
+      <textarea class="ci-in" id="ci-in" rows="3" maxlength="1500" placeholder="Anything: a feature, a fix, a feeling…">${escapeHtml(_ciDraft)}</textarea>
+      <div class="ci-note">Nothing is sent unless you tap Send. It opens your email app with your answer, so you see it first.</div>
+      <div class="ci-btns"><button type="button" class="btn btn-ghost btn-sm" data-ci-no>Not now</button>
+        <button type="button" class="btn btn-primary btn-sm" data-ci-send>Send</button></div>
+    </div>`;
+  }
+  return '';
+}
+function checkinMailto(text) {
+  const subject = encodeURIComponent('What would make Daylog worth opening every day (' + APP_VERSION + ')');
+  const body = encodeURIComponent(text + '\n\n— sent from Daylog ' + APP_VERSION);
+  return 'mailto:' + FEEDBACK_EMAIL + '?subject=' + subject + '&body=' + body;
+}
+document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'ci-in') _ciDraft = ev.target.value; });
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-ins-x],[data-ci-no],[data-ci-send]');
+  if (!t) return;
+  if (t.hasAttribute('data-ins-x')) {
+    try { safeSet('dp.insightSeen', todayStr()); } catch (e) {}
+    const c = t.closest('.ins-card'); if (c) c.remove(); buzz(6); return;
+  }
+  if (t.hasAttribute('data-ci-no')) {
+    try { safeSet('dp.checkin', 'no:' + todayStr()); } catch (e) {}
+    _ciDraft = ''; const c = t.closest('.ci-card'); if (c) c.remove(); buzz(6); return;
+  }
+  const inp = document.getElementById('ci-in');
+  const text = ((inp && inp.value) || _ciDraft || '').trim();
+  if (!text) { toast('Write a line first, then tap Send'); if (inp) inp.focus(); return; }
+  try { safeSet('dp.checkin', 'sent:' + todayStr()); } catch (e) {}
+  location.href = checkinMailto(text);
+  const c = t.closest('.ci-card');
+  if (c) c.innerHTML = '<div class="fresh-t">Thank you 💛</div><div class="fresh-l">Your email app should open with your answer. Every answer gets read.</div>';
+  _ciDraft = ''; buzz(12);
 });
 
 /* ============================================================

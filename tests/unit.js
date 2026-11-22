@@ -468,6 +468,75 @@
   if (fSnapE != null) localStorage.setItem('dp.entries', fSnapE); else localStorage.removeItem('dp.entries');
   if (fSnapSeen != null) localStorage.setItem('dp.freshSeen', fSnapSeen); else localStorage.removeItem('dp.freshSeen');
 
+  // ---- v269: first insight after 3 hand-logged days + the day-5 question ----
+  (function () {
+    const keys = ['dp.entries', 'dp.firstSeen', 'dp.insightSeen', 'dp.checkin', 'dp.onboarded', 'dp.freshSeen', 'dp.notifAsk'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const realToday = todayStr, snapLog = logDate;
+    const T = '2026-08-27';   // a Thursday: no landmark
+    window.todayStr = x => (x ? realToday(x) : T);
+    try {
+      const hk = habitCfg().filter(h => !h.hidden).map(h => h.key);
+      const day = (mood, sleep, nTicks, extra) => Object.assign({ mood, sleepHours: sleep,
+        habits: Object.fromEntries(hk.slice(0, nTicks).map(k => [k, H_DONE])) }, extra || {});
+      // 2 days → nothing yet
+      let E = { '2026-08-24': day(5, 6, 1), '2026-08-25': day(7, 7, 1) };
+      ok('no first insight before the third day logged by hand', firstInsight(E) === null);
+      // an auto-only day (health sleep) does not count as logged by hand
+      E['2026-08-26'] = { workoutsDone: 2, timeSummary: { work: 60 } };   // ENTRY_AUTO fields only
+      ok('…a day with only automatic data does not count', firstInsight(E) === null);
+      // 3 hand-logged days with a clear best day
+      E = { '2026-08-24': day(5, 6, 1), '2026-08-25': day(9, 8, 3, { deepWorkHours: 3 }), '2026-08-26': day(5, 6, 1, { deepWorkHours: 1 }) };
+      const ins = firstInsight(E);
+      ok('three days → a first pattern built on the best mood day', ins && ins.kind === 'best' && ins.best === '2026-08-25', JSON.stringify(ins));
+      ok('…it names the day and the mood', /mood 9 of 10/.test(ins.lines[0]));
+      ok('…and what was different: sleep', ins.lines.some(l => /Sleep that day: <b>8 h<\/b>, against 6 h/.test(l)), ins.lines.join(' | '));
+      if (hk.length >= 3) ok('…and habits', ins.lines.some(l => /Habits ticked: <b>3<\/b>, against 1 /.test(l)), ins.lines.join(' | '));
+      ok('…never more than three lines', ins.lines.length <= 3);
+      // flat moods → the plain line, no invented pattern
+      const flat = firstInsight({ '2026-08-24': day(6, 7, 1), '2026-08-25': day(6, 7, 1), '2026-08-26': day(6, 7, 1) });
+      ok('flat moods give the plain card, not a made-up pattern', flat && flat.kind === 'plain' && /3 days logged/.test(flat.title));
+      // no moods at all
+      const nomood = firstInsight({ '2026-08-24': { journal: 'a' }, '2026-08-25': { journal: 'b' }, '2026-08-26': { journal: 'c' } });
+      ok('journal-only days give the plain card', nomood && nomood.kind === 'plain');
+      // a best day with nothing else different says so
+      const same = firstInsight({ '2026-08-24': day(5, 7, 1), '2026-08-25': day(8, 7, 1), '2026-08-26': day(5, 7, 1) });
+      ok('a best day with nothing different says so honestly', same.lines.length === 2 && /Nothing else stood out/.test(same.lines[1]));
+
+      // ---- the Log slot ----
+      localStorage.setItem('dp.onboarded', '1'); localStorage.setItem('dp.notifAsk', '1');
+      localStorage.removeItem('dp.insightSeen'); localStorage.removeItem('dp.checkin');
+      localStorage.setItem('dp.entries', JSON.stringify(E));
+      localStorage.setItem('dp.firstSeen', '2026-08-24');
+      logDate = T;
+      ok('the insight card shows on today once three days are logged', nudgeCardKind() === 'insight' && /ins-card/.test(nudgeCardHTML()));
+      logDate = '2026-08-26';
+      ok('…but not on a back-dated Log', nudgeCardKind() === '');
+      logDate = T;
+      safeSet('dp.insightSeen', T);
+      ok('dismissed: gone, and no second card the same day', nudgeCardKind() === '');
+      safeSet('dp.insightSeen', '2026-08-20');
+      ok('day 4 after the first open: no question yet', nudgeCardKind() === '');
+      localStorage.setItem('dp.firstSeen', '2026-08-23');
+      ok('day 5: the question appears', nudgeCardKind() === 'ask' && /What would make Daylog worth opening every day\?/.test(nudgeCardHTML()));
+      ok('…and says nothing is sent without a tap', /Nothing is sent unless you tap Send/.test(nudgeCardHTML()));
+      const mt = checkinMailto('A weekly email of my patterns');
+      ok('Send hands the answer to the mail app, prefilled', mt.startsWith('mailto:' + FEEDBACK_EMAIL + '?subject=') && /A%20weekly%20email%20of%20my%20patterns/.test(mt));
+      safeSet('dp.checkin', 'no:' + T);
+      ok('Not now: never asked again', nudgeCardKind() === '');
+      localStorage.removeItem('dp.checkin');
+      ok('one card at a time: a landmark day takes the slot', (() => { window.todayStr = x => (x ? realToday(x) : '2026-08-31'); logDate = '2026-08-31'; localStorage.removeItem('dp.freshSeen'); const k = nudgeCardKind(); window.todayStr = x => (x ? realToday(x) : T); logDate = T; return k === ''; })());
+      localStorage.removeItem('dp.firstSeen'); localStorage.setItem('dp.entries', JSON.stringify({}));
+      ok('a brand-new install is dated from today', firstSeenDate() === T && localStorage.getItem('dp.firstSeen') === T);
+      localStorage.removeItem('dp.firstSeen'); localStorage.setItem('dp.entries', JSON.stringify({ '2026-03-02': { mood: 5 } }));
+      ok('an existing user is dated from their first entry', firstSeenDate() === '2026-03-02');
+      ok('the new flags describe this install, so they stay out of backups', ['firstSeen', 'insightSeen', 'checkin'].every(k => BACKUP_EXCLUDED.includes(k) && !BACKUP_KEYS.includes(k)));
+    } finally {
+      window.todayStr = realToday; logDate = snapLog;
+      keys.forEach(k => { if (snap[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, snap[k]); });
+    }
+  })();
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

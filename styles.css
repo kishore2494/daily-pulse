@@ -1595,6 +1595,10 @@ input[type="range"] { height: 30px; }
 .fresh-txt { flex: 1 1 auto; min-width: 0; }
 .fresh-t { font-size: 14px; font-weight: 750; color: var(--text); }
 .fresh-l { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+.ci-card .ci-q { margin: 4px 0 10px; font: 650 17px/1.3 var(--font-display); color: var(--text); }
+.ci-card .ci-in { width: 100%; min-height: 76px; resize: vertical; }
+.ci-card .ci-note { margin-top: 8px; font-size: 12px; line-height: 1.45; color: var(--text-faint); }
+.ci-card .ci-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .fresh-l b { color: var(--text); }
 .fresh-x { flex: 0 0 auto; width: 44px; height: 44px; margin: -10px 0; padding: 0; border: 0;
   background: none; color: var(--text-faint); font-size: 15px; cursor: pointer; }
