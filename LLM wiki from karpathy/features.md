@@ -201,6 +201,39 @@ disk-backed handles, so this is cheap. After that, rendering is synchronous.
 - **Open items:** roadmap.md ▸ Photos & voice.
 
 
+## Recordings (built 2026-11-22 on branch `recorder`, NOT deployed)
+
+Kishore, 2026-11-21: "I need to journal a lot but can't type it." Long voice entries: record, pause, leave the app,
+come back, stop; share one as an audio file (he gives it to Claude to transcribe) and paste the text back.
+Contract with the Android side: `RECORDER-SPEC.md`. Code: app.js `SCREEN: RECORDINGS` block.
+
+- **Where:** ☰ Menu ▸ Your tabs ▸ Recordings (always there, like Lift; not a navcfg tab) and the **Recordings** button
+  beside 🎤 Speak under the journal. From a past day's Log, a new recording is saved on that day (`_recFor`).
+- **Engines:** `recNative()` = `Capacitor.Plugins.LongRecorder` (build 123+): records with the screen off; at start-up
+  and on every return `recNativeAttach()` calls `status()` (reattach, `recovered`) and `list()` (finish records
+  stopped while closed, adopt files with no record, refresh uris: `.aac` while recording → `.m4a` after). Without it:
+  MediaRecorder, `REC_SLICE_MS` 4 s slices written to IndexedDB as they arrive (chained writes), wake lock,
+  "keep Daylog open"; `recRecover()` at start glues a killed recording's slices back (`cut: true`, "saved after
+  Daylog closed"). Pausing flushes a slice (`requestData`). One microphone: voice notes refuse to start meanwhile.
+- **Limits:** `REC_MAX_MS` 3 h (saves itself), warning at 2 h 50 m; under 0.7 s is dropped (`VOICE_MIN_MS`).
+- **Storage:** IndexedDB `daylog-rec`: `recs` {id, src web|native, state live|done, ts, day, title?, mime, blob (web) or
+  uri (native), dur, size, transcript?, trBlock?, trDay?, del?, cut?} and `chunks` {k, rid, seq, blob, ms}.
+  Never in a backup (not in `_media`, no dp.* key), never synced. A delete hides at once with Undo; the `del` flag
+  is saved so a kill inside the 6.5 s window still finishes it at the next start; a native file is removed first.
+- **List:** by day, newest first; title (default "Recording · 9:40 pm", `recTitle`), length, size. Tap a row: scrub
+  bar, ±15 s, Rename, Day (date input, not after today), Share, Add/Edit transcript, Delete. A webm from
+  MediaRecorder has no duration; the player seeks to 1e101 once so Chrome finds it.
+- **Share:** native → `LongRecorder.share({id,title})`; web blob → Web Share with files, else a download in a
+  browser; the Play app ≤122 cannot share one (its share plugin is image/text only) and says so.
+- **Add transcript:** `recTranscriptToDay` → `saveDraftNow` (flushAutosave first; loadDraft if the Log shows that
+  day). The paragraph is "🎙️ <title>\n<text>"; saving again replaces it if unchanged by hand, emptying removes it.
+- **Widget/shortcut:** `{action:'record', at}` → `widgetRecordRoute`: opens Recordings; starts one recording if a tap
+  is ≤2 min old (`REC_STALE_TAP_MS`) and none is running. Mood taps are unaffected.
+- **Tests:** unit.js (formatting, names, day moves, grouping, cap, queue routing, recovery plan, journal merge,
+  storage/backup exclusion, screen/menu/Log) and unit-async.js (web engine with a fake MediaRecorder, crash
+  recovery, Undo, native engine/reattach/notification events with a fake plugin, widget drain, wipe).
+- **Open:** run in the Play app with build 123; History's day page could list that day's recordings.
+
 ## History ▸ one day, read-only (v252, 2026-11-01)
 
 A History row used to open the Log editor for that day. It now opens `historyDayHTML(d)`, a
