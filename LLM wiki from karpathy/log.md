@@ -28,6 +28,93 @@
 - An independent review of both halves is running; ship order: v266 hotfix → review fixes → merge `recorder` →
   build 123 (Kishore's OK + the FGS form) → deploy web.
 
+## 2026-11-22 (16:30) — Recordings web half: review fixes (branch `recorder`, NOT merged, NOT deployed)
+
+Independent review: no audio-loss bugs; fixed its 8 items + Luxe wrap (3224dbd), each with a test that fails without
+the fix (mutation-checked): reconcile skips finishing / list-`recording` ids and never forgets live records when
+status() failed or a start is pending; widget start clears `_recFor`; 🎤 Speak refused while recording; reload
+waits on a native stop; `removed:false` confirmed via list(); Web Lock per web recording (two tabs); native
+records with no file marked "not on this phone"; `start_failed` retried once (300 ms); toasts for the native
+side's new `storage`/`cap` reasons. 1846 tests × 4 zones, 11/11 checks.
+
+## 2026-11-22 (13:30) — native recorder: review fixes (backup exclusion, native cap, safer remux)
+
+- Auto Backup / device transfer now exclude `files/recordings/` and `shared_prefs/dp_recorder.xml`
+  (`res/xml/data_extraction_rules.xml` for 12+, `full_backup_content.xml` for ≤11, wired in the manifest); all else
+  backed up as before. Before: recordings went to Google backup, and ~50 min of audio blew the 25 MB quota, stopping
+  the whole app backup (journal included).
+- `RecorderService.watch()` every 60 s on the worker: ends with reason `cap` at 3 h recorded, `storage` under 30 MB
+  free, `error` when 30 s of recording added no bytes (the ADTS writer dies silently on write errors). Plus an
+  OnInfoListener for platform size/duration limits and a one-time "Recording stopped" notification for these endings.
+- `remux` returns the copied payload; the .aac is deleted only if the .m4a holds at least that, and the copy is
+  skipped (the .aac kept) when free space < source + 8 MB. Spec updated with the new reasons.
+
+## 2026-11-22 (14:00) — long-form recorder, WEB half (branch `recorder`, NOT merged, NOT deployed, no version bump)
+
+Contract: `RECORDER-SPEC.md` (branch root). Details: features.md ▸ Recordings.
+- **Recordings screen** (`s-recordings`, `renderRecordings`), in ☰ Menu ▸ Your tabs (`recDrawerHTML`, fixed like Lift,
+  not in navcfg) and a **Recordings** button beside 🎤 Speak under the journal (`recLogBtnHTML`; shows "● Recording
+  m:ss" while one runs). Not called "Record": the Photos & voice card already has a Record button (voice notes).
+- Two engines: native `LongRecorder` when present (feature-detected per method; `status()` + `list()` reconcile at
+  start and on every return; `recorderState` drives Pause/Resume/Stop from the notification; final uri always from
+  stop()/event/`status().recovered`/list(), never start()'s .aac), else MediaRecorder (24 kbps opus, 4 s slices to
+  IndexedDB, wake lock re-asked on return, "keep Daylog open"). Three-hour cap with a ten-minute warning.
+- Storage: own IndexedDB `daylog-rec` (stores `recs`, `chunks`), so backups/restore/History never see recordings.
+  No dp.* key, nothing synced. Export toast, Storage row ("not in backups") and Delete everything say so; Delete
+  everything also removes the native files (`recWipe`).
+- Widget/shortcut `{action:'record'}`: routed apart in `drainWidgetActions` (`widgetRecordRoute`); mood taps go
+  through `widgetTapsApply` unchanged; fresh tap (≤2 min) starts one recording, a stale one only opens the screen.
+- Add transcript → `recTranscriptToDay` → `saveDraftNow` (flushAutosave first, loadDraft if the Log is on that day);
+  saved again it replaces its own paragraph (`recJournalMerge`), emptied it takes it out.
+- Verified: +116 tests (1816) × 4 timezones, every tools/check-*.mjs. Headless Chromium at 360×800 with a fake mic
+  (oscillator → MediaStream; the browse daemon has no fake-media flags): record, pause/resume, a reload mid-recording
+  came back as "saved after Daylog closed" (34.5 of 35.5 s), playback + ±15 s seek on the duration-less webm, rename,
+  move day, transcript into the journal, share (download), delete + Undo; five styles looked right.
+- **Not done / open:** never run inside the Play app or against the real plugin (only a fake shaped like the spec);
+  a web-made recording cannot be shared from the Play app (DaylogShare is image/text only); History's day page does
+  not list recordings yet.
+
+## 2026-11-22 (12:30) — long-form recorder, NATIVE half (daily-pulse-native, build 123; not built for release, not synced)
+
+Contract: `RECORDER-SPEC.md` (updated with everything below; the web half reads it).
+- **Plugin `LongRecorder`** (`LongRecorderPlugin.java`, registered in MainActivity) over **`RecorderService.java`**
+  (foreground service, `foregroundServiceType="microphone"`, + `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MICROPHONE`).
+  start/pause/resume/stop/status/list/remove/share + event `recorderState`. Rejections are `reject(msg, code)`:
+  invalid, permission, busy, exists, storage (<50 MB), start_failed, not_recording, empty, not_found, share_failed.
+  All recorder work on one worker thread; nothing blocks the main or Capacitor plugin thread.
+- **Container: ADTS `.aac` while recording, copied (no re-encode) into `.m4a` on stop** (MediaExtractor → MediaMuxer;
+  the copy is refused, and the .aac kept, if it would hold <97% of the source). ADTS survives a killed process
+  (OEM killer, Android's active-apps "Stop", crash, power off); .m4a gives exact duration, seeking and works with
+  every transcriber. The `uri` from start() is the .aac; the final one comes from stop()/the ending event/list().
+  A recording cut short is finished on the next status()/list() (`status().recovered`, event reason `recovered`),
+  from a `dp_recorder` SharedPreferences record written with commit(). Mono AAC-LC 44.1 kHz 64 kbps ≈ 29 MB/h.
+- Notification (channel `dp_recorder`, id 912, LOW): system chronometer = recorded time; Paused shows "Paused at
+  m:ss"; Pause/Resume + Stop; re-posted if swiped away (Android 14+ allows that); never shows the title.
+- Android 14+: started with startService + startForeground(type MICROPHONE) only from the visible app; a refusal
+  rejects `start_failed` with no crash (startForegroundService would risk the 5 s crash). START_NOT_STICKY.
+  Swiping from Recents keeps recording (onTaskRemoved saves state). No app wake lock (Play's wake-lock vital).
+- **Shortcut "Record"**: `res/xml/shortcuts.xml` → non-exported trampoline `RecordShortcutActivity` (own
+  taskAffinity, Theme.NoDisplay) → `WidgetBridgePlugin.queueTap(ctx, "record")` + widgetTap, then MainActivity
+  comes forward without the reload a static shortcut's CLEAR_TASK would cause.
+- **Widget mic** (`w_mic`, `widget_mic` + `widget_mic_bg`) in all three layouts: full = top right of the header
+  (28dp with -4dp margins, row height unchanged), compact/narrow = 32dp after the faces. Token-checked
+  `WIDGET_RECORD` intent → `{action:'record'}`. Mood faces unchanged; at 3x1 minimum the faces are ~27dp wide.
+- FileProvider: `file_paths.xml` + `<files-path name="recordings" path="recordings/">`; share names the file
+  `<title>.m4a` via a hard link (copy if refused) in `cache/recshare/`.
+- Verified: `:app:assembleDebug` succeeds; javac -Xlint and Android lint report nothing in the new code (lint's 28
+  errors are old: HealthReader java.time NewApi, requestPinAppWidget). No phone attached; **API 36 emulator
+  (`ciena_phone`) run, debug APK uninstalled after**: start → busy → pause → resume → stop gave a valid .m4a
+  (afinfo: AAC mono 44.1 kHz 64 kbps), events at every step, list/share/not_found/invalid OK, share sheet opened
+  with the named copy (the hard link was refused there; the copy fallback ran); crash recovery (planted cut-short
+  .aac + live record) → `status().recovered` once, .m4a 46.8 s; mic failure → `start_failed`, nothing left behind;
+  widget intent with a wrong token queues nothing, right token and the shortcut trampoline (launcher flags) each
+  queue `{action:'record'}` + widgetTap with no WebView reload. The emulator was starved by host swap (dropped
+  audio: 123 s wall time gave 47 s of audio; its system_server watchdog-restarted once), so timings mean nothing.
+  NOT tested: a real phone, the notification's buttons, the widget drawn on a home screen, a real launcher
+  long-press, OEM battery killers, stop() time on an hour-long file.
+- **Play: before build 123 can go to review, Kishore fills App content ▸ Foreground service permissions**
+  (microphone ▸ "Background Audio Access", description, impact if deferred/interrupted, a video link showing a
+  recording started in the app). versionCode NOT bumped; `daylog-native-backup/sync.sh` NOT run.
 ## 2026-11-22 (12:55) — HIGH data-loss bug found in live v265, fixed on main (needs "deploy")
 
 Adversarial review of the v265 per-field sync (repro harness + scenarios in the session scratchpad `review/`).

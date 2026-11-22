@@ -881,5 +881,347 @@
       logDate = logSnap; loadDraft();
     }
   }
+  /* ---------- Recordings (2026-11-22): long recordings, both engines ----------
+     Real recorder code against the in-memory IndexedDB, a fake MediaRecorder that hands over
+     slices when told to, and a fake LongRecorder plugin shaped like RECORDER-SPEC.md. */
+  {
+    const capSnap = window.Capacitor, idbSnap2 = window.indexedDB, mrSnap2 = window.MediaRecorder, confSnap2 = window.confirm;
+    const eSnap = localStorage.getItem('dp.entries'), obSnap = localStorage.getItem('dp.onboarded');
+    const urlC2 = URL.createObjectURL, urlR2 = URL.revokeObjectURL;
+    URL.createObjectURL = () => 'blob:test'; URL.revokeObjectURL = () => {};
+    const resetRec = () => { recTickStop(); _lr = null; _lrStarting = false; _recSaving = 0; _recs.clear(); _recBootP = null; _recDbP = null; _recReady = false; _recNativeHooked = false; _recOpen = null; _recEdit = null; _lrCapped = null; };
+    let gum = 0;
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: () => { gum++; return Promise.resolve({ getTracks: () => [{ stop() {} }] }); } } });
+    class SliceMR {
+      constructor(stream, opts) { this.state = 'inactive'; this.mimeType = 'audio/webm;codecs=opus'; this.opts = opts; SliceMR.last = this; }
+      static isTypeSupported(m) { return m === 'audio/webm;codecs=opus'; }
+      start(slice) { this.state = 'recording'; this.slice = slice; }
+      pause() { this.state = 'paused'; }
+      resume() { this.state = 'recording'; }
+      requestData() { this.emit('p'); }
+      emit(s) { if (this.ondataavailable) this.ondataavailable({ data: new Blob([s]) }); }
+      stop() { this.state = 'inactive'; this.emit('end'); setTimeout(() => this.onstop && this.onstop(), 0); }
+    }
+    const chunksOnDisk = async () => (await recGetAll('chunks')).length;
+    try {
+      resetRec();
+      window.indexedDB = fakeIDB; delete window.Capacitor; window.MediaRecorder = SliceMR;
+      localStorage.setItem('dp.onboarded', '1');
+      await recBoot();
+      ok('recordings: boots on an empty database', _recReady && _recs.size === 0);
+
+      /* ---- the web engine ---- */
+      recStart(); recStart();                                   // a double tap
+      await until(() => !!_lr && _lr.src === 'web');
+      ok('web recorder: a double tap opens the microphone once and starts one recording', gum === 1 && !!_lr && _recs.size === 1, gum);
+      ok('…in slices of a few seconds, mono at 24 kbps', SliceMR.last.slice === REC_SLICE_MS && SliceMR.last.opts.audioBitsPerSecond === VOICE_BPS);
+      ok('…marked live in the database, on today', _recs.get(_lr.id).state === 'live' && _recs.get(_lr.id).day === todayStr());
+      ok('…and an app-update reload waits for it', mediaBusyNow());
+      voiceStart('log', todayStr()); await sleep(10);
+      ok('a voice note cannot start while a recording holds the microphone', !_rec);
+      const id1 = _lr.id;
+      SliceMR.last.emit('aaaa'); SliceMR.last.emit('bbbb');
+      await sleep(60);
+      ok('each slice is on disk as it arrives', (await chunksOnDisk()) === 2, await chunksOnDisk());
+      _lr.acc = 4000; _lr.from = Date.now();                    // pretend 4 s went by
+      await recPause();
+      const frozen = recElapsed(_lr);
+      ok('pause: the timer stops and what was said so far goes to disk', _lr.state === 'paused' && frozen >= 4000 && (await (async () => { await sleep(30); return chunksOnDisk(); })()) === 3);
+      await sleep(30);
+      ok('…paused time does not count', recElapsed(_lr) === frozen);
+      await recResume();
+      ok('resume: recording again', _lr.state === 'recording' && SliceMR.last.state === 'recording');
+      await recStop();
+      await until(() => !_lr && !_recSaving && (_recs.get(id1) || {}).state === 'done');
+      const done1 = _recs.get(id1);
+      ok('stop: saved as one recording with its length and size', !!done1 && done1.state === 'done' && done1.dur >= 4000 && done1.size === 'aaaabbbbpend'.length && done1.blob.size === done1.size, done1 && [done1.dur, done1.size]);
+      ok('…its slices are cleaned up', (await chunksOnDisk()) === 0);
+      ok('…and nothing is busy any more', !mediaBusyNow());
+      _recs.clear(); (await recGetAll('recs')).forEach(r => _recs.set(r.id, r));
+      ok('…and it is really in the database', (_recs.get(id1) || {}).state === 'done');
+
+      recStart(); await until(() => !!_lr);
+      const id2 = _lr.id; SliceMR.last.emit('x'); await sleep(20);
+      await recStop(); await until(() => !_lr && !_recSaving);
+      ok('a mis-tap (under 0.7 s) keeps nothing, not even its slices', !_recs.has(id2) && (await chunksOnDisk()) === 0);
+
+      /* ---- a recording cut off by a kill comes back at the next start ---- */
+      const T0 = Date.now() - 600000;
+      await recTx('recs', s => s.put({ id: 'rK', src: 'web', state: 'live', ts: T0, day: todayStr(), mime: 'audio/webm' }));
+      await recTx('chunks', s => { s.put({ k: 'rK:000001', rid: 'rK', seq: 1, blob: new Blob(['22']), ms: 8000 }); s.put({ k: 'rK:000000', rid: 'rK', seq: 0, blob: new Blob(['111']), ms: 4000 }); });
+      await recTx('recs', s => s.put({ id: 'rE', src: 'web', state: 'live', ts: T0, day: todayStr(), mime: 'audio/webm' }));   // killed before any slice
+      await recTx('chunks', s => s.put({ k: 'rGone:000000', rid: 'rGone', seq: 0, blob: new Blob(['zz']), ms: 4000 }));            // of a deleted recording
+      await recTx('recs', s => s.put({ id: 'rD', src: 'web', state: 'done', ts: T0, day: todayStr(), blob: new Blob(['d']), size: 1, dur: 5000, del: Date.now() - 60000 }));
+      resetRec(); await recBoot();
+      const rk = _recs.get('rK');
+      ok('crash recovery: the slices come back as one recording, in order', !!rk && rk.state === 'done' && rk.size === 5 && rk.cut === true && rk.dur === 8000, rk && [rk.state, rk.size, rk.dur]);
+      ok('…a recording killed before its first slice is dropped', !_recs.has('rE'));
+      ok('…slices of no recording are deleted, not brought back', (await chunksOnDisk()) === 0 && !_recs.has('rGone'));
+      ok('…and a delete whose Undo time ran out while the app was closed is finished', !_recs.has('rD') && !(await recGetAll('recs')).some(r => r.id === 'rD'));
+
+      /* ---- rename, move, transcript, delete with Undo ---- */
+      await recRename('rK', '  Morning  pages ');
+      ok('rename is saved', _recs.get('rK').title === 'Morning pages' && (await recGetAll('recs')).find(r => r.id === 'rK').title === 'Morning pages');
+      const Dm = addDays(todayStr(), -1);
+      ok('move to yesterday', (await recMove('rK', Dm)) && _recs.get('rK').day === Dm);
+      ok('…not to tomorrow', !(await recMove('rK', addDays(todayStr(), 1))) && _recs.get('rK').day === Dm);
+      const ents = DB.entries(); delete ents[Dm]; DB.saveEntries(ents);
+      await recSaveTranscript('rK', 'Went for a run.');
+      ok('add transcript: kept on the recording and in that day\'s journal', _recs.get('rK').transcript === 'Went for a run.' && /Morning pages\nWent for a run\./.test((DB.entry(Dm) || {}).journal || ''), DB.entry(Dm));
+      await recSaveTranscript('rK', 'Went for a long run.');
+      ok('…saved again, it replaces its paragraph', (DB.entry(Dm).journal.match(/Morning pages/g) || []).length === 1 && /long run/.test(DB.entry(Dm).journal));
+      show('recordings'); _recOpen = 'rK'; recRefresh();
+      ok('the open recording shows its player, ±15 s and its actions', !!document.querySelector('[data-rec-id="rK"] [data-rec-scrub]') && document.querySelectorAll('[data-rec-id="rK"] [data-rec-skip]').length === 2
+        && !!document.querySelector('[data-rec-id="rK"] [data-rec-share]') && !!document.querySelector('[data-rec-id="rK"] input[type=date][data-rec-day]'));
+      ok('…and its transcript under it', /long run/.test((document.querySelector('[data-rec-id="rK"] .rec-tr') || {}).textContent || ''));
+      await recDelete('rK');
+      ok('delete: gone from the list at once', !document.querySelector('[data-rec-id="rK"]') && !!_recs.get('rK').del);
+      document.querySelector('#toast .toast-undo').click(); await sleep(20);
+      ok('…Undo brings it back', !_recs.get('rK').del && !!document.querySelector('[data-rec-id="rK"]'));
+      await recDelete('rK'); await recHardDelete('rK');
+      ok('…and once final, it is gone from the database', !_recs.has('rK') && !(await recGetAll('recs')).some(r => r.id === 'rK'));
+
+      /* ---- backups never carry a recording ---- */
+      await recPut({ id: 'rB', src: 'web', state: 'done', ts: Date.now(), day: todayStr(), blob: new Blob(['bbb']), size: 3, dur: 9000, mime: 'audio/webm' });
+      const mb = await mediaForBackup();
+      ok('backup: no recording among the media', !mb.items.some(i => i.id === 'rB') && !JSON.stringify(backupBlob().data).includes('rB'));
+
+      /* ---- the native engine (Play build 123+) ---- */
+      const calls = [], NOW = Date.now();
+      let listener = null, status = { state: 'idle' }, files = [];
+      const LR = {
+        start: async (o) => { calls.push(['start', o]); return { id: o.id, uri: 'file:///data/rec/' + o.id + '.m4a' }; },
+        pause: async () => { calls.push(['pause']); return { state: 'paused', id: _lr && _lr.id, elapsedMs: 42000 }; },
+        resume: async () => { calls.push(['resume']); return { state: 'recording', id: _lr && _lr.id, elapsedMs: 42000 }; },
+        stop: async () => { calls.push(['stop']); const id = _lr.id; return { id, uri: 'file:///data/rec/' + id + '.m4a', durationMs: 65000, bytes: 520000 }; },
+        status: async () => status, list: async () => ({ items: files }),
+        remove: async (o) => { calls.push(['remove', o.id]); files = files.filter(f => f.id !== o.id); return {}; },
+        share: async (o) => { calls.push(['share', o]); return {}; },
+        addListener: (ev, fn) => { if (ev === 'recorderState') listener = fn; return Promise.resolve({ remove() {} }); },
+      };
+      window.Capacitor = { Plugins: { LongRecorder: LR }, convertFileSrc: u => 'https://localhost/_capacitor_file_' + u.replace('file://', '') };
+      resetRec(); await recBoot();
+      ok('native: listens for the notification\'s buttons', typeof listener === 'function');
+      gum = 0; recStart(); recStart();
+      await until(() => !!_lr && calls.some(c => c[0] === 'start'));
+      const st = calls.filter(c => c[0] === 'start');
+      ok('native: start is called once, with the id and its name', st.length === 1 && /^r[a-z0-9]+$/.test(st[0][1].id) && /^Recording · /.test(st[0][1].title), st.map(c => c[1]));
+      ok('…after asking for the microphone through the web (that grants it to the app)', gum === 1);
+      const nid = _lr.id;
+      ok('…its record keeps the file\'s uri', _recs.get(nid).uri === 'file:///data/rec/' + nid + '.m4a' && _recs.get(nid).src === 'native');
+      ok('…and a native recording does not hold up an app update (the service keeps it)', !mediaBusyNow());
+      await recPause();
+      ok('native pause: the plugin pauses and the timer shows its time', calls.some(c => c[0] === 'pause') && _lr.state === 'paused' && recElapsed(_lr) === 42000);
+      listener({ state: 'recording', id: nid, elapsedMs: 43000 });
+      ok('Resume pressed on the notification: the screen follows', _lr.state === 'recording' && recElapsed(_lr) >= 43000);
+      await recStop();
+      await until(() => (_recs.get(nid) || {}).state === 'done');
+      ok('native stop: saved with the length and size the plugin reports', _recs.get(nid).dur === 65000 && _recs.get(nid).size === 520000 && !_lr, _recs.get(nid));
+      await recShare(nid);
+      ok('native share: the plugin\'s share sheet, for that recording', calls.some(c => c[0] === 'share' && c[1].id === nid));
+
+      // started, then stopped from the notification
+      recStart(); await until(() => !!_lr && _lr.id !== nid);
+      const nid2 = _lr.id;
+      listener({ state: 'idle', id: nid2, uri: 'file:///data/rec/' + nid2 + '.m4a', durationMs: 120000, bytes: 960000 });
+      await until(() => (_recs.get(nid2) || {}).state === 'done');
+      ok('Stop pressed on the notification: saved, and the screen is idle again', !_lr && _recs.get(nid2).dur === 120000 && _recs.get(nid2).size === 960000);
+
+      // a cold start while the service is still recording, plus what changed while the app was closed
+      await recPut({ id: 'rY', src: 'native', state: 'live', ts: NOW - 7200000, day: todayStr(), uri: 'file:///data/rec/rY.m4a' });   // stopped from the notification while closed
+      await recPut({ id: 'rW', src: 'native', state: 'live', ts: NOW - 7200000, day: todayStr() });                                // its file never made it
+      await recPut({ id: 'rV', src: 'native', state: 'live', ts: NOW - 9000000, day: todayStr(), uri: 'file:///data/rec/rV.aac' });   // cut short by an OEM killer
+      status = { state: 'recording', id: 'rX', elapsedMs: 600000, startedAt: NOW - 700000, uri: 'file:///data/rec/rX.aac',
+        recovered: { id: 'rV', uri: 'file:///data/rec/rV.m4a', durationMs: 90000, bytes: 700000, mime: 'audio/mp4', modifiedAt: NOW - 8000000, startedAt: NOW - 9000000 } };
+      files = [{ id: 'rX', uri: 'file:///data/rec/rX.aac', bytes: 3000, modifiedAt: NOW, recording: true },
+        { id: 'rY', uri: 'file:///data/rec/rY.m4a', bytes: 5000, modifiedAt: NOW - 3600000 }, { id: 'rZ', uri: 'file:///data/rec/rZ.aac', bytes: 7000, modifiedAt: NOW - 1000 },
+        { id: 'rV', uri: 'file:///data/rec/rV.m4a', bytes: 700000, modifiedAt: NOW - 8000000 },
+        { id: nid, uri: 'file:///data/rec/' + nid + '.m4a', bytes: 520000, modifiedAt: NOW }, { id: nid2, uri: 'file:///data/rec/' + nid2 + '.m4a', bytes: 960000, modifiedAt: NOW }];
+      calls.length = 0;
+      resetRec(); await recBoot();
+      ok('cold start: reattached to the recording that kept going, with its time', !!_lr && _lr.id === 'rX' && _lr.src === 'native' && recElapsed(_lr) >= 600000 && !calls.some(c => c[0] === 'start'));
+      await until(() => _recs.has('rX'));
+      ok('…which gets a record if it had none, and is not taken for a finished file', _recs.get('rX').state === 'live');
+      ok('…one cut short by the process dying is finished from status().recovered, with its length and final file', (_recs.get('rV') || {}).state === 'done' && _recs.get('rV').dur === 90000
+        && _recs.get('rV').uri === 'file:///data/rec/rV.m4a' && _recs.get('rV').cut === true, _recs.get('rV'));
+      ok('…one stopped while the app was closed is finished from the file list', _recs.get('rY').state === 'done' && _recs.get('rY').size === 5000);
+      ok('…one whose file is missing is dropped', !_recs.has('rW'));
+      ok('…and a file with no record is listed, not left invisible', (_recs.get('rZ') || {}).state === 'done' && _recs.get('rZ').size === 7000);
+      recStart(); await sleep(30);
+      ok('a widget/shortcut start while one is going starts no second recording', !calls.some(c => c[0] === 'start') && _lr.id === 'rX');
+      await recStop(); await until(() => !_lr);
+
+      // stop() says nothing was captured
+      const stopReal = LR.stop;
+      recStart(); await until(() => !!_lr);
+      const nid3 = _lr.id;
+      LR.stop = async () => { const e = new Error('Nothing was recorded.'); e.code = 'empty'; throw e; };
+      await recStop();
+      ok('native stop that captured nothing: no recording kept, the screen is idle', !_lr && !_recs.has(nid3));
+      LR.stop = stopReal;
+      // the ending event says nothing was captured
+      recStart(); await until(() => !!_lr);
+      const nid4 = _lr.id;
+      listener({ state: 'idle', id: nid4, elapsedMs: 50, reason: 'notification', empty: true });
+      await sleep(20);
+      ok('…the same when it ends from the notification with nothing captured', !_lr && !_recs.has(nid4));
+
+      // delete a native recording: the file goes once the Undo time is up
+      await recDelete('rY'); await recHardDelete('rY');
+      ok('native delete: the plugin removes the file, then the record goes', calls.some(c => c[0] === 'remove' && c[1] === 'rY') && !_recs.has('rY'));
+
+      /* ---- the widget's mic and the launcher shortcut ---- */
+      let queue = [];
+      window.Capacitor.Plugins.WidgetBridge = { consumeActions: async () => { const a = queue; queue = []; return { actions: a }; }, update: () => Promise.resolve({}) };
+      calls.length = 0; navigateTo('today');
+      queue = [{ action: 'record', at: Date.now() - 1000 }, { action: 'record', at: Date.now() - 500 }];
+      await drainWidgetActions(); await until(() => calls.some(c => c[0] === 'start'));
+      ok('widget/shortcut tap: opens Recordings and starts ONE recording', isOn('recordings') && calls.filter(c => c[0] === 'start').length === 1 && !!_lr);
+      await recStop(); await until(() => !_lr);
+      calls.length = 0; navigateTo('today');
+      queue = [{ action: 'record', at: Date.now() - 5 * 60000 }];
+      await drainWidgetActions(); await sleep(30);
+      ok('…a stale tap only opens the screen', isOn('recordings') && !calls.some(c => c[0] === 'start') && !_lr);
+      let n3 = Date.now(); if (todayStr(new Date(n3 - 10000)) !== todayStr(new Date(n3))) n3 -= 11000;
+      const D3 = todayStr(new Date(n3)), e3 = DB.entries(); delete e3[D3]; DB.saveEntries(e3);
+      calls.length = 0; navigateTo('today');
+      queue = [{ action: 'mood', mood: 9, at: n3 - 3000 }, { action: 'record', at: Date.now() - 1000 }];
+      await drainWidgetActions(); await until(() => calls.some(c => c[0] === 'start'));
+      ok('…a mood tap in the same queue is still saved, and Recordings opens', (DB.entry(D3) || {}).mood === 9 && isOn('recordings') && !!_lr);
+      await recStop(); await until(() => !_lr);
+
+      /* ---- delete everything ---- */
+      files = [{ id: 'rQ', uri: 'q', bytes: 10 }];
+      await recWipe();
+      ok('delete everything: every recording file is removed and the database is gone', calls.some(c => c[0] === 'remove' && c[1] === 'rQ') && !shim.dbs.has(REC_DB) && _recs.size === 0);
+
+      /* ---- review fixes (2026-11-22) ---- */
+      resetRec(); files = []; status = { state: 'idle' }; await recBoot();
+      // #4 start-up reconcile races
+      await recPut({ id: 'rF', src: 'native', state: 'live', ts: NOW, day: todayStr() });
+      files = [{ id: 'rF', uri: 'file:///data/rec/rF.m4a', bytes: 9000, modifiedAt: NOW }];
+      _recFinishing.add('rF'); await recNativeAttach(); _recFinishing.delete('rF');
+      ok('#4 a stop still saving is not finished by the reconcile (its real length comes from stop())', _recs.get('rF').state === 'live' && !_recs.get('rF').dur);
+      await recForget('rF');
+      const statusOk = LR.status;
+      LR.status = async () => { throw new Error('no'); };
+      await recPut({ id: 'rR', src: 'native', state: 'live', ts: NOW, day: addDays(todayStr(), -2) });
+      await recPut({ id: 'rS', src: 'native', state: 'live', ts: NOW, day: todayStr() });
+      files = [{ id: 'rR', uri: 'file:///data/rec/rR.aac', bytes: 3000, modifiedAt: NOW, recording: true }];
+      await recNativeAttach();
+      ok('#4 status() failing: one the list says is still recording is left alone', (_recs.get('rR') || {}).state === 'live' && _recs.get('rR').day === addDays(todayStr(), -2));
+      ok('#4 …and no live record is forgotten when status() could not be read', (_recs.get('rS') || {}).state === 'live');
+      LR.status = statusOk; files = [];
+      _lrStarting = true; await recNativeAttach(); _lrStarting = false;
+      ok('#4 nor while a start is pending (it may be the one starting, with its chosen day)', _recs.has('rR') && _recs.has('rS'));
+      await recNativeAttach();
+      ok('#4 …with status() known and nothing starting, a live record with no file is dropped as before', !_recs.has('rR') && !_recs.has('rS'));
+
+      // #5 a widget start is today's, whatever Log day opened Recordings last
+      let queue2 = [];
+      window.Capacitor.Plugins.WidgetBridge = { consumeActions: async () => { const a = queue2; queue2 = []; return { actions: a }; }, update: () => Promise.resolve({}) };
+      _recFor = addDays(todayStr(), -3); show('recordings');
+      queue2 = [{ action: 'record', at: Date.now() - 500 }]; calls.length = 0;
+      await drainWidgetActions(); await until(() => !!_lr && _recs.has(_lr.id));
+      ok('#5 a widget/shortcut recording lands on today, not on an old Log day', _recs.get(_lr.id).day === todayStr(), _recs.get(_lr.id).day);
+
+      // #6 voice typing waits while a recording holds the microphone
+      navigateTo('today');
+      await dictateInto('[data-txt=journal]', null);
+      ok('#6 🎤 Speak is refused while a recording runs', /recording is going/.test(document.getElementById('toast').textContent) && !_recogOn, document.getElementById('toast').textContent);
+
+      // #7 a native stop in flight holds off an app-update reload
+      const stopSlow = LR.stop; let release;
+      LR.stop = () => new Promise(r => { release = () => r({ id: _lr ? _lr.id : 'x', uri: 'file:///data/rec/s.m4a', durationMs: 5000, bytes: 4000 }); });
+      const stopping = recStop(); await sleep(10);
+      ok('#7 an app-update reload waits while a native stop is saving', mediaBusyNow() && !!_lr && _lr.stopping);
+      release(); await stopping; LR.stop = stopSlow;
+      ok('#7 …and not after', !mediaBusyNow());
+
+      // #8 remove() answering removed:false is not a delete
+      const rmOk = LR.remove;
+      await recPut({ id: 'rH', src: 'native', state: 'done', ts: NOW, day: todayStr(), uri: 'file:///data/rec/rH.m4a', size: 10, dur: 5000 });
+      files = [{ id: 'rH', uri: 'file:///data/rec/rH.m4a', bytes: 10, modifiedAt: NOW }];
+      LR.remove = async () => ({ removed: false });
+      await recHardDelete('rH');
+      ok('#8 remove() saying removed:false with the file still there keeps the record (tried again later)', _recs.has('rH'));
+      files = [];
+      await recHardDelete('rH');
+      ok('#8 …and once the list no longer has the file, the record goes', !_recs.has('rH'));
+      LR.remove = rmOk;
+
+      // #10 a finished recording whose file is not on this phone is marked, not dropped
+      await recPut({ id: 'rM', src: 'native', state: 'done', ts: NOW, day: todayStr(), uri: 'file:///data/rec/rM.m4a', size: 5000, dur: 60000, title: 'Kept name', transcript: 'kept words' });
+      files = []; await recNativeAttach();
+      ok('#10 its file missing: kept and marked, with its name and transcript', _recs.get('rM').missing === true && _recs.get('rM').title === 'Kept name' && recShown([..._recs.values()]).some(r => r.id === 'rM'));
+      ok('#10 …not counted as space used', recTotals().bytes === [..._recs.values()].filter(r => r.state === 'done' && !r.del && !r.missing).reduce((a, r) => a + (r.size || 0), 0));
+      show('recordings'); _recOpen = 'rM'; recRefresh();
+      ok('#10 …the row says so, with no player or Share, and Delete still there', /not on this phone/.test(document.querySelector('[data-rec-id="rM"]').textContent)
+        && !document.querySelector('[data-rec-id="rM"] [data-rec-scrub]') && !document.querySelector('[data-rec-id="rM"] [data-rec-share]') && !!document.querySelector('[data-rec-id="rM"] [data-rec-del]'));
+      files = [{ id: 'rM', uri: 'file:///data/rec/rM.m4a', bytes: 5000, modifiedAt: NOW }]; await recNativeAttach();
+      ok('#10 …and the mark goes when the file is back', !_recs.get('rM').missing);
+      _recOpen = null;
+
+      // #11 Android 7-9: start_failed right after the web mic probe is tried once more
+      let fails = 1; const startOk = LR.start;
+      LR.start = async (o) => { calls.push(['start', o]); if (fails-- > 0) { const e = new Error('refused'); e.code = 'start_failed'; throw e; } return { id: o.id, uri: 'file:///data/rec/' + o.id + '.aac' }; };
+      calls.length = 0; recStart(); await until(() => !!_lr, 3000);
+      ok('#11 start_failed once: retried after a moment, and recording', !!_lr && calls.filter(c => c[0] === 'start').length === 2 && calls[0][1].id === calls[1][1].id);
+      await recStop(); await until(() => !_lr);
+      fails = 2; calls.length = 0; const before = _recs.size;
+      await recStart();
+      ok('#11 …refused twice: says so, and keeps no empty record', !_lr && calls.filter(c => c[0] === 'start').length === 2 && _recs.size === before && /would not start/.test(document.getElementById('toast').textContent));
+      LR.start = startOk;
+
+      // the native side's new ending reasons
+      recStart(); await until(() => !!_lr);
+      const nS = _lr.id; listener({ state: 'idle', id: nS, uri: 'file:///data/rec/' + nS + '.m4a', durationMs: 70000, bytes: 9000, reason: 'storage' });
+      await until(() => (_recs.get(nS) || {}).state === 'done');
+      ok('reason storage: "Recording stopped: phone storage is almost full"', /^Recording stopped: phone storage is almost full/.test(document.getElementById('toast').textContent), document.getElementById('toast').textContent);
+      recStart(); await until(() => !!_lr);
+      const nC = _lr.id; listener({ state: 'idle', id: nC, uri: 'file:///data/rec/' + nC + '.m4a', durationMs: REC_MAX_MS, bytes: 9000, reason: 'cap' });
+      await until(() => (_recs.get(nC) || {}).state === 'done');
+      ok('reason cap: "Recording stopped at 3 hours"', /^Recording stopped at 3 hours/.test(document.getElementById('toast').textContent), document.getElementById('toast').textContent);
+
+      // #9 browser, two tabs: a web recording holds a Web Lock; another tab's start-up leaves it alone
+      delete window.Capacitor;
+      const held = new Set(), requested = [];
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+        request: (name, fn) => { requested.push(name); held.add(name); return Promise.resolve(fn({ name })).then(() => { held.delete(name); }); },
+        query: async () => ({ held: [...held].map(name => ({ name })) }) } });
+      try {
+        recStart(); await until(() => !!_lr && _lr.src === 'web');
+        const wid = _lr.id; SliceMR.last.emit('qq'); await sleep(30);
+        ok('#9 a web recording takes a lock named after it', requested.includes(REC_LOCK + wid) && held.has(REC_LOCK + wid));
+        // a second tab boots now: same database, this recording still going
+        const lrKeep = _lr; _lr = null; _recs.clear(); _recBootP = null; _recReady = false;
+        await recBoot();
+        ok('#9 another tab starting up does not "recover" it or delete its slices', (_recs.get(wid) || {}).state === 'live' && (await recGetAll('chunks')).some(c => c.rid === wid));
+        _lr = lrKeep; _recs.set(wid, Object.assign({}, _recs.get(wid)));
+        await recStop(); await until(() => !_lr && !_recSaving && (_recs.get(wid) || {}).state === 'done');
+        await sleep(10);
+        ok('#9 …and the lock is let go once it is saved', !held.has(REC_LOCK + wid));
+        // a recording whose lock nobody holds (its tab was killed) is recovered as before
+        await recTx('recs', st2 => st2.put({ id: 'rL', src: 'web', state: 'live', ts: NOW, day: todayStr(), mime: 'audio/webm' }));
+        await recTx('chunks', st2 => st2.put({ k: 'rL:000000', rid: 'rL', seq: 0, blob: new Blob(['zzzz']), ms: 4000 }));
+        resetRec(); await recBoot();
+        ok('#9 …while one with no lock held (its tab died) is recovered', (_recs.get('rL') || {}).state === 'done' && _recs.get('rL').cut === true);
+      } finally { delete navigator.locks; }
+    } catch (e) {
+      fail++; R.push('FAIL the recordings block threw: ' + (e && e.stack || e));
+    } finally {
+      resetRec();
+      window.Capacitor = capSnap; if (window.Capacitor === undefined) delete window.Capacitor;
+      if (idbSnap2 === undefined) delete window.indexedDB; else window.indexedDB = idbSnap2;
+      if (mrSnap2 === undefined) delete window.MediaRecorder; else window.MediaRecorder = mrSnap2;
+      delete navigator.mediaDevices; window.confirm = confSnap2;
+      URL.createObjectURL = urlC2; URL.revokeObjectURL = urlR2;
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (obSnap != null) localStorage.setItem('dp.onboarded', obSnap); else localStorage.removeItem('dp.onboarded');
+      shim.dbs.delete(REC_DB);
+      navigateTo('today');
+    }
+  }
   return { pass, fail, results: R };
 })();

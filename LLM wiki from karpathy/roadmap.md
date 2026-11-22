@@ -13,7 +13,9 @@
      time re-sum has no gym twin). Small.
   4. `summary-stale-after-kill`: `_tlDirty` is in memory, so a delete followed by the app being killed within
      1.5 s keeps the old summary on both phones. Persist the dirty days or re-sum on start. Small.
-- **Long-form recorder (Kishore, 2026-11-21: "I need to journal a lot but can't type it").** Today: voice notes on a
+- **Long-form recorder (Kishore, 2026-11-21: "I need to journal a lot but can't type it").** **BUILT 2026-11-22, not
+  shipped:** web half on branch `recorder` (features.md ▸ Recordings), native half in daily-pulse-native (build 123,
+  log.md). The proposal as written then: Today: voice notes on a
   day/note, 10-minute cap, no pause, webm/opus. Proposed:
   - **Native (build 123):** foreground-service recorder so it keeps going with the screen off; record / pause /
     resume, many takes; a notification with Pause/Stop; saves AAC `.m4a` (plays and imports almost everywhere).
