@@ -1,3 +1,15 @@
+## 2026-11-23 (03:55) — web v269 LIVE (v268 styles + v269 first pattern / day-5 question)
+
+- Deployed overnight on Kishore's go-ahead before sleeping ("Yes, deploy it and then test it… I give you the
+  permission"). `deploy.sh --tag` passed every check, pushed both remotes, tagged `web-v269`. Both the push-triggered
+  and the dispatched Pages runs then failed with the GitHub flake "No artifacts named github-pages" (this time BOTH
+  failed, so the site stayed on v267); one re-dispatch of pages.yml succeeded and the live app.js/sw.js say v269,
+  fonts/self/fraunces.woff2 and doto.woff2 serve 200.
+- **Live test (04:00):** headless browser at 360×800 on the live URL: APP_VERSION v269, the What's-new popup shows
+  the two new items to a returning user, Clay / Dot / Glass light / Glass dark each render the Log and open Recordings,
+  no console errors. Android: the inbook emulator's Daylog (build 123) loaded the live site and showed the v269
+  What's-new popup. Emulator stopped afterwards.
+
 ## 2026-11-23 (03:10) — v269 built: first pattern + day-5 question; review replies tooling; Play stats still 403
 
 - **v269** (b3e79a0, on top of v268 styles): after the 3rd day logged by hand a one-time Log card shows the best mood
