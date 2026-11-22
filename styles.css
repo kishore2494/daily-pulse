@@ -4233,7 +4233,8 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 .rec-card.paused .rec-live-t { color: var(--text-dim); }
 .rec-lvl { max-width: 260px; margin: 0 auto 16px; }
 .rec-live-btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
-.rec-live-btns .btn { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.rec-live-btns .btn { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+.rec-live-btns .btn.rec-stop { letter-spacing: normal; }   /* Luxe spaces its uppercase buttons wide: "Stop and save" wrapped at 360px */
 .rec-live-btns .btn[disabled] { opacity: .55; }
 .rec-stop-ic { width: 13px; height: 13px; border-radius: 3px; background: currentColor; }
 .rec-group { margin-bottom: 6px; }
@@ -4242,6 +4243,7 @@ html:not(.lh-top) .lh-in::before { animation-play-state: paused; }
 .rec-day-h span { font: 500 12.5px/1.2 var(--font-ui); color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .rec-item { margin-bottom: 8px; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); }
 .rec-item.on { border-color: var(--accent); }
+.rec-item .vplay[disabled] { opacity: .35; cursor: default; }
 .rec-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .rec-main { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; font-family: var(--font-ui); }
 .rec-title { display: block; font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

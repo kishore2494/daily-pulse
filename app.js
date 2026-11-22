@@ -626,6 +626,7 @@ function stopDictation() {
 async function dictateInto(sel, btn) {
   const ta = document.querySelector(sel); if (!ta) return;
   if (_recogOn) { stopDictation(); return; }   // tap again = stop
+  if (_lr || _lrStarting) { toast('A recording is going — stop it in Recordings first', true); return; }   // one microphone
   // 1) Native speech plugin (works INSIDE the installed app — the WebView has no Web Speech API)
   const sp = speechPlugin();
   if (sp) { return dictateNative(sp, ta, btn, sel); }
@@ -10430,6 +10431,7 @@ const REC_MAX_MS = 3 * 3600 * 1000;               // three hours, then it saves 
 const REC_WARN_MS = REC_MAX_MS - 10 * 60 * 1000;  // with ten minutes' warning
 const REC_STALE_TAP_MS = 2 * 60 * 1000;           // a widget/shortcut tap older than this only opens the screen
 const REC_UNDO_MS = 6500;                         // a delete is final once the 6 s Undo toast has gone
+const REC_START_RETRY_MS = 300;                 // a native start the system refused is tried once more after this
 const REC_TR_MAX = 100000;                        // characters of transcript kept on one recording
 let _recDbP = null, _recBootP = null, _recReady = false;
 const _recs = new Map();                          // id → record
@@ -10578,7 +10580,22 @@ async function recDropChunks(id) {
   const ks = all.filter(c => c && (id == null ? true : c.rid === id)).map(c => c.k);
   if (ks.length) { try { await recTx('chunks', s => ks.forEach(k => s.delete(k))); } catch (e) {} }
 }
-function recBusy() { return !!(_lrStarting || _recSaving || (_lr && _lr.src === 'web')); }
+/* Browser only: two tabs share one database. A web recording holds a Web Lock named after it for
+   as long as it runs, so another tab starting up does not "recover" it and delete its slices. */
+const REC_LOCK = 'daylog-rec-';
+function recLocks() { return typeof navigator !== 'undefined' && navigator.locks && typeof navigator.locks.request === 'function' ? navigator.locks : null; }
+async function recLocksHeld() {
+  const L = recLocks(), out = new Set();
+  if (!L || typeof L.query !== 'function') return out;
+  try { ((await L.query()).held || []).forEach(l => { if (l && typeof l.name === 'string' && l.name.indexOf(REC_LOCK) === 0) out.add(l.name.slice(REC_LOCK.length)); }); } catch (e) {}
+  return out;
+}
+function recLockTake(lr) {
+  const L = recLocks(); if (!L) return;
+  try { L.request(REC_LOCK + lr.id, () => new Promise(res => { lr.unlock = res; if (lr.released) res(); })).catch(() => {}); } catch (e) {}
+}
+function recLockDrop(lr) { if (!lr) return; lr.released = true; try { if (lr.unlock) lr.unlock(); } catch (e) {} lr.unlock = null; }
+function recBusy() { return !!(_lrStarting || _recSaving || (_lr && (_lr.src === 'web' || _lr.stopping))); }   // a native stop in flight too
 
 /* ---------- start-up ---------- */
 function recBoot() {
@@ -10600,7 +10617,8 @@ function recBoot() {
 async function recRecover() {
   let chunks = [];
   try { chunks = await recGetAll('chunks'); } catch (e) { return; }
-  const lost = [..._recs.values()].filter(r => r.src === 'web' && r.state === 'live' && !(_lr && _lr.id === r.id));
+  const held = await recLocksHeld();   // a web recording still running in another tab of this browser
+  const lost = [..._recs.values()].filter(r => r.src === 'web' && r.state === 'live' && !(_lr && _lr.id === r.id) && !held.has(r.id));
   let saved = null;
   for (const m of lost) {
     const plan = recRecoverPlan(m, chunks);
@@ -10610,7 +10628,7 @@ async function recRecover() {
     try { await recPut(done); saved = done; } catch (e) { continue; }   // a full disk: the slices stay for next time
   }
   // Slices nobody needs any more: of a finished recording (its cleanup was cut off) or of none.
-  const dead = chunks.filter(c => { const r = c && _recs.get(c.rid); return !r || r.state === 'done'; }).map(c => c.k);
+  const dead = chunks.filter(c => { if (!c || held.has(c.rid)) return false; const r = _recs.get(c.rid); return !r || r.state === 'done'; }).map(c => c.k);
   if (dead.length) { try { await recTx('chunks', s => dead.forEach(k => s.delete(k))); } catch (e) {} }
   if (saved) setTimeout(() => toast('A recording that was cut off is saved · ' + fmtRecLen(saved.dur)), 1800);
 }
@@ -10633,10 +10651,11 @@ async function recNativeAttach() {
     try { const l = LR.addListener('recorderState', recOnNativeState); if (l && l.catch) l.catch(() => {}); } catch (e) {}
   }
   let st = null;
+  const lr0 = _lr;   // what was live when we asked: a start that lands meanwhile must not be undone
   if (recCan('status')) { try { st = await LR.status(); } catch (e) {} }
   const liveId = st && (st.state === 'recording' || st.state === 'paused') && st.id ? st.id : null;
   if (liveId) recNativeLive(st);
-  else if (st && _lr && _lr.src === 'native' && !_lr.stopping) { _lr = null; recTickStop(); }   // stopped while we were away
+  else if (st && _lr && _lr === lr0 && _lr.src === 'native' && !_lr.stopping && !_lrStarting) { _lr = null; recTickStop(); }   // stopped while we were away
   // Cut short by the process dying (OEM killer, crash, power off) and finished from disk: said once.
   const rv = st && st.recovered;
   if (rv && rv.id && rv.id !== liveId) await recNativeFinish(rv.id, Object.assign({ reason: 'recovered' }, rv));
@@ -10648,21 +10667,34 @@ async function recNativeAttach() {
   let files = null;
   if (recCan('list')) { try { files = ((await LR.list()) || {}).items || []; } catch (e) {} }
   if (!files) return;
-  files = files.filter(f => f && f.id && !f.recording && f.id !== liveId);   // the one being recorded is not a finished file
+  const recordingIds = new Set(files.filter(f => f && f.id && f.recording).map(f => f.id));   // still being recorded
+  files = files.filter(f => f && f.id && !f.recording && f.id !== liveId);
   const byId = new Map(files.map(f => [f.id, f]));
-  for (const m of [..._recs.values()].filter(r => r.src === 'native' && r.id !== liveId)) {
+  /* Hands off: the running one, one being recorded per the list (status() may have failed), one
+     whose stop or finish is in flight (its real length comes from stop()), and, while a start is
+     pending or status() could not be read, any 'live' record (it may be the one starting, with the
+     day _recFor chose). */
+  const busy = id => id === liveId || recordingIds.has(id) || _recFinishing.has(id) || (_lr && _lr.id === id);
+  const knowsLive = !!st && !_lrStarting;
+  for (const m of [..._recs.values()].filter(r => r.src === 'native' && !busy(r.id))) {
     const f = byId.get(m.id);
     try {
       if (m.state === 'live') {
         if (f && +f.bytes > 0) await recPut(Object.assign({}, m, { state: 'done', uri: f.uri || m.uri, size: +f.bytes, dur: m.dur || 0, mime: f.mime || m.mime }));
-        else await recForget(m.id);
-      } else if (f && f.uri && (f.uri !== m.uri || +f.bytes !== m.size)) {
-        await recPut(Object.assign({}, m, { uri: f.uri, size: +f.bytes || m.size, mime: f.mime || m.mime }));   // finished into .m4a since
+        else if (knowsLive) await recForget(m.id);
+      } else if (!f) {
+        // Finished, but its file is not on this phone (a restore onto a new phone, or deleted outside
+        // Daylog). Kept, marked, so a name or transcript is not lost; Delete removes the row.
+        if (!m.missing) await recPut(Object.assign({}, m, { missing: true }));
+      } else if (m.missing || (f.uri && (f.uri !== m.uri || +f.bytes !== m.size))) {
+        const n = Object.assign({}, m, { uri: f.uri || m.uri, size: +f.bytes || m.size, mime: f.mime || m.mime });   // finished into .m4a since, or back
+        delete n.missing;
+        await recPut(n);
       }
     } catch (e) {}
   }
   for (const f of files) {
-    if (_recs.has(f.id) || !(+f.bytes > 0)) continue;
+    if (_recs.has(f.id) || !(+f.bytes > 0) || _recFinishing.has(f.id)) continue;
     const ts = +f.modifiedAt || Date.now();
     try { await recPut({ id: f.id, src: 'native', state: 'done', ts, day: todayStr(new Date(ts)), uri: f.uri, size: +f.bytes, dur: 0, mime: f.mime }); } catch (e) {}
   }
@@ -10709,8 +10741,9 @@ async function recNativeFinish(id, res) {
     if (res.reason === 'recovered') done.cut = true;
     try { await recPut(done); } catch (e) { _recs.set(id, done); }   // the file is safe; the list shows it either way
     buzz(8);
-    toast(_lrCapped === id ? 'Three hours is the limit for one recording — saved'
+    toast(_lrCapped === id || res.reason === 'cap' ? 'Recording stopped at 3 hours. Saved · ' + fmtRecLen(dur)
       : res.reason === 'recovered' ? 'A recording that was cut off is saved · ' + fmtRecLen(dur)
+      : res.reason === 'storage' ? 'Recording stopped: phone storage is almost full. Saved · ' + fmtRecLen(dur)
       : res.reason === 'error' || res.reason === 'system' ? 'Recording stopped (the phone took the microphone). What you said is saved · ' + fmtRecLen(dur)
       : 'Recording saved · ' + fmtRecLen(dur));
     if (!dur) recProbeDurations();
@@ -10751,8 +10784,16 @@ async function recStartNative() {
   const now = Date.now(), meta = { id: recId(), src: 'native', state: 'live', ts: now, day: recNewDay() };
   try { await recPut(meta); } catch (e) { toast(mediaQuotaMsg(e) + ' — nothing was recorded', true); return; }
   let res;
-  try { res = await LR.start({ id: meta.id, title: recTitle(meta) }); }
-  catch (e) {
+  const go = () => LR.start({ id: meta.id, title: recTitle(meta) });
+  try {
+    try { res = await go(); }
+    catch (e) {
+      // Android 7-9 can still hold the microphone the web probe just let go of: one more try.
+      if (String((e && e.code) || '') !== 'start_failed') throw e;
+      await new Promise(r => setTimeout(r, REC_START_RETRY_MS));
+      res = await go();
+    }
+  } catch (e) {
     try { await recForget(meta.id); } catch (_) {}
     const code = String((e && e.code) || '');
     if (code === 'busy') { await recNativeAttach(); toast('A recording is already going'); return; }
@@ -10780,6 +10821,7 @@ async function recStartWeb() {
   const meta = { id: recId(), src: 'web', state: 'live', ts: now, day: recNewDay(), mime };
   try { await recPut(meta); } catch (e) { quit(); toast(mediaQuotaMsg(e) + ' — nothing was recorded', true); return; }
   const lr = _lr = { id: meta.id, src: 'web', state: 'recording', acc: 0, from: Date.now(), mr, stream, mime, seq: 0, parts: [], writes: Promise.resolve(), peak: 0 };
+  recLockTake(lr);   // held until it is saved (recWebFinish), so another tab leaves it alone
   try {   // the level meter: a recording of silence is invisible until it is played back
     const AC = window.AudioContext || window.webkitAudioContext;
     lr.ac = new AC(); lr.an = lr.ac.createAnalyser(); lr.an.fftSize = 512;
@@ -10790,7 +10832,7 @@ async function recStartWeb() {
   mr.onerror = () => { if (_lr === lr) recStop(); };
   try { mr.start(REC_SLICE_MS); }
   catch (e) {
-    _lr = null; quit(); try { if (lr.ac) lr.ac.close(); } catch (_) {}
+    _lr = null; quit(); try { if (lr.ac) lr.ac.close(); } catch (_) {} recLockDrop(lr);
     recForget(meta.id).catch(() => {}); toast('Could not start recording', true); return;
   }
   recWake(lr);
@@ -10831,8 +10873,8 @@ async function recWebFinish(lr) {
     await recDropChunks(lr.id);
     buzz(8);
     if (lr.an && lr.peak < 0.02) toast('Saved, but it sounds silent — check the microphone is not blocked or covered', true);
-    else toast(_lrCapped === lr.id ? 'Three hours is the limit for one recording — saved' : 'Recording saved · ' + fmtRecLen(dur));
-  } finally { _recSaving--; recRefresh(); mediaIdleCheck(); }
+    else toast(_lrCapped === lr.id ? 'Recording stopped at 3 hours. Saved · ' + fmtRecLen(dur) : 'Recording saved · ' + fmtRecLen(dur));
+  } finally { _recSaving--; recLockDrop(lr); recRefresh(); mediaIdleCheck(); }
 }
 async function recPause() {
   const lr = _lr; if (!lr || lr.state !== 'recording' || lr.stopping) return;
@@ -10963,9 +11005,11 @@ async function recHardDelete(id) {
     const LR = recNative();
     if (!LR) return;   // keep the record (flagged) until a build that can delete the file
     if (typeof LR.remove === 'function') {
-      try { await LR.remove({ id }); }
-      catch (e) {
-        // Gone already is fine; still there means try again next start, or the file would come back unlisted.
+      /* Gone already is fine; still there means try again at the next start, or the file would come
+         back from list() as an untitled recording. A "removed: false" answer is checked the same way. */
+      let ok = false;
+      try { const res = await LR.remove({ id }); ok = !(res && res.removed === false); } catch (e) {}
+      if (!ok) {
         let still = true;
         if (recCan('list')) { try { still = (((await LR.list()) || {}).items || []).some(f => f && f.id === id); } catch (_) {} }
         if (still) return;
@@ -11008,6 +11052,7 @@ async function recSaveTranscript(id, text) {
 /* ---------- share ---------- */
 async function recShare(id) {
   const r = _recs.get(id); if (!r) return;
+  if (r.missing) { toast('This recording is not on this phone any more', true); return; }
   if (r.src === 'native') {
     if (recCan('share')) { try { await recNative().share({ id: r.id, title: recTitle(r) }); } catch (e) { toast('Could not open the share sheet', true); } return; }
     toast('Sharing recordings needs the latest Daylog from the Play Store', true); return;
@@ -11033,7 +11078,7 @@ function recDurOf(r) { return (r && r.dur) || (_rp && r && _rp.id === r.id && is
 function recPlayLoad(id, want, seekTo) {
   recPlayHalt();
   const r = _recs.get(id); if (!r) return null;
-  const src = r.src === 'native' ? (r.uri ? recFileSrc(r.uri) : '') : (r.blob ? URL.createObjectURL(r.blob) : '');
+  const src = r.missing ? '' : r.src === 'native' ? (r.uri ? recFileSrc(r.uri) : '') : (r.blob ? URL.createObjectURL(r.blob) : '');
   if (!src) { toast('This recording is not on this phone any more', true); return null; }
   const a = new Audio();
   const p = _rp = { id, a, url: r.src === 'web' ? src : null, ready: false, want: !!want, fix: false, seekTo: seekTo || 0 };
@@ -11169,7 +11214,8 @@ function recTopHTML() {
 function recItemHTML(r) {
   const open = _recOpen === r.id, ed = _recEdit && _recEdit.id === r.id ? _recEdit : null;
   const dur = recDurOf(r), pos = recPlayPos(r.id);
-  const meta = [dur ? fmtRecLen(dur) : '', r.size ? fmtBytes(r.size) : '', r.cut ? 'saved after Daylog closed' : ''].filter(Boolean).join(' · ');
+  const meta = r.missing ? 'The file is not on this phone' + (dur ? ' · ' + fmtRecLen(dur) : '')
+    : [dur ? fmtRecLen(dur) : '', r.size ? fmtBytes(r.size) : '', r.cut ? 'saved after Daylog closed' : ''].filter(Boolean).join(' · ');
   const title = ed && ed.kind === 'title'
     ? `<div class="rec-edit"><input type="text" data-rec-title-in="${r.id}" value="${escapeHtml(ed.text)}" maxlength="80" aria-label="Name" enterkeyhint="done">
         <div class="btn-row rec-edit-btns"><button class="btn btn-ghost btn-sm" data-rec-edit-cancel>Cancel</button><button class="btn btn-primary btn-sm" data-rec-title-save="${r.id}">Save name</button></div></div>`
@@ -11181,24 +11227,24 @@ function recItemHTML(r) {
     : '';
   return `<div class="rec-item${open ? ' on' : ''}" data-rec-id="${r.id}">
       <div class="rec-row">
-        <button class="vplay" data-rec-play="${r.id}" aria-label="Play">${icon('playFill', 18)}</button>
+        <button class="vplay" data-rec-play="${r.id}" aria-label="Play"${r.missing ? ' disabled' : ''}>${icon('playFill', 18)}</button>
         <button class="rec-main" data-rec-toggle="${r.id}" aria-expanded="${open}">
           <span class="rec-title">${escapeHtml(recTitle(r))}</span><span class="rec-meta">${escapeHtml(meta)}</span></button>
         <button class="rec-more" data-rec-toggle="${r.id}" aria-label="${open ? 'Less' : 'More'}">${icon(open ? 'x' : 'chevR', 18)}</button>
       </div>
       ${title}
-      ${open ? `<div class="rec-player">
+      ${open && !r.missing ? `<div class="rec-player">
           <input type="range" class="rec-scrub" data-rec-scrub="${r.id}" min="0" max="${Math.max(1, Math.round(dur))}" step="1000" value="${Math.round(pos)}" aria-label="Position">
           <div class="rec-ptime"><span class="rec-pos">${fmtRecLen(pos)}</span><span class="rec-dur">${fmtRecLen(dur)}</span></div>
           <div class="rec-skip">
             <button data-rec-skip="-15" data-rec-for="${r.id}" aria-label="Back 15 seconds">${icon('back15', 18)}15</button>
             <button data-rec-skip="15" data-rec-for="${r.id}" aria-label="Forward 15 seconds">15${icon('fwd15', 18)}</button>
           </div>
-        </div>
-        <div class="rec-acts">
+        </div>` : ''}
+      ${open ? `<div class="rec-acts">
           <button class="rec-act" data-rec-rename="${r.id}">${icon('pencil', 16)} Rename</button>
           <label class="rec-act rec-day-pick"><span>Day</span><input type="date" data-rec-day="${r.id}" value="${r.day}" max="${todayStr()}" aria-label="Which day it belongs to"></label>
-          <button class="rec-act" data-rec-share="${r.id}">${icon('share', 16)} Share</button>
+          ${r.missing ? '' : `<button class="rec-act" data-rec-share="${r.id}">${icon('share', 16)} Share</button>`}
           <button class="rec-act" data-rec-tr="${r.id}">${icon('note', 16)} ${r.transcript ? 'Edit transcript' : 'Add transcript'}</button>
           <button class="rec-act danger" data-rec-del="${r.id}">${icon('trash', 16)} Delete</button>
         </div>` : ''}
@@ -11296,6 +11342,7 @@ async function recWipe() {
     try { lr.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { if (lr.ac) lr.ac.close(); } catch (e) {}
     try { if (lr.wake) lr.wake.release(); } catch (e) {}
+    recLockDrop(lr);
   }
   const LR = recNative();
   if (LR) {
@@ -11315,7 +11362,7 @@ async function recWipe() {
 }
 function recTotals() {
   let n = 0, bytes = 0, ms = 0;
-  recShown([..._recs.values()]).forEach(r => { n++; bytes += r.size || 0; ms += r.dur || 0; });
+  recShown([..._recs.values()]).forEach(r => { n++; if (!r.missing) bytes += r.size || 0; ms += r.dur || 0; });
   return { n, bytes, ms };
 }
 
@@ -12013,6 +12060,7 @@ async function drainWidgetActions() {
     // They are routed apart, so mood taps go through widgetTapsApply exactly as before.
     const r = widgetTapsApply(list.filter(x => !(x && x.action === 'record'))), rr = widgetRecordRoute(list);
     if (!r.any && !rr.open) return;
+    if (rr.open) _recFor = null;   // a widget/shortcut recording is today's, whatever Log day opened Recordings last
     navigateTo(rr.open ? 'recordings' : 'today');
     if (rr.start && !_lr) recStart();
     const last = r.saved[r.saved.length - 1];
