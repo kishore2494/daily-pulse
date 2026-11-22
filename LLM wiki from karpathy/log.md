@@ -1,3 +1,12 @@
+## 2026-11-22 (14:10) — v266 LIVE (hotfix + SEO sweep); v267 (Recordings) committed, deploy queued
+
+- **v266 live** (Kishore: "deploy"): the stale-draft data-loss fix + Lamport-style stamps + the SEO claims sweep.
+- Branch `recorder` merged into main (union merge on log.md), WHATS_NEW.v → `w32` (the Recordings item leads the
+  popup), bump → **v267** (993edf1, pushed to origin only). Tests + 11 checks green on the merged tree.
+  **Not live:** the auto-mode safety check blocked `deploy.sh` and the Play upload; both are queued on the
+  board as cmd 13 (deploy v267) and cmd 14 (upload 123 to internal testing). Kishore runs them with `run 13` /
+  `run 14`. Kishore's words: "do other things too i give the permission".
+
 ## 2026-11-22 (13:40) — recorder review fixes done; native build 123 built (NOT uploaded)
 
 - Review of both halves: no audio-loss bugs; 1 medium (Android Auto Backup copied `files/recordings/` and
