@@ -1,3 +1,19 @@
+## 2026-11-23 (03:45) — v269 built: first pattern + day-5 question; review replies tooling; Play stats still 403
+
+- **v269** (b3e79a0, on top of v268 styles): after the 3rd day logged by hand a one-time Log card shows the best mood
+  day so far and what differed (sleep, habits ticked, deep work; at most 3 lines; a plain line if data is thin or flat).
+  From day 5 after the first open (`dp.firstSeen`, new; existing users dated from their first entry) one card asks
+  "What would make Daylog worth opening every day?"; Send opens the mail app prefilled (FEEDBACK_EMAIL, FEEDBACK_URL is
+  still empty), Not now / Send = never again (`dp.checkin`). Both sit in the Log's top `fresh` slot, today only, one
+  card at a time (landmark card, notification ask, tour each win). New flags are in BACKUP_EXCLUDED. 17 new tests;
+  1874 × 4 zones + 11/11 checks; looked at both cards at 360×800 in Midnight, Clay, Glass. Not built: "time on top
+  activity" in the insight (timelog shape is complex; add later if wanted).
+- **Reviews:** `play.mjs reviews` / `reply <id> <text>` added (daylog-native 2446b9a). The API returned no reviews: it
+  only shows reviews with text from the last 7 days. Older ones must be answered in Play Console ▸ Ratings and reviews.
+  A session cron checks daily at 10:13 for 7 days and replies to new ones (Kishore: "Reply to every review. yea do it").
+- **Play stats (AG-85):** still 403 at 03:30 on the reports bucket. Kishore must tick "View app information and
+  download bulk reports" on the service account's ACCOUNT permissions tab; Google can take up to a day to apply it.
+
 ## 2026-11-23 (03:20) — v268 built: three new UI styles, Clay, Dot and Glass (NOT deployed yet)
 
 - Kishore asked for styles in the spirit of Claude, Nothing and Apple; built as **Clay**, **Dot** and **Glass** with
