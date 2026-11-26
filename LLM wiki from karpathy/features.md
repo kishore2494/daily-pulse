@@ -253,6 +253,50 @@ Contract with the Android side: `RECORDER-SPEC.md`. Code: app.js `SCREEN: RECORD
   3 h (`cap`) and on low storage (`storage`).
 - **Open:** run in the Play app with build 123; History's day page could list that day's recordings.
 
+## Sealed letters (v270, built 2026-11-26, NOT deployed yet)
+
+Kishore picked it from the "be different" list (2026-11-26: "yes build sealed letters").
+- **What:** write a letter to future you, seal it until a day you choose (presets: in a month, in 6 months, in a
+  year, New Year; or any date after today). Optional photos / voice note via the normal media slot. Menu ▸ Letters
+  (its own drawer row like Recordings, NOT a nav tab: a fresh install's menu is capped at 9 by a unit test).
+- **Sealed means sealed:** before `openOn` nothing of the letter renders anywhere (list, Log, drawer, read view all
+  fall back; unit-tested with a secret string). The Log shows a slim dashed countdown pill, then on the day a
+  "A letter from you is ready" card; Open plays a ~1.9 s envelope animation (250 ms with reduced motion) and sets
+  `openedAt`. Leaving during the animation leaves it unopened.
+- **Store:** `dp.letters` = `[{ id, created, at, openOn, text, sealed, sealedAt?, openedAt }]`, written with
+  `safeSet` (not `listSave`), in BACKUP_KEYS, NOT in the Sheet sync (a sheet cell could be read early).
+  Drafts (`sealed:false`) save as you type (500 ms debounce, flush on leave/hide); an empty draft is dropped
+  1.5 s after leaving (so an in-flight voice note lands first). Delete is two-step ("Delete it without reading it?").
+- **Media:** ctx `letter:<id>`; `mediaItemValid` accepts it (backup restore); Search's photo-caption rows skip it.
+  `mediaSlot(..., { noEmpty: true })` hides the Log's "A photo of something from today" text.
+- **Notification (Play app):** id 791 at 09:00 on the next unopened letter's day, `extra.go = 'letters'` → opens
+  Letters. Rescheduled on every `lettersSave` and 4 s after start. Reminders own ids < 700, so their purge skips it.
+- **Gotcha:** state vars (`_lt`, `_ltDelArm` …) are `var`, not `let`: `show()`/`handleBack()` read them and must not
+  hit the TDZ if they run before that part of app.js is evaluated.
+
+## Month film (v270, built 2026-11-26, NOT deployed yet)
+
+Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film").
+- **What:** a ~30 s stories-style film of one month drawn on a canvas: title → mood calendar (each day pops in its
+  mood colour) → best day + its journal line typed in → top 3 habits (bars) → up to 3 numbers counting up (sleep,
+  steps, deep work, words, workouts, top activity) → a photo (Ken Burns) → "December starts now." Theme colours are
+  resolved per style (probe element → 1 px canvas, so color-mix() works); fonts are the style's display/body fonts.
+- **Where:** Log card in the first 7 days of a month for last month (once: `dp.filmSeen`, BACKUP_EXCLUDED; part of
+  `nudgeCardKind` 'film', after the landmark and notification ask, before the first-pattern card); a button on the
+  1st's new-month landmark card; Stats ▸ Month in review card ("Film"); the month deck. Needs ≥3 hand-logged days
+  (demo rows ignored).
+- **Best day:** top mood; ties go to the day with the longest journal, then the latest. A journal under 4 words
+  ("ok day") is not quoted.
+- **Controls:** tap right = next part, tap left = back, hold = pause, ✕ / Back closes (handleBack closes it before
+  the month deck). Messages show in the film's own footer (toasts sit underneath the overlay).
+- **Video:** "Make a video" replays the film on the same canvas at 720×1280 while MediaRecorder records
+  (`video/mp4;codecs=avc1` when supported, else WebM). Tested headless: 720×1280 MP4, 32.7 s, ~5 MB. Then
+  "Share video" (needs a fresh tap: Web Share wants user activation) → native `DaylogShare.shareFile` if present →
+  Web Share → download. Leaving the app mid-recording aborts it.
+- **Play app:** WebView has no Web Share and builds ≤123 have no `shareFile`, so `filmCanVideo()` hides
+  "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
+  (video/audio/image only) and ships with the next native build after 123.
+
 ## History ▸ one day, read-only (v252, 2026-11-01)
 
 A History row used to open the Log editor for that day. It now opens `historyDayHTML(d)`, a

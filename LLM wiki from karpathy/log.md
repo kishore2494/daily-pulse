@@ -1,3 +1,18 @@
+## 2026-11-26 — v270 built: sealed letters + month film (NOT deployed; waiting for "deploy")
+
+- Kishore (2026-11-26): "yes build sealed letters / good about the video do it.. do it…". Built both as web v270
+  (d23bdaf): **Letters** (Menu ▸ Letters: write, seal until a day, countdown pill on the Log, ready card + envelope
+  opening on the day, notification id 791 in the Play app) and **Month film** (30 s canvas story of a month, Log card
+  in the first week, Stats + month deck buttons, "Make a video" → 720×1280 MP4). Details + gotchas in features.md.
+- Checks: 1918 unit tests × 4 zones (44 new) + 11/11 release checks. Looked at 360×800: Letters in Midnight, Paper,
+  Dot (list, draft, sealed, ready card, opening, read, drawer); film in Midnight and Clay (every scene, recording,
+  ready-to-share); Log film card; Stats "Film" button. Headless video export: MP4 720×1280, 32.7 s, 5 MB.
+- Fixed during the look: menu cap (Letters became a drawer row, not a tab); faint unselected date chips; bold letter
+  text (Sora has no 400); backup-nudge banner over the film (film messages now in its own footer); ▶ emoji box.
+- Native: `DaylogShare.shareFile` added to SharePlugin.java for the video share (daylog-native b83001d). Not in any
+  build yet: the next native build after 123 carries it; until then the Play app hides "Make a video".
+- Reddit drafts refreshed for v269 / build 122 (store/reddit-plan-2026-11.md); Kishore starts the warm-up today.
+
 ## 2026-11-23 (03:55) — web v269 LIVE (v268 styles + v269 first pattern / day-5 question)
 
 - Deployed overnight on Kishore's go-ahead before sleeping ("Yes, deploy it and then test it… I give you the
