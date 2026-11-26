@@ -1,3 +1,8 @@
+## 2026-11-26 — web v271 LIVE (film footer button fix)
+
+- Kishore said "deploy". `deploy.sh --tag` passed every check; Pages built first time; live app.js/sw.js/index.html
+  say v271 and the live styles.css carries the `.film-btns .btn-ghost` fix.
+
 ## 2026-11-26 — web v270 LIVE (sealed letters + month film); v271 fix ready, not deployed
 
 - Kishore said "deploy". `deploy.sh --tag` passed every check, pushed both remotes, tagged `web-v270`; the Pages
