@@ -4587,3 +4587,34 @@ button.lt-env { cursor: pointer; }
 .ss-acts .btn + .btn { margin-top: 8px; }
 .film-go, .mr-entry-btns .btn, .ss-acts [data-film-open] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .ss-acts [data-film-open] { display: flex; width: 100%; }
+
+/* ===== v272 Habit schedules ===== */
+.hab-plan { display: flex; align-items: stretch; gap: 6px; margin: 2px 0 8px; }
+.hab-plan .hcue-line { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-pill { flex: 0 1 auto; max-width: 48%; display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 6px 10px;
+  border: 1px dashed var(--border); border-radius: 9px; background: var(--bg-input); color: var(--text-faint);
+  font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.sched-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-pill .ic { flex: 0 0 auto; }
+.sched-pill.on { border-style: solid; border-color: var(--accent); color: var(--accent-ink); }
+.sched-pill:active { opacity: .6; }
+.cfg-cue .sched-pill { min-height: 34px; max-width: 42%; }
+.sched-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.sched-modes .ss-chip { min-height: 40px; padding: 8px 13px; color: var(--text); background: var(--bg-input); border-color: var(--border-hi); }
+.sched-modes .ss-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sched-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.sched-day { min-height: 44px; border-radius: 10px; border: 1px solid var(--border-hi); background: var(--bg-input);
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 0; }
+.sched-day.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sched-week { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 4px 0; }
+.sched-week b { font-family: var(--font-display); font-size: 28px; min-width: 26px; text-align: center; }
+.sched-week span { color: var(--text-dim); font-weight: 600; }
+.sched-week .qty-btn { width: 44px; height: 44px; border-radius: 12px; font-size: 20px; }
+.sched-week .qty-btn:disabled { opacity: .35; cursor: default; }
+.sched-hint { margin: 10px 0 12px; }
+.habit .hwk { margin-left: 2px; font-size: 11px; font-weight: 700; color: var(--text-dim); font-family: var(--font-display); flex: 0 0 auto; }
+.habit .hwk.met { color: var(--good); }
+.habit .hrest { margin-left: 2px; font-size: 10.5px; font-weight: 600; color: var(--text-faint); flex: 0 0 auto; }
+.habit.rest:not(.on) { opacity: .62; border-style: dashed; }
+.heat .cell.rest { background: transparent !important; box-shadow: inset 0 0 0 1px var(--border); }
+.sync-old-still { margin: 6px 0 0; font-size: 12.5px; }

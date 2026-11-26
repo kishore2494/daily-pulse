@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v271';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v272';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -48,7 +48,7 @@ function saveHabitCfg(cfg) { const ok = safeSet('dp.habitcfg', JSON.stringify(cf
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
   HABITS = habitCfg().filter(h => !h.hidden);
-  _goalMap = null;                                  // goal cache follows the cfg
+  _goalMap = null; _schedMap = null;                // goal + schedule caches follow the cfg
   if (typeof actCfg === 'function') TIME_ACTS_ALL = actCfg();
   if (typeof deepCfg === 'function') DEEP_SECTIONS = cookDeep(deepCfg());
 }
@@ -838,7 +838,70 @@ function goalFor(key) {
 function habitCue(h) { return h && typeof h.cue === 'string' ? h.cue.trim() : ''; }
 const CUE_MAX = 60;
 
-function hVal(entry, key) {
+/* Habit schedules (v272). A habit may carry `sched`:
+     { days: [1, 3, 5] }  only on these weekdays (getDay numbers, 0 = Sunday), 1 to 6 of them
+     { week: 3 }          any 3 days a week (1 to 6), weeks Monday to Sunday like the rest of the app
+   Absent means every day, so there is nothing to migrate. A day the schedule does not ask for
+   reads as H_SKIP, the meaning a tapped skip already has, so every streak, strength score and
+   percentage that treats a skip as neutral handles a rest day without its own code. The schedule
+   only applies when the caller passes the DATE (hVal's third argument). Taps and the Log chip
+   read the stored value, so ticking a habit on its rest day still works and still counts. */
+var _schedMap = null;   // var: reloadCfg() resets it and may run first
+function schedClean(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (Array.isArray(s.days)) {
+    const d = [...new Set(s.days.map(Number).filter(x => Number.isInteger(x) && x >= 0 && x <= 6))].sort((a, b) => a - b);
+    return d.length >= 1 && d.length <= 6 ? { days: d } : null;     // 7 days is every day; 0 would never end a streak walk
+  }
+  const w = Number(s.week);
+  return Number.isInteger(w) && w >= 1 && w <= 6 ? { week: w } : null;
+}
+function habitSched(key) {
+  if (!_schedMap) { _schedMap = {}; habitCfg().forEach(h => { const s = schedClean(h.sched); if (s) _schedMap[h.key] = s; }); }
+  return _schedMap[key] || null;
+}
+function isDay_(d) { return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d); }
+function weekdayOf(d) { return new Date(d + 'T12:00:00').getDay(); }
+/* Done and skipped days in the Monday-to-Sunday week starting `ws`, from the stored values.
+   Memoised per entries object: DB.entriesRO() hands out the same object until the store
+   changes, and DB.entries() a fresh one, so a memo can never outlive the data it counted. */
+const _wkMemo = new WeakMap();
+function habitWeek(key, ws, ents) {
+  const e = ents || DB.entriesRO();
+  let m = _wkMemo.get(e); if (!m) { m = new Map(); _wkMemo.set(e, m); }
+  const id = key + '|' + ws; let r = m.get(id);
+  if (!r) {
+    r = { done: 0, skip: 0 };
+    for (let i = 0; i < 7; i++) { const v = hBase(e[addDays(ws, i)], key); if (v === H_DONE) r.done++; else if (v === H_SKIP) r.skip++; }
+    m.set(id, r);
+  }
+  return r;
+}
+/* Can this week still reach its number? Days from today to Sunday not yet done or skipped. */
+function weekReachable(key, n, ents) {
+  const e = ents || DB.entriesRO(), t = todayStr(), ws = weekStart(t), w = habitWeek(key, ws, e);
+  let open = 0;
+  for (let d = t; d <= addDays(ws, 6); d = addDays(d, 1)) if (hBase(e[d], key) === H_MISS) open++;
+  return w.done + w.skip + open >= n;
+}
+/* Is `day` a rest day for this schedule? For N-a-week: once the week has its N (a tapped skip
+   counts toward it, like a skipped day elsewhere), the other days rest; while the current week
+   can still make it, its open days rest too; a past week that fell short is a miss. */
+function schedRest(s, key, day, ents) {
+  if (s.days) return !s.days.includes(weekdayOf(day));
+  const ws = weekStart(day), w = habitWeek(key, ws, ents);
+  if (w.done + w.skip >= s.week) return true;
+  const t = todayStr();
+  if (day > t || ws !== weekStart(t)) return false;
+  return weekReachable(key, s.week, ents);
+}
+function hVal(entry, key, day, ents) {
+  const v = hBase(entry, key);
+  if (v !== H_MISS || !day) return v;
+  const s = habitSched(key);
+  return s && schedRest(s, key, day, ents) ? H_SKIP : v;
+}
+function hBase(entry, key) {
   if (!entry || !entry.habits || !(key in entry.habits)) return H_MISS;
   const v = entry.habits[key];
   const g = goalFor(key);
@@ -862,17 +925,46 @@ function hFrac(entry, key) {
   }
   return hVal(entry, key) === H_DONE ? 1 : 0;
 }
+/* A habit's streak is counted in its own unit: days, or weeks for an N-times-a-week habit
+   ("6-week streak" says more than a day count that pauses on every rest day). */
+function streakWeekly(key) { const s = habitSched(key); return !!(s && s.week); }
+function streakShort(key, n) { return n + (streakWeekly(key) ? 'w' : ''); }
+function streakLong(key, n) { return `${n}-${streakWeekly(key) ? 'week' : 'day'} streak`; }
 function habitStreak(key) {
+  const s = habitSched(key);
+  if (s && s.week) return habitWeekStreak(key, s.week).cur;
   const e = DB.entriesRO(); let n = 0; let cur = todayStr();
   // today may be unlogged without breaking the run
-  if (hVal(e[cur], key) !== H_DONE) cur = addDays(cur, -1);
-  for (;;) {
-    const v = hVal(e[cur], key);
+  if (hVal(e[cur], key, cur, e) !== H_DONE) cur = addDays(cur, -1);
+  for (let guard = 0; guard < 5000; guard++) {      // rest days with no entry are skips, so bound the walk
+    const v = hVal(e[cur], key, cur, e);
     if (v === H_DONE) { n++; cur = addDays(cur, -1); continue; }
-    if (v === H_SKIP) { cur = addDays(cur, -1); continue; }   // skips are streak-neutral
+    if (v === H_SKIP) { cur = addDays(cur, -1); continue; }   // skips and rest days are streak-neutral
     break;
   }
   return n;
+}
+/* N-a-week streaks, in weeks. A week with its N counts; a week that fell short but whose
+   skipped days make up the difference (ill, away) is passed over like a skipped day; any other
+   week ends the run. This week adds one once its N is in, and only breaks the run once it can
+   no longer get there, never just because it has not finished yet. */
+function habitWeekStreak(key, n, ents) {
+  const e = ents || DB.entriesRO();
+  const thisW = weekStart(todayStr());
+  const dates = Object.keys(e).filter(isDay_).sort();
+  if (!dates.length) return { cur: 0, best: 0 };
+  const floor = addDays(thisW, -7 * 520);              // a mis-dated old entry must not cost a 50-year walk
+  let w = weekStart(dates[0] < floor ? floor : dates[0]);
+  let run = 0, best = 0;
+  for (; w < thisW; w = addDays(w, 7)) {
+    const k = habitWeek(key, w, e);
+    if (k.done >= n) best = Math.max(best, ++run);
+    else if (k.done + k.skip < n) run = 0;
+  }
+  const k = habitWeek(key, thisW, e);
+  if (k.done >= n) best = Math.max(best, ++run);
+  else if (k.done + k.skip < n && !weekReachable(key, n, e)) run = 0;
+  return { cur: run, best };
 }
 /* Habit strength 0-100: exponential moving average with a 13-day half-life for a daily
    habit (Loop Habit Tracker's model). One perfect day can't max it and one miss can't
@@ -893,7 +985,7 @@ function habitStrength(key, ents) {
   const floor = addDays(end, -1200);
   let s = 0, cur = (dates[0] < floor ? floor : dates[0]), guard = 0;
   while (cur <= end && guard++ < 1300) {
-    const v = hVal(e[cur], key);
+    const v = hVal(e[cur], key, cur, e);
     if (v !== H_SKIP) s = s * mult + hFrac(e[cur], key) * (1 - mult);
     cur = addDays(cur, 1);
   }
@@ -1617,8 +1709,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w34',
+  v: 'w35',
   items: [
+    '📅 <b>Habit schedules</b> — not every habit is daily. Set one to certain weekdays (Mon, Wed, Fri) or to a number of times a week (gym 3 times a week). Days off show as rest days and never break your streak, and a times-a-week habit keeps a streak in weeks: get your 3 in by Sunday and it grows by one. Tap the 📅 on a habit in Habits, or in Customize.',
     '✉️ <b>Letters to future you</b> — write a letter today and seal it until a day you choose: your birthday, New Year, a year from now. Add a photo or a voice note if you like. Until that day nobody can read it, not even you; then it waits for you at the top of the Log. Find it in ☰ Menu ▸ Letters.',
     '🎬 <b>Your month as a film</b> — in the first week of a month the Log offers last month as a thirty-second film: every day as a colour, your best day and what you wrote that day, the habits you kept, a photo. Watch any month from Stats ▸ Month in review. In a browser you can also save it as a video to share.',
     '🔎 <b>Your first pattern</b> — after your third logged day, the Log shows what was different about your best day so far: sleep, habits, deep work. A few days in, Daylog also asks one question: what would make it worth opening every day? Nothing is sent unless you tap Send, and it opens your own email app first.',
@@ -2069,7 +2162,7 @@ function moodColor(m) {
 /* ---------- Today ring: how complete is today, as one dial ----------
    The point is the *closing* of the ring. Every tap visibly moves it, and the
    moment it completes you get a buzz and a colour flip. */
-function todayCompletion(entry) {
+function todayCompletion(entry, day) {   // day: so a habit resting today counts as complete
   const en = entry || {};
   const parts = [];
   /* A new user who had done nothing saw "22% · 2 of 9": the 0 that Tasks done / Tasks planned
@@ -2084,14 +2177,14 @@ function todayCompletion(entry) {
     if (f.type === 'num') parts.push(set && Number(v) !== 0);
     else if (f.type === 'scale' || f.type === 'bedwake') parts.push(set);
   });
-  HABITS.forEach(h => parts.push(hVal(en, h.key) !== H_MISS));      // done OR skipped counts
+  HABITS.forEach(h => parts.push(hVal(en, h.key, day) !== H_MISS)); // done, skipped or a rest day counts
   parts.push(!!(en.journal || en.wentWell || en.win || en.improve));
   const done = parts.filter(Boolean).length;
   return { done, total: parts.length || 1, pct: Math.round(done / (parts.length || 1) * 100) };
 }
 function todayRingHTML() {
   if (logSecHidden('ring')) return '';
-  const c = todayCompletion(draft);
+  const c = todayCompletion(draft, logDate);
   const R = 34, C = 2 * Math.PI * R;
   const off = C * (1 - c.pct / 100);
   const full = c.pct >= 100;
@@ -2307,6 +2400,86 @@ document.addEventListener('click', (ev) => {
   }
 });
 
+/* Schedule editor (v272): every day, some weekdays, or N times a week. Opened from the 📅 pill
+   on a Habits card and from the habit's row in Customize. */
+const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];                 // Monday first, as the week runs everywhere else
+function schedLabel(s) {
+  s = schedClean(s);
+  if (!s) return 'Every day';
+  if (s.week) return s.week === 1 ? 'Once a week' : `${s.week} times a week`;
+  const k = s.days.join();
+  if (k === '1,2,3,4,5') return 'Weekdays';
+  if (k === '0,6') return 'Weekends';
+  return WD_ORDER.filter(d => s.days.includes(d)).map(d => WD_SHORT[d]).join(', ');
+}
+function schedPillHTML(h) {
+  const s = schedClean(h.sched);
+  return `<button type="button" class="sched-pill${s ? ' on' : ''}" data-sched-edit="${h.key}" title="How often">${icon('calendar', 13)}<span>${escapeHtml(schedLabel(s))}</span></button>`;
+}
+var _schedDraft = null;
+function showSchedEditor(key) {
+  const h = habitCfg().find(x => x.key === key); if (!h) return;
+  const s = schedClean(h.sched);
+  _schedDraft = { key, mode: s ? (s.week ? 'week' : 'days') : 'daily', days: s && s.days ? s.days.slice() : [1, 3, 5], week: s && s.week ? s.week : 3 };
+  renderSchedEditor();
+}
+function schedEditorClose() { const m = document.getElementById('sched-editor'); if (m) m.style.display = 'none'; _schedDraft = null; }
+function renderSchedEditor() {
+  const D = _schedDraft; if (!D) return;
+  const h = habitCfg().find(x => x.key === D.key); if (!h) { schedEditorClose(); return; }
+  let m = document.getElementById('sched-editor');
+  if (!m) { m = document.createElement('div'); m.id = 'sched-editor'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  const seg = (v, lab) => `<button type="button" class="ss-chip${D.mode === v ? ' on' : ''}" data-sched-mode="${v}" aria-pressed="${D.mode === v}">${lab}</button>`;
+  const none = D.mode === 'days' && !D.days.length;
+  const body = D.mode === 'days'
+    ? `<div class="sched-days">${WD_ORDER.map(d => `<button type="button" class="sched-day${D.days.includes(d) ? ' on' : ''}" data-sched-day="${d}" aria-pressed="${D.days.includes(d)}" aria-label="${WD_SHORT[d]}">${WD_SHORT[d].slice(0, 2)}</button>`).join('')}</div>`
+    : D.mode === 'week'
+    ? `<div class="sched-week"><button type="button" class="qty-btn" data-sched-n="-1" aria-label="fewer" ${D.week <= 1 ? 'disabled' : ''}>−</button><b>${D.week}</b><span>time${D.week === 1 ? '' : 's'} a week</span><button type="button" class="qty-btn" data-sched-n="1" aria-label="more" ${D.week >= 6 ? 'disabled' : ''}>+</button></div>`
+    : '';
+  const hint = D.mode === 'days'
+    ? (none ? 'Pick at least one day.' : D.days.length === 7 ? 'All seven days is the same as every day.' : 'The other days are rest days. They never break your streak, and a tick on one still counts.')
+    : D.mode === 'week'
+    ? `Any ${D.week} day${D.week === 1 ? '' : 's'} from Monday to Sunday. The streak counts weeks: get ${D.week} in by Sunday and it grows by one.`
+    : 'Every day counts toward the streak. A day you mark as skipped never breaks it.';
+  m.innerHTML = `<div class="copy-box sched-box" role="dialog" aria-label="Schedule for ${escapeHtml(h.label)}">
+    <h2 class="h2-icon">${hicon('calendar')}<span>How often — ${escapeHtml(h.label)}</span></h2>
+    <div class="ss-chips sched-modes">${seg('daily', 'Every day')}${seg('days', 'Some days')}${seg('week', 'Times a week')}</div>
+    ${body}
+    <div class="hint sched-hint">${hint}</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="se-save" style="flex:1" ${none ? 'disabled' : ''}>Save</button>
+      <button class="btn btn-ghost" id="se-cancel">Cancel</button>
+    </div>
+  </div>`;
+  m.style.display = 'flex';
+}
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-sched-edit]');
+  if (t) { showSchedEditor(t.dataset.schedEdit); return; }
+  const m = document.getElementById('sched-editor');
+  if (!m || m.style.display === 'none' || !_schedDraft) return;
+  const D = _schedDraft;
+  if (ev.target.id === 'se-cancel' || ev.target === m) { schedEditorClose(); return; }
+  const md = ev.target.closest('[data-sched-mode]');
+  if (md) { D.mode = md.dataset.schedMode; renderSchedEditor(); return; }
+  const dy = ev.target.closest('[data-sched-day]');
+  if (dy) { const d = +dy.dataset.schedDay; D.days = D.days.includes(d) ? D.days.filter(x => x !== d) : D.days.concat(d); renderSchedEditor(); return; }
+  const sn = ev.target.closest('[data-sched-n]');
+  if (sn) { D.week = Math.max(1, Math.min(6, D.week + +sn.dataset.schedN)); renderSchedEditor(); return; }
+  if (ev.target.closest('#se-save')) {
+    if (D.mode === 'days' && !D.days.length) return;
+    const cfg = habitCfg(); const h = cfg.find(x => x.key === D.key); if (!h) { schedEditorClose(); return; }
+    const s = D.mode === 'days' ? schedClean({ days: D.days }) : D.mode === 'week' ? schedClean({ week: D.week }) : null;
+    if (s) h.sched = s; else delete h.sched;
+    const ok = saveHabitCfg(cfg); schedEditorClose();
+    const cur = ((document.querySelector('.screen.on') || {}).id || '');
+    if (cur === 's-habits') renderHabits();
+    else if (cur === 's-custom') { const y = window.scrollY; renderCustom(); window.scrollTo({ top: y, behavior: 'instant' }); }
+    savedToast(ok, s ? 'How often: ' + schedLabel(s) : 'How often: every day');
+  }
+});
+
 function showHabitGallery() {
   let m = document.getElementById('habit-gallery');
   if (!m) { m = document.createElement('div'); m.id = 'habit-gallery'; m.className = 'copy-modal'; document.body.appendChild(m); }
@@ -2402,9 +2575,24 @@ function habitChipHTML(h) {
   // NOTE: no "skipped" text label — at 2-up on a 320px screen it overflowed the chip.
   // The ⤳ glyph, the dashed border and the greyscale already communicate it, and the
   // tap toast spells it out. Title attribute carries it for anyone unsure.
-  return `<div class="habit ${on?'on':''}${sk?' skip':''}" data-habit="${h.key}" style="${style}" title="${sk?'Skipped — your streak is safe. Tap to clear':'Tap to tick, tap again to untick'}">
+  const sc = habitChipSched(h, state);
+  let badge = sk ? '' : (st > 1 ? `<span class="streak">${icon('flame', 13)}${streakShort(h.key, st)}</span>` : '');
+  if (sc && sc.week && !sk) badge = sc.n >= sc.week && st > 1 ? badge : `<span class="hwk${sc.n >= sc.week ? ' met' : ''}">${sc.n}/${sc.week}</span>`;
+  if (sc && sc.rest) badge = '<span class="hrest">rest</span>';
+  const tip = sk ? 'Skipped — your streak is safe. Tap to clear' : sc && sc.rest ? 'Rest day for this habit. Tap to tick it anyway'
+    : sc && sc.week ? `${sc.n} of ${sc.week} this week. Tap to tick` : 'Tap to tick, tap again to untick';
+  return `<div class="habit ${on?'on':''}${sk?' skip':''}${sc && sc.rest ? ' rest' : ''}" data-habit="${h.key}" style="${style}" title="${tip}">
     <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
-    ${chipTextHTML(h)}${sk?'':(st>1?`<span class="streak">${icon('flame',13)}${st}</span>`:'')}</div>`;
+    ${chipTextHTML(h)}${badge}</div>`;
+}
+/* What a scheduled habit's chip shows for the Log's day: "rest" on a day off, or this week's
+   count for an N-a-week habit (the unsaved draft stands in for the Log's own day). */
+function habitChipSched(h, state) {
+  const s = habitSched(h.key); if (!s) return null;
+  if (s.days) return state === H_MISS && !s.days.includes(weekdayOf(logDate)) ? { rest: true } : null;
+  const e = DB.entriesRO(), ws = weekStart(logDate); let n = 0;
+  for (let i = 0; i < 7; i++) { const d = addDays(ws, i); if (hBase(d === logDate ? draft : e[d], h.key) === H_DONE) n++; }
+  return { week: s.week, n };
 }
 function refreshHabitChip(key) {
   const el = document.querySelector(`[data-habit="${key}"]`); if (!el) return;
@@ -2604,7 +2792,7 @@ function homeGreetHTML() {
   const today = todayStr(), d = new Date(today + 'T12:00:00'), h = new Date().getHours();
   const g = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   const name = ((DB.settings().name || '').trim().split(/\s+/)[0] || '').slice(0, 24);
-  const c = todayCompletion(DB.entries()[today] || {}), st = loggedStreak();
+  const c = todayCompletion(DB.entries()[today] || {}, today), st = loggedStreak();
   const R = 15, C = 2 * Math.PI * R, off = C * (1 - Math.max(0, Math.min(100, c.pct)) / 100);
   const full = c.pct >= 100;
   const lbl = full ? "Today's log is complete" : c.pct > 0 ? "Continue today's log" : "Log today";
@@ -4570,10 +4758,10 @@ function renderHabits() {
   const days = []; for (let i = 90; i >= 0; i--) days.push(addDays(todayStr(), -i));
 
   const cards = HABITS.map(h => {
-    const st = habitStreak(h.key);
+    const st = habitStreak(h.key), sc = habitSched(h.key);
     const last30 = days.slice(-30);
-    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
-    const skipped = last30.filter(d => hVal(e[d], h.key) === H_SKIP).length;
+    const hits = last30.filter(d => hVal(e[d], h.key, d, e) === H_DONE).length;
+    const skipped = last30.filter(d => hVal(e[d], h.key, d, e) === H_SKIP).length;   // tapped skips and rest days
     const denom = Math.max(1, 30 - skipped);          // skipped days don't count against you
     const pct = Math.round(hits / denom * 100);
     const str = habitStrength(h.key);
@@ -4582,16 +4770,21 @@ function renderHabits() {
     const lead = (new Date(days[0] + 'T12:00:00').getDay() + 6) % 7;
     let run = 0;   // done cells deepen as a run goes on (d1…d4); a skip keeps the run, a miss ends it
     const heat = '<div class="cell pad"></div>'.repeat(lead) + days.map(d => {
-      const v = hVal(e[d], h.key);
+      const v = hVal(e[d], h.key, d, e);
+      const rest = v === H_SKIP && hBase(e[d], h.key) !== H_SKIP;   // the schedule's day off, not a tapped skip
       run = v === H_DONE ? run + 1 : v === H_SKIP ? run : 0;
       const lv = v === H_DONE ? ` d${run >= 7 ? 4 : run >= 4 ? 3 : run >= 2 ? 2 : 1}` : '';
-      const bg = v === H_DONE ? 'var(--good)' : v === H_SKIP ? '#a9b0c9' : 'var(--bg-input)';
-      return `<div class="cell${lv}${v === H_SKIP ? ' sk' : ''}${d === todayStr() ? ' today' : ''}" title="${d}${v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
+      const bg = v === H_DONE ? 'var(--good)' : rest ? 'transparent' : v === H_SKIP ? '#a9b0c9' : 'var(--bg-input)';
+      return `<div class="cell${lv}${rest ? ' rest' : v === H_SKIP ? ' sk' : ''}${d === todayStr() ? ' today' : ''}" title="${d}${rest ? ' · rest day' : v === H_SKIP ? ' · skipped' : v === H_DONE ? ' · done' : ''}" style="background:${bg}"></div>`;
     }).join('');
+    const wk = sc && sc.week ? habitWeek(h.key, weekStart(todayStr()), e) : null;
+    const sum = wk
+      ? `This week ${wk.done} of ${sc.week}${st ? ` · 🔥 ${streakLong(h.key, st)}` : ''} · done ${hits} time${hits === 1 ? '' : 's'} in 30 days`
+      : `Done ${hits} of the last ${denom} ${sc ? 'planned ' : ''}day${denom === 1 ? '' : 's'}${st ? ` · 🔥 ${streakLong(h.key, st)}` : ''}${skipped && !sc ? ` · ${skipped} skipped` : ''}`;
     return `<div class="card">
       <div class="hab-head"><h2>${h.emoji} ${escapeHtml(h.label)}</h2>${habTodayBtnHTML(h, e[todayStr()])}</div>
-      <div class="hint hab-sum">Done ${hits} of the last ${denom} day${denom === 1 ? '' : 's'}${st ? ` · 🔥 ${st}-day streak` : ''}${skipped ? ` · ${skipped} skipped` : ''}</div>
-      ${cueLineHTML(h)}
+      <div class="hint hab-sum">${sum}</div>
+      <div class="hab-plan">${schedPillHTML(h)}${cueLineHTML(h)}</div>
       <div class="heat heat-wk" aria-label="Last 13 weeks, one column per week">${heat}</div>
       <div class="heat-cap hint"><span>13 weeks ago</span><span>Today</span></div>
       <div class="strength-row" title="Weighted 13-day trend — one miss won't zero it, one day won't max it">
@@ -4779,7 +4972,7 @@ function computePatterns() {
   const lifts = [];
   HABITS.forEach(h => { const on = [], off = [];
     dates.forEach(d => { const m = num(d, 'mood'); if (m == null || !e[d].habits) return;
-      const v = hVal(e[d], h.key); if (v === H_SKIP) return;          // a rest day is neither
+      const v = hVal(e[d], h.key, d, e); if (v === H_SKIP) return;    // a rest day is neither
       (v === H_DONE ? on : off).push(m); });
     if (on.length >= 3 && off.length >= 3) lifts.push({ h, lift: avg(on) - avg(off), n: on.length + off.length }); });
   lifts.sort((a, b) => Math.abs(b.lift) - Math.abs(a.lift));
@@ -4789,7 +4982,7 @@ function computePatterns() {
   const nextDay = [];
   HABITS.forEach(h => { const after = [], other = [];
     dates.forEach(d => {
-      const v = hVal(e[d], h.key); if (v === H_SKIP) return;
+      const v = hVal(e[d], h.key, d, e); if (v === H_SKIP) return;
       const m = num(addDays(d, 1), 'mood'); if (m == null) return;   // tomorrow's mood
       (v === H_DONE ? after : other).push(m);
     });
@@ -5385,12 +5578,33 @@ function longestLoggedStreak() {
   ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
   return best;
 }
+/* Counted exactly like habitStreak (same unit, skips and rest days neutral, a counter done only
+   at its goal), so "best" can never read lower than "now". It used to count any truthy value in
+   a row of calendar days: a skip broke "best" while "now" stepped over it, and 2 of 8 glasses
+   counted as done. */
+/* Last 30 days for one habit: done, out of the days it was planned for (rest days and tapped
+   skips left out, as the Habits screen has always counted), so a 3-a-week habit kept every week
+   reads 100 %, not 43 %. */
+function habit30(key, ents) {
+  const e = ents || DB.entriesRO(); let hits = 0, skip = 0;
+  for (let i = 29; i >= 0; i--) { const d = addDays(todayStr(), -i), v = hVal(e[d], key, d, e); if (v === H_DONE) hits++; else if (v === H_SKIP) skip++; }
+  const denom = Math.max(1, 30 - skip);
+  return { hits, denom, pct: Math.round(hits / denom * 100) };
+}
 function bestHabitStreak(key) {
+  const s = habitSched(key);
+  if (s && s.week) return habitWeekStreak(key, s.week).best;
   const e = DB.entriesRO();
-  const ds = Object.keys(e).filter(d => e[d].habits && e[d].habits[key]).sort();
-  let best = 0, cur = 0, prev = null;
-  ds.forEach(d => { cur = (prev && addDays(prev, 1) === d) ? cur + 1 : 1; best = Math.max(best, cur); prev = d; });
-  return best;
+  const ds = Object.keys(e).filter(isDay_).sort();
+  if (!ds.length) return 0;
+  const end = todayStr(), floor = addDays(end, -2000);
+  let best = 0, run = 0;
+  for (let cur = ds[0] < floor ? floor : ds[0], g = 0; cur <= end && g < 2100; cur = addDays(cur, 1), g++) {
+    const v = hVal(e[cur], key, cur, e);
+    if (v === H_DONE) best = Math.max(best, ++run);
+    else if (v === H_MISS && cur !== end) run = 0;   // today still open
+  }
+  return Math.max(best, habitStreak(key));
 }
 let dashRange = 7;
 let dashTab = 'overview';
@@ -5419,8 +5633,7 @@ function renderDash() {
 
   const last30 = []; for (let i = 29; i >= 0; i--) last30.push(addDays(todayStr(), -i));
   const habitBars = HABITS.map(h => {
-    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
-    const pct = Math.round(hits / 30 * 100);
+    const { pct } = habit30(h.key, e);   // of the planned days: rest days and skips left out
     return `<div class="bar-row"><span class="name">${h.emoji} ${escapeHtml(h.label)}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
       <span class="pct">${pct}%</span></div>`;
@@ -5746,8 +5959,8 @@ function renderDash() {
       if (!rows.length) return '';
       return `<div class="card"><h2>🏆 Streak leaderboard <span class="hint">current · best ever</span></h2>
         ${rows.map((x, i) => `<div class="wow-row"><span class="name">${['🥇','🥈','🥉'][i] || '·'} ${escapeHtml(x.h.label)}</span>
-          <span class="wow-vals">🔥 ${x.cur} <span class="hint">now</span></span>
-          <span class="wow-delta up">best ${x.best}</span></div>`).join('')}</div>`;
+          <span class="wow-vals">🔥 ${streakShort(x.h.key, x.cur)} <span class="hint">now</span></span>
+          <span class="wow-delta up">best ${streakShort(x.h.key, x.best)}</span></div>`).join('')}</div>`;
     })()}
 
     ${scaleBars ? `<div class="card"><h2>🧠 Wellbeing averages <span class="hint">all time · out of 10</span></h2>${scaleBars}</div>` : ''}
@@ -7090,7 +7303,7 @@ function cueInputHTML(h) {
   return `<div class="cfg-cue"><span class="cfg-cue-ico">📍</span>
     <input class="cfg-name" data-cfg-cue="${h.key}" maxlength="${CUE_MAX}"
       placeholder="when &amp; where — e.g. after my morning coffee"
-      value="${escapeHtml(habitCue(h))}"></div>`;
+      value="${escapeHtml(habitCue(h))}">${schedPillHTML(h)}</div>`;
 }
 function cfgRow(kind, item, deletable) {
   const id = item.key || item.id;
@@ -8901,7 +9114,8 @@ function renderSettings() {
         <ol><li>Open the <a href="sheets-setup.html#update">setup page</a> and copy the script.</li>
         <li>In your sheet: Extensions ▸ Apps Script, select everything, paste over it, Save.</li>
         <li>Deploy ▸ <b>Manage deployments</b> ▸ ✏️ ▸ Version: <b>New version</b> ▸ Deploy. Your link stays the same. (Not “New deployment”: that makes a new link.)</li>
-        <li>Come back and tap <b>Sync now</b>.</li></ol></div>` : ''}
+        <li>Come back and tap <b>Sync now</b>.</li></ol>
+        <p class="sync-old-still">Still here after that? The link above still runs the old copy. Open it in your browser: the new script ends its reply with <b>"script":2</b>. If yours does not, go back to Manage deployments, edit the deployment whose link is in Daylog, and pick <b>New version</b> again.</p></div>` : ''}
       <div class="hint" style="margin-top:8px">Saving on one device shows on the others when you open the app or tap Sync now. Days, tasks, notes and other lists merge item by item, so different changes on two phones both stay; when both phones changed the same item, the newer change wins.</div>
       <details class="sync-what"><summary>Exactly what gets sent, and where</summary>
         <div class="hint">
@@ -9369,7 +9583,7 @@ async function generatePdfReport() {
   const gym = DB.gym(); const workouts = Object.keys(gym).filter(d => Object.values(gym[d].done || {}).some(Boolean)).length;
   row('Workouts logged', workouts + ' · streak ' + gymStreak()); y += 8;
   heading('Habit consistency (last 30 days)');
-  HABITS.forEach(h => { const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length; row(h.label, Math.round(hits / 30 * 100) + '%  (' + hits + '/30)'); }); y += 8;
+  HABITS.forEach(h => { const r = habit30(h.key, e); row(h.label, r.pct + '%  (' + r.hits + '/' + r.denom + ')'); }); y += 8;
   const tt = {}; last30.forEach(d => { const t = actTotalsMs(segsForDay(d)); Object.keys(t).forEach(k => { tt[k] = (tt[k] || 0) + t[k]; }); });
   const actIds = Object.keys(tt).sort((x, z) => tt[z] - tt[x]);
   if (actIds.length) { heading('Where your time goes (last 30 days)'); actIds.forEach(id => row(actById(id).name, fmtDur(tt[id]) + ' · ' + fmtDur(tt[id] / 30) + '/day')); y += 8; }
@@ -9397,8 +9611,8 @@ function downloadReport() {
 
   // Habit consistency (last 30d)
   const habitRows = HABITS.map(h => {
-    const hits = last30.filter(d => hVal(e[d], h.key) === H_DONE).length;
-    return `<tr><td>${h.emoji} ${escapeHtml(h.label)}</td><td>${hits}/30</td><td>${Math.round(hits / 30 * 100)}%</td><td>🔥 ${habitStreak(h.key)}</td></tr>`;
+    const r = habit30(h.key, e);
+    return `<tr><td>${h.emoji} ${escapeHtml(h.label)}</td><td>${r.hits}/${r.denom}</td><td>${r.pct}%</td><td>🔥 ${streakShort(h.key, habitStreak(h.key))}</td></tr>`;
   }).join('');
 
   // Time totals (last 30d)
@@ -13895,7 +14109,7 @@ function monthReview(ym) {
   const habitRows = hkeys.map(k => {
     const cfg = habitCfg().find(h => h.key === k) || {};
     const done = upto.filter(d => e[d] && hVal(e[d], k) === H_DONE).length;
-    const skip = upto.filter(d => e[d] && hVal(e[d], k) === H_SKIP).length;
+    const skip = upto.filter(d => e[d] && hVal(e[d], k, d, e) === H_SKIP).length;
     const base = Math.max(1, logged - skip);
     return { key: k, emoji: cfg.emoji || '•', label: cfg.label || k, done, skip,
              pct: Math.round(done / base * 100) };
@@ -14375,7 +14589,7 @@ function awardSeries(grp, ents, health) {
            every habit meant taking the rest day the app itself offers cost you the award,
            two lines after the UI says "your streak is safe". Requiring one H_DONE stops a
            day where everything was skipped from counting as perfect. */
-        const vals = req.map(k => hVal(e[d], k));
+        const vals = req.map(k => hVal(e[d], k, d, e));
         if (vals.length && !vals.includes(H_MISS) && vals.includes(H_DONE)) acc++;
         out.push([d, acc]);
       });
@@ -14423,7 +14637,7 @@ function bestHabitStrength(ents) {
     const en = e[cur];
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
-      if (hVal(en, k) !== H_SKIP) s[k] = s[k] * mult + hFrac(en, k) * (1 - mult);
+      if (hVal(en, k, cur, e) !== H_SKIP) s[k] = s[k] * mult + hFrac(en, k) * (1 - mult);
     }
     cur = addDays(cur, 1);
   }
@@ -15053,7 +15267,7 @@ function drawHabit(g, H) {
     y += 22;
     for (let i = 0; i < 90; i++) {
       const d = addDays(todayStr(), -(89 - i));
-      const st = hVal(e[d], h.key);
+      const st = hVal(e[d], h.key, d, e);
       const cx = gx + (i % cols) * (cell + gap), cy = y + Math.floor(i / cols) * (cell + gap);
       g.fillStyle = st === H_DONE ? CARD_GOOD : st === H_SKIP ? '#38415c' : '#1a2133';
       roundRect(g, cx, cy, cell, cell, 6); g.fill();
@@ -19179,11 +19393,12 @@ const ASK_SKILLS = [
         label: h.label || h.key,
         strength: (typeof habitStrength === 'function' ? habitStrength(h.key) : null),
         streak: (typeof habitStreak === 'function' ? habitStreak(h.key) : null),
+        unit: (typeof streakWeekly === 'function' && streakWeekly(h.key)) ? 'week' : 'day',
       })).filter(r => r.strength != null);
       if (!rows.length) return { empty: 'Not enough logged days to score your habits yet.' };
       rows.sort((a, b) => b.strength - a.strength);
       const lines = rows.slice(0, 8).map(r =>
-        `${escapeHtml(r.label)} — <b>${Math.round(r.strength)}%</b> strength${r.streak ? `, <b>${r.streak}</b> day streak` : ''}`);
+        `${escapeHtml(r.label)} — <b>${Math.round(r.strength)}%</b> strength${r.streak ? `, <b>${r.streak}</b> ${r.unit} streak` : ''}`);
       const weak = rows[rows.length - 1];
       if (rows.length > 1) lines.push(`<span class="ask-dim">Weakest right now: ${escapeHtml(weak.label)} at ${Math.round(weak.strength)}%.</span>`);
       return { title: 'Habits', lines };
@@ -19710,6 +19925,8 @@ function handleBack() {
   const wn = document.getElementById('wn-pop'); if (wn) { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); wn.remove(); return; }
   const drawer = document.getElementById('drawer');
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
+  const se = document.getElementById('sched-editor'); if (se && se.style.display === 'flex') { schedEditorClose(); return; }
+  const ge = document.getElementById('goal-editor'); if (ge && ge.style.display === 'flex') { ge.style.display = 'none'; return; }
   const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
   const ce = document.getElementById('confirm-exit'); if (ce && ce.classList.contains('on')) { ce.classList.remove('on'); return; }
   const ms = document.getElementById('milestone'); if (ms && ms.classList.contains('on')) { ms.classList.remove('on'); return; }

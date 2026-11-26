@@ -648,6 +648,116 @@
     }
   })();
 
+  // ---- v272: habit schedules (some weekdays, N times a week) ----
+  (function () {
+    const keys = ['dp.habitcfg', 'dp.entries'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const realToday = todayStr, snapLog = logDate, snapDraft = draft;
+    const T = '2026-11-26';                                   // a Thursday; its week starts Mon 23 Nov
+    window.todayStr = x => (x ? realToday(x) : T);
+    const setCfg = cfg => { localStorage.setItem('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); };
+    const ents = {};
+    const tick = (d, k, v) => { (ents[d] = ents[d] || { habits: {} }).habits[k] = v === undefined ? true : v; };
+    const save = () => localStorage.setItem('dp.entries', JSON.stringify(ents));
+    try {
+      // cleaning what comes from a sync or a backup
+      ok('weekdays are de-duplicated and sorted', JSON.stringify(schedClean({ days: [5, 1, 3, 3, '1'] })) === '{"days":[1,3,5]}');
+      ok('no days, all seven days or junk means every day',
+        [{ days: [] }, { days: [0, 1, 2, 3, 4, 5, 6] }, { days: [9, -1] }, { week: 0 }, { week: 7 }, { week: 2.5 }, 'x', null].every(x => schedClean(x) === null));
+      ok('N a week keeps 1 to 6', schedClean({ week: '3' }).week === 3 && schedClean({ week: 6 }).week === 6);
+      ok('labels read the way people say them',
+        schedLabel(null) === 'Every day' && schedLabel({ days: [1, 2, 3, 4, 5] }) === 'Weekdays' && schedLabel({ days: [0, 6] }) === 'Weekends'
+        && schedLabel({ days: [5, 1, 3] }) === 'Mon, Wed, Fri' && schedLabel({ days: [0, 1] }) === 'Mon, Sun'
+        && schedLabel({ week: 3 }) === '3 times a week' && schedLabel({ week: 1 }) === 'Once a week');
+
+      setCfg([{ key: 'run', emoji: '🏃', label: 'Run', sched: { days: [1, 3, 5] } },
+              { key: 'gym', emoji: '💪', label: 'Gym', sched: { week: 3 } },
+              { key: 'read', emoji: '📖', label: 'Read' }]);
+      // Run: Mon/Wed/Fri, every one of them done for two weeks
+      ['2026-11-16', '2026-11-18', '2026-11-20', '2026-11-23', '2026-11-25'].forEach(d => tick(d, 'run'));
+      // Gym: 3 a week for the two weeks before this one, 1 so far this week, 1 the week before those
+      ['2026-11-03', '2026-11-09', '2026-11-11', '2026-11-13', '2026-11-16', '2026-11-18', '2026-11-20', '2026-11-24'].forEach(d => tick(d, 'gym'));
+      // Read: an everyday habit done the same days as Run
+      ['2026-11-23', '2026-11-25'].forEach(d => tick(d, 'read'));
+      save();
+      const e = DB.entriesRO();
+
+      ok('a weekday off reads as a rest day, only when the date is given',
+        hVal(e['2026-11-24'], 'run', '2026-11-24') === H_SKIP && hVal(e['2026-11-24'], 'run') === H_MISS);
+      ok('a planned day not done is still a miss', hVal(e['2026-11-13'], 'run', '2026-11-13') === H_MISS);
+      ok('an everyday habit is untouched', hVal(e['2026-11-24'], 'read', '2026-11-24') === H_MISS);
+      ok('rest days never break the streak', habitStreak('run') === 5, habitStreak('run'));
+      ok('…where every day it would have been 1', habitStreak('read') === 1);
+      ok('best is counted the same way, so never below now', bestHabitStreak('run') === 5, bestHabitStreak('run'));
+
+      ok('in a week with its 3, the other days rest', hVal(e['2026-11-10'], 'gym', '2026-11-10') === H_SKIP);
+      ok('a past week that fell short is a miss', hVal(e['2026-11-04'], 'gym', '2026-11-04') === H_MISS);
+      ok('this week, still able to make 3, is not a miss yet', hVal(e['2026-11-25'], 'gym', '2026-11-25') === H_SKIP);
+      ok('a 3-a-week streak counts weeks, and an unfinished week does not break it', habitStreak('gym') === 2, habitStreak('gym'));
+      ok('…in its own unit', streakShort('gym', 2) === '2w' && streakLong('gym', 2) === '2-week streak' && streakLong('run', 5) === '5-day streak');
+      tick('2026-11-25', 'gym'); tick('2026-11-26', 'gym'); save();
+      ok('the week grows the streak once its 3 are in', habitStreak('gym') === 3 && bestHabitStreak('gym') === 3);
+      delete ents['2026-11-25'].habits.gym; delete ents['2026-11-26'].habits.gym; save();
+      window.todayStr = x => (x ? realToday(x) : '2026-11-29');   // Sunday, still 1 of 3
+      ok('once the week can no longer make it, the streak is gone', habitStreak('gym') === 0 && bestHabitStreak('gym') === 2);
+      window.todayStr = x => (x ? realToday(x) : T);
+      // a week short of 3 but with skipped days to cover it is passed over, like a skipped day
+      ['2026-10-26', '2026-10-28', '2026-10-30'].forEach(d => tick(d, 'gym'));
+      tick('2026-11-04', 'gym', 0); tick('2026-11-05', 'gym', 0); save();
+      ok('a week made up with skips neither counts nor breaks', habitStreak('gym') === 3, habitStreak('gym'));
+
+      ok('the last 30 days count planned days only (13 Mon/Wed/Fri, 5 done)', habit30('run', DB.entriesRO()).denom === 13 && habit30('run', DB.entriesRO()).hits === 5 && habit30('read', DB.entriesRO()).denom === 30,
+        JSON.stringify(habit30('run', DB.entriesRO())));
+      const strWith = habitStrength('run');
+      setCfg([{ key: 'run', emoji: '🏃', label: 'Run' }, { key: 'gym', emoji: '💪', label: 'Gym', sched: { week: 3 } }, { key: 'read', emoji: '📖', label: 'Read' }]);
+      ok('rest days do not drag strength down', strWith > habitStrength('run'), strWith + ' vs ' + habitStrength('run'));
+      setCfg([{ key: 'run', emoji: '🏃', label: 'Run', sched: { days: [1, 3, 5] } }, { key: 'gym', emoji: '💪', label: 'Gym', sched: { week: 3 } }, { key: 'read', emoji: '📖', label: 'Read' }]);
+
+      // the Log on Thursday
+      logDate = T; draft = { habits: {} };
+      const runChip = habitChipHTML(HABITS.find(h => h.key === 'run'));
+      ok('the Log marks the day off', /class="habit [^"]*rest/.test(runChip) && /class="hrest">rest</.test(runChip));
+      ok('…and it still counts as complete', todayCompletion(draft, T).done >= todayCompletion({ habits: { run: true } }, '2026-11-27').done);
+      ok('the weekly habit shows its count', /class="hwk">1\/3</.test(habitChipHTML(HABITS.find(h => h.key === 'gym'))));
+      draft = { habits: { run: true, gym: true } };
+      ok('a tick on a rest day is a tick', /class="habit on/.test(habitChipHTML(HABITS.find(h => h.key === 'run'))) && !/hrest/.test(habitChipHTML(HABITS.find(h => h.key === 'run'))));
+      ok('the unsaved tick counts toward the week', /hwk">2\/3</.test(habitChipHTML(HABITS.find(h => h.key === 'gym'))));
+      draft = { habits: {} };
+
+      // the Habits screen
+      renderHabits();
+      const hs = document.getElementById('s-habits').innerHTML;
+      ok('the Habits screen shows each schedule', /data-sched-edit="run"[^>]*>.*Mon, Wed, Fri/.test(hs) && /3 times a week/.test(hs) && /data-sched-edit="read"[^>]*>.*Every day/.test(hs));
+      ok('…the week so far and a streak in weeks', /This week 1 of 3 · 🔥 3-week streak/.test(hs), (hs.match(/This week[^<]*/) || [''])[0]);
+      ok('…and rest days in the heatmap', /class="cell rest/.test(hs) && /rest day/.test(hs));
+
+      // the editor
+      showSchedEditor('read');
+      const m = () => document.getElementById('sched-editor');
+      ok('the editor opens on the current schedule', m().style.display === 'flex' && /data-sched-mode="daily" aria-pressed="true"/.test(m().innerHTML));
+      m().querySelector('[data-sched-mode="week"]').click();
+      m().querySelector('[data-sched-n="1"]').click();
+      ok('times a week steps from 3', /<b>4<\/b>/.test(m().innerHTML));
+      m().querySelector('#se-save').click();
+      ok('saving stores it on the habit', JSON.stringify(habitCfg().find(h => h.key === 'read').sched) === '{"week":4}' && m().style.display === 'none');
+      showSchedEditor('read');
+      m().querySelector('[data-sched-mode="days"]').click();
+      [1, 3, 5].forEach(d => m().querySelector(`[data-sched-day="${d}"]`).click());   // Mon/Wed/Fri start on: clear them
+      ok('no day picked cannot be saved', m().querySelector('#se-save').disabled);
+      [0, 1, 2, 3, 4, 5, 6].forEach(d => m().querySelector(`[data-sched-day="${d}"]`).click());
+      m().querySelector('#se-save').click();
+      ok('all seven days saves as every day', !('sched' in habitCfg().find(h => h.key === 'read')));
+      showSchedEditor('run'); handleBack();
+      ok('back closes the editor', m().style.display === 'none' && _schedDraft === null);
+      ok('Customize shows the schedule too', /data-sched-edit="run"/.test(cueInputHTML(habitCfg().find(h => h.key === 'run'))));
+    } finally {
+      window.todayStr = realToday; logDate = snapLog; draft = snapDraft;
+      keys.forEach(k => { if (snap[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, snap[k]); });
+      reloadCfg();
+      const se = document.getElementById('sched-editor'); if (se) se.style.display = 'none';
+    }
+  })();
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

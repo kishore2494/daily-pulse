@@ -253,7 +253,7 @@ Contract with the Android side: `RECORDER-SPEC.md`. Code: app.js `SCREEN: RECORD
   3 h (`cap`) and on low storage (`storage`).
 - **Open:** run in the Play app with build 123; History's day page could list that day's recordings.
 
-## Sealed letters (v270, built 2026-11-26, NOT deployed yet)
+## Sealed letters (v270, live since 2026-11-26)
 
 Kishore picked it from the "be different" list (2026-11-26: "yes build sealed letters").
 - **What:** write a letter to future you, seal it until a day you choose (presets: in a month, in 6 months, in a
@@ -274,7 +274,7 @@ Kishore picked it from the "be different" list (2026-11-26: "yes build sealed le
 - **Gotcha:** state vars (`_lt`, `_ltDelArm` …) are `var`, not `let`: `show()`/`handleBack()` read them and must not
   hit the TDZ if they run before that part of app.js is evaluated.
 
-## Month film (v270, built 2026-11-26, NOT deployed yet)
+## Month film (v270, live since 2026-11-26)
 
 Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film").
 - **What:** a ~30 s stories-style film of one month drawn on a canvas: title → mood calendar (each day pops in its
@@ -296,6 +296,42 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
 - **Play app:** WebView has no Web Share and builds ≤123 have no `shareFile`, so `filmCanVideo()` hides
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
+
+## Habit schedules (v272, built 2026-11-26, NOT deployed yet)
+
+Asked for by Kishore 2026-11-26 after "no we need streak": streaks stay, but a non-daily habit must not lose its
+streak on every day off.
+- **Data:** optional `sched` on a habitcfg item: `{days:[1,3,5]}` (getDay numbers, 1–6 of them) or `{week:3}`
+  (1–6 a week, Monday–Sunday). Absent = every day; nothing to migrate. Rides along in habitcfg (sync, backup).
+  `schedClean` normalises anything from sync/backup (no days / all 7 / junk → every day). Cached in `_schedMap`,
+  reset by `reloadCfg()` with `_goalMap`.
+- **Core rule:** `hVal(entry, key, day, ents)`. The stored value is `hBase(entry, key)` (the old hVal). When the
+  caller passes the DATE and the stored value is a miss, the schedule may turn it into `H_SKIP` (a rest day), the
+  meaning a tapped skip already had, so every streak / strength / percentage that treats a skip as neutral works
+  unchanged. Without the date nothing changes, so taps and the toggle cycle still read stored values (ticking on a
+  rest day works and counts).
+  - Weekdays: a day not in `days` rests.
+  - N a week (`schedRest`): once the week has its N (done + tapped skips), its other days rest; the current week's
+    open days rest while N is still reachable (`weekReachable`); a past week that fell short is a miss.
+    Week counts are memoised per entries object (`_wkMemo` WeakMap; `DB.entriesRO()` keeps identity until the
+    store changes, `DB.entries()` is a fresh object).
+- **Streaks:** weekday habits count done days, rest days neutral (walk bounded at 5000 days). N-a-week habits count
+  WEEKS (`habitWeekStreak` — `weekStreak` was already the logging-week streak): a week with N adds one; a week short
+  but made up with skips is passed over; this week adds one once N is in and breaks the run only when N can no
+  longer be reached. Units: `streakShort` ("8w"), `streakLong` ("8-week streak"). `bestHabitStreak` now counts
+  exactly like `habitStreak` (it used to count any truthy value on calendar days, so a skip broke "best" but not
+  "now", and 2 of 8 glasses counted) and is never below "now".
+- **Percentages:** `habit30(key, ents)` = done / planned days in the last 30 (rest days and tapped skips out), used
+  by Stats ▸ Checklist "Habit consistency", the PDF report and the printable report. A 3-a-week habit kept every
+  week reads 100 %, not 43 %.
+- **UI:** 📅 pill (`schedPillHTML`) on each Habits card (next to the 📍 cue line, `.hab-plan`) and at the end of the
+  Customize cue row. Sheet `#sched-editor` ("How often — X"): Every day / Some days (Mon-first weekday chips) /
+  Times a week (− N +, 1–6); Save disabled with no day; all 7 saves as every day; back closes it (handleBack also
+  closes the goal editor now). Log chip: `rest` badge + dimmed dashed chip on a day off; `n/N` this week for
+  N-a-week (the unsaved draft counts), turning into the 🔥 `8w` streak once the week is in. Habits heatmap: rest
+  days are outlined empty cells (`.cell.rest`), tapped skips keep the hatch. The day-completion ring
+  (`todayCompletion(entry, day)`) counts a resting habit as complete.
+- Tests: "v272: habit schedules" block in tests/unit.js (35 checks; 1953 total × 4 zones).
 
 ## History ▸ one day, read-only (v252, 2026-11-01)
 

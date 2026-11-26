@@ -1,3 +1,14 @@
+## 2026-11-26 — v272 built: habit schedules (NOT deployed); Sheet box still yellow for Kishore
+
+- Kishore: "yes build habit schedules". Built (features.md ▸ Habit schedules): weekdays or N-a-week per habit, rest
+  days never break a streak, N-a-week streaks count weeks, Stats/report percentages count planned days only,
+  `bestHabitStreak` fixed to count like the current streak. Tests 4 zones + every release check pass; checked at
+  360 px (Log chips, Habits cards, the sheet, Customize, Stats). Waits for Kishore's "deploy".
+- Kishore re-pasted Code.gs but the yellow "Sheet script is out of date" box stayed. The app and Code.gs v2 are
+  right (the box clears only when a pull answers `{script: 2}`), so his link still serves the old copy: most likely
+  the deployment was not edited to **New version** (or a New deployment was made, which gets a new link). The box
+  now says how to check: open the link in a browser; the new script's reply ends with `"script":2`.
+
 ## 2026-11-26 — decision: streaks stay
 
 - Proposed replacing the top-bar 🔥 streak with an only-up "days remembered" count (roadmap idea 4, plus a middle
