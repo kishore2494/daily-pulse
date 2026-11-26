@@ -1,9 +1,9 @@
 # Daylog Reddit launch plan (Nov 2026)
 
-> **These are drafts. Nothing was posted, and no account was used or created.** Written 2026-11-21 for web v263 / Play build 121.
+> **These are drafts. Nothing was posted, and no account was used or created.** Written 2026-11-21 for web v263 / Play build 121; refreshed 2026-11-26 for web v269 / Play build 122 (8 styles).
 > - **I couldn't read any subreddit's rules myself.** Reddit blocks automated readers. `reddit.com/r/<sub>/about/rules.json` returned 403 "blocked by network security", `old.reddit.com` redirected to a login page, and Reddit refuses Anthropic's fetch and search tools by name. I didn't work around the block. The rules below come from second-hand sources (search snippets, directories, indie-maker write-ups and the 2026-11-01 research in `distribution-plan-2026-11.md`), so **every sub is marked UNVERIFIED**. Each post day starts with a 2-minute sidebar check (section 1, step 6). If the sidebar disagrees with this file, the sidebar wins.
 > - **Don't mention Google Sheet sync.** New installs don't offer it: `SHOW_SYNC = !!s.syncUrl` in app.js (it waits for the Data Safety form). All drafts say "no cloud copy, keep a backup file" instead.
-> - **The widget and the notification mood buttons haven't been checked on a real phone yet** (features.md, 2026-11-21), and Play build 121 is still in Google's review. Posts 1, 3 and 4 mention them, so step 1 of the checklist below has to pass first.
+> - **The widget and the notification mood buttons haven't been checked on a real phone yet** (features.md, 2026-11-21), and the widget shipped in Play build 121 (now 122 in production). Posts 1, 3 and 4 mention them, so step 1 of the checklist below has to pass first.
 
 ---
 
@@ -11,7 +11,7 @@
 
 Do every item in order. Steps 1–5 happen once, before Day 1. Steps 6–12 apply on every post day.
 
-1. **Check the product first.** On your own phone, Play must show build 121. Add the widget, tap a face and confirm the mood saves. Then wait for the evening "Log my day" reminder and tap Good, Okay or Low. If either one fails, fix it and wait for the fix to go live before Day 6. A post that promises a broken widget burns that sub for good.
+1. **Check the product first.** On your own phone, Play must show build 122 or later (production since 2026-11-21). Add the widget, tap a face and confirm the mood saves. Then wait for the evening "Log my day" reminder and tap Good, Okay or Low. If either one fails, fix it and wait for the fix to go live before Day 6. A post that promises a broken widget burns that sub for good.
 2. **Use your real, long-standing account. Never make a new one, and never use a second account.** Third-party guides report that many subs require an account 7–30 days old and 50–500 karma ([conbersa](https://www.conbersa.ai/learn/reddit-self-promotion-rules)). r/Android's wiki once required developers to have accounts at least 3 months old. **Target: account older than 30 days and at least 100 comment karma before Day 6.** If you're below that, repeat the warm-up (Days 1–5) until you aren't.
 3. **The 9:1 rule.** For every post or comment that mentions Daylog, write about nine that don't. Before posting in a sub, leave at least 5 genuinely helpful comments there over 3 or more days. Answer questions, try other people's apps, and give real feedback. The warm-up days in the schedule are for this.
 4. **Say "I'm the developer" in the first sentence.** Every draft below already does. Never write as a "user who found this app".
@@ -117,7 +117,7 @@ It puts your day in one place:
 - Mood and energy in one tap, a journal with #tags, and photos or voice notes on any day
 - Screen time read from the phone (needs Usage access), plus sleep and steps from Health Connect
 - Stats that link them, worked out on the phone, like "Heavy screen days cost you -1.2 mood"
-- A home-screen widget, mood buttons on the evening reminder, and five visual styles
+- A home-screen widget, mood buttons on the evening reminder, and eight visual styles
 
 No account, no ads, nothing locked. The only purchase is an optional tip. Your entries stay on the phone; one backup file (photos and voice notes included) moves them to a new phone. If you uninstall without a backup, they are gone.
 
