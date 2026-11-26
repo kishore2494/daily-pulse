@@ -1,3 +1,15 @@
+## 2026-11-26 — web v270 LIVE (sealed letters + month film); v271 fix ready, not deployed
+
+- Kishore said "deploy". `deploy.sh --tag` passed every check, pushed both remotes, tagged `web-v270`; the Pages
+  build succeeded first time and the live app.js/sw.js/index.html all say v270.
+- **Live test (360×800, live URL):** What's new shows the two new items to a returning user; a letter written and
+  sealed live never shows its text; the Log pill reads "Your letter opens in 1 month"; the film plays; no console
+  errors. Checked Capacitor's bridge: `Capacitor.Plugins.X` only carries methods the native build really has, so
+  build 123 has no `shareFile` and the Play app hides "Make a video" (as designed).
+- **Found:** in light styles the film footer's "Restart" was white on white (the styles' own `.btn-ghost` fill).
+  Fixed with `!important` on `.film-btns .btn-ghost`, checked in Midnight light, Glass light, Dot, Clay →
+  **v271 (a010452), committed and backed up, waiting for "deploy".**
+
 ## 2026-11-26 — v270 built: sealed letters + month film (NOT deployed; waiting for "deploy")
 
 - Kishore (2026-11-26): "yes build sealed letters / good about the video do it.. do it…". Built both as web v270
