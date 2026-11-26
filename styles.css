@@ -4576,7 +4576,9 @@ button.lt-env { cursor: pointer; }
 .film-foot { width: 100%; max-width: 420px; padding: 0 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 44px; }
 .film-btns { display: flex; gap: 10px; width: 100%; }
 .film-btns .btn { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
-.film-btns .btn-ghost { color: #fff; border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .06); }
+/* The film's footer always sits on its dark scrim, whatever the style: the styles' own light-mode
+   .btn-ghost (white fill) left white text on white. !important beats their :root[data-style] rules. */
+.film-btns .btn-ghost { color: #fff !important; border: 1px solid rgba(255, 255, 255, .35) !important; background: rgba(255, 255, 255, .1) !important; box-shadow: none !important; }
 .film-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.45; color: rgba(255, 255, 255, .72); text-align: center; }
 .film-card .film-go, .fresh-card .film-go { margin: 10px 0 0 35px; }
 .mr-entry-btns { display: flex; gap: 8px; margin-top: 10px; }
