@@ -537,6 +537,117 @@
     }
   })();
 
+  // ---- v270: sealed letters + the month film ----
+  (function () {
+    const keys = ['dp.letters', 'dp.entries', 'dp.filmSeen', 'dp.onboarded', 'dp.freshSeen', 'dp.notifAsk', 'dp.insightSeen', 'dp.checkin', 'dp.firstSeen'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const realToday = todayStr, snapLog = logDate, snapLt = _lt;
+    const T = '2026-11-26';
+    window.todayStr = x => (x ? realToday(x) : T);
+    try {
+      // dates and words
+      ok('a month after 31 Jan is the last day of February', letterAddMonths('2026-01-31', 1) === '2026-02-28' && letterAddMonths('2028-01-31', 1) === '2028-02-29');
+      ok('a year after is the same date next year', letterAddMonths('2026-11-26', 12) === '2027-11-26');
+      ok('countdown words read the way people say them',
+        [[0, 'today'], [1, 'tomorrow'], [5, 'in 5 days'], [21, 'in 3 weeks'], [30, 'in 1 month'], [182, 'in 6 months'], [365, 'in 1 year'], [730, 'in 2 years']]
+          .every(([n, w]) => letterIn(n) === w), [0, 1, 5, 21, 30, 182, 365, 730].map(letterIn).join(','));
+      ok('…and so does how long it waited', letterAgo(365) === '1 year ago' && letterAgo(1) === 'yesterday');
+      const pr = letterPresets(T);
+      ok('the presets: a month, six months, a year, New Year', pr.map(p => p.d).join() === '2026-12-26,2027-05-26,2027-11-26,2027-01-01', pr.map(p => p.d).join());
+      localStorage.setItem('dp.letters', JSON.stringify([null, { id: 'x' }, { id: 'L1', openOn: '2027-01-01', created: T, sealed: true, text: 'a' }, 'junk']));
+      ok('a damaged letters store keeps only real letters', lettersAll().length === 1 && lettersAll()[0].id === 'L1');
+
+      // sealed means sealed
+      const SECRET = 'SECRET-WORDS-270';
+      localStorage.setItem('dp.letters', JSON.stringify([{ id: 'Lseal', created: '2026-11-01', at: 1, openOn: '2026-12-26', text: SECRET, sealed: true, openedAt: null }]));
+      const L = letterById('Lseal');
+      ok('before its day a letter is locked, not ready', letterLocked(L) && !letterReady(L));
+      logDate = T;
+      const pill = letterLogHTML();
+      ok('the Log shows when it opens', /lt-pill/.test(pill) && /opens in 1 month/.test(pill), pill.replace(/\s+/g, ' '));
+      ok('…and never a word of it', !pill.includes(SECRET) && !letterListHTML().includes(SECRET) && !letterDrawerHTML('today').includes(SECRET));
+      _lt = { mode: 'read', id: 'Lseal' }; renderLetters();
+      ok('asking to read a sealed letter shows the list instead', _lt === null && !document.getElementById('s-letters').innerHTML.includes(SECRET));
+      logDate = '2026-11-20';
+      ok('a back-dated Log shows no letter', letterLogHTML() === '');
+      logDate = T;
+      // its day comes
+      window.todayStr = x => (x ? realToday(x) : '2026-12-26');
+      logDate = '2026-12-26';
+      ok('on its day it is ready', letterReady(letterById('Lseal')) && /A letter from you is ready/.test(letterLogHTML()) && /data-lt-open="Lseal"/.test(letterLogHTML()));
+      ok('the menu says so too', /A letter is ready to open/.test(letterDrawerHTML('today')));
+      _lt = { mode: 'read', id: 'Lseal' }; renderLetters();
+      ok('reading an unopened letter goes through the opening first', _lt && _lt.mode === 'opening');
+      letterPatch('Lseal', { openedAt: Date.now() }); _lt = { mode: 'read', id: 'Lseal' }; renderLetters();
+      ok('once opened it reads in full', document.getElementById('s-letters').innerHTML.includes(SECRET) && /sealed for 2 months/.test(document.getElementById('s-letters').innerHTML));
+      ok('an opened letter leaves the Log', letterLogHTML() === '');
+      _lt = null;
+      window.todayStr = x => (x ? realToday(x) : T); logDate = T;
+
+      // drafts
+      localStorage.setItem('dp.letters', '[]');
+      const d = letterNew();
+      ok('a new letter starts as a draft dated today, opening in a year', d && !d.sealed && d.created === T && d.openOn === '2027-11-26');
+      ok('an empty draft counts as empty', letterEmpty(letterById(d.id)));
+      letterPatch(d.id, { text: 'hello' });
+      ok('a draft with words does not', !letterEmpty(letterById(d.id)) && /Draft/.test(letterListHTML()));
+      ok('a draft never shows on the Log', letterLogHTML() === '');
+
+      // storage, backups, media
+      ok('letters are in backups', BACKUP_KEYS.includes('letters'));
+      ok('the film flag stays out of backups', BACKUP_EXCLUDED.includes('filmSeen') && !BACKUP_KEYS.includes('filmSeen'));
+      ok('letters are not sent to the Sheet', !/letters/.test(pushState.toString()));
+      ok('a letter’s photo or voice note survives a restore', mediaItemValid({ id: 'm1', kind: 'voice', day: T, ctx: 'letter:Labc12', data: 'AAAA', mime: 'audio/webm' }));
+      ok('…but a made-up context does not', !mediaItemValid({ id: 'm1', kind: 'voice', day: T, ctx: 'letter:../x', data: 'AAAA' }));
+      ok('a fresh install still shows nine or fewer tabs (Letters is a menu row)', (() => { const v0 = localStorage.getItem('dp.navcfg'); localStorage.removeItem('dp.navcfg'); const n = navCfg().filter(x => !x.hidden).length; if (v0 != null) localStorage.setItem('dp.navcfg', v0); return n <= 9; })());
+
+      // ---- the film ----
+      ok('a short line stays whole', filmClip('A good day.', 150) === 'A good day.');
+      ok('a long one ends on a sentence when it can', filmClip('One two three four five six. Seven eight nine ten eleven twelve thirteen fourteen.', 40) === 'One two three four five six.');
+      ok('…else on a word, with an ellipsis', /…$/.test(filmClip('alpha beta gamma delta epsilon zeta eta theta iota kappa', 30)));
+      const hk = habitCfg().filter(h => !h.hidden).map(h => h.key);
+      const E = {};
+      for (let i = 1; i <= 31; i++) {
+        if (i % 5 === 3) continue;
+        const dd = '2026-10-' + String(i).padStart(2, '0');
+        E[dd] = { mood: i === 1 || i === 17 ? 10 : 5, sleepHours: 7, habits: Object.fromEntries(hk.slice(0, 2).map(k => [k, H_DONE])),
+          journal: i === 17 ? 'Finished the release and walked by the lake in the evening.' : i === 1 ? 'ok day' : '' };
+      }
+      E['2026-10-30'].sample = true;
+      localStorage.setItem('dp.entries', JSON.stringify(E));
+      const fd = filmData('2026-10');
+      ok('the film covers every day of the month', fd.cells.length === 31);
+      ok('…starting on the right weekday (1 Oct 2026 is a Thursday)', fd.lead === 3);
+      ok('demo rows are not logged days', fd.logged === 24, fd.logged);
+      ok('a tie for best day goes to the day you wrote about', fd.best && fd.best.date === '2026-10-17' && fd.best.mood === 10, JSON.stringify(fd.best));
+      ok('…and its words become the quote', /walked by the lake/.test(fd.quote));
+      ok('at most three numbers', fd.stats.length >= 1 && fd.stats.length <= 3);
+      const sc = filmScenes(fd).map(s => s.k);
+      ok('it opens on the month and ends on the next', sc[0] === 'title' && sc[sc.length - 1] === 'end' && fd.next === 'November', sc.join(','));
+      const tot = filmScenes(fd).reduce((a, s) => a + s.dur, 0);
+      ok('about thirty seconds', tot >= 20 && tot <= 36, tot);
+      ok('"ok day" is not quoted', (() => { const e2 = JSON.parse(JSON.stringify(E)); e2['2026-10-17'].journal = ''; localStorage.setItem('dp.entries', JSON.stringify(e2)); const q = filmData('2026-10').quote; localStorage.setItem('dp.entries', JSON.stringify(E)); return q === ''; })());
+      ok('a month needs three logged days for a film', filmMonthOk('2026-10') && !filmMonthOk('2026-09'));
+      // the Log offers it in the first week, once
+      localStorage.setItem('dp.onboarded', '1'); localStorage.setItem('dp.notifAsk', '1');
+      localStorage.removeItem('dp.filmSeen');
+      window.todayStr = x => (x ? realToday(x) : '2026-11-03'); logDate = '2026-11-03';
+      ok('in the first week the Log offers last month’s film', filmCardYM() === '2026-10' && nudgeCardKind() === 'film' && /data-film-open="2026-10"/.test(nudgeCardHTML()));
+      safeSet('dp.filmSeen', '2026-10');
+      ok('…once', filmCardYM() === null && nudgeCardKind() !== 'film');
+      localStorage.removeItem('dp.filmSeen');
+      window.todayStr = x => (x ? realToday(x) : '2026-11-09'); logDate = '2026-11-09';
+      ok('…and not after the first week', filmCardYM() === null);
+      window.todayStr = x => (x ? realToday(x) : '2026-11-01'); logDate = '2026-11-01';
+      localStorage.setItem('dp.freshSeen', '{}');
+      ok('on the 1st the new-month card carries the film', /data-film-open="2026-10"/.test(freshHTML()) && nudgeCardKind() === '');
+      ok('the Stats month card offers it too', /data-film-open="2026-10"/.test(monthCardHTML()));
+    } finally {
+      window.todayStr = realToday; logDate = snapLog; _lt = snapLt;
+      keys.forEach(k => { if (snap[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, snap[k]); });
+    }
+  })();
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v269';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v270';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -1617,8 +1617,10 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w33',
+  v: 'w34',
   items: [
+    '✉️ <b>Letters to future you</b> — write a letter today and seal it until a day you choose: your birthday, New Year, a year from now. Add a photo or a voice note if you like. Until that day nobody can read it, not even you; then it waits for you at the top of the Log. Find it in ☰ Menu ▸ Letters.',
+    '🎬 <b>Your month as a film</b> — in the first week of a month the Log offers last month as a thirty-second film: every day as a colour, your best day and what you wrote that day, the habits you kept, a photo. Watch any month from Stats ▸ Month in review. In a browser you can also save it as a video to share.',
     '🔎 <b>Your first pattern</b> — after your third logged day, the Log shows what was different about your best day so far: sleep, habits, deep work. A few days in, Daylog also asks one question: what would make it worth opening every day? Nothing is sent unless you tap Send, and it opens your own email app first.',
     '🎨 <b>Three new styles</b> — <b>Clay</b> (warm ivory, terracotta and serif titles), <b>Dot</b> (pure black with dot-matrix numbers and one red light) and <b>Glass</b> (frosted bars, soft grey and crisp blue, in light or dark). Try them in Settings ▸ Style & appearance.',
     '🎙️ <b>Recordings</b> — talk instead of typing. Record for as long as you like (up to three hours), pause, carry on, and stop. With Play update 123 it keeps going with the screen off; before that, keep Daylog open while you record. Find them in ☰ Menu ▸ Recordings or tap <b>Recordings</b> under your journal. Play them back, rename them, move one to another day, share one as an audio file, and paste its words back with <b>Add transcript</b>: they go into that day\'s journal. Recordings stay on this phone and are not in backup files.',
@@ -2481,7 +2483,7 @@ function renderToday() {
      that are real form fields (1-10 scales, plain numbers) as a card at its own position. */
   const glOpen = wideNums.find(f => f.key === _glanceOpen);
   const SEC = {
-    fresh: () => freshHTML() + nudgeCardHTML(),
+    fresh: () => letterLogHTML() + freshHTML() + nudgeCardHTML(),
     ring: () => '',
     onthisday: () => `<div id="otd-slot">${throwbackHTML()}</div>`,
     core: () => ((coreScales || simpleRows) ? `<div class="card glance core-more">${coreScales}${simpleRows}</div>` : ''),
@@ -5919,7 +5921,7 @@ function runSearch(q) {
   if (mealRows.length) groups.push(['🍽️ Meals', mealRows]);
   // Photo captions: the thumbnail opens the photo, the rest of the row opens its day.
   const capRows = [];
-  _media.forEach(r => { if (r.kind === 'photo' && hit(r.caption)) capRows.push(r); });
+  _media.forEach(r => { if (r.kind === 'photo' && r.ctx.indexOf('letter:') !== 0 && hit(r.caption)) capRows.push(r); });   // a letter's photos stay inside it
   capRows.sort((a, b) => b.day.localeCompare(a.day));
   if (capRows.length) groups.push(['📷 Photo captions', capRows.map(r =>
     `<div class="sr-row sr-photo" data-sr="${r.ctx === 'log' ? 'log' : r.ctx.indexOf('doc:') === 0 ? 'doc' : 'note'}" data-d="${r.day}"${r.ctx.indexOf('doc:') === 0 ? ` data-id="${escapeHtml(r.ctx.slice(4))}"` : ''}>
@@ -10035,7 +10037,7 @@ function voicePaint() {
    Log screen around a half-typed journal. */
 function mediaSlot(ctx, day, opts) {
   opts = opts || {};
-  return `<div class="media-slot${opts.compact ? ' compact' : ''}${opts.recOnly ? ' rec-only' : ''}" data-mctx="${escapeHtml(ctx)}" data-mday="${escapeHtml(day)}"${opts.compact ? ' data-mcompact="1"' : ''}${opts.recOnly ? ' data-mreconly="1"' : ''}>${mediaSlotHTML(ctx, day, opts)}</div>`;
+  return `<div class="media-slot${opts.compact ? ' compact' : ''}${opts.recOnly ? ' rec-only' : ''}" data-mctx="${escapeHtml(ctx)}" data-mday="${escapeHtml(day)}"${opts.compact ? ' data-mcompact="1"' : ''}${opts.recOnly ? ' data-mreconly="1"' : ''}${opts.noEmpty ? ' data-mnoempty="1"' : ''}>${mediaSlotHTML(ctx, day, opts)}</div>`;
 }
 function mediaSlotHTML(ctx, day, opts) {
   opts = opts || {};
@@ -10056,7 +10058,7 @@ function mediaSlotHTML(ctx, day, opts) {
       </div></div>` : '';
   if (opts.recOnly) return recBar;   // a page's own blocks show its media; this slot only shows a recording in progress
   if (opts.compact) return grid + (vlist ? `<div class="vlist">${vlist}</div>` : '') + recBar;
-  const empty = !items.length && !recHere
+  const empty = !items.length && !recHere && !opts.noEmpty
     ? `<div class="media-empty">A photo of something from today, or a voice note while it is fresh. They stay on this phone and are saved in your backup file.</div>` : '';
   const acts = recHere ? '' : `<div class="media-acts">
       <button class="m-act" data-madd="camera" data-mctx="${escapeHtml(ctx)}" data-mday="${escapeHtml(day)}">${icon('camera', 20)}<span>Camera</span></button>
@@ -10080,7 +10082,7 @@ function refreshMediaSlots() {
   const hs = document.getElementById('s-history');
   if (hs && hs.classList.contains('on') && !histDay && histTab === 'photos') { const y = window.scrollY; renderHistory(); window.scrollTo({ top: y, behavior: 'instant' }); }
   document.querySelectorAll('.media-slot').forEach(s => {
-    s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact, recOnly: !!s.dataset.mreconly });
+    s.innerHTML = mediaSlotHTML(s.dataset.mctx, s.dataset.mday, { compact: !!s.dataset.mcompact, recOnly: !!s.dataset.mreconly, noEmpty: !!s.dataset.mnoempty });
   });
   voicePaint();
   const lc = document.getElementById('media-log-count');
@@ -10353,7 +10355,7 @@ function mediaItemValid(it) {
     && typeof it.id === 'string' && /^[\w-]{1,40}$/.test(it.id)
     && (it.kind === 'photo' || it.kind === 'voice')
     && typeof it.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.day)
-    && typeof it.ctx === 'string' && /^(log|note:[\w-]{1,40}|doc:[\w-]{1,40})$/.test(it.ctx)
+    && typeof it.ctx === 'string' && /^(log|note:[\w-]{1,40}|doc:[\w-]{1,40}|letter:[\w-]{1,40})$/.test(it.ctx)
     && typeof it.data === 'string' && it.data.length > 0
     && (it.mime == null || (typeof it.mime === 'string' && /^(image|audio)\/[\w.+-]+(;[\w=.,+ -]*)?$/.test(it.mime)));
 }
@@ -11381,6 +11383,7 @@ const BACKUP_KEYS = ['entries', 'tasks', 'notes', 'plans', 'projects', 'pjnames'
   'hapticsOff', 'ringOff', 'throwbackOff', 'moodMeterOff', 'nudgeOff',
   'usageDisclosure', 'exactAsked',
   'meals', 'meallib', 'mealshop',   // Meals: the plan, your meals, the shopping list
+  'letters',                        // v270: sealed letters to future you (their photos/voice ride the media section)
   /* Added v231, and the v231 note about it was WRONG. dp.settings — name, reminder time, sync
      URL — was never actually being lost: backupBlob() special-cased it as `{ settings:
      DB.settings() }` and importData had a matching `d.settings` branch, both there since the
@@ -11407,6 +11410,7 @@ const BACKUP_EXCLUDED = [
   'errlog',                            // crash log for the feedback mail, not user data
   'onboarded', 'toured', 'whatsnew',   // one-shot "seen it" flags for THIS install
   'firstSeen', 'insightSeen', 'checkin',   // v269: first open here, first-pattern card seen, day-5 question answered
+  'filmSeen',                          // v270: which month's film the Log already offered here
   'notifAsk',                          // the one-time notification ask; permission belongs to this device
   'notifDone',                         // notification presses already handled here (replayed intents are ignored)
   'reviewAsk',                         // Play rating-sheet asks on this install (Google's quota is per device too)
@@ -12640,6 +12644,7 @@ function freshHTML() {
       <div class="fresh-txt"><div class="fresh-t">${title}</div><div class="fresh-l">${line}</div></div>
       <button type="button" class="fresh-x" data-fresh-x="${lm.k}" aria-label="Dismiss">✕</button>
     </div>
+    ${lm.kind === 'month' && filmMonthOk(ymPrev(ymOf(todayStr()))) ? `<button type="button" class="btn btn-primary btn-sm film-go" data-film-open="${ymPrev(ymOf(todayStr()))}">${icon('playFill', 15)} Watch ${MR_MON[+ymPrev(ymOf(todayStr())).slice(5, 7) - 1]} as a film</button>` : ''}
   </div>`;
 }
 
@@ -12722,6 +12727,7 @@ function nudgeCardKind() {
   if (localStorage.getItem('dp.onboarded') !== '1' || tourIdx !== -1) return '';
   if (freshLandmark() && !freshSeen()[freshLandmark().k]) return '';   // a landmark card owns today
   try { if (notifAskKind()) return ''; } catch (e) {}
+  try { if (filmCardYM()) return 'film'; } catch (e) {}                 // last month's film, first week only
   const seen = localStorage.getItem('dp.insightSeen') || '';
   if (!seen && firstInsight()) return 'insight';
   if (seen === todayStr()) return '';                                   // one card a day
@@ -12732,6 +12738,17 @@ function nudgeCardKind() {
 let _ciDraft = '';   // the half-written answer survives a Log re-render
 function nudgeCardHTML() {
   const k = nudgeCardKind();
+  if (k === 'film') {
+    const ym = filmCardYM(), mon = MR_MON[+ym.slice(5, 7) - 1];
+    return `<div class="card fresh-card film-card">
+      <div class="fresh-body">
+        <div class="fresh-ico">🎬</div>
+        <div class="fresh-txt"><div class="fresh-t">Your ${mon}, in thirty seconds</div><div class="fresh-l">A short film of last month, made on this phone from your own log.</div></div>
+        <button type="button" class="fresh-x" data-film-x="${ym}" aria-label="Dismiss">✕</button>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm film-go" data-film-open="${ym}">${icon('playFill', 15)} Watch it</button>
+    </div>`;
+  }
   if (k === 'insight') {
     const ins = firstInsight();
     return `<div class="card fresh-card ins-card">
@@ -12779,6 +12796,792 @@ document.addEventListener('click', (ev) => {
   const c = t.closest('.ci-card');
   if (c) c.innerHTML = '<div class="fresh-t">Thank you 💛</div><div class="fresh-l">Your email app should open with your answer. Every answer gets read.</div>';
   _ciDraft = ''; buzz(12);
+});
+
+/* ============================================================
+   SEALED LETTERS (v270) — write to future you.
+
+   A letter is written today and sealed until a day you pick: a birthday, New Year, a year on.
+   Until that day nothing of it shows anywhere — not the words, not its photos or voice note,
+   not in Search — so the only thing the app can say about it is when it opens. The Log carries
+   a slim countdown to the next one; on the day a card says it is ready, and opening it is a
+   small ceremony before it reads like any other page.
+
+   dp.letters = [{ id, created: 'YYYY-MM-DD', at: ms, openOn: 'YYYY-MM-DD', text,
+                   sealed: bool, sealedAt?: ms, openedAt: ms | null }]
+   sealed:false is a draft — still being written, readable and editable. A sealed letter is
+   never edited again; only openedAt is set, once. Photos and voice notes ride the media store
+   as ctx 'letter:<id>', so the backup file carries them like any other. NOT sent to the Sheet:
+   a sealed letter in a spreadsheet cell could be read early.
+   ============================================================ */
+const LETTER_NOTIF_ID = 791;            // the next letter's "it opens today" notification (reminders use <700)
+const LETTER_MAX = 20000;               // characters: a long letter, not a book
+/* var, not let: show() and handleBack() read these, and must not hit the temporal dead zone if
+   either runs before this part of the file has been evaluated. */
+var _lt = null;                         // null = the list | { mode: 'write' | 'opening' | 'read', id }
+var _ltSaveT = null, _ltDelArm = null, _ltJust = null;
+
+function lettersAll() {
+  const v = safeParse(localStorage.getItem('dp.letters'), []);
+  return Array.isArray(v) ? v.filter(l => l && typeof l.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(l.openOn || '')) : [];
+}
+function lettersSave(list) {
+  const ok = safeSet('dp.letters', JSON.stringify(list));
+  try { letterNotifSchedule(); } catch (e) {}
+  return ok;
+}
+function letterById(id) { return lettersAll().find(l => l.id === id) || null; }
+function letterPatch(id, patch) {
+  const all = lettersAll(), i = all.findIndex(l => l.id === id);
+  if (i < 0) return false;
+  all[i] = Object.assign({}, all[i], patch);
+  return lettersSave(all);
+}
+function letterLocked(l, t) { return !!(l && l.sealed && l.openOn > (t || todayStr())); }
+function letterReady(l, t) { return !!(l && l.sealed && !l.openedAt && l.openOn <= (t || todayStr())); }
+function letterEmpty(l) {
+  if (!l) return true;
+  if ((l.text || '').trim()) return false;
+  try { if (mediaHas('letter:' + l.id) || (_rec && _rec.ctx === 'letter:' + l.id)) return false; } catch (e) {}
+  return true;
+}
+function letterDays(from, to) { return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000); }
+function letterDate(s) { return new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
+/* How long, the way people say it: "12 days", "3 weeks", "6 months", "1 year". */
+function letterSpan(days) {
+  if (days < 14) return days === 1 ? '1 day' : days + ' days';
+  if (days < 28) return Math.round(days / 7) + ' weeks';
+  if (days < 335) { const m = Math.max(1, Math.round(days / 30.44)); return m + (m === 1 ? ' month' : ' months'); }
+  const y = Math.round(days / 365.25); return y + (y === 1 ? ' year' : ' years');
+}
+function letterIn(days) { return days <= 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + letterSpan(days); }
+function letterAgo(days) { return days <= 0 ? 'today' : days === 1 ? 'yesterday' : letterSpan(days) + ' ago'; }
+/* Calendar months, clamped: 31 Jan + 1 month is the last day of February, not 3 March. */
+function letterAddMonths(s, n) {
+  const y = +s.slice(0, 4), m = +s.slice(5, 7) - 1 + n, d = +s.slice(8, 10);
+  return todayStr(new Date(y, m, Math.min(d, new Date(y, m + 1, 0).getDate())));
+}
+function letterPresets(t) {
+  t = t || todayStr();
+  return [
+    { l: 'In a month', d: letterAddMonths(t, 1) },
+    { l: 'In 6 months', d: letterAddMonths(t, 6) },
+    { l: 'In a year', d: letterAddMonths(t, 12) },
+    { l: 'New Year', d: (+t.slice(0, 4) + 1) + '-01-01' },
+  ];
+}
+function letterNew() {
+  const t = todayStr();
+  const l = { id: 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), created: t, at: Date.now(),
+    openOn: letterAddMonths(t, 12), text: '', sealed: false, openedAt: null };
+  const all = lettersAll(); all.unshift(l);
+  if (lettersSave(all) === false) { toast('Your phone is out of space — the letter could not be started', true); return null; }
+  return l;
+}
+async function letterDelete(id) {
+  let ids = [];
+  try { ids = mediaList('letter:' + id, null).map(r => r.id); } catch (e) {}
+  if (ids.length && !(await mediaDelete(ids))) return false;
+  return lettersSave(lettersAll().filter(l => l.id !== id));
+}
+/* Saves what is in the box. Called on a pause in typing, before anything re-renders, and on leave. */
+function letterFlush() {
+  clearTimeout(_ltSaveT); _ltSaveT = null;
+  const ta = document.getElementById('lt-text');
+  if (!ta || !_lt || _lt.mode !== 'write') return;
+  const l = letterById(_lt.id); if (!l || l.sealed) return;
+  const v = ta.value.slice(0, LETTER_MAX);
+  if (v !== (l.text || '') && letterPatch(l.id, { text: v }) === false) toast('Your phone is out of space — the letter is not saving', true);
+}
+/* Leaving the letter being written. An empty draft is dropped, a little later: a voice note
+   still being written to storage must land first, or its letter would vanish under it. */
+function letterLeave() {
+  letterFlush();
+  const id = _lt && _lt.mode === 'write' ? _lt.id : null;
+  _lt = null; _ltDelArm = null;
+  if (id) setTimeout(() => {
+    const l = letterById(id);
+    if (l && !l.sealed && letterEmpty(l) && !(_lt && _lt.id === id)) lettersSave(lettersAll().filter(x => x.id !== id));
+  }, 1500);
+}
+function letterOpen(id) {
+  _lt = { mode: 'opening', id }; _ltDelArm = null;
+  renderLetters(); window.scrollTo(0, 0); buzz(12);
+  let reduce = false; try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  setTimeout(() => {
+    if (!_lt || _lt.id !== id || _lt.mode !== 'opening') return;   // left during the animation: still unopened
+    letterPatch(id, { openedAt: Date.now() });
+    _lt = { mode: 'read', id };
+    if (isOn('letters')) renderLetters();
+  }, reduce ? 250 : 1900);
+}
+
+/* ---------- the Log ---------- */
+function letterLogHTML() {
+  const t = todayStr();
+  if (logDate !== t) return '';
+  const all = lettersAll();
+  const ready = all.filter(l => letterReady(l, t)).sort((a, b) => a.openOn.localeCompare(b.openOn));
+  if (ready.length) {
+    const l = ready[0];
+    return `<div class="card lt-log">
+      <div class="lt-log-ico" aria-hidden="true">✉️</div>
+      <div class="lt-log-txt"><div class="lt-log-t">${ready.length > 1 ? ready.length + ' letters from you are ready' : 'A letter from you is ready'}</div>
+        <div class="lt-log-l">You wrote it on ${escapeHtml(letterDate(l.created))}, ${letterAgo(letterDays(l.created, t))}.</div></div>
+      <button type="button" class="btn btn-primary btn-sm" data-lt-open="${l.id}">Open</button>
+    </div>`;
+  }
+  const locked = all.filter(l => letterLocked(l, t)).sort((a, b) => a.openOn.localeCompare(b.openOn));
+  if (!locked.length) return '';
+  return `<button type="button" class="lt-pill" data-lt-list><span aria-hidden="true">✉️</span>
+    ${locked.length > 1 ? 'Your next letter' : 'Your letter'} opens ${letterIn(letterDays(t, locked[0].openOn))}</button>`;
+}
+
+/* Its own menu row, like Recordings: not a tab, so a fresh install's menu stays at nine. */
+function letterDrawerHTML(cur) {
+  const t = todayStr(), all = lettersAll();
+  const ready = all.filter(l => letterReady(l, t)).length;
+  const next = all.filter(l => letterLocked(l, t)).sort((a, b) => a.openOn.localeCompare(b.openOn))[0];
+  const peek = ready ? (ready > 1 ? ready + ' letters are ready' : 'A letter is ready to open')
+    : next ? 'Next one opens ' + letterIn(letterDays(t, next.openOn)) : 'Write to future you';
+  return `<button class="drawer-row${cur === 'letters' ? ' on' : ''}" data-screen="letters">
+      <span class="drawer-ico">${icon('mail', 21)}</span>
+      <span class="drawer-lbl"><span>Letters</span><span class="drawer-peek">${escapeHtml(peek)}</span></span></button>`;
+}
+
+/* ---------- the screen ---------- */
+const LT_ENV_SVG = `<svg viewBox="0 0 64 48" width="64" height="48" aria-hidden="true"><rect x="3" y="5" width="58" height="38" rx="5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M5 9l27 19L59 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="32" cy="29" r="6" fill="var(--lt-seal, #c2410c)"/></svg>`;
+function letterDelRowHTML(l) {
+  return `<div class="lt-delq"><span>${l.sealed && !l.openedAt ? 'Delete it without reading it? It cannot be undone.' : 'Delete this letter? It cannot be undone.'}</span>
+    <button type="button" class="btn btn-ghost btn-sm" data-lt-del-no>Keep</button>
+    <button type="button" class="btn btn-sm pj-danger" data-lt-del-yes="${l.id}">Delete</button></div>`;
+}
+function letterListHTML() {
+  const t = todayStr(), all = lettersAll();
+  const ready = all.filter(l => letterReady(l, t)).sort((a, b) => a.openOn.localeCompare(b.openOn));
+  const locked = all.filter(l => letterLocked(l, t)).sort((a, b) => a.openOn.localeCompare(b.openOn));
+  const drafts = all.filter(l => !l.sealed && !letterEmpty(l));
+  const opened = all.filter(l => l.sealed && l.openedAt).sort((a, b) => b.openedAt - a.openedAt);
+  const hero = `<div class="card lt-hero">
+      <div class="lt-hero-ico">${LT_ENV_SVG}</div>
+      <div class="lt-hero-t">${all.length ? 'Letters to future you' : 'Write to future you'}</div>
+      <div class="lt-hero-l">Seal a letter until a day you choose: your birthday, New Year, a year from now. Until then nobody can read it, not even you.</div>
+      <button type="button" class="btn btn-primary" data-lt-new>${icon('pencil', 18)} Write a letter</button>
+    </div>`;
+  const sec = (h, rows) => rows.length ? `<h3 class="lt-sec">${h}</h3>${rows.join('')}` : '';
+  const readyRows = ready.map(l => `<button type="button" class="lt-env ready" data-lt-open="${l.id}">
+      <span class="lt-env-ico" aria-hidden="true">✉️</span>
+      <span class="lt-env-txt"><b>Ready to open</b><span>Written ${escapeHtml(letterDate(l.created))}, ${letterAgo(letterDays(l.created, t))}</span></span>
+      <span class="lt-env-go">Open</span></button>`);
+  const lockedRows = locked.map(l => `<div class="lt-env sealed${_ltJust === l.id ? ' just' : ''}">
+      <span class="lt-env-seal" aria-hidden="true"></span>
+      <span class="lt-env-txt"><b>Opens ${letterIn(letterDays(t, l.openOn))}</b><span>${escapeHtml(letterDate(l.openOn))} · written ${escapeHtml(letterDate(l.created))}</span></span>
+      <button type="button" class="lt-env-del" data-lt-del="${l.id}" aria-label="Delete without reading">${icon('trash', 16)}</button>
+    </div>${_ltDelArm === l.id ? letterDelRowHTML(l) : ''}`);
+  const snip = s => escapeHtml((s || '').replace(/\s+/g, ' ').trim().slice(0, 90));
+  const draftRows = drafts.map(l => `<button type="button" class="lt-row" data-lt-edit="${l.id}">
+      <span class="lt-row-t"><b>Draft</b> · started ${escapeHtml(letterDate(l.created))}</span><span class="lt-row-s">${snip(l.text) || 'A voice note or photo'}</span></button>`);
+  const openedRows = opened.map(l => `<button type="button" class="lt-row" data-lt-read="${l.id}">
+      <span class="lt-row-t"><b>${escapeHtml(letterDate(l.created))}</b> · opened ${escapeHtml(letterDate(todayStr(new Date(l.openedAt))))}</span><span class="lt-row-s">${snip(l.text) || 'A voice note or photo'}</span></button>`);
+  _ltJust = null;
+  return hero + sec('Ready', readyRows) + sec('Sealed', lockedRows) + sec('Drafts', draftRows) + sec('Opened', openedRows)
+    + `<div class="hint lt-foot">Letters stay on this phone and are saved in your backup file. They are not sent to your Google Sheet.</div>`;
+}
+function letterWriteHTML(l) {
+  const t = todayStr(), left = letterDays(t, l.openOn);
+  return `<button type="button" class="lt-back" data-lt-back>${icon('chevL', 18)} Letters</button>
+    <div class="card lt-paper">
+      <textarea id="lt-text" class="lt-text" maxlength="${LETTER_MAX}" placeholder="Dear future me… What is today like? What are you hoping for? What should you remember, forgive or check on?">${escapeHtml(l.text || '')}</textarea>
+      <div class="lt-sign">— me, ${escapeHtml(letterDate(l.created))}</div>
+      ${mediaSlot('letter:' + l.id, l.created, { noEmpty: true })}
+    </div>
+    <div class="card lt-when">
+      <div class="lt-when-t">Open it on</div>
+      <div class="lt-chips">${letterPresets(t).map(p => `<button type="button" class="ss-chip${p.d === l.openOn ? ' on' : ''}" data-lt-when="${p.d}">${p.l}</button>`).join('')}</div>
+      <label class="lt-date"><span>Or pick a day</span><input type="date" id="lt-date" min="${addDays(t, 1)}" value="${l.openOn}"></label>
+      <div class="hint">${left > 0 ? `${escapeHtml(letterDate(l.openOn))}, ${letterIn(left)}. That morning it waits for you at the top of the Log.` : 'Pick a day after today.'}</div>
+    </div>
+    <div class="lt-acts">
+      <button type="button" class="btn btn-ghost" data-lt-discard>Discard</button>
+      <button type="button" class="btn btn-primary" data-lt-seal>🔒 Seal it</button>
+    </div>
+    <div class="hint lt-seal-note" id="lt-seal-note">It saves as you write. Seal it when it is done.</div>`;
+}
+function letterOpeningHTML(l) {
+  return `<div class="lt-opening" role="status">
+      <div class="lt-anim" aria-hidden="true"><div class="lt-anim-paper"></div><div class="lt-anim-back"></div><div class="lt-anim-flap"></div></div>
+      <div class="lt-opening-t">A letter from ${escapeHtml(letterDate(l.created))}</div>
+    </div>`;
+}
+function letterReadHTML(l) {
+  const waited = letterDays(l.created, l.openOn);
+  const hasMedia = (() => { try { return mediaHas('letter:' + l.id); } catch (e) { return false; } })();
+  return `<button type="button" class="lt-back" data-lt-back>${icon('chevL', 18)} Letters</button>
+    <div class="card lt-paper read">
+      <div class="lt-meta">Written ${escapeHtml(letterDate(l.created))} · sealed for ${letterSpan(Math.max(1, waited))}</div>
+      ${(l.text || '').trim() ? `<div class="lt-body">${escapeHtml(l.text)}</div>` : ''}
+      ${hasMedia ? mediaSlot('letter:' + l.id, l.created, { compact: true }) : ''}
+      <div class="lt-sign">— me, ${escapeHtml(letterDate(l.created))}</div>
+    </div>
+    <div class="lt-acts">
+      <button type="button" class="btn btn-ghost" data-lt-del="${l.id}">${icon('trash', 16)} Delete</button>
+      <button type="button" class="btn btn-primary" data-lt-new>Write another</button>
+    </div>${_ltDelArm === l.id ? letterDelRowHTML(l) : ''}`;
+}
+function renderLetters() {
+  const sc = document.getElementById('s-letters'); if (!sc) return;
+  let l = _lt ? letterById(_lt.id) : null;
+  if (_lt && !l) _lt = null;
+  // A sealed letter is never shown before its day, whatever state asked for it.
+  if (_lt && _lt.mode !== 'write' && letterLocked(l)) _lt = null;
+  if (_lt && _lt.mode === 'write' && l.sealed) _lt = null;
+  if (_lt && _lt.mode === 'read' && letterReady(l)) _lt = { mode: 'opening', id: l.id };
+  document.getElementById('screen-title').textContent = 'Letters';
+  document.getElementById('screen-sub').textContent = !_lt ? 'Write to future you' : _lt.mode === 'write' ? 'Sealed until the day you choose' : 'From you, ' + letterAgo(letterDays(l.created, todayStr()));
+  sc.innerHTML = `<div class="lt-wrap">${!_lt ? letterListHTML() : _lt.mode === 'write' ? letterWriteHTML(l) : _lt.mode === 'opening' ? letterOpeningHTML(l) : letterReadHTML(l)}</div>`;
+}
+
+/* ---------- the next letter's notification (Play app) ---------- */
+async function letterNotifSchedule() {
+  if (!nativeShell()) return;
+  const LN = window.Capacitor.Plugins.LocalNotifications;
+  try {
+    await LN.cancel({ notifications: [{ id: LETTER_NOTIF_ID }] });
+    const perm = LN.checkPermissions ? await LN.checkPermissions() : null;
+    if (perm && perm.display !== 'granted') return;
+    const now = Date.now();
+    const next = lettersAll().filter(l => l.sealed && !l.openedAt)
+      .map(l => ({ l, at: new Date(l.openOn + 'T09:00:00') })).filter(x => x.at.getTime() > now)
+      .sort((a, b) => a.at - b.at)[0];
+    if (!next) return;
+    await LN.schedule({ notifications: [{ id: LETTER_NOTIF_ID, smallIcon: NOTIF_ICON, title: '✉️ A letter from you',
+      body: `You wrote it on ${letterDate(next.l.created)}. It opens today.`, extra: { go: 'letters' },
+      schedule: { at: next.at, allowWhileIdle: true } }] });
+  } catch (e) {}
+}
+(function setupLetterTap() {
+  if (!nativeShell()) return;
+  try {
+    window.Capacitor.Plugins.LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
+      const x = e && e.notification && e.notification.extra;
+      if (!x || x.go !== 'letters' || localStorage.getItem('dp.onboarded') !== '1') return;
+      try { navigateTo('letters'); } catch (_) {}
+    });
+  } catch (e) {}
+  setTimeout(() => { try { letterNotifSchedule(); } catch (e) {} }, 4000);
+})();
+
+document.addEventListener('input', (ev) => {
+  if (!ev.target || ev.target.id !== 'lt-text') return;
+  clearTimeout(_ltSaveT); _ltSaveT = setTimeout(letterFlush, 500);
+  const b = document.querySelector('[data-lt-seal].armed');
+  if (b) { b.classList.remove('armed'); b.textContent = '🔒 Seal it'; }
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) letterFlush(); });
+document.addEventListener('change', (ev) => {
+  if (!ev.target || ev.target.id !== 'lt-date' || !_lt || _lt.mode !== 'write') return;
+  const v = ev.target.value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v <= todayStr()) { toast('Pick a day after today'); return; }
+  letterFlush(); letterPatch(_lt.id, { openOn: v }); renderLetters();
+});
+document.addEventListener('click', async (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-lt-new],[data-lt-edit],[data-lt-open],[data-lt-read],[data-lt-back],[data-lt-when],[data-lt-seal],[data-lt-discard],[data-lt-del],[data-lt-del-yes],[data-lt-del-no],[data-lt-list]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.ltList !== undefined) { navigateTo('letters'); return; }
+  if (d.ltNew !== undefined) {
+    if (!isOn('letters')) navigateTo('letters'); else letterLeave();
+    const l = letterNew(); if (!l) return;
+    _lt = { mode: 'write', id: l.id }; renderLetters(); window.scrollTo(0, 0);
+    setTimeout(() => { const ta = document.getElementById('lt-text'); if (ta) ta.focus(); }, 60);
+    return;
+  }
+  if (d.ltOpen) {
+    const l = letterById(d.ltOpen);
+    if (!isOn('letters')) navigateTo('letters');
+    if (l && letterReady(l)) letterOpen(l.id); else renderLetters();
+    return;
+  }
+  if (d.ltEdit) { const l = letterById(d.ltEdit); if (l && !l.sealed) { _lt = { mode: 'write', id: l.id }; renderLetters(); window.scrollTo(0, 0); } return; }
+  if (d.ltRead) { const l = letterById(d.ltRead); if (l && l.openedAt) { _lt = { mode: 'read', id: l.id }; _ltDelArm = null; renderLetters(); window.scrollTo(0, 0); } return; }
+  if (d.ltBack !== undefined) { letterLeave(); renderLetters(); window.scrollTo(0, 0); return; }
+  if (d.ltDelNo !== undefined) { _ltDelArm = null; renderLetters(); return; }
+  if (d.ltDel) { _ltDelArm = _ltDelArm === d.ltDel ? null : d.ltDel; renderLetters(); return; }
+  if (d.ltDelYes) {
+    const ok = await letterDelete(d.ltDelYes);
+    if (ok === false) { toast('Could not delete it — try again', true); return; }
+    _ltDelArm = null; if (_lt && _lt.id === d.ltDelYes) _lt = null;
+    renderLetters(); toast('Letter deleted'); return;
+  }
+  if (!_lt || _lt.mode !== 'write') return;
+  const l = letterById(_lt.id); if (!l) return;
+  if (d.ltWhen) { letterFlush(); letterPatch(l.id, { openOn: d.ltWhen }); renderLetters(); buzz(5); return; }
+  if (d.ltDiscard !== undefined) {
+    letterFlush();
+    if (!letterEmpty(letterById(l.id)) && !t.classList.contains('armed')) { t.classList.add('armed'); t.textContent = 'Tap again to discard'; return; }
+    if (_rec && _rec.ctx === 'letter:' + l.id) { try { voiceStop(true); } catch (e) {} }
+    _lt = null; await letterDelete(l.id); renderLetters(); window.scrollTo(0, 0); return;
+  }
+  if (d.ltSeal !== undefined) {
+    letterFlush();
+    const cur = letterById(l.id);
+    if (letterEmpty(cur)) { toast('Write something first, or record a voice note'); const ta = document.getElementById('lt-text'); if (ta) ta.focus(); return; }
+    if (_rec && _rec.ctx === 'letter:' + l.id) { toast('Save the voice note first'); return; }
+    if (!(cur.openOn > todayStr())) { toast('Pick a day after today'); return; }
+    if (!t.classList.contains('armed')) {
+      t.classList.add('armed'); t.textContent = 'Tap again to seal it';
+      const n = document.getElementById('lt-seal-note');
+      if (n) n.textContent = `Once sealed you cannot read or change it until ${letterDate(cur.openOn)}.`;
+      buzz(6); return;
+    }
+    if (letterPatch(l.id, { sealed: true, sealedAt: Date.now() }) === false) { toast('Your phone is out of space — it was NOT sealed', true); return; }
+    _lt = null; _ltJust = l.id; renderLetters(); window.scrollTo(0, 0); buzz(20);
+    toast(`Sealed until ${letterDate(cur.openOn)} ✉️`);
+  }
+});
+
+/* ============================================================
+   MONTH FILM (v270) — your month in thirty seconds.
+
+   The Month-in-review deck tells you the numbers; this SHOWS you the month: its name, every day
+   as a colour, the best day and what you wrote on it, the habits you kept, a few big numbers, a
+   photo, and the next month. It is drawn live on a canvas from your own log, on the phone —
+   nothing is stored and nothing leaves the device unless you make a video and share it.
+
+   One renderer (filmDraw) serves both the player and the video: "Make a video" replays the film
+   on the same canvas at 720×1280 while MediaRecorder captures it, so what you saw is what you
+   send. The Play app's share plugin (builds ≤123) takes pictures only, so there the video waits
+   for a native update; the web shares or downloads it.
+   ============================================================ */
+const FILM_W = 1080, FILM_H = 1920, FILM_MIN_DAYS = 3;
+var _film = null;
+
+function filmDayLogged(en) { return !!(en && !en.sample && loggedByHand(en)); }
+function filmMonthOk(ym) {
+  const e = DB.entries(); let n = 0;
+  for (const d in e) if (d.slice(0, 7) === ym && filmDayLogged(e[d])) n++;
+  return n >= FILM_MIN_DAYS;
+}
+/* The Log offers last month's film in the first week of a month, once. */
+function filmCardYM() {
+  const t = todayStr();
+  if (+t.slice(8, 10) > 7) return null;
+  const pm = ymPrev(ymOf(t));
+  if (localStorage.getItem('dp.filmSeen') === pm) return null;
+  return filmMonthOk(pm) ? pm : null;
+}
+/* A journal line short enough for a frame: whole sentences when they fit, else words and "…". */
+function filmClip(s, max) {
+  s = (s || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max), dot = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  if (dot > max * 0.45) return cut.slice(0, dot + 1);
+  return cut.slice(0, cut.lastIndexOf(' ') > 0 ? cut.lastIndexOf(' ') : max).replace(/[,;:\s]+$/, '') + '…';
+}
+/* Everything the film shows, worked out once. Pure but for the stores it reads. */
+function filmData(ym) {
+  const r = monthReview(ym), e = DB.entries();
+  const num = v => (v != null && v !== '' && !isNaN(+v)) ? +v : null;
+  const days = [];
+  for (let i = 1; i <= ymDays(ym); i++) days.push(ym + '-' + String(i).padStart(2, '0'));
+  const cells = days.map(d => ({ d, logged: filmDayLogged(e[d]), mood: e[d] && !e[d].sample ? num(e[d].mood) : null }));
+  const moods = cells.map(c => c.mood).filter(m => m != null);
+  /* The best day: the top mood, and among days that share it the one you wrote most about,
+     then the latest — a tie should show words, not an empty quote. */
+  let best = null;
+  if (moods.length) {
+    const top = Math.max(...moods), jl = d => ((e[d] || {}).journal || '').trim().length;
+    const c = cells.filter(x => x.mood === top).sort((a, b) => (jl(b.d) - jl(a.d)) || b.d.localeCompare(a.d))[0];
+    best = { date: c.d, mood: top };
+  }
+  const jt = best ? ((e[best.date] || {}).journal || '').trim() : '';
+  const quote = jt.split(/\s+/).length >= 4 ? filmClip(jt, 150) : '';   // "ok day" is not a quote
+  const habits = r.habitRows.filter(h => h.done > 0).slice(0, 3);
+  const st = [];
+  if (r.sleep != null) st.push({ v: r.sleep, d: 1, u: ' h', l: 'average sleep' });
+  if (r.steps) st.push({ v: r.steps, d: 0, u: '', l: 'steps' });
+  if (r.deep) st.push({ v: r.deep, d: 0, u: ' h', l: 'of deep work' });
+  if (r.words) st.push({ v: r.words, d: 0, u: '', l: r.words === 1 ? 'word written' : 'words written' });
+  if (r.workouts) st.push({ v: r.workouts, d: 0, u: '', l: r.workouts === 1 ? 'workout day' : 'workout days' });
+  if (r.trackedMs > 0 && r.actRows[0] && r.actRows[0].ms >= 3600000) st.push({ v: r.actRows[0].ms / 3600000, d: 0, u: ' h', l: 'on ' + r.actRows[0].name });
+  let photo = null;
+  try {
+    const ph = [];
+    _media.forEach(m => { if (m.kind === 'photo' && m.ctx === 'log' && typeof m.day === 'string' && m.day.slice(0, 7) === ym) ph.push(m); });
+    const moodOf = d => { const c = cells.find(x => x.d === d); return c && c.mood != null ? c.mood : 0; };
+    ph.sort((a, b) => (moodOf(b.day) - moodOf(a.day)) || ((b.ts || 0) - (a.ts || 0)));
+    photo = ph[0] || null;
+  } catch (err) {}
+  const mon = +ym.slice(5, 7);
+  return { ym, month: MR_MON[mon - 1], year: ym.slice(0, 4), next: MR_MON[mon % 12],
+    cells, lead: (new Date(days[0] + 'T00:00:00').getDay() + 6) % 7, logged: cells.filter(c => c.logged).length,
+    avgMood: moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null,
+    best, quote, habits, stats: st.slice(0, 3), photo };
+}
+function filmScenes(fd) {
+  const s = [{ k: 'title', dur: 3.4 }, { k: 'mood', dur: 5.2 }];
+  if (fd.best) s.push({ k: 'best', dur: fd.quote ? 6 : 4 });
+  if (fd.habits.length) s.push({ k: 'habits', dur: 4.6 });
+  if (fd.stats.length) s.push({ k: 'stats', dur: 4.6 });
+  if (fd.photo) s.push({ k: 'photo', dur: 4.4 });
+  s.push({ k: 'end', dur: 3.8 });
+  return s;
+}
+/* Theme colours as [r,g,b]. Custom properties can hold color-mix() or a colour space the canvas
+   reads differently, so each is resolved by the browser and then read back off a 1px canvas. */
+function filmColors() {
+  const probe = document.createElement('span'); document.body.appendChild(probe);
+  const k = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  const rgb = v => {
+    probe.style.color = ''; probe.style.color = `var(${v})`;
+    k.clearRect(0, 0, 1, 1); k.fillStyle = '#808080'; k.fillStyle = getComputedStyle(probe).color; k.fillRect(0, 0, 1, 1);
+    const d = k.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]];
+  };
+  const c = { bg: rgb('--bg'), text: rgb('--text'), dim: rgb('--text-dim'), accent: rgb('--accent') };
+  probe.style.fontFamily = 'var(--font-display)'; c.display = getComputedStyle(probe).fontFamily || 'sans-serif';
+  c.body = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  probe.remove();
+  return c;
+}
+const filmC = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a == null ? 1 : a})`;
+const filmClamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const filmEase = p => 1 - Math.pow(1 - filmClamp(p), 3);
+const filmBack = p => { p = filmClamp(p); const c = 1.6; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
+function filmRR(x, X, Y, w, h, r) {
+  x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r);
+  x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath();
+}
+function filmText(x, s, X, Y, o) {
+  x.font = `${o.italic ? 'italic ' : ''}${o.weight || 700} ${o.size}px ${o.font}`;
+  x.fillStyle = o.color; x.textAlign = o.align || 'center'; x.textBaseline = 'alphabetic';
+  x.fillText(s, X, Y, o.maxW || 960);
+}
+function filmWrap(x, s, maxW) {
+  const out = []; let cur = '';
+  s.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (cur && x.measureText(t).width > maxW) { out.push(cur); cur = w; } else cur = t; });
+  if (cur) out.push(cur);
+  return out;
+}
+/* Draw the frame at time t (seconds) in 1080×1920 units; the caller has scaled the context. */
+function filmDraw(x, F, t) {
+  const { col } = F;
+  x.globalAlpha = 1; x.fillStyle = filmC(col.bg); x.fillRect(0, 0, FILM_W, FILM_H);
+  const g1x = 540 + Math.sin(t * 0.35) * 280, g1y = 620 + Math.cos(t * 0.27) * 260;
+  let g = x.createRadialGradient(g1x, g1y, 0, g1x, g1y, 950);
+  g.addColorStop(0, filmC(col.accent, 0.30)); g.addColorStop(1, filmC(col.accent, 0));
+  x.fillStyle = g; x.fillRect(0, 0, FILM_W, FILM_H);
+  const warm = F.fd.avgMood != null ? (moodColor(F.fd.avgMood) || '#f2b13c') : '#f2b13c';
+  const g2x = 700 - Math.sin(t * 0.22) * 300, g2y = 1450 + Math.sin(t * 0.31) * 200;
+  g = x.createRadialGradient(g2x, g2y, 0, g2x, g2y, 800);
+  g.addColorStop(0, warm + '40'); g.addColorStop(1, warm + '00');
+  x.fillStyle = g; x.fillRect(0, 0, FILM_W, FILM_H);
+  let acc = 0, i = 0;
+  for (; i < F.scenes.length - 1; i++) { if (t < acc + F.scenes[i].dur) break; acc += F.scenes[i].dur; }
+  const sc = F.scenes[i], lt = Math.max(0, Math.min(t - acc, sc.dur));
+  const last = i === F.scenes.length - 1;
+  const fade = Math.min(1, lt / 0.45, last ? 1 : (sc.dur - lt) / 0.45);
+  x.save(); x.globalAlpha = Math.max(0, fade);
+  try { FILM_SCENE[sc.k](x, F, lt, lt / sc.dur); } catch (e) {}
+  x.restore();
+  x.globalAlpha = 0.55;
+  filmText(x, 'Daylog', 540, 1850, { size: 34, weight: 700, font: col.display, color: filmC(col.text) });
+  x.globalAlpha = 1;
+}
+const FILM_SCENE = {
+  title(x, F, lt) {
+    const { fd, col } = F, base = x.globalAlpha, e = filmEase(lt / 1.1), y = (1 - e) * 70;
+    x.globalAlpha = base * e;
+    filmText(x, fd.month, 540, 900 + y, { size: 170, weight: 800, font: col.display, color: filmC(col.text) });
+    filmText(x, fd.year, 540, 1010 + y, { size: 72, weight: 600, font: col.display, color: filmC(col.dim) });
+    x.globalAlpha = base * filmEase((lt - 0.7) / 0.9);
+    filmText(x, 'your month in thirty seconds', 540, 1170, { size: 46, weight: 500, font: col.body, color: filmC(col.dim) });
+  },
+  mood(x, F, lt, p) {
+    const { fd, col } = F, base = x.globalAlpha;
+    filmText(x, 'How it felt', 540, 330, { size: 78, weight: 800, font: col.display, color: filmC(col.text) });
+    const cell = 118, gap = 16, x0 = (FILM_W - (7 * cell + 6 * gap)) / 2, y0 = 470, n = fd.cells.length;
+    x.globalAlpha = base * 0.6;
+    ['M', 'T', 'W', 'T', 'F', 'S', 'S'].forEach((d, k) => filmText(x, d, x0 + k * (cell + gap) + cell / 2, y0 - 26, { size: 30, weight: 600, font: col.body, color: filmC(col.dim) }));
+    fd.cells.forEach((c, k) => {
+      const pos = fd.lead + k, cx = x0 + (pos % 7) * (cell + gap), cy = y0 + Math.floor(pos / 7) * (cell + gap);
+      const q = (lt - 0.3 - (k / n) * 2.6) / 0.35, s = c.logged || c.mood != null ? filmBack(q) : filmEase(q);
+      if (s <= 0) return;
+      x.globalAlpha = base * Math.min(1, filmClamp(q) * 1.5);
+      const w = cell * s, ox = cx + (cell - w) / 2, oy = cy + (cell - w) / 2;
+      filmRR(x, ox, oy, w, w, 26 * s);
+      if (c.mood != null) { x.fillStyle = moodColor(c.mood); x.fill(); }
+      else if (c.logged) { x.fillStyle = filmC(col.text, 0.26); x.fill(); }
+      else { x.strokeStyle = filmC(col.text, 0.16); x.lineWidth = 3; x.stroke(); }
+    });
+    const rows = Math.ceil((fd.lead + n) / 7), yb = y0 + rows * (cell + gap) + 110;
+    x.globalAlpha = base * filmEase((p - 0.55) / 0.2);
+    filmText(x, fd.logged === 1 ? '1 day logged' : fd.logged + ' days logged', 540, yb, { size: 64, weight: 800, font: col.display, color: filmC(col.text) });
+    if (fd.avgMood != null) filmText(x, `average mood ${(Math.round(fd.avgMood * 10) / 10).toFixed(1)} of 10`, 540, yb + 76, { size: 44, weight: 500, font: col.body, color: filmC(col.dim) });
+  },
+  best(x, F, lt) {
+    const { fd, col } = F, base = x.globalAlpha, b = fd.best;
+    const day = new Date(b.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    const top = fd.quote ? 470 : 700;
+    filmText(x, 'YOUR BEST DAY', 540, top, { size: 40, weight: 800, font: col.body, color: filmC(col.accent) });
+    x.globalAlpha = base * filmEase((lt - 0.2) / 0.7);
+    filmText(x, day, 540, top + 120, { size: 84, weight: 800, font: col.display, color: filmC(col.text) });
+    const r = 74 * filmBack((lt - 0.5) / 0.6);
+    if (r > 0) {
+      x.beginPath(); x.arc(540, top + 290, r, 0, Math.PI * 2); x.fillStyle = moodColor(b.mood) || filmC(col.accent); x.fill();
+      filmText(x, String(b.mood), 540, top + 290 + 26 * (r / 74), { size: 76 * (r / 74), weight: 800, font: col.display, color: '#1b1b1b' });
+    }
+    filmText(x, 'mood, out of 10', 540, top + 420, { size: 40, weight: 500, font: col.body, color: filmC(col.dim) });
+    if (!fd.quote) return;
+    x.font = `italic 400 50px ${col.body}`;
+    const lines = filmWrap(x, '“' + fd.quote + '”', 880).slice(0, 6);
+    const total = lines.join(' ').length, shown = Math.floor(total * filmClamp((lt - 1.3) / 2.6));
+    let used = 0;
+    lines.forEach((ln, k) => {
+      const part = ln.slice(0, Math.max(0, shown - used)); used += ln.length + 1;
+      if (part) filmText(x, part, 100, top + 590 + k * 74, { size: 50, weight: 400, italic: true, font: col.body, color: filmC(col.text), align: 'left', maxW: 880 });
+    });
+  },
+  habits(x, F, lt) {
+    const { fd, col } = F;
+    filmText(x, 'What you kept up', 540, 540, { size: 78, weight: 800, font: col.display, color: filmC(col.text) });
+    fd.habits.forEach((h, k) => {
+      const y = 740 + k * 240, q = filmEase((lt - 0.4 - k * 0.3) / 1.3);
+      filmText(x, `${h.emoji} ${h.label}`, 110, y, { size: 52, weight: 700, font: col.body, color: filmC(col.text), align: 'left', maxW: 640 });
+      filmText(x, h.done === 1 ? '1 day' : h.done + ' days', 970, y, { size: 44, weight: 600, font: col.body, color: filmC(col.dim), align: 'right', maxW: 260 });
+      filmRR(x, 110, y + 38, 860, 34, 17); x.fillStyle = filmC(col.text, 0.12); x.fill();
+      const w = Math.max(34, 860 * (h.pct / 100) * q);
+      if (q > 0) { filmRR(x, 110, y + 38, w, 34, 17); x.fillStyle = filmC(col.accent); x.fill(); }
+    });
+    filmText(x, 'of the days you logged', 540, 740 + fd.habits.length * 240 + 30, { size: 38, weight: 500, font: col.body, color: filmC(col.dim) });
+  },
+  stats(x, F, lt) {
+    const { fd, col } = F, n = fd.stats.length, y0 = 960 - (n - 1) * 165;
+    fd.stats.forEach((s, k) => {
+      const q = filmEase((lt - 0.3 - k * 0.35) / 1.4), v = s.v * q;
+      const txt = (s.d ? v.toFixed(s.d) : Math.round(v).toLocaleString()) + s.u;
+      filmText(x, txt, 540, y0 + k * 330, { size: 136, weight: 800, font: col.display, color: filmC(col.text) });
+      filmText(x, s.l, 540, y0 + k * 330 + 72, { size: 46, weight: 500, font: col.body, color: filmC(col.dim), maxW: 900 });
+    });
+  },
+  photo(x, F, lt, p) {
+    const { fd, col, img } = F;
+    if (!img || !img.naturalWidth) return;
+    const X = 90, Y = 260, W = 900, H = 1220, s = 1 + 0.08 * p;
+    x.save(); filmRR(x, X, Y, W, H, 44); x.clip();
+    const k = Math.max(W / img.naturalWidth, H / img.naturalHeight) * s;
+    const iw = img.naturalWidth * k, ih = img.naturalHeight * k;
+    x.drawImage(img, X + (W - iw) / 2, Y + (H - ih) / 2 - 30 * p, iw, ih);
+    x.restore();
+    filmText(x, new Date(fd.photo.day + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }), 540, 1580,
+      { size: 46, weight: 600, font: col.body, color: filmC(col.dim) });
+  },
+  end(x, F, lt) {
+    const { fd, col } = F, base = x.globalAlpha, e = filmEase(lt / 1.2);
+    x.globalAlpha = base * e;
+    x.font = `800 104px ${col.display}`;
+    const lines = filmWrap(x, fd.next + ' starts now.', 900);
+    lines.forEach((ln, k) => filmText(x, ln, 540, 860 + k * 124 + (1 - e) * 50, { size: 104, weight: 800, font: col.display, color: filmC(col.text) }));
+    x.globalAlpha = base * filmEase((lt - 0.9) / 0.9);
+    filmText(x, 'Keep writing it down.', 540, 880 + lines.length * 124 + 40, { size: 46, weight: 500, font: col.body, color: filmC(col.dim) });
+  },
+};
+
+/* ---------- the player ---------- */
+function filmTotal(F) { return F.scenes.reduce((a, s) => a + s.dur, 0); }
+function filmSceneAt(F, t) { let acc = 0; for (let i = 0; i < F.scenes.length; i++) { if (t < acc + F.scenes[i].dur) return { i, start: acc }; acc += F.scenes[i].dur; } return { i: F.scenes.length - 1, start: acc - F.scenes[F.scenes.length - 1].dur }; }
+function filmSize() {
+  const F = _film; if (!F || !F.cv) return;
+  const stage = F.el.querySelector('.film-stage'), foot = F.el.querySelector('.film-foot');
+  const availH = window.innerHeight - (foot ? foot.offsetHeight : 0) - 24, availW = Math.min(window.innerWidth, 520);
+  const w = Math.floor(Math.min(availW, availH * 9 / 16)), h = Math.floor(w * 16 / 9);
+  stage.style.width = w + 'px'; stage.style.height = h + 'px';
+  if (F.rec) return;   // a recording keeps its own 720×1280 buffer
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  F.cv.width = Math.round(w * dpr); F.cv.height = Math.round(h * dpr);
+}
+function filmFrame() {
+  const F = _film; if (!F) return;
+  const x = F.cv.getContext('2d');
+  x.setTransform(F.cv.width / FILM_W, 0, 0, F.cv.height / FILM_H, 0, 0);
+  filmDraw(x, F, F.t);
+  const at = filmSceneAt(F, F.t);
+  F.el.querySelectorAll('.film-bars b').forEach((b, k) => {
+    b.style.width = (k < at.i ? 100 : k > at.i ? 0 : Math.min(100, (F.t - at.start) / F.scenes[k].dur * 100)) + '%';
+  });
+}
+function filmTick(now) {
+  const F = _film; if (!F) return;
+  const dt = Math.min(0.1, (now - F.last) / 1000); F.last = now;
+  if (F.playing && !F.held) F.t += dt;
+  if (F.t >= F.total) { F.t = F.total; if (F.playing) { F.playing = false; filmFootRender(); } }
+  filmFrame();
+  if (F.rec && F.t >= F.total) { filmRecFinish(); }
+  F.raf = requestAnimationFrame(filmTick);
+}
+function filmSay(msg) {
+  const F = _film; if (!F) { toast(msg); return; }
+  F.msg = msg; filmFootRender();
+  clearTimeout(F.msgT); F.msgT = setTimeout(() => { if (_film === F) { F.msg = ''; filmFootRender(); } }, 4000);
+}
+/* A video needs a recorder, a canvas stream, and a way out: in the Play app that is the native
+   shareFile (builds after 123), since Android's WebView has no Web Share. Without it the button
+   would record for thirty seconds and then fail, so it is not offered. */
+function filmCanVideo(F) {
+  if (typeof MediaRecorder === 'undefined' || !F.cv.captureStream || !filmMime()) return false;
+  if (!window.Capacitor) return true;
+  const sp = Capacitor.Plugins && Capacitor.Plugins.DaylogShare;
+  return !!(sp && typeof sp.shareFile === 'function');
+}
+function filmFootRender() {
+  const F = _film; if (!F) return;
+  const foot = F.el.querySelector('.film-foot');
+  let h;
+  if (F.rec) h = `<div class="film-note"><span class="vrec-dot"></span> Making your video… keep Daylog open (${Math.max(0, Math.ceil(F.total - F.t))} s)</div>`;
+  else if (F.video) h = `<div class="film-btns"><button type="button" class="btn btn-ghost btn-sm" data-film-again>Watch again</button>
+      <button type="button" class="btn btn-primary btn-sm" data-film-send>${icon('share', 16)} Share video</button></div>
+      <div class="film-note">It shows your own words${F.fd.photo ? ' and a photo' : ''}. Watch it before you share it.</div>`;
+  else h = `<div class="film-btns"><button type="button" class="btn btn-ghost btn-sm" data-film-again>${F.playing ? 'Restart' : 'Watch again'}</button>
+      ${filmCanVideo(F) ? `<button type="button" class="btn btn-primary btn-sm" data-film-make>${icon('video', 16)} Make a video</button>` : ''}</div>`;
+  foot.innerHTML = h + (F.msg && !F.rec ? `<div class="film-note film-msg">${escapeHtml(F.msg)}</div>` : '');
+}
+async function filmOpen(ym) {
+  if (!filmMonthOk(ym)) { toast(`Log at least ${FILM_MIN_DAYS} days of a month to make its film`); return; }
+  filmClose();
+  const fd = filmData(ym), scenes = filmScenes(fd), col = filmColors();
+  const el = document.createElement('div');
+  el.id = 'film'; el.className = 'film';
+  el.innerHTML = `<div class="film-stage"><canvas class="film-cv" aria-label="${escapeHtml(fd.month)} ${fd.year}, as a short film"></canvas>
+      <div class="film-bars">${scenes.map(() => '<i><b></b></i>').join('')}</div>
+      <button type="button" class="film-x" data-film-close aria-label="Close">✕</button></div>
+    <div class="film-foot"></div>`;
+  document.body.appendChild(el);
+  const F = _film = { ym, fd, scenes, col, el, cv: el.querySelector('canvas'), img: null, t: 0, total: 0, playing: false, held: false, last: performance.now(), raf: 0, rec: null, video: null };
+  F.total = filmTotal(F);
+  try { safeSet('dp.filmSeen', ym); } catch (e) {}
+  filmFootRender(); filmSize(); filmFrame();
+  requestAnimationFrame(() => el.classList.add('on'));
+  const waits = [];
+  try { if (document.fonts && document.fonts.load) [`800 100px ${col.display}`, `600 50px ${col.display}`, `500 40px ${col.body}`, `italic 400 40px ${col.body}`, `700 40px ${col.body}`].forEach(f => waits.push(document.fonts.load(f).catch(() => {}))); } catch (e) {}
+  if (fd.photo) waits.push(new Promise(res => { const im = new Image(); im.onload = () => { F.img = im; res(); }; im.onerror = () => res(); im.src = mediaUrl(fd.photo, 'f'); }));
+  await Promise.race([Promise.all(waits), new Promise(r => setTimeout(r, 2500))]);
+  if (_film !== F) return;
+  if (fd.photo && !F.img) { F.scenes = F.scenes.filter(s => s.k !== 'photo'); F.total = filmTotal(F); }
+  F.playing = true; F.last = performance.now(); filmFootRender();
+  F.raf = requestAnimationFrame(filmTick);
+  buzz(8);
+}
+function filmClose() {
+  const F = _film; if (!F) return;
+  _film = null;
+  cancelAnimationFrame(F.raf);
+  if (F.rec) { try { F.rec.mr.ondataavailable = null; F.rec.mr.stop(); } catch (e) {} }
+  if (F.video && F.video.url) { try { URL.revokeObjectURL(F.video.url); } catch (e) {} }
+  F.el.classList.remove('on');
+  setTimeout(() => F.el.remove(), 250);
+}
+function filmIsOpen() { return !!_film; }
+function filmJump(dir) {
+  const F = _film; if (!F || F.rec) return;
+  const at = filmSceneAt(F, Math.min(F.t, F.total - 0.001));
+  const into = F.t - at.start;
+  let i = dir < 0 ? (into > 1 ? at.i : at.i - 1) : at.i + 1;
+  if (i >= F.scenes.length) { F.t = F.total; return; }
+  i = Math.max(0, i);
+  F.t = F.scenes.slice(0, i).reduce((a, s) => a + s.dur, 0);
+  if (!F.playing) { F.playing = true; filmFootRender(); }
+}
+function filmMime() {
+  const ok = m => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } };
+  return ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(ok) || '';
+}
+function filmRecStart() {
+  const F = _film; if (!F || F.rec) return;
+  const mime = filmMime();
+  let stream, mr;
+  try {
+    F.cv.width = 720; F.cv.height = 1280;
+    stream = F.cv.captureStream(30);
+    mr = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 3500000 }, mime ? { mimeType: mime } : {}));
+  } catch (e) { filmSize(); filmSay('This phone cannot make videos here'); return; }
+  const chunks = [];
+  mr.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+  F.rec = { mr, chunks, mime: (mr.mimeType || mime || 'video/webm').split(';')[0] };
+  F.t = 0; F.playing = true; F.last = performance.now();
+  if (F.video && F.video.url) { try { URL.revokeObjectURL(F.video.url); } catch (e) {} }
+  F.video = null;
+  mr.start(500);
+  filmFootRender();
+  F.recTick = setInterval(() => { if (_film === F && F.rec) filmFootRender(); }, 1000);
+}
+function filmRecFinish() {
+  const F = _film; if (!F || !F.rec || F.rec.stopping) return;
+  const R = F.rec; R.stopping = true;
+  setTimeout(() => {   // hold the last frame for a beat so the video does not end mid-fade
+    R.mr.onstop = () => {
+      clearInterval(F.recTick);
+      if (_film !== F) return;
+      const blob = new Blob(R.chunks, { type: R.mime });
+      F.rec = null; filmSize();
+      if (!blob.size) { filmSay('The video came out empty. Try again'); return; }
+      F.video = { blob, name: `daylog-${F.ym}.${/mp4/.test(R.mime) ? 'mp4' : 'webm'}` };
+      filmFootRender(); buzz(15);
+    };
+    try { R.mr.stop(); } catch (e) { R.mr.onstop(); }
+  }, 400);
+}
+function filmRecAbort(msg) {
+  const F = _film; if (!F || !F.rec) return;
+  clearInterval(F.recTick);
+  try { F.rec.mr.onstop = null; F.rec.mr.stop(); } catch (e) {}
+  F.rec = null; filmSize();
+  if (msg) filmSay(msg); else filmFootRender();
+}
+async function filmSend() {
+  const F = _film; if (!F || !F.video) return;
+  const { blob, name } = F.video, type = blob.type || 'video/webm';
+  const sp = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.DaylogShare;
+  if (sp && typeof sp.shareFile === 'function') {
+    try { const r = await sp.shareFile({ base64: await blobToB64(blob), filename: name, mime: type }); if (r && r.ok !== false) return; } catch (e) {}
+  }
+  try {
+    const f = new File([blob], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: `${F.fd.month} ${F.fd.year}` }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  if (!window.Capacitor) {
+    const u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 60000);
+    filmSay('Saved to your downloads'); return;
+  }
+  filmSay('Sharing videos needs the next Daylog update from the Play Store');   // not reached: filmCanVideo hides the button there
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && _film && _film.rec) filmRecAbort('Video stopped: Daylog has to stay open while it records'); });
+window.addEventListener('resize', () => { if (_film) { filmSize(); filmFrame(); } });
+/* Stories-style controls: tap the right of the frame for the next part, the left to go back,
+   hold anywhere to pause. Buttons in the frame keep their own clicks. */
+document.addEventListener('pointerdown', (ev) => {
+  const F = _film; if (!F || F.rec || !ev.target.closest || !ev.target.closest('.film-stage') || ev.target.closest('button')) return;
+  F.downAt = Date.now(); F.held = true;
+});
+document.addEventListener('pointerup', (ev) => {
+  const F = _film; if (!F || !F.held) return;
+  F.held = false;
+  if (Date.now() - (F.downAt || 0) > 300) return;   // that was a hold: just resume
+  const r = F.el.querySelector('.film-stage').getBoundingClientRect();
+  filmJump(ev.clientX - r.left < r.width * 0.33 ? -1 : 1);
+});
+document.addEventListener('pointercancel', () => { if (_film) _film.held = false; });
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest && ev.target.closest('[data-film-open],[data-film-close],[data-film-again],[data-film-make],[data-film-send],[data-film-x]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.filmOpen) { filmOpen(d.filmOpen); return; }
+  if (d.filmX !== undefined) { try { safeSet('dp.filmSeen', d.filmX); } catch (e) {} const c = t.closest('.film-card'); if (c) c.remove(); buzz(6); return; }
+  if (d.filmClose !== undefined) { filmClose(); return; }
+  const F = _film; if (!F) return;
+  if (d.filmAgain !== undefined) { if (F.rec) return; F.t = 0; F.playing = true; F.last = performance.now(); filmFootRender(); return; }
+  if (d.filmMake !== undefined) { filmRecStart(); return; }
+  if (d.filmSend !== undefined) { filmSend(); return; }
 });
 
 /* ============================================================
@@ -13148,8 +13951,11 @@ function monthCardHTML() {
     <div class="hint">${fresh
       ? `Your ${r.label} wrap-up is ready — ${r.logged} days logged, ${r.ticks} habits ticked.`
       : `A five-card wrap-up of any month you have logged.`}</div>
-    <button class="btn btn-primary" style="margin-top:10px" data-mr-open="${target}">
-      ${fresh ? `See ${MR_MON[+target.slice(5, 7) - 1]}` : `See ${r.label}`}</button>
+    <div class="mr-entry-btns">
+      <button class="btn btn-primary" data-mr-open="${target}">
+        ${fresh ? `See ${MR_MON[+target.slice(5, 7) - 1]}` : `See ${r.label}`}</button>
+      ${filmMonthOk(target) ? `<button class="btn btn-ghost" data-film-open="${target}">${icon('playFill', 15)} Film</button>` : ''}
+    </div>
   </div>`;
 }
 
@@ -13254,7 +14060,8 @@ function mrRender() {
       <button type="button" class="btn btn-ghost btn-sm" data-mr-step="-1" ${mrPage === 0 ? 'disabled' : ''}>← Back</button>
       <button type="button" class="btn btn-primary btn-sm" data-mr-step="1" ${mrPage === cards.length - 1 ? 'disabled' : ''}>Next →</button>
     </div>
-    <div class="ss-acts"><button type="button" class="btn btn-ghost" data-share-card="pixels">🖼️ Make a share card</button></div>
+    <div class="ss-acts">${filmMonthOk(mrYM) ? `<button type="button" class="btn btn-primary" data-film-open="${mrYM}">${icon('playFill', 15)} Watch ${MR_MON[+mrYM.slice(5, 7) - 1]} as a film</button>` : ''}
+      <button type="button" class="btn btn-ghost" data-share-card="pixels">🖼️ Make a share card</button></div>
     <div class="hint ss-note">Worked out from your log every time you open it. Nothing is stored, and nothing expires.</div>
   </div>`;
 }
@@ -18798,7 +19605,7 @@ function renderDrawer() {
       }).join('')}</div>` : ''}
     </div>` : '';
   document.getElementById('drawer-list').innerHTML =
-    `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}${recDrawerHTML(cur)}` + liftDrawerHTML(cur) + more;
+    `<h3 class="drawer-sec">Your tabs</h3>${items.map(row).join('')}${recDrawerHTML(cur)}${letterDrawerHTML(cur)}` + liftDrawerHTML(cur) + more;
   const st = navCfg().find(n => n.k === 'settings');
   document.getElementById('drawer-foot').innerHTML =
     `<button class="drawer-row ${cur === 'settings' || cur === 'custom' ? 'on' : ''}" data-screen="settings">
@@ -18890,6 +19697,7 @@ function handleBack() {
   if (ssh && ssh.classList.contains('on')) { shareSheetClose(); return; }
   const svh = document.getElementById('savesheet');
   if (svh && svh.classList.contains('on')) { saveSheetClose(); return; }
+  if (filmIsOpen()) { filmClose(); return; }   // the month film sits above the month deck
   const mrd = document.getElementById('mrdeck');
   if (mrd && mrd.classList.contains('on')) { mrClose(); return; }
   if (mediaViewIsOpen()) { mediaViewClose(); return; }
@@ -18922,7 +19730,8 @@ function handleBack() {
   if (cur === 'custom') { show('settings'); return; }   // hub → Settings (mirrors the on-screen back)
   if (cur === 'settings' && settingsPage) { settingsPage = null; renderSettings(); wipeAbandonIfAway(); window.scrollTo(0, 0); return; }
   if (cur === 'history' && histDay) { histDayClose(); return; }
-  if (cur === 'recordings' && _recEdit) { _recEdit = null; recRefresh(); return; }   // a name or transcript being typed closes first
+  if (cur === 'recordings' && _recEdit) { _recEdit = null; recRefresh(); return; }
+  if (cur === 'letters' && (_lt || _ltDelArm)) { letterLeave(); renderLetters(); window.scrollTo(0, 0); return; }   // a name or transcript being typed closes first
   if (cur === 'today' && _editFromHist) { histReturnFromEdit(); return; }   // came from History ▸ Edit
   // 3) not on the home tab → go back to it
   const home = defaultTab();
@@ -19125,7 +19934,7 @@ function renderMore() {
 }
 
 /* ---------- Navigation ---------- */
-const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, recordings: renderRecordings, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
+const RENDER = { awards: renderAwards, projects: renderProjects, money: renderMoney, ask: renderAsk, today: openToday, time: openTime, tasks: renderTasks, notes: renderNotes, plans: renderPlans, focus: renderFocus, waves: renderWaves, gym: openGym, habits: renderHabits, dash: renderDash, cal: renderCal, write: renderWrite, memories: renderMemories, lift: renderLift, recordings: renderRecordings, letters: renderLetters, history: renderHistory, settings: renderSettings, custom: renderCustom, more: renderMore, search: renderSearch };
 RENDER.meals = renderMeals;   // Meals (see the Meals block)
 /* The entrance: the screen's top-level blocks rise in, staggered. Marked per element and only
    once, after the render: an element a later re-render creates just appears, and nothing is
@@ -19145,6 +19954,7 @@ function show(name) {
   if (name !== 'custom') _customFrom = null;          // "back to Habits" only from the Customize page Habits opened
   if (name !== 'today' && name !== 'history') _dayFrom = null;
   if (name !== 'recordings') _recFor = null;          // "save it on that day" only from the Log that opened Recordings
+  if (name !== 'letters' && (_lt || _ltDelArm)) letterLeave();   // a draft is saved, an empty one dropped
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
   if (leaving) { const was = (document.querySelector('.screen.on') || {}).id;
     try { if (was === 's-memories' && curMem) docDiscardIfEmpty(curMem); if (was === 's-write' && curDoc) docDiscardIfEmpty(curDoc); } catch (e) {} }
@@ -19196,6 +20006,7 @@ function navigateTo(name) {
   if (name === 'write') curDoc = null;                      // Write opens the article list
   if (name === 'memories') { curMem = null; memEdit = false; memLinkOpen = false; }   // Memories opens the timeline
   if (name === 'history') histDay = null;                   // History opens the list of days
+  if (name === 'letters') letterLeave();                    // Letters opens the list (a draft saved first)
   if (name === 'projects') pjOpen = null;                   // Projects opens the list
   if (name === 'meals') mealsReset();                       // Meals opens this week, today
   _customFrom = null;
@@ -19278,6 +20089,7 @@ const ICONS = {
   pause:'<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>',
   playFill:'<path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 7 4.5Z" fill="currentColor"/>',
   x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>',
   chevL:'<path d="m15 18-6-6 6-6"/>',
   chevR:'<path d="m9 18 6-6-6-6"/>',
   video:'<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/>',
