@@ -164,7 +164,7 @@ https://forum.atherenergy.com/t/notification-of-charge-completion/42587
 
 ## Be different, not another tracker (Kishore 2026-11-23: "we need to be different… no body expected")
 
-Ideas proposed 2026-11-23. **2 (sealed letters) and 3 (month film) built 2026-11-26 as web v270, not deployed yet** (features.md). 1 and 4 still open:
+Ideas proposed 2026-11-23. **2 (sealed letters) and 3 (month film) built 2026-11-26, live since web v270** (features.md). **4 (anti-streak) REJECTED by Kishore 2026-11-26: "no we need streak" — keep the streak as it is.** 1 still open (needs build 123 on Play):
 1. **Daylog calls you.** Each evening at the user's time, a call-style heads-up notification ("Daylog · your day,
    one minute") with Answer / Not now. Answer opens the recorder; the clip becomes today's entry. Reuses the build-123
    recorder. Doubles as the reminder that fixes the first-3-days drop-off. Play limits true full-screen call screens

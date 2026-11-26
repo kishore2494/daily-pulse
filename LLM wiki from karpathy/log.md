@@ -1,3 +1,9 @@
+## 2026-11-26 — decision: streaks stay
+
+- Proposed replacing the top-bar 🔥 streak with an only-up "days remembered" count (roadmap idea 4, plus a middle
+  path: keep habit streaks, one free missed day a week). Kishore: "no we need streak". Idea 4 dropped; don't
+  re-propose removing or softening the streak.
+
 ## 2026-11-26 — web v271 LIVE (film footer button fix)
 
 - Kishore said "deploy". `deploy.sh --tag` passed every check; Pages built first time; live app.js/sw.js/index.html
