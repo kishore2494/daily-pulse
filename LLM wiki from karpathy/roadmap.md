@@ -120,7 +120,7 @@ Android-first confirmed by Kishore. When Android is live:
 - Zero-cost interim: iPhone users can install the **PWA** (Safari → Add to Home Screen) today.
 
 ## From competitor research (2026-08-18) — ranked web-shippable wins
-Still unbuilt: ~~PIN lock (S)~~ built v273 (fingerprint unlock = native, later) · ~~flexible habit schedules e.g. 3x/week (M)~~ built v272 · ~~CSV import for entries (S; Money has one)~~ built v274 (Daylio + any sheet) · ~~notes per habit check-in~~ built v275 + week-start setting (S, touches ~12 Monday-first spots). Shipped: Year in Pixels (v124) — see competitors.md. Native-only gaps: widgets, Wear OS. Monetization: one-time unlock or free (fits privacy brand).
+Still unbuilt: ~~PIN lock (S)~~ built v273 (fingerprint unlock = native, later) · ~~flexible habit schedules e.g. 3x/week (M)~~ built v272 · ~~CSV import for entries (S; Money has one)~~ built v274 (Daylio + any sheet) · ~~notes per habit check-in~~ built v275 + ~~week-start setting~~ built v276. Shipped: Year in Pixels (v124) — see competitors.md. Native-only gaps: widgets, Wear OS. Monetization: one-time unlock or free (fits privacy brand).
 
 ## Nice-to-haves (not committed)
 - Pomodoro count → Stats card. Widget. Data-viz polish on Stats.

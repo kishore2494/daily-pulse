@@ -1,3 +1,9 @@
+## 2026-11-28 — v275 LIVE (habit notes); v276 built: week starts on Sunday or Monday
+
+- v275 deployed (web-v275, live check, no console errors). v276 (features.md ▸ Week starts on): one helper set
+  behind every week boundary. Tests 4 zones + every release check pass; checked at 360 px with Sunday first
+  (Settings row, Calendar header/offset, Habits heatmap, schedule sheet).
+
 ## 2026-11-28 — v274 LIVE (CSV import); v275 built: habit notes
 
 - v274 deployed (web-v274, live check, no console errors). v275: notes on a habit for one day (features.md ▸

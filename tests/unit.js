@@ -895,6 +895,52 @@
     }
   }
 
+  // ---- v276: the week can start on Sunday ----
+  {
+    const sSnap = localStorage.getItem('dp.settings'), eSnap = localStorage.getItem('dp.entries'), hSnap = localStorage.getItem('dp.habitcfg');
+    const tdSnap = todayStr, spSnap = settingsPage, tSnap = window.toast;
+    const toasts = []; window.toast = m => toasts.push(m);
+    try {
+      const s0 = DB.settings(); delete s0.weekStart; DB.saveSettings(s0);
+      ok('week: Monday first by default', weekFirst() === 1 && weekStart('2026-11-25') === '2026-11-23' && weekStart('2026-11-29') === '2026-11-23' && isWeekEnd('2026-11-29'));
+      ok('week: Monday first, a Mon/Sun schedule reads Mon, Sun', schedLabel({ days: [0, 1] }) === 'Mon, Sun');
+      navigateTo('settings'); settingsPage = null; renderSettings();
+      ok('week: Settings offers the switch', /Week starts on/.test(document.getElementById('s-settings').textContent) && /Monday · tap to switch to Sunday/.test(document.getElementById('s-settings').textContent));
+      document.getElementById('set-weekstart').click();
+      ok('week: one tap switches to Sunday, saved, and says what follows', DB.settings().weekStart === 0 && weekFirst() === 0 && toasts.some(m => /start on Sunday/.test(m)) && /Sunday · tap to switch to Monday/.test(document.getElementById('s-settings').textContent));
+      ok('week: Sunday first — a Wednesday\'s week starts the Sunday before', weekStart('2026-11-25') === '2026-11-22' && weekStart('2026-11-29') === '2026-11-29' && weekStart('2026-11-28') === '2026-11-22');
+      ok('week: …Saturday ends it', isWeekEnd('2026-11-28') && !isWeekEnd('2026-11-29'));
+      ok('week: …letters, order and index follow', weekLetters().join('') === 'SMTWTFS' && weekOrder()[0] === 0 && wdIndex('2026-11-22') === 0 && wdIndex('2026-11-28') === 6);
+      ok('week: …a Mon/Sun schedule reads Sun, Mon', schedLabel({ days: [0, 1] }) === 'Sun, Mon');
+      _schedDraft = { key: 'x', mode: 'week', days: [], week: 3 };
+      localStorage.setItem('dp.habitcfg', JSON.stringify([{ key: 'x', emoji: '🏃', label: 'Run', sched: { week: 3 } }])); reloadCfg();
+      renderSchedEditor();
+      ok('week: …the schedule sheet says Sunday to Saturday', /from Sunday to Saturday/.test(document.getElementById('sched-editor').textContent) && /by Saturday/.test(document.getElementById('sched-editor').textContent));
+      _schedDraft = Object.assign(_schedDraft, { mode: 'days', days: [1] }); renderSchedEditor();
+      ok('week: …and lists Sunday first', document.querySelector('#sched-editor .sched-day').dataset.schedDay === '0');
+      schedEditorClose();
+      const E = { '2026-11-22': { habits: { x: true } }, '2026-11-23': { habits: { x: true } }, '2026-11-24': { habits: { x: true } } };
+      ok('week: a times-a-week habit counts Sunday in the new week', habitWeek('x', weekStart('2026-11-24'), E).done === 3);
+      todayStr = d => d ? tdSnap(d) : '2026-11-22';
+      ok('week: Fresh start comes on a Sunday', (freshLandmark() || {}).kind === 'week');
+      const recent = {}; [1, 2, 3, 4, 5, 6].forEach(k => recent[addDays('2026-11-28', -k)] = 6);
+      ok('week: the week recap fires on Saturday', /Your week/.test((logReminderCopy('2026-11-28', { logDays: 200, recent }) || {}).t || ''));
+      ok('week: project weeks start on Sunday', pjWeekStartDate(0).getDay() === 0);
+      navigateTo('settings'); renderSettings(); document.getElementById('set-weekstart').click();
+      ok('week: and back to Monday', DB.settings().weekStart === 1 && weekFirst() === 1 && weekStart('2026-11-25') === '2026-11-23');
+      todayStr = d => d ? tdSnap(d) : '2026-11-22';
+      ok('week: Monday first, a Sunday is not a fresh start', freshLandmark() === null);
+      ok('week: Monday first, the recap is Sunday\'s', !/Your week/.test((logReminderCopy('2026-11-28', { logDays: 200, recent }) || {}).t || '') && /Your week/.test((logReminderCopy('2026-11-29', { logDays: 200, recent: Object.assign({ '2026-11-28': 7 }, recent) }) || {}).t || ''));
+      ok('week: project weeks start on Monday', pjWeekStartDate(0).getDay() === 1);
+    } finally {
+      todayStr = tdSnap; window.toast = tSnap; try { schedEditorClose(); } catch (e) {}
+      if (sSnap != null) localStorage.setItem('dp.settings', sSnap); else localStorage.removeItem('dp.settings');
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (hSnap != null) localStorage.setItem('dp.habitcfg', hSnap); else localStorage.removeItem('dp.habitcfg');
+      reloadCfg(); settingsPage = spSnap; navigateTo('today');
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

@@ -297,6 +297,20 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
 
+## Week starts on Monday or Sunday (v276, 2026-11-28)
+
+- Settings ▸ Make it yours ▸ **Week starts on** (one tap toggles; toast says what follows). Stored as
+  `dp.settings.weekStart` (0 = Sunday, 1/absent = Monday). Settings do not sync, so it is per phone.
+- One source: `weekFirst()` (cached; `DB.saveSettings` and `reloadCfg` drop the cache), `wdIndex(d)` (0 = the
+  week's first day), `weekOrder()` (getDay numbers, first day first), `weekLetters()`, `isWeekEnd(d)`, and
+  `weekStart(d)` built on them. Every former Monday-first spot uses these: logging + habit week streaks,
+  times-a-week habits (and the schedule sheet's day order + "from Sunday to Saturday" text), the weekly review
+  (last day of the week; Customize label now "Weekly review"), Fresh start (first day), the week-recap "Log my
+  day" notification (last day), History calendar header/offset, Habits heatmap rows, the month film grid,
+  project hours (`pjWeekStartDate`), Money calendar + weekday chart, Meals week. `isSunday` and `WD_ORDER` gone.
+- Switching recomputes week streaks on the new boundaries (no stored data changes).
+- Tests: tests/unit.js "v276: the week can start on Sunday" (18).
+
 ## Habit notes — a note on a habit for one day (v275, 2026-11-28)
 
 - `entry.hnotes = { habitKey: text }` (≤ 300 chars, trimmed; empty deletes the key, an empty map is removed).

@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v275';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v276';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -48,7 +48,7 @@ function saveHabitCfg(cfg) { const ok = safeSet('dp.habitcfg', JSON.stringify(cf
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
   HABITS = habitCfg().filter(h => !h.hidden);
-  _goalMap = null; _schedMap = null;                // goal + schedule caches follow the cfg
+  _goalMap = null; _schedMap = null; _weekFirst = null;                // goal + schedule caches follow the cfg
   if (typeof actCfg === 'function') TIME_ACTS_ALL = actCfg();
   if (typeof deepCfg === 'function') DEEP_SECTIONS = cookDeep(deepCfg());
 }
@@ -586,7 +586,7 @@ const DB = {
   saveTimeacts(a) { rememberActNames(a); const ok = listSave('dp.timeacts', a); pushState(); return ok; },
 
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
-  saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); return ok; },
+  saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); _weekFirst = null; return ok; },
 };
 
 /* ---------- v273: App lock (a PIN to open Daylog) ----------
@@ -893,7 +893,6 @@ function prettyDate(str) {
   const d = new Date(str + 'T00:00:00');
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
-function isSunday(str) { return new Date(str + 'T00:00:00').getDay() === 0; }
 /* Compact date for records and awards. prettyDate() leads with the weekday, so stripping
    after its comma leaves a bare "Thu" — useless on a shelf that spans years. Shows the
    year only when it is not the current one. */
@@ -1077,14 +1076,23 @@ function loggedStreak() {
    mode, and a user-set minimum of 1 would turn the weekly award into a formality. 3 of 7 is
    reachable during a genuinely hard week without being a gimme.
 
-   Weeks run Monday–Sunday, matching the ISO convention used everywhere else in the app. */
+   Weeks run Monday–Sunday (ISO) unless the person picked Sunday in Settings — see weekFirst(). */
 const WEEK_MIN = 3;
 
-/* Monday of the week containing `d`. getDay() is 0 for Sunday, so Sunday maps back 6 days. */
-function weekStart(d) {
-  const wd = new Date(d + 'T00:00:00').getDay();
-  return addDays(d, -((wd + 6) % 7));
-}
+/* v276: the first day of the week — Monday (1, ISO, the default) or Sunday (0), from Settings ▸
+   Make it yours ▸ Week starts on. Every week in the app follows it: the logging and habit week
+   streaks, times-a-week habits, the weekly review (the week's last day), Fresh start (its first),
+   the calendars and the month film, Money's calendar and weekday chart, project hours, Meals.
+   It lives in dp.settings, which does not sync: each phone keeps its own. Cached because the
+   streak walks call weekStart() thousands of times; DB.saveSettings and reloadCfg drop it. */
+var _weekFirst = null;
+function weekFirst() { if (_weekFirst == null) { try { _weekFirst = DB.settings().weekStart === 0 ? 0 : 1; } catch (e) { _weekFirst = 1; } } return _weekFirst; }
+function wdIndex(d) { return (new Date(d + 'T12:00:00').getDay() - weekFirst() + 7) % 7; }   // 0 = the week's first day
+function weekOrder() { return [0, 1, 2, 3, 4, 5, 6].map(i => (i + weekFirst()) % 7); }        // getDay numbers, first day first
+function weekLetters() { return weekOrder().map(d => 'SMTWTFS'[d]); }
+function isWeekEnd(d) { return new Date(d + 'T12:00:00').getDay() === (weekFirst() + 6) % 7; }
+/* The first day of the week containing `d`. */
+function weekStart(d) { return addDays(d, -wdIndex(d)); }
 
 /* One pass over the log, bucketed by week. Returns every week that has any logged day,
    oldest first, as { start, days, ok }. */
@@ -2006,8 +2014,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w38',
+  v: 'w39',
   items: [
+    '📆 <b>Week starts on Sunday, if you like</b> — Settings ▸ Week starts on. Week streaks, times-a-week habits, the weekly review, calendars and charts all follow it. Monday stays the default.',
     '📝 <b>Notes on a habit</b> — hold a habit on the Log (or tap Note on its card in Habits) to say how it went: "legs, 45 min", "chapter 4", "skipped, sick". The note stays with that day: you see it in History and under the habit in Habits.',
     '📥 <b>Import from Daylio or a spreadsheet</b> — bring your old days with you. Pick a Daylio CSV export, or any sheet with a date column, and Daylog shows what it will add before it adds anything. Days you already logged keep what they have, and Undo puts it all back. Settings ▸ Backup &amp; restore.',
     '🔒 <b>App lock</b> — set a PIN so someone holding your phone cannot open your journal. Choose when it asks again: right away, or after 1, 5 or 15 minutes away. You also get a recovery code in case you forget the PIN. Settings ▸ App lock.',
@@ -2351,7 +2360,7 @@ const LOG_SECTIONS_DEF = [
      "pick only what you'll actually use" and then pre-ticked all ten. It is the single
      biggest reason the app feels like work before you have logged anything. */
   { id: 'deep',      label: 'Deep log',         sub: 'the optional polymath metrics', off: true },
-  { id: 'weekly',    label: 'Sunday weekly review', sub: 'only appears on Sundays' },
+  { id: 'weekly',    label: 'Weekly review', sub: 'only appears on the last day of your week' },
 ];
 function logSecCfg() {
   const saved = safeParse(localStorage.getItem('dp.logsec'), null);
@@ -2703,7 +2712,7 @@ document.addEventListener('click', (ev) => {
 /* Schedule editor (v272): every day, some weekdays, or N times a week. Opened from the 📅 pill
    on a Habits card and from the habit's row in Customize. */
 const WD_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];                 // Monday first, as the week runs everywhere else
+const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];   // the week's order: weekOrder()
 function schedLabel(s) {
   s = schedClean(s);
   if (!s) return 'Every day';
@@ -2711,7 +2720,7 @@ function schedLabel(s) {
   const k = s.days.join();
   if (k === '1,2,3,4,5') return 'Weekdays';
   if (k === '0,6') return 'Weekends';
-  return WD_ORDER.filter(d => s.days.includes(d)).map(d => WD_SHORT[d]).join(', ');
+  return weekOrder().filter(d => s.days.includes(d)).map(d => WD_SHORT[d]).join(', ');
 }
 function schedPillHTML(h) {
   const s = schedClean(h.sched);
@@ -2733,14 +2742,14 @@ function renderSchedEditor() {
   const seg = (v, lab) => `<button type="button" class="ss-chip${D.mode === v ? ' on' : ''}" data-sched-mode="${v}" aria-pressed="${D.mode === v}">${lab}</button>`;
   const none = D.mode === 'days' && !D.days.length;
   const body = D.mode === 'days'
-    ? `<div class="sched-days">${WD_ORDER.map(d => `<button type="button" class="sched-day${D.days.includes(d) ? ' on' : ''}" data-sched-day="${d}" aria-pressed="${D.days.includes(d)}" aria-label="${WD_SHORT[d]}">${WD_SHORT[d].slice(0, 2)}</button>`).join('')}</div>`
+    ? `<div class="sched-days">${weekOrder().map(d => `<button type="button" class="sched-day${D.days.includes(d) ? ' on' : ''}" data-sched-day="${d}" aria-pressed="${D.days.includes(d)}" aria-label="${WD_SHORT[d]}">${WD_SHORT[d].slice(0, 2)}</button>`).join('')}</div>`
     : D.mode === 'week'
     ? `<div class="sched-week"><button type="button" class="qty-btn" data-sched-n="-1" aria-label="fewer" ${D.week <= 1 ? 'disabled' : ''}>−</button><b>${D.week}</b><span>time${D.week === 1 ? '' : 's'} a week</span><button type="button" class="qty-btn" data-sched-n="1" aria-label="more" ${D.week >= 6 ? 'disabled' : ''}>+</button></div>`
     : '';
   const hint = D.mode === 'days'
     ? (none ? 'Pick at least one day.' : D.days.length === 7 ? 'All seven days is the same as every day.' : 'The other days are rest days. They never break your streak, and a tick on one still counts.')
     : D.mode === 'week'
-    ? `Any ${D.week} day${D.week === 1 ? '' : 's'} from Monday to Sunday. The streak counts weeks: get ${D.week} in by Sunday and it grows by one.`
+    ? `Any ${D.week} day${D.week === 1 ? '' : 's'} from ${WD_LONG[weekFirst()]} to ${WD_LONG[(weekFirst() + 6) % 7]}. The streak counts weeks: get ${D.week} in by ${WD_LONG[(weekFirst() + 6) % 7]} and it grows by one.`
     : 'Every day counts toward the streak. A day you mark as skipped never breaks it.';
   m.innerHTML = `<div class="copy-box sched-box" role="dialog" aria-label="Schedule for ${escapeHtml(h.label)}">
     <h2 class="h2-icon">${hicon('calendar')}<span>How often — ${escapeHtml(h.label)}</span></h2>
@@ -3107,7 +3116,7 @@ function renderToday() {
     media: () => mediaLogCardHTML(logDate),
     deep: () => `<h2 style="margin:22px 4px 10px;font-size:13px;color:var(--text-dim);font-weight:600;letter-spacing:.3px;text-transform:uppercase">Deep log <span class="hint" style="text-transform:none">optional · the polymath metrics</span></h2>
       ${renderDeepSections()}`,
-    weekly: () => (isSunday(logDate) ? `<div class="card"><h2>📅 Sunday weekly review</h2>
+    weekly: () => (isWeekEnd(logDate) ? `<div class="card"><h2>📅 ${weekFirst() ? 'Sunday' : 'Saturday'} weekly review</h2>
       <div class="field"><label>Wins this week</label><textarea data-txt="weekWins" placeholder="Write a line or two…">${escapeHtml(draft.weekWins||'')}</textarea></div>
       <div class="field"><label>Focus for next week</label><textarea data-txt="weekFocus" placeholder="Write a line or two…">${escapeHtml(draft.weekFocus||'')}</textarea></div></div>` : ''),
   };
@@ -5157,9 +5166,9 @@ function renderHabits() {
     const denom = Math.max(1, 30 - skipped);          // skipped days don't count against you
     const pct = Math.round(hits / denom * 100);
     const str = habitStrength(h.key);
-    /* One column per week, Monday on top, today outlined. It used to wrap 91 cells into rows
-       of whatever fitted (17 on a phone), so no column meant anything and today was lost. */
-    const lead = (new Date(days[0] + 'T12:00:00').getDay() + 6) % 7;
+    /* One column per week, the week's first day on top, today outlined. It used to wrap 91 cells
+       into rows of whatever fitted (17 on a phone), so no column meant anything and today was lost. */
+    const lead = wdIndex(days[0]);
     let run = 0;   // done cells deepen as a run goes on (d1…d4); a skip keeps the run, a miss ends it
     const heat = '<div class="cell pad"></div>'.repeat(lead) + days.map(d => {
       const v = hVal(e[d], h.key, d, e);
@@ -9408,7 +9417,7 @@ function renderCal() {
   document.getElementById('screen-sub').textContent = monthName;
 
   const e = DB.entries(), gym = DB.gym();
-  const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;   // Monday-first
+  const startDow = (new Date(y, m - 1, 1).getDay() - weekFirst() + 7) % 7;   // the week's first day first
   const daysInMonth = new Date(y, m, 0).getDate();
   const today = todayStr();
 
@@ -9452,7 +9461,7 @@ function renderCal() {
         <button class="btn btn-ghost btn-sm" id="cal-next">›</button>
         <button class="btn btn-ghost btn-sm" id="cal-today">Today</button>
       </div>
-      <div class="cal-head">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="cal-head">${weekOrder().map(d => `<span>${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d]}</span>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
       <div class="tl-legend" style="margin-top:10px">
         <span><span class="dot" style="background:hsl(120,62%,45%)"></span>good day</span>
@@ -9898,7 +9907,8 @@ function renderSettings() {
     ${group('Make it yours',
       row('id="open-style"', 'palette', 'Style &amp; appearance', `${uiStyle().name} · tap to change the look`) +
       row('id="open-custom"', 'sparkle', 'Customize', 'Tabs, habits, log fields, gym, theme') +
-      row('data-set-page="widgets"', 'layers', 'Log screen', 'Show or hide the ring, mood grid and more'))}
+      row('data-set-page="widgets"', 'layers', 'Log screen', 'Show or hide the ring, mood grid and more') +
+      row('id="set-weekstart"', 'calendar', 'Week starts on', `${weekFirst() ? 'Monday' : 'Sunday'} · tap to switch to ${weekFirst() ? 'Sunday' : 'Monday'}`))}
     ${group('Reminders &amp; tracking',
       row('data-set-page="reminders"', 'bell', 'Reminders', nRem ? `${nRem} set` + (!nativeShell() && s.ntfyOn ? ' · background alarms on' : '') : 'None yet · add a daily nudge') +
       row('data-set-page="tracking"', 'heart', 'Auto-tracking', !hcPlugin() ? 'Needs the Play Store app' : at.on ? 'On · sleep, steps, screen time from your phone' : 'Off · nothing is collected'))}
@@ -9922,6 +9932,11 @@ function renderSettings() {
 }
 document.addEventListener('click', async (ev) => {
   const s = DB.settings();
+  if (ev.target.closest && ev.target.closest('#set-weekstart')) {
+    s.weekStart = weekFirst() ? 0 : 1; DB.saveSettings(s); renderSettings();
+    toast(`Weeks now start on ${weekFirst() ? 'Monday' : 'Sunday'}: week streaks, times-a-week habits, the weekly review and calendars follow`);
+    return;
+  }
   if (ev.target.id === 'save-sync') {
     s.syncUrl = document.getElementById('sync-url').value.trim(); DB.saveSettings(s);
     if (s.syncUrl) { toast('Connected — loading your data…'); pullState((ok, why) => { renderSettings(); toast(ok ? 'Logged in & synced ✅' : syncFailMsg(why), !ok); }); }
@@ -13403,7 +13418,7 @@ function freshLandmark() {
   const dom = +t.slice(8, 10), mon = +t.slice(5, 7);
   if (mon === 1 && dom === 1) return { k: 'y:' + t.slice(0, 4), kind: 'year',  label: t.slice(0, 4) };
   if (dom === 1)              return { k: 'm:' + t.slice(0, 7), kind: 'month', label: MR_MON[mon - 1] };
-  if (dow === 1)              return { k: 'w:' + t,             kind: 'week',  label: 'this week' };
+  if (dow === weekFirst())    return { k: 'w:' + t,             kind: 'week',  label: 'this week' };
   return null;
 }
 
@@ -14018,7 +14033,7 @@ function filmData(ym) {
   } catch (err) {}
   const mon = +ym.slice(5, 7);
   return { ym, month: MR_MON[mon - 1], year: ym.slice(0, 4), next: MR_MON[mon % 12],
-    cells, lead: (new Date(days[0] + 'T00:00:00').getDay() + 6) % 7, logged: cells.filter(c => c.logged).length,
+    cells, lead: wdIndex(days[0]), logged: cells.filter(c => c.logged).length,
     avgMood: moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null,
     best, quote, habits, stats: st.slice(0, 3), photo };
 }
@@ -14105,7 +14120,7 @@ const FILM_SCENE = {
     filmText(x, 'How it felt', 540, 330, { size: 78, weight: 800, font: col.display, color: filmC(col.text) });
     const cell = 118, gap = 16, x0 = (FILM_W - (7 * cell + 6 * gap)) / 2, y0 = 470, n = fd.cells.length;
     x.globalAlpha = base * 0.6;
-    ['M', 'T', 'W', 'T', 'F', 'S', 'S'].forEach((d, k) => filmText(x, d, x0 + k * (cell + gap) + cell / 2, y0 - 26, { size: 30, weight: 600, font: col.body, color: filmC(col.dim) }));
+    weekLetters().forEach((d, k) => filmText(x, d, x0 + k * (cell + gap) + cell / 2, y0 - 26, { size: 30, weight: 600, font: col.body, color: filmC(col.dim) }));
     fd.cells.forEach((c, k) => {
       const pos = fd.lead + k, cx = x0 + (pos % 7) * (cell + gap), cy = y0 + Math.floor(pos / 7) * (cell + gap);
       const q = (lt - 0.3 - (k / n) * 2.6) / 0.35, s = c.logged || c.mood != null ? filmBack(q) : filmEase(q);
@@ -16421,7 +16436,7 @@ function weekRecapCopy(day, o) {
 /* Copy for one "Log my day" occurrence. `day` is the date it fires on, `o` the plan input. */
 function logReminderCopy(day, o) {
   if (!o.logDays) return { t: 'Your first log', b: 'Tap your mood and energy. That is a whole log, in under a minute.' };
-  if (o.logDays >= INSIGHT_DAYS && new Date(day + 'T12:00:00').getDay() === 0) { const r = weekRecapCopy(day, o); if (r) return r; }
+  if (o.logDays >= INSIGHT_DAYS && isWeekEnd(day)) { const r = weekRecapCopy(day, o); if (r) return r; }
   if (o.logDays < INSIGHT_DAYS) {
     const n = INSIGHT_DAYS - o.logDays;
     return { t: 'How was today?', b: `${n} more logged day${n === 1 ? '' : 's'} and Stats can show how your sleep shapes your mood.` };
@@ -16882,11 +16897,11 @@ function pjMs(id, fromMs, toMs) {
     return acc + Math.max(0, Math.min(end, hi) - Math.max(s.start, lo));
   }, 0);
 }
-/* Monday-start week boundaries by real date arithmetic, not ms multiples — adding
-   7*86400000 across a DST change lands an hour off and silently shifts a week's hours. */
+/* Week boundaries (the week's first day, weekFirst) by real date arithmetic, not ms multiples —
+   adding 7*86400000 across a DST change lands an hour off and silently shifts a week's hours. */
 function pjWeekStartDate(back) {
   const d = new Date(); d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7 * (back || 0));
+  d.setDate(d.getDate() - ((d.getDay() - weekFirst() + 7) % 7) - 7 * (back || 0));
   return d;
 }
 function pjWeekMs(id, back) {
@@ -18787,12 +18802,12 @@ function chCalendar(ym) {
   const clipped = peak > hi;
   const step = v => v <= 0 ? 0 : Math.min(5, Math.max(1, Math.ceil(v / hi * 5)));
   const lead = new Date(from + 'T00:00:00').getDay();
-  const offset = (lead + 6) % 7;                       // weeks start Monday
+  const offset = (lead - weekFirst() + 7) % 7;         // the week's first day first
   const cells = Array(offset).fill('<i class="ch-cal-pad"></i>')
     .concat(days.map(x => `<i class="ch-cal-c s${step(x.v)}" title="${shortDate(x.d)} · ${x.v ? finFmt(x.v, { noPaise: true }) : 'nothing'}"></i>`)).join('');
   const busiest = days.slice().sort((a, b) => b.v - a.v)[0];
   return `<div class="ch-cal" role="img" aria-label="Spending by day. Busiest ${shortDate(busiest.d)} at ${finFmt(busiest.v, { noPaise: true })}.">
-      <div class="ch-cal-h">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="ch-cal-h">${weekLetters().map(x => `<span>${x}</span>`).join('')}</div>
       <div class="ch-cal-g">${cells}</div>
     </div>
     <div class="ch-cal-k"><span>less</span>${[1, 2, 3, 4, 5].map(s => `<i class="ch-cal-c s${s}"></i>`).join('')}<span>${clipped ? finFmt(hi, { compact: true, noPaise: true }) + '+' : 'more'}</span>
@@ -18809,7 +18824,7 @@ function finDowProfile() {
   const spend = finDailySpend();
   const buckets = [[], [], [], [], [], [], []];
   Object.keys(spend).forEach(d => {
-    buckets[(new Date(d + 'T00:00:00').getDay() + 6) % 7].push(spend[d]);   // Mon = 0
+    buckets[wdIndex(d)].push(spend[d]);   // 0 = the week's first day
   });
   return buckets.map((b, i) => ({
     i, n: b.length,
@@ -18844,7 +18859,7 @@ function mnChartsHTML() {
   const md = months.map(k => finMonth(k));
   const cum = finCumulative(ym);
   const dow = finDowProfile();
-  const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const DOW = weekOrder().map(d => WD_SHORT[d]);   // the same order as finDowProfile's buckets
   const m = finMonth(ym);
   const catRows = Object.keys(m.byCat).sort((a, b) => m.byCat[b] - m.byCat[a]).slice(0, 8)
     .map(c => ({ label: finCat(c).name, ico: finCat(c).ico, v: m.byCat[c] }));
