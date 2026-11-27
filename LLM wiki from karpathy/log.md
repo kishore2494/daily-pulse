@@ -1,3 +1,9 @@
+## 2026-11-28 — v273 LIVE (App lock); v274 built: import days from a CSV (Daylio / sheets)
+
+- Kishore (going to sleep): "do all things 1 by 1 … and deploy … test every thing". Deployed v273 (web-v273,
+  live check + no console errors). Built v274: CSV import (features.md ▸ Import days from a CSV). Tests 4 zones +
+  every release check pass; checked at 360 px (card, preview, import → History shows the days, Undo).
+
 ## 2026-11-28 — v273 built: App lock (PIN) (NOT deployed)
 
 - Kishore: "what's next … there are tokens you need to complete" → built the next roadmap item, the PIN lock

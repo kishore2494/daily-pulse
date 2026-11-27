@@ -4659,3 +4659,11 @@ html.locked #alarm { z-index: 400; }
 .lk-after .ss-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .lk-note { margin-top: 10px; }
 .lk-off { color: var(--bad-ink); }
+
+/* ---------- v274 CSV import ---------- */
+.csvi-prev { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.csvi-name { font-weight: 700; overflow-wrap: anywhere; }
+.csvi-list { margin: 8px 0 12px; padding-left: 18px; color: var(--text-dim); font-size: .9rem; line-height: 1.45; }
+.csvi-list li + li { margin-top: 3px; }
+.csvi-list b { color: var(--text); }
+.csvi-err { color: var(--bad-ink); }

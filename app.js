@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v273';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v274';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2006,8 +2006,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w36',
+  v: 'w37',
   items: [
+    '📥 <b>Import from Daylio or a spreadsheet</b> — bring your old days with you. Pick a Daylio CSV export, or any sheet with a date column, and Daylog shows what it will add before it adds anything. Days you already logged keep what they have, and Undo puts it all back. Settings ▸ Backup &amp; restore.',
     '🔒 <b>App lock</b> — set a PIN so someone holding your phone cannot open your journal. Choose when it asks again: right away, or after 1, 5 or 15 minutes away. You also get a recovery code in case you forget the PIN. Settings ▸ App lock.',
     '📅 <b>Habit schedules</b> — not every habit is daily. Set one to certain weekdays (Mon, Wed, Fri) or to a number of times a week (gym 3 times a week). Days off show as rest days and never break your streak, and a times-a-week habit keeps a streak in weeks: get your 3 in by Sunday and it grows by one. Tap the 📅 on a habit in Habits, or in Customize.',
     '✉️ <b>Letters to future you</b> — write a letter today and seal it until a day you choose: your birthday, New Year, a year from now. Add a photo or a voice note if you like. Until that day nobody can read it, not even you; then it waits for you at the top of the Log. Find it in ☰ Menu ▸ Letters.',
@@ -5687,6 +5688,200 @@ function exportCSV() {
   dates.filter(d => !(e[d] && e[d].sample)).forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
   saveFile('daylog-' + todayStr() + '.csv', csv, 'text/csv');
 }
+/* ---------- v274: import days from a CSV — Daylio's export, or any sheet with a date column ----------
+   It only fills what is empty. A day already logged keeps its mood, note and habits, so the same
+   file can be imported twice, or over real data, and nothing is overwritten. Daylio writes one row
+   per check-in, so a day can have several: their moods are averaged and their notes joined.
+   Columns are matched by name (Daylog's own CSV export comes back in whole); a column named like
+   one of your habits ticks that habit; Daylio activities that match a habit tick it, and the rest
+   are kept in the note so nothing in the file is silently dropped. */
+var _csvImp = null;   // the preview on Settings ▸ Backup & restore, or null
+var CSVI_DAYLIO_MOOD = { rad: 9, good: 7, meh: 5, bad: 3, awful: 1 };
+var CSVI_COLS = {
+  date: ['date', 'day', 'fulldate'],
+  mood: ['mood'],
+  energy: ['energy'],
+  sleepHours: ['sleephours', 'sleep', 'sleephrs', 'hoursslept'],
+  deepWorkHours: ['deepworkhours', 'deepwork', 'focushours'],
+  journal: ['journal', 'note', 'notes', 'diary', 'entry'],
+  wentWell: ['wentwell'],
+  improve: ['improve'],
+};
+var CSVI_TEXT = ['journal', 'wentWell', 'improve'];
+function csviKey(h) { return String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function csviHabitIndex() {
+  const ix = {};
+  habitCfg().forEach(h => [h.key, h.label].forEach(n => { const k = csviKey(n); if (k && !(k in ix)) ix[k] = h.key; }));
+  return ix;
+}
+function csviYes(v) { return /^(1|y|yes|true|x|✓|✔|done)$/i.test(String(v == null ? '' : v).trim()); }
+function csviNum(v, lo, hi) {
+  const s = String(v == null ? '' : v).trim(); if (!s) return null;
+  const n = /^\d{1,2}:\d{2}$/.test(s) ? hmToHours(s) : Number(s.replace(',', '.'));
+  return Number.isFinite(n) && n >= lo && n <= hi ? +n.toFixed(2) : null;
+}
+function csviNote(v) {   // Daylio notes can carry <br> and a few tags
+  return String(v == null ? '' : v).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*<p>/gi, '\n\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+}
+function csviRealDay(d) { return !!d && todayStr(new Date(d + 'T12:00:00')) === d; }
+/* Text → { kind, days: {date: fields}, rows, bad, moodsUnknown[], matched{activity: habitKey}, unmatched[], cols[] }
+   or { error }. Pure: reads the habit list, writes nothing. */
+function entriesFromCSV(text) {
+  const rows = csvParse(text || '');
+  if (rows.length < 2) return { error: 'That file has no rows Daylog can read' };
+  const head = rows[0].map(csviKey), col = {};
+  Object.keys(CSVI_COLS).forEach(f => { const i = head.findIndex(h => CSVI_COLS[f].includes(h)); if (i >= 0) col[f] = i; });
+  const daylio = head.includes('fulldate') && head.includes('activities');
+  if (daylio) col.date = head.indexOf('fulldate');
+  if (col.date == null) return { error: 'No date column. The first row needs a column called "date".' };
+  const hx = csviHabitIndex(), habitCols = {};
+  if (!daylio) head.forEach((h, i) => { if (h in hx && !Object.values(col).includes(i)) habitCols[i] = hx[h]; });
+  const titleI = head.indexOf('notetitle'), actI = head.indexOf('activities');
+  const acc = {}, moodsUnknown = new Set(), matched = {}, unmatched = new Set();
+  let bad = 0, nums = [];
+  rows.slice(1).forEach(r => {
+    const d = csvDate(r[col.date]);
+    if (!csviRealDay(d)) { bad++; return; }
+    const a = acc[d] || (acc[d] = { moods: [], nmoods: [], notes: [], habits: {}, acts: [] });
+    if (col.mood != null) {
+      const raw = String(r[col.mood] || '').trim(), lbl = raw.toLowerCase();
+      if (raw && lbl in CSVI_DAYLIO_MOOD) a.moods.push(CSVI_DAYLIO_MOOD[lbl]);
+      else if (raw && /^\d+([.,]\d+)?$/.test(raw)) { const n = Number(raw.replace(',', '.')); if (n >= 1 && n <= 10) { a.nmoods.push(n); nums.push(n); } else moodsUnknown.add(raw); }
+      else if (raw) moodsUnknown.add(raw);
+    }
+    ['energy', 'sleepHours', 'deepWorkHours'].forEach(f => {
+      if (col[f] == null) return;
+      const v = csviNum(r[col[f]], f === 'energy' ? 1 : 0, f === 'energy' ? 10 : 24);
+      if (v != null) a[f] = v;
+    });
+    CSVI_TEXT.forEach(f => {
+      if (col[f] == null) return;
+      const t = csviNote(r[col[f]]);
+      if (!t) return;
+      if (f === 'journal') { const tt = titleI >= 0 ? csviNote(r[titleI]) : ''; a.notes.push(tt ? tt + '\n' + t : t); }
+      else a[f] = a[f] ? a[f] + '\n' + t : t;
+    });
+    if (col.journal == null && titleI >= 0) { const tt = csviNote(r[titleI]); if (tt) a.notes.push(tt); }
+    Object.keys(habitCols).forEach(i => { if (csviYes(r[i])) a.habits[habitCols[i]] = true; });
+    if (actI >= 0) String(r[actI] || '').split('|').map(s => s.trim()).filter(Boolean).forEach(act => {
+      const k = hx[csviKey(act)];
+      if (k) { a.habits[k] = true; matched[act] = k; } else { unmatched.add(act); if (!a.acts.includes(act)) a.acts.push(act); }
+    });
+  });
+  // A 1–5 number scale (every number in the file ≤ 5) is spread over Daylog's 1–10: 1, 3, 6, 8, 10.
+  const fiveScale = nums.length > 0 && nums.every(n => n <= 5);
+  const days = {};
+  Object.keys(acc).sort().forEach(d => {
+    const a = acc[d], o = {};
+    const ms = a.moods.concat(a.nmoods.map(n => fiveScale ? 1 + (n - 1) * 2.25 : n));
+    if (ms.length) o.mood = Math.round(ms.reduce((s, m) => s + m, 0) / ms.length);
+    ['energy', 'sleepHours', 'deepWorkHours', 'wentWell', 'improve'].forEach(f => { if (a[f] != null && a[f] !== '') o[f] = a[f]; });
+    const notes = a.notes.slice();
+    if (a.acts.length) notes.push('Activities: ' + a.acts.join(', '));
+    if (notes.length) o.journal = notes.join('\n\n');
+    if (Object.keys(a.habits).length) o.habits = a.habits;
+    if (Object.keys(o).length) days[d] = o;
+  });
+  const cols = Object.keys(col).filter(f => f !== 'date').concat(Object.values(habitCols).map(k => 'habit:' + k));
+  if (!Object.keys(days).length) return { error: bad ? 'No row had a date Daylog could read' : 'The file has dates but nothing Daylog can use next to them' };
+  return { kind: daylio ? 'daylio' : 'table', days, rows: rows.length - 1, bad, moodsUnknown: [...moodsUnknown], matched, unmatched: [...unmatched], cols };
+}
+/* What importing would do to the days already here: new days, days that gain something, days that
+   gain nothing (everything in the file is already filled in). */
+function csviPlan(days, ents) {
+  const out = { add: 0, fill: 0, same: 0 };
+  Object.keys(days).forEach(d => {
+    const cur = ents[d];
+    if (!cur) { out.add++; return; }
+    const n = days[d], empty = v => v == null || v === '';
+    const gains = Object.keys(n).some(f => f === 'habits' ? Object.keys(n.habits).some(k => !(cur.habits && k in cur.habits)) : empty(cur[f]));
+    out[gains ? 'fill' : 'same']++;
+  });
+  return out;
+}
+/* Write it: fill-only, one save, each changed day stamped for the sync merge. Returns the days changed. */
+function csviApply(days) {
+  try { flushAutosave(); } catch (e) {}
+  const ents = DB.entries(), before = JSON.stringify(ents), now = new Date().toISOString(), t = Date.now();
+  let changed = 0;
+  Object.keys(days).forEach(d => {
+    const prev = ents[d] ? JSON.parse(JSON.stringify(ents[d])) : null, next = prev ? JSON.parse(JSON.stringify(prev)) : {}, n = days[d];
+    let did = false;
+    Object.keys(n).forEach(f => {
+      if (f === 'habits') {
+        next.habits = next.habits || {};
+        Object.keys(n.habits).forEach(k => {
+          if (k in next.habits) return;
+          next.habits[k] = n.habits[k]; next.habitsAt = next.habitsAt || {}; next.habitsAt[k] = Math.max(t, (+next.habitsAt[k] || 0) + 1); did = true;
+        });
+      } else if (next[f] == null || next[f] === '') { next[f] = n[f]; did = true; }
+    });
+    if (!did) return;
+    next.updatedAt = now;
+    entryFieldStamp(prev, next);
+    ents[d] = next; changed++;
+  });
+  if (!changed) return { changed: 0 };
+  if (!DB.saveEntries(ents)) return { changed: 0, failed: true };
+  try { loadDraft(); } catch (e) {}
+  try { refreshStreak(); } catch (e) {}
+  return { changed, before };
+}
+function csviCardHTML() {
+  const p = _csvImp;
+  let body = '';
+  if (p && p.error) body = `<p class="hint csvi-err">${escapeHtml(p.error)}</p>`;
+  else if (p) {
+    const ds = Object.keys(p.days), plan = csviPlan(p.days, DB.entriesRO());
+    const nice = f => ({ mood: 'mood', energy: 'energy', sleepHours: 'sleep', deepWorkHours: 'deep work', journal: 'notes', wentWell: 'went well', improve: 'improve' }[f] || (f.indexOf('habit:') === 0 ? (habitCfg().find(h => h.key === f.slice(6)) || {}).label || f.slice(6) : f));
+    const li = [];
+    li.push(`<b>${ds.length}</b> day${ds.length === 1 ? '' : 's'}, ${prettyDate(ds[0])} → ${prettyDate(ds[ds.length - 1])}`);
+    li.push([plan.add ? `${plan.add} new` : '', plan.fill ? `${plan.fill} you already logged: only their empty fields get filled` : '',
+      plan.same ? `${plan.same} already ha${plan.same === 1 ? 's' : 've'} all of this` : ''].filter(Boolean).join(' · '));
+    if (p.kind === 'table') li.push('Columns used: ' + escapeHtml(p.cols.map(nice).join(', ')));
+    const mk = Object.keys(p.matched);
+    if (mk.length) li.push('Activities that tick your habits: ' + escapeHtml(mk.slice(0, 6).map(a => a + ' → ' + nice('habit:' + p.matched[a])).join(', ')) + (mk.length > 6 ? ` and ${mk.length - 6} more` : ''));
+    if (p.unmatched.length) li.push(`Other activities (${p.unmatched.length}) are kept in that day's note: ` + escapeHtml(p.unmatched.slice(0, 6).join(', ')) + (p.unmatched.length > 6 ? '…' : ''));
+    if (p.moodsUnknown.length) li.push('Moods Daylog does not know were left out: ' + escapeHtml(p.moodsUnknown.slice(0, 5).join(', ')));
+    if (p.bad) li.push(`${p.bad} row${p.bad === 1 ? '' : 's'} skipped: no date Daylog could read`);
+    const n = plan.add + plan.fill;
+    body = `<div class="csvi-prev"><div class="csvi-name">${escapeHtml(p.name)}${p.kind === 'daylio' ? ' · Daylio export' : ''}</div>
+      <ul class="csvi-list">${li.map(x => `<li>${x}</li>`).join('')}</ul>
+      <div class="btn-row"><button class="btn btn-primary btn-sm" id="csvi-go"${n ? '' : ' disabled'}>${n ? `Import ${n} day${n === 1 ? '' : 's'}` : 'Nothing new to import'}</button>
+        <button class="btn btn-ghost btn-sm" id="csvi-cancel">Cancel</button></div></div>`;
+  }
+  return `<div class="card">
+      <h2>📥 Import days from a CSV <span class="hint">Daylio or a spreadsheet</span></h2>
+      <p class="hint">Moving from Daylio? Export your entries from Daylio as a CSV file and pick it here. A sheet works too: one row per day, a <b>date</b> column, and any of mood (1–10), energy, sleep, notes, or a column named after one of your habits. Days you already logged keep what they have.</p>
+      ${p && !p.error ? '' : '<div class="btn-row"><button class="btn btn-ghost btn-sm" id="csvi-pick">Choose a CSV file</button></div>'}
+      <input type="file" id="csvi-file" accept=".csv,text/csv,text/plain" style="display:none">
+      ${body}
+    </div>`;
+}
+document.addEventListener('click', ev => {
+  const t = ev.target && ev.target.closest ? ev.target : null; if (!t) return;
+  if (t.closest('#csvi-pick')) { const f = document.getElementById('csvi-file'); if (f) { f.value = ''; f.click(); } return; }
+  if (t.closest('#csvi-cancel')) { _csvImp = null; renderSettingsIfShown(); return; }
+  if (t.closest('#csvi-go') && _csvImp && _csvImp.days) {
+    const r = csviApply(_csvImp.days); _csvImp = null; renderSettingsIfShown();
+    if (r.failed) { toast('Phone storage is full, so nothing was imported. Free up space and try again.', true); return; }
+    if (!r.changed) { toast('Nothing new to import: those days are already filled in'); return; }
+    const before = r.before;
+    undoToast(`📥 Imported ${r.changed} day${r.changed === 1 ? '' : 's'}`, () => {
+      try { flushAutosave(); } catch (e) {}
+      DB.saveEntries(JSON.parse(before)); try { loadDraft(); } catch (e) {} try { refreshStreak(); } catch (e) {}
+      renderSettingsIfShown(); toast('Import undone');
+    }, 'Undo');
+  }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target; if (!t || t.id !== 'csvi-file' || !t.files || !t.files[0]) return;
+  const f = t.files[0], rd = new FileReader();
+  rd.onload = () => { const r = entriesFromCSV(String(rd.result || '')); _csvImp = Object.assign({ name: f.name }, r); renderSettingsIfShown(); };
+  rd.onerror = () => { _csvImp = { name: f.name, error: 'Could not read that file' }; renderSettingsIfShown(); };
+  rd.readAsText(f);
+});
 /* ---------- Obsidian-style connections graph ----------
    Nodes: days, topics, habits. Edges link each day to its topics + habits done,
    so shared topics/habits become hubs that connect your days. */
@@ -9588,7 +9783,7 @@ function renderSettings() {
     widgets:   { t: 'Log screen',        sub: 'What shows on your Log tab',          html: C.widgets },
     reminders: { t: 'Reminders',         sub: 'Alarms and notifications',            html: C.alarmHealth + C.reminders + C.ntfy },
     tracking:  { t: 'Auto-tracking',     sub: 'Sleep, steps and screen time',        html: C.tracking },
-    data:      { t: 'Backup & restore',  sub: 'Keep a copy, move to a new phone',    html: C.backup + C.sync + C.pis },
+    data:      { t: 'Backup & restore',  sub: 'Keep a copy, move to a new phone',    html: C.backup + (settingsPage === 'data' ? csviCardHTML() : '') + C.sync + C.pis },
     storage:   { t: 'Storage',           sub: 'What Daylog keeps on this phone',     html: settingsPage === 'storage' ? storagePageHTML() : '' },
     lock:      { t: 'App lock',          sub: 'A PIN to open Daylog',                html: settingsPage === 'lock' ? lockCardHTML() : '' },
     wipe:      { t: 'Delete everything', sub: 'Erase all data on this phone',        html: C.wipe },
@@ -20631,7 +20826,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'lock','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'lock','📥':'download','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;

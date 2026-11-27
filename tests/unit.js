@@ -758,6 +758,87 @@
     }
   })();
 
+  // ---- v274: import days from a CSV (Daylio export or a spreadsheet) ----
+  {
+    const eSnap = localStorage.getItem('dp.entries'), hSnap = localStorage.getItem('dp.habitcfg');
+    const spSnap = settingsPage, tSnap = window.toast;
+    try {
+      localStorage.setItem('dp.habitcfg', JSON.stringify([{ key: 'workout', emoji: '💪', label: 'Workout' }, { key: 'reading', emoji: '📖', label: 'Reading' }, { key: 'gym', emoji: '🏋️', label: 'Gym' }]));
+      reloadCfg();
+      const daylio = 'full_date,date,weekday,time,mood,activities,note_title,note\n' +
+        '2026-11-20,Nov 20,Friday,21:10,rad,Workout | family,Great day,"Ran 5k<br>felt good"\n' +
+        '2026-11-20,Nov 20,Friday,09:00,meh,reading,,\n' +
+        '2026-11-19,Nov 19,Thursday,20:00,awful,,,"bad, sleep"\n' +
+        '2026-11-18,Nov 18,Wednesday,20:00,ecstatic,walking,,\n' +
+        'nope,,,,good,,,\n';
+      const D = entriesFromCSV(daylio);
+      ok('csv: a Daylio export is recognised', D.kind === 'daylio' && D.rows === 5 && D.bad === 1, D);
+      const d20 = D.days['2026-11-20'] || {};
+      ok('csv: two Daylio check-ins on one day average their mood (rad 9 + meh 5 → 7)', d20.mood === 7, d20);
+      ok('csv: activities named like a habit tick it (any case)', d20.habits && d20.habits.workout === true && d20.habits.reading === true, d20.habits);
+      ok('csv: note title, note (<br> → line break) and the other activities are kept', /Great day\nRan 5k\nfelt good/.test(d20.journal) && /Activities: family/.test(d20.journal), d20.journal);
+      ok('csv: awful → 1, a quoted comma survives', D.days['2026-11-19'].mood === 1 && D.days['2026-11-19'].journal === 'bad, sleep', D.days['2026-11-19']);
+      ok('csv: an unknown mood is left out and reported, the day still comes in', D.moodsUnknown.includes('ecstatic') && D.days['2026-11-18'].mood === undefined && /walking/.test(D.days['2026-11-18'].journal));
+      ok('csv: matched and unmatched activities are listed', D.matched.Workout === 'workout' && D.matched.reading === 'reading' && D.unmatched.join() === 'family,walking', [D.matched, D.unmatched]);
+
+      const sheet = 'date,mood,sleep,notes,Gym,energy\n2026-10-01,4,7:30,"hello, world",yes,8\n02/10/2026,2,6.5,,no,\n2026-10-03,,,,x,\n2026-13-01,3,,,,\n';
+      const S = entriesFromCSV(sheet);
+      ok('csv: a sheet is read by column name', S.kind === 'table' && ['mood', 'sleepHours', 'journal', 'energy', 'habit:gym'].every(c => S.cols.includes(c)), S.cols);
+      ok('csv: a 1–5 mood scale is spread over 1–10 (4 → 8, 2 → 3)', S.days['2026-10-01'].mood === 8 && S.days['2026-10-02'].mood === 3, [S.days['2026-10-01'], S.days['2026-10-02']]);
+      ok('csv: sleep as h:mm, energy, notes and a habit column', S.days['2026-10-01'].sleepHours === 7.5 && S.days['2026-10-01'].energy === 8 && S.days['2026-10-01'].journal === 'hello, world' && S.days['2026-10-01'].habits.gym === true);
+      ok('csv: dd/mm dates, "no" does not tick, "x" does', S.days['2026-10-02'].sleepHours === 6.5 && !S.days['2026-10-02'].habits && S.days['2026-10-03'].habits.gym === true);
+      ok('csv: an impossible date is skipped and counted', S.bad === 1 && !S.days['2026-13-01']);
+      const own = entriesFromCSV('date,mood,energy,sleepHours,deepWorkHours,tasksDone,tasksPlanned,workoutsDone,workoutDetail,timeSummary,wentWell,improve,journal,tasks\n2026-09-01,7,6,8,3,1,2,,,,"a walk",less phone,day one,\n');
+      const o1 = own.days['2026-09-01'] || {};
+      ok('csv: Daylog\'s own CSV export comes back in (1–10 kept as is)', o1.mood === 7 && o1.energy === 6 && o1.sleepHours === 8 && o1.deepWorkHours === 3 && o1.wentWell === 'a walk' && o1.improve === 'less phone' && o1.journal === 'day one', o1);
+      ok('csv: no date column is said plainly', /No date column/.test(entriesFromCSV('mood,note\n5,x\n').error || ''));
+      ok('csv: a header with no rows is refused', !!entriesFromCSV('date,mood\n').error);
+      ok('csv: dates with nothing usable are refused', /nothing Daylog can use/.test(entriesFromCSV('date,colour\n2026-01-01,blue\n').error || ''));
+
+      // applying: fill-only, stamped, idempotent, undoable
+      DB.saveEntries({ '2026-11-20': { mood: 4, journal: '', habits: { reading: false }, updatedAt: '2026-11-20T10:00:00.000Z' }, '2026-11-19': { mood: 6, journal: 'mine', habits: {} , updatedAt: '2026-11-19T10:00:00.000Z' } });
+      const plan = csviPlan(D.days, DB.entries());
+      ok('csv: the plan counts new days and days that gain something', plan.add === 1 && plan.fill === 1 && plan.same === 1, plan);
+      const r = csviApply(D.days), E = DB.entries();
+      ok('csv: importing changes only days that gain something', r.changed === 2, r);
+      ok('csv: a logged mood is never overwritten', E['2026-11-20'].mood === 4 && E['2026-11-19'].mood === 6);
+      ok('csv: an empty note is filled', /Great day/.test(E['2026-11-20'].journal));
+      ok('csv: a habit already set that day is left alone, a new one is added and stamped',
+        E['2026-11-20'].habits.reading === false && E['2026-11-20'].habits.workout === true && +E['2026-11-20'].habitsAt.workout > 0);
+      ok('csv: changed days get a new updatedAt and field stamps (so the sync keeps them)',
+        E['2026-11-20'].updatedAt > '2026-11-21' && E['2026-11-20'].fieldAt && +E['2026-11-20'].fieldAt.journal > 0);
+      ok('csv: a new day comes in whole', E['2026-11-18'] && /walking/.test(E['2026-11-18'].journal));
+      ok('csv: a day with a note already keeps it', E['2026-11-19'].journal === 'mine');
+      ok('csv: importing the same file again changes nothing', csviApply(D.days).changed === 0);
+
+      // the card
+      DB.saveEntries({ '2026-11-19': { mood: 6, journal: 'mine', habits: {} } });
+      navigateTo('settings'); settingsPage = 'data'; renderSettings();
+      const card = () => document.getElementById('s-settings').textContent;
+      ok('csv: Backup & restore offers the import, and says Daylio', !!document.getElementById('csvi-pick') && /Moving from Daylio/.test(card()));
+      _csvImp = Object.assign({ name: 'daylio_export.csv' }, D); renderSettings();
+      ok('csv: the preview names the file and what will happen', /daylio_export\.csv · Daylio export/.test(card()) && /3 days/.test(card()) && /2 new · 1 already has all of this/.test(card()) && !/you already logged:/.test(card()), (card().match(/[^\n]*new[^\n]*/g) || []).join(' | '));
+      ok('csv: …lists other activities and unknown moods', /Other activities \(2\)/.test(card()) && /ecstatic/.test(card()) && /1 row skipped/.test(card()));
+      ok('csv: …with an Import button that counts only days that gain something', /Import 2 days/.test(document.getElementById('csvi-go').textContent));
+      document.getElementById('csvi-go').click();
+      ok('csv: Import writes the days and closes the preview', DB.entries()['2026-11-20'] && DB.entries()['2026-11-20'].mood === 7 && !_csvImp && !!document.getElementById('csvi-pick'));
+      ok('csv: …and offers Undo', /Imported 2 days/.test(document.getElementById('toast').textContent) && !!document.querySelector('.toast-undo'));
+      document.querySelector('.toast-undo').click();
+      ok('csv: Undo puts the days back exactly', JSON.stringify(Object.keys(DB.entries())) === '["2026-11-19"]' && DB.entries()['2026-11-19'].journal === 'mine');
+      _csvImp = { name: 'x.csv', error: 'No date column. The first row needs a column called "date".' }; renderSettings();
+      ok('csv: a bad file says why and lets you pick again', /No date column/.test(card()) && !!document.getElementById('csvi-pick'));
+      _csvImp = Object.assign({ name: 'again.csv' }, entriesFromCSV('date,mood\n2026-11-19,8\n')); renderSettings();
+      ok('csv: a file with nothing new says so and cannot be imported', document.getElementById('csvi-go').disabled && /Nothing new to import/.test(document.getElementById('csvi-go').textContent));
+      document.getElementById('csvi-cancel').click();
+      ok('csv: Cancel drops the preview', !_csvImp && !document.getElementById('csvi-go'));
+    } finally {
+      _csvImp = null; window.toast = tSnap;
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (hSnap != null) localStorage.setItem('dp.habitcfg', hSnap); else localStorage.removeItem('dp.habitcfg');
+      reloadCfg(); settingsPage = spSnap; navigateTo('today');
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

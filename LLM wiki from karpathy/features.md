@@ -297,7 +297,26 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
 
-## App lock — PIN (v273, built 2026-11-28, NOT deployed yet)
+## Import days from a CSV — Daylio or a spreadsheet (v274, 2026-11-28)
+
+- Settings ▸ Backup & restore ▸ "Import days from a CSV" (`csviCardHTML`, under the backup card). Pick a file →
+  preview (days, date range, new vs already-logged, columns used, matched/unmatched activities, unknown moods,
+  skipped rows) → Import → toast with **Undo** (restores the entries JSON from before).
+- **Fill-only merge** (`csviApply`): a day already logged keeps every non-empty field; habits already set that
+  day (even `false`) are left alone. Each changed day gets `updatedAt`, `entryFieldStamp` field stamps and
+  `habitsAt[k]` so the Sheet sync keeps the import. One save. Importing the same file twice changes nothing.
+- **Daylio** (header has `full_date` + `activities`): mood names rad/good/meh/bad/awful → 9/7/5/3/1 (custom
+  names are reported, not guessed); several check-ins on one day → moods averaged, notes joined (title + note,
+  `<br>` → newline); an activity whose name matches a habit key/label ticks it; others go into the note as
+  "Activities: …".
+- **Any sheet**: column names matched loosely (`date/day`, `mood`, `energy`, `sleep/sleepHours` (h:mm ok),
+  `deepWork`, `journal/note/notes/diary/entry`, `wentWell`, `improve`) — Daylog's own CSV export round-trips.
+  A column named like a habit ticks it on yes/1/x/✓/true/done. Numeric moods: if every number is ≤ 5 the file is
+  a 1–5 scale → 1, 3, 6, 8, 10. Dates via `csvDate` (ISO, dd/mm/yyyy — US mm/dd with day > 12 is refused, not
+  guessed); impossible dates are skipped and counted.
+- Tests: tests/unit.js "v274: import days from a CSV" (34 checks) + unit-async file-pick check.
+
+## App lock — PIN (v273, built 2026-11-28, live since 2026-11-28)
 
 - Settings ▸ Your data ▸ **App lock**. A 4–6 digit PIN, asked when Daylog opens and when you come back after
   the chosen time away: right away (10 s grace so a photo picker or share sheet can return), 1 min (default),

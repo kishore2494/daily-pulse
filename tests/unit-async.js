@@ -1380,5 +1380,17 @@
       window.toast = tSnap; settingsPage = null; navigateTo('today');
     }
   }
+  /* ---------- v274: CSV import reads the picked file ---------- */
+  {
+    const spSnap = settingsPage;
+    try {
+      navigateTo('settings'); settingsPage = 'data'; renderSettings();
+      const inp = document.getElementById('csvi-file');
+      Object.defineProperty(inp, 'files', { configurable: true, value: [new File(['date,mood\n2026-01-05,7\n'], 'mine.csv', { type: 'text/csv' })] });
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      await until(() => !!_csvImp, 2000);
+      ok('csv: picking a file reads it and shows the preview', !!_csvImp && _csvImp.name === 'mine.csv' && /mine\.csv/.test(document.getElementById('s-settings').textContent) && !!document.getElementById('csvi-go'), _csvImp);
+    } finally { _csvImp = null; settingsPage = spSnap; navigateTo('today'); }
+  }
   return { pass, fail, results: R };
 })();
