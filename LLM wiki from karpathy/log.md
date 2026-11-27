@@ -1,3 +1,12 @@
+## 2026-11-28 — v272 LIVE (habit schedules); review reply
+
+- Kishore said "deploy". v272 deployed with `tools/deploy.sh --tag`: every check passed, both remotes have
+  `web-v272`, live app.js + sw.js report v272, no console errors at 360 px.
+- Play review (Harsh kumar, ★5, 2026-11-26, Hinglish): loves the app and its "editable format", says everyone
+  should try it. Reply posted: "Bahut shukriya Harsh ji! 🙏 Jaan kar khushi hui ki editable format aapko pasand
+  aaya. Sab data aapke phone par hi rehta hai. Dosto ko bhi batayein, aur koi sujhav ho to zaroor likhiye.
+  — Kishore, Daylog"
+
 ## 2026-11-26 — v272 built: habit schedules (NOT deployed); Sheet box still yellow for Kishore
 
 - Kishore: "yes build habit schedules". Built (features.md ▸ Habit schedules): weekdays or N-a-week per habit, rest

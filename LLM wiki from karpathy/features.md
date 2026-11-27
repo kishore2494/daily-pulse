@@ -297,7 +297,7 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
 
-## Habit schedules (v272, built 2026-11-26, NOT deployed yet)
+## Habit schedules (v272, live since 2026-11-28)
 
 Asked for by Kishore 2026-11-26 after "no we need streak": streaks stay, but a non-daily habit must not lose its
 streak on every day off.
