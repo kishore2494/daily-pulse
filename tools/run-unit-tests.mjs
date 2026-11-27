@@ -107,6 +107,10 @@ const dom = new JSDOM(readFileSync(join(ROOT, "index.html"), "utf8"), {
 
 const w = dom.window;
 w.scrollTo = () => {};
+// jsdom has no SubtleCrypto, and the app lock (v273) hashes its PIN with PBKDF2 through it. This is
+// Node's own WebCrypto — the real implementation, not a stub — so the lock tests run the same
+// derivation a browser does.
+if (!w.crypto.subtle) Object.defineProperty(w.crypto, "subtle", { value: globalThis.crypto.subtle, configurable: true });
 w.fetch = () => Promise.reject(new Error("network is disabled in the headless harness"));
 
 await new Promise((resolve) => {

@@ -297,6 +297,37 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
 
+## App lock — PIN (v273, built 2026-11-28, NOT deployed yet)
+
+- Settings ▸ Your data ▸ **App lock**. A 4–6 digit PIN, asked when Daylog opens and when you come back after
+  the chosen time away: right away (10 s grace so a photo picker or share sheet can return), 1 min (default),
+  5 or 15 min. Lock now · Change PIN (asks the current one; keeps the recovery code) · New recovery code ·
+  Turn off (asks the PIN).
+- **What it is:** a privacy screen, not encryption. localStorage is unchanged; backup files and the Sheet open
+  without the PIN. The card says so in plain words.
+- **Storage:** `dp.lock` = `{v, len, it, salt, hash, rs, rh, after}`; the PIN and the recovery code are kept only
+  as salted PBKDF2-SHA256 hashes (120 000 rounds, WebCrypto). `dp.lockFail` = wrong-try count: 5 free, then a
+  wait doubling from 30 s to 15 min, kept across reloads. Both are in `BACKUP_EXCLUDED` and not in the sync
+  payload: a restore onto a new phone must never lock its owner out.
+- **Recovery code:** 10 characters `XXXXX-XXXXX` from 32 unambiguous letters/digits (no 0/O, 1/I), shown once
+  when the PIN is first set; the lock is saved only after "I saved it" (Cancel saves nothing). Forgot PIN →
+  type the code (any case, spaces fine) → lock turns OFF and Settings ▸ App lock opens to set a new one. Lost
+  both: the screen says Android Settings ▸ Apps ▸ Daylog ▸ Storage ▸ Clear storage (web: clear site data).
+- **No flash:** an inline script in index.html `<head>` adds `html.locked` when `dp.lock` exists, and CSS hides
+  every body child except `#lock` and `#alarm` with `visibility:hidden` (not focusable, not read aloud).
+  `lockBoot()` (runs right after `DB`) shows the keypad, or drops the class if the stored value is unusable.
+- **Away/back:** on `visibilitychange` hidden (and Capacitor App `pause`), the lock screen goes up at once so the
+  recent-apps thumbnail shows it; on return (`resume`) it comes down without a PIN if away < the chosen time.
+  A Settings step (verify/change) left open past the time turns into the real lock, so Cancel cannot open
+  the app. Both handlers are idempotent.
+- A ringing alarm stays on top (`html.locked #alarm` z 400) and can be dismissed without the PIN.
+- Back button: on the lock → minimize the app (`App.minimizeApp`); in a Settings step → cancel it; on the
+  recovery-code screen → back to the keypad. Physical keyboard: digits, Backspace, Enter; Esc cancels a step.
+- Tests: tests/unit-async.js "v273: App lock" (≈60 checks). The runner gives jsdom Node's real
+  `crypto.subtle` (jsdom has none). Also fixed a pre-existing flake there: the recorder "reason cap" check read
+  the on-screen toast, which a recovered recording's 1.8 s-delayed toast could overwrite.
+- Not done (would need native): biometric unlock, FLAG_SECURE (block screenshots).
+
 ## Habit schedules (v272, live since 2026-11-28)
 
 Asked for by Kishore 2026-11-26 after "no we need streak": streaks stay, but a non-daily habit must not lose its

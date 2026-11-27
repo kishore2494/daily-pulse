@@ -1,3 +1,12 @@
+## 2026-11-28 — v273 built: App lock (PIN) (NOT deployed)
+
+- Kishore: "what's next … there are tokens you need to complete" → built the next roadmap item, the PIN lock
+  (features.md ▸ App lock). PIN + recovery code stored only as PBKDF2 hashes; per-device (not synced, not
+  backed up); no flash on open; locks again after a chosen time away; alarms still ring on top.
+- Tests 4 zones + every release check pass; checked at 360 px (Settings row + page, set/confirm, recovery code,
+  wrong PIN, recovery screen, reload while locked, alarm over the lock). `🔒` card emoji now maps to the new
+  `lock` icon (was `dot`). Waits for Kishore's "deploy".
+
 ## 2026-11-28 — v272 LIVE (habit schedules); review reply
 
 - Kishore said "deploy". v272 deployed with `tools/deploy.sh --tag`: every check passed, both remotes have

@@ -4618,3 +4618,44 @@ button.lt-env { cursor: pointer; }
 .habit.rest:not(.on) { opacity: .62; border-style: dashed; }
 .heat .cell.rest { background: transparent !important; box-shadow: inset 0 0 0 1px var(--border); }
 .sync-old-still { margin: 6px 0 0; font-size: 12.5px; }
+
+/* ---------- v273 App lock ---------- */
+/* Everything but the keypad (and a ringing alarm, which must stay dismissable) is hidden, not just
+   covered: hidden content cannot be focused, read by a screen reader or flash through. */
+html.locked body > :not(#lock):not(#alarm) { visibility: hidden !important; }
+html.locked #alarm { z-index: 400; }
+.lock { display: none; position: fixed; inset: 0; z-index: 300; overflow-y: auto;
+  flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+  padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom));
+  background: var(--bg); color: var(--text); }
+.lock.on { display: flex; }
+.lk-logo { width: 52px; height: 52px; border-radius: 14px; }
+.lk-h { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; margin: 4px 0 0; }
+.lk-sub { color: var(--text-dim); font-size: .92rem; line-height: 1.4; margin: 0; max-width: 300px; }
+.lk-small { font-size: .82rem; margin-top: 6px; }
+.lk-dots { display: flex; gap: 14px; height: 16px; margin: 12px 0 0; }
+.lk-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--text-dim); box-sizing: border-box; }
+.lk-dot.on { background: var(--accent); border-color: var(--accent); }
+.lk-shake { animation: lkshake .35s; }
+@keyframes lkshake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+@media (prefers-reduced-motion: reduce) { .lk-shake { animation: none; } }
+.lk-msg { min-height: 1.35em; color: var(--bad-ink); font-size: .9rem; margin: 0; }
+.lk-pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px 22px; margin-top: 4px; }
+.lk-key { width: 72px; height: 72px; border-radius: 50%; border: 1px solid var(--border); cursor: pointer;
+  background: var(--bg-card); color: var(--text); font: 600 1.55rem 'Sora', sans-serif; -webkit-tap-highlight-color: transparent; }
+.lk-key:active:not(:disabled) { background: var(--border-hi); }
+.lk-key:disabled { opacity: .35; cursor: default; }
+.lk-key.lk-fn { background: transparent; border-color: transparent; font-size: 1.05rem; }
+.lk-link { background: none; border: 0; color: var(--accent-ink); font: inherit; font-size: .95rem;
+  min-height: 44px; padding: 8px 14px; cursor: pointer; }
+.lk-code { font: 700 1.5rem/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .1em; margin: 8px 0 2px;
+  padding: 14px 18px; border: 1.5px dashed var(--border-hi); border-radius: 12px; user-select: all; -webkit-user-select: all; }
+.lk-input { width: 230px; max-width: 100%; min-height: 50px; margin-top: 8px; text-align: center; text-transform: uppercase;
+  font: 600 1.15rem ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em;
+  border-radius: 12px; border: 1px solid var(--border-hi); background: var(--bg-input); color: var(--text); }
+.lock .btn { min-width: 200px; min-height: 46px; }
+.lk-after { display: flex; flex-wrap: wrap; gap: 8px; }
+.lk-after .ss-chip { min-height: 44px; padding: 8px 14px; color: var(--text); background: var(--bg-input); border-color: var(--border-hi); }
+.lk-after .ss-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.lk-note { margin-top: 10px; }
+.lk-off { color: var(--bad-ink); }

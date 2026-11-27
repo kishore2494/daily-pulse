@@ -1174,15 +1174,18 @@
       ok('#11 …refused twice: says so, and keeps no empty record', !_lr && calls.filter(c => c[0] === 'start').length === 2 && _recs.size === before && /would not start/.test(document.getElementById('toast').textContent));
       LR.start = startOk;
 
-      // the native side's new ending reasons
+      // the native side's new ending reasons. Every toast is recorded rather than reading the one on
+      // screen: a recovered recording's own toast fires 1.8 s after recovery and could land on top.
+      const recToasts = [], recT0 = window.toast; window.toast = (m, e) => { recToasts.push(m); return recT0(m, e); };
       recStart(); await until(() => !!_lr);
       const nS = _lr.id; listener({ state: 'idle', id: nS, uri: 'file:///data/rec/' + nS + '.m4a', durationMs: 70000, bytes: 9000, reason: 'storage' });
       await until(() => (_recs.get(nS) || {}).state === 'done');
-      ok('reason storage: "Recording stopped: phone storage is almost full"', /^Recording stopped: phone storage is almost full/.test(document.getElementById('toast').textContent), document.getElementById('toast').textContent);
+      ok('reason storage: "Recording stopped: phone storage is almost full"', recToasts.some(m => /^Recording stopped: phone storage is almost full/.test(m)), recToasts);
       recStart(); await until(() => !!_lr);
       const nC = _lr.id; listener({ state: 'idle', id: nC, uri: 'file:///data/rec/' + nC + '.m4a', durationMs: REC_MAX_MS, bytes: 9000, reason: 'cap' });
       await until(() => (_recs.get(nC) || {}).state === 'done');
-      ok('reason cap: "Recording stopped at 3 hours"', /^Recording stopped at 3 hours/.test(document.getElementById('toast').textContent), document.getElementById('toast').textContent);
+      ok('reason cap: "Recording stopped at 3 hours"', recToasts.some(m => /^Recording stopped at 3 hours/.test(m)), recToasts);
+      window.toast = recT0;
 
       // #9 browser, two tabs: a web recording holds a Web Lock; another tab's start-up leaves it alone
       delete window.Capacitor;
@@ -1221,6 +1224,160 @@
       if (obSnap != null) localStorage.setItem('dp.onboarded', obSnap); else localStorage.removeItem('dp.onboarded');
       shim.dbs.delete(REC_DB);
       navigateTo('today');
+    }
+  }
+  /* ---------- v273: App lock ---------- */
+  {
+    const lkSnap = localStorage.getItem('dp.lock'), lfSnap = localStorage.getItem('dp.lockFail'), tSnap = window.toast;
+    const toasts = []; window.toast = m => toasts.push(m);
+    const $ = s => document.querySelector(s);
+    const tap = s => { const b = $(s); if (b) b.click(); return !!b; };
+    const keys = async str => { for (const d of (str === 'ok' ? ['ok'] : str)) { const b = $(`[data-lk-key="${d}"]`); if (b) b.click(); await sleep(0); } };
+    const open = () => !!(_lk) && $('#lock').classList.contains('on') && document.documentElement.classList.contains('locked');
+    const settled = () => until(() => !_lk || !_lk.busy, 4000);
+    const page = () => { navigateTo('settings'); settingsPage = 'lock'; renderSettings(); };
+    try {
+      localStorage.removeItem('dp.lock'); localStorage.removeItem('dp.lockFail'); lockHide();
+      ok('lock: off by default, and the page offers "Set a PIN"', !lockOn() && (page(), !!$('#lock-set')));
+      settingsPage = null; renderSettings();
+      ok('lock: Settings row says it is off', /App lock/.test($('#s-settings').textContent) && /Off · set a PIN/.test($('#s-settings').textContent));
+      page(); tap('#lock-set');
+      ok('lock: Set a PIN opens the keypad over everything', open() && _lk.mode === 'set1');
+      await keys('123');
+      ok('lock: OK stays off below 4 digits', $('[data-lk-key="ok"]').disabled);
+      await keys('4');
+      ok('lock: …and turns on at 4', !$('[data-lk-key="ok"]').disabled);
+      await keys('ok');
+      ok('lock: OK asks for the PIN again', _lk.mode === 'set2' && $('.lk-h').textContent === 'Type it again');
+      await keys('1235');
+      ok('lock: a mismatch starts over and says why', _lk.mode === 'set1' && /did not match/.test($('.lk-msg').textContent));
+      await keys('1234'); await keys('ok'); await keys('1234'); await until(() => _lk && _lk.mode === 'code', 4000);
+      const code = _lk && _lk.code;
+      ok('lock: a recovery code follows, 10 clear characters', /^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/.test(code || ''), code);
+      ok('lock: nothing is saved before "I saved it"', !lockOn());
+      tap('#lk-saved');
+      const cfg = lockCfg();
+      ok('lock: "I saved it" turns the lock on and closes the keypad', lockOn() && !open() && toasts.some(m => /App lock is on/.test(m)));
+      ok('lock: only salted hashes are stored, never the PIN or the code',
+        cfg.len === 4 && cfg.salt && cfg.hash && cfg.rs && cfg.rh && !/1234/.test(localStorage.getItem('dp.lock')) && localStorage.getItem('dp.lock').indexOf(code.replace('-', '')) < 0);
+      ok('lock: the page now shows the choices', !!$('#lock-off') && $('[data-lock-after].on').dataset.lockAfter === '1');
+      settingsPage = null; renderSettings();
+      ok('lock: Settings row says when it asks', /On · asks for your PIN after 1 minute away/.test($('#s-settings').textContent));
+
+      // unlocking
+      tap('#open-style'); lockShow('unlock');
+      await keys('9999'); await settled();
+      ok('lock: a wrong PIN keeps it locked and says so', open() && /Wrong PIN/.test($('.lk-msg').textContent) && lockFails().n === 1);
+      await keys('1234'); await settled();
+      ok('lock: the right PIN opens Daylog and clears the count', !open() && !localStorage.getItem('dp.lockFail'));
+      ok('lock: an unlock screen has "Forgot PIN?"', (lockShow('unlock'), !!$('#lk-forgot')) && !$('#lk-cancel'));
+      // throttle
+      for (let i = 0; i < 5; i++) { await keys('0000'); await settled(); }
+      ok('lock: five wrong tries make it wait', lockWaitMs() > 20000 && /Try again in 0:[0-9]{2}/.test($('.lk-msg').textContent), $('.lk-msg').textContent);
+      ok('lock: …with the keypad switched off', $('[data-lk-key="1"]').disabled);
+      await keys('1234'); await sleep(30);
+      ok('lock: …so even the right PIN waits', open());
+      localStorage.removeItem('dp.lockFail'); lockRender(); await keys('1234'); await settled();
+      ok('lock: after the wait it opens', !open());
+      // keyboard
+      lockShow('unlock');
+      for (const k of '1234') document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      await settled();
+      ok('lock: a keyboard works too', !open());
+
+      // leaving and coming back
+      lockAway();
+      ok('lock: leaving puts the lock screen up at once (recent-apps thumbnail)', open() && _lk.soft);
+      lockBack();
+      ok('lock: back within a minute, it comes down without a PIN', !open());
+      lockAway(); _lockAway = Date.now() - 2 * 60000; lockBack();
+      ok('lock: back after 2 minutes, it asks for the PIN', open() && !_lk.soft);
+      await keys('1234'); await settled();
+      lockShow('verify', { then: 'off' }); lockAway(); _lockAway = Date.now() - 2 * 60000; lockBack();
+      ok('lock: a Settings step left open turns into the real lock (Cancel must not open the app)', open() && _lk.mode === 'unlock' && !$('#lk-cancel'));
+      await keys('1234'); await settled();
+      page(); tap('[data-lock-after="0"]');
+      ok('lock: "Right away" is saved', lockCfg().after === 0 && lockAfterMin() === 0);
+      lockAway(); _lockAway = Date.now() - 3000; lockBack();
+      ok('lock: right away still lets a photo picker come back (10 s grace)', !open());
+      lockAway(); _lockAway = Date.now() - 11000; lockBack();
+      ok('lock: right away asks after 11 s', open());
+      await keys('1234'); await settled();
+      page(); tap('[data-lock-after="1"]');
+
+      // back button
+      lockShow('unlock'); handleBack();
+      ok('lock: Back on the lock screen never opens the app', open());
+      await keys('1234'); await settled();
+      lockShow('verify', { then: 'off' }); handleBack();
+      ok('lock: Back cancels a Settings step, and the lock stays on', !open() && lockOn());
+
+      // change PIN (keeps the recovery code)
+      const rh0 = lockCfg().rh;
+      page(); tap('#lock-change');
+      ok('lock: Change PIN asks for the current one first', open() && _lk.mode === 'verify');
+      await keys('1111'); await settled();
+      ok('lock: …and a wrong one is refused', _lk.mode === 'verify' && /Wrong PIN/.test($('.lk-msg').textContent));
+      await keys('1234'); await settled();
+      ok('lock: …then asks for the new one', _lk.mode === 'set1' && /new PIN/.test($('.lk-h').textContent));
+      await keys('567890');
+      ok('lock: 6 digits move on without OK', _lk.mode === 'set2');
+      await keys('567890'); await until(() => !open(), 4000);
+      ok('lock: the new PIN is saved, the recovery code kept', lockCfg().len === 6 && lockCfg().rh === rh0 && toasts.some(m => /PIN changed/.test(m)));
+      lockShow('unlock'); await keys('1234');
+      ok('lock: the old PIN is no longer accepted as complete', open());
+      await keys('90'); await settled();
+      ok('lock: …and 6 digits of the old one are wrong', open() && /Wrong PIN/.test($('.lk-msg').textContent));
+      await keys('567890'); await settled();
+      ok('lock: the new one opens it', !open());
+      localStorage.removeItem('dp.lockFail');
+
+      // recovery code
+      lockShow('unlock'); tap('#lk-forgot');
+      ok('lock: Forgot PIN asks for the recovery code', _lk.mode === 'recover' && !!$('#lk-codein'));
+      $('#lk-codein').value = 'ABCDE-FGHJK'; $('#lk-codein').dispatchEvent(new Event('input', { bubbles: true })); tap('#lk-recover'); await settled();
+      ok('lock: a wrong code is refused', open() && /does not match/.test($('.lk-msg').textContent));
+      $('#lk-codein').value = '12'; tap('#lk-recover'); await settled();
+      ok('lock: a short code says what a code looks like', /10 letters and numbers/.test($('.lk-msg').textContent));
+      handleBack();
+      ok('lock: Back from the code goes back to the PIN, still locked', open() && _lk.mode === 'unlock');
+      tap('#lk-forgot');
+      $('#lk-codein').value = ' ' + code.toLowerCase().replace('-', ' ') + ' '; tap('#lk-recover'); await until(() => !open(), 4000);
+      ok('lock: the saved code (any case, spaces) unlocks and turns the lock off', !open() && !lockOn());
+      ok('lock: …and lands on App lock to set a new PIN', settingsPage === 'lock' && !!$('#lock-set') && toasts.some(m => /set a new PIN/.test(m)));
+
+      // a new recovery code; turning it off
+      tap('#lock-set'); await keys('2468'); await keys('ok'); await keys('2468'); await until(() => _lk && _lk.mode === 'code', 4000);
+      ok('lock: Cancel on a first recovery code saves nothing', (tap('#lk-cancel'), !lockOn() && !open()));
+      tap('#lock-set'); await keys('2468'); await keys('ok'); await keys('2468'); await until(() => _lk && _lk.mode === 'code', 4000); tap('#lk-saved');
+      const rh1 = lockCfg().rh;
+      tap('#lock-code'); await keys('2468'); await until(() => _lk && _lk.mode === 'code', 4000);
+      const code2 = _lk.code; tap('#lk-cancel');
+      ok('lock: Cancel on a new recovery code keeps the old one', lockCfg().rh === rh1);
+      tap('#lock-code'); await keys('2468'); await until(() => _lk && _lk.mode === 'code', 4000);
+      ok('lock: each new recovery code is different', _lk.code !== code2);
+      tap('#lk-saved');
+      ok('lock: …and saving it replaces the old one', lockCfg().rh !== rh1 && toasts.some(m => /old one no longer works/.test(m)));
+      tap('#lock-off'); await keys('2468'); await until(() => !open(), 4000);
+      ok('lock: Turn off asks for the PIN, then turns it off', !lockOn() && toasts.some(m => /App lock is off/.test(m)));
+
+      // not synced, not backed up; bad stored values
+      localStorage.setItem('dp.lock', JSON.stringify({ v: 1, len: 4, it: 1000, salt: 'AAAA', hash: 'AAAA', after: 1 }));
+      ok('lock: backups leave the lock out', BACKUP_EXCLUDED.includes('lock') && BACKUP_EXCLUDED.includes('lockFail') && !('lock' in backupBlob().data));
+      ok('lock: the sync payload builder never names it', !/dp\.lock|lockCfg/.test(pushState.toString()));
+      localStorage.setItem('dp.lock', '{broken');
+      ok('lock: a broken stored value is "off", not a locked-out app', !lockOn());
+      localStorage.setItem('dp.lock', JSON.stringify({ hash: 'x', salt: 'y', len: 9 }));
+      ok('lock: an impossible PIN length is "off" too', !lockOn());
+      ok('lock: index.html hides the app before the first paint when a lock is set',
+        /localStorage\.getItem\('dp\.lock'\)\) document\.documentElement\.classList\.add\('locked'\)/.test(document.documentElement.innerHTML));
+    } catch (e) {
+      ok('lock: suite ran without throwing', false, String(e && e.stack || e).slice(0, 300));
+    } finally {
+      lockHide();
+      if (lkSnap != null) localStorage.setItem('dp.lock', lkSnap); else localStorage.removeItem('dp.lock');
+      if (lfSnap != null) localStorage.setItem('dp.lockFail', lfSnap); else localStorage.removeItem('dp.lockFail');
+      window.toast = tSnap; settingsPage = null; navigateTo('today');
     }
   }
   return { pass, fail, results: R };

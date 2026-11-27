@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v272';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v273';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -588,6 +588,303 @@ const DB = {
   settings() { return Object.assign({ syncUrl: '', reminderTime: '', name: '' }, safeParse(localStorage.getItem('dp.settings'), {})); },
   saveSettings(s) { const ok = safeSet('dp.settings', JSON.stringify(s)); return ok; },
 };
+
+/* ---------- v273: App lock (a PIN to open Daylog) ----------
+   A privacy screen, not encryption. It keeps out someone holding the phone; localStorage is
+   unchanged, and a backup file or the Sheet opens without the PIN (Settings ▸ App lock says so).
+   dp.lock = { v, len, it, salt, hash, rs, rh, after }: the PIN and the recovery code are kept only
+   as salted PBKDF2-SHA256 hashes. It is about THIS install, so it is neither synced nor backed up —
+   a restore onto a new phone must never lock its owner out with a PIN that phone never set.
+   index.html adds html.locked before the first paint (when dp.lock exists), so nothing flashes;
+   lockBoot() then shows the keypad, or drops the class if the stored value is unusable.
+   `var` throughout: lockBoot() runs here, early in the file, and the overlay can be driven by
+   events before later top-level code has run. */
+var LOCK_AFTER = [0, 1, 5, 15];   // minutes away before the PIN is asked again; 0 = right away
+var LOCK_GRACE_MS = 10000;        // "right away" still lets a photo picker or share sheet come back
+var LOCK_IT = 120000;             // PBKDF2 rounds: ~0.1 s on a cheap phone, slow for a guesser
+var LOCK_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // recovery code letters: no 0/O, 1/I
+var _lk = null;                   // the open keypad: { mode, buf, msg, … } or null
+var _lkTick = 0;                  // re-renders the "try again in" countdown
+var _lockAway = 0;                // when Daylog went into the background (0 = it has not)
+
+function lockCfg() { const c = safeParse(localStorage.getItem('dp.lock'), null); return c && typeof c.hash === 'string' && typeof c.salt === 'string' && c.len >= 4 && c.len <= 6 ? c : null; }
+function lockOn() { return !!lockCfg(); }
+function lockAfterMin() { const c = lockCfg(), a = c ? Number(c.after) : 1; return LOCK_AFTER.includes(a) ? a : 1; }
+function lockAfterText(m) { return !m ? 'Right away' : m === 1 ? '1 minute' : m + ' minutes'; }
+function lockCanHash() { return !!(window.crypto && window.crypto.subtle && window.TextEncoder); }
+function lockB64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+function lockUnb64(s) { const r = atob(s), a = new Uint8Array(r.length); for (let i = 0; i < r.length; i++) a[i] = r.charCodeAt(i); return a; }
+function lockSalt() { const a = new Uint8Array(16); window.crypto.getRandomValues(a); return lockB64(a); }
+async function lockHash(secret, salt, it) {
+  const S = window.crypto.subtle;
+  const key = await S.importKey('raw', new TextEncoder().encode(String(secret)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await S.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: lockUnb64(salt), iterations: it || LOCK_IT }, key, 256);
+  return lockB64(new Uint8Array(bits));
+}
+function lockCodeNorm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function lockNewCode() {
+  const a = new Uint8Array(10); window.crypto.getRandomValues(a);
+  const s = Array.from(a, b => LOCK_ABC[b % 32]).join('');   // 32 letters, so b % 32 is unbiased
+  return s.slice(0, 5) + '-' + s.slice(5);
+}
+/* Wrong tries: 5 are free, then a wait that doubles from 30 s up to 15 min. Kept in storage so
+   a reload does not reset it. */
+function lockFails() { return safeParse(localStorage.getItem('dp.lockFail'), { n: 0, until: 0 }); }
+function lockWaitMs() { return Math.max(0, (+lockFails().until || 0) - Date.now()); }
+function lockFailed() {
+  const f = lockFails(); f.n = (+f.n || 0) + 1;
+  if (f.n >= 5) f.until = Date.now() + Math.min(15 * 60000, 30000 * Math.pow(2, f.n - 5));
+  localStorage.setItem('dp.lockFail', JSON.stringify(f));
+}
+function lockFailClear() { localStorage.removeItem('dp.lockFail'); }
+
+function lockEl() {
+  let el = document.getElementById('lock');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'lock'; el.className = 'lock';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'App lock');
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function lockShow(mode, opts) {
+  _lk = Object.assign({ mode, buf: '', msg: '' }, opts || {});
+  document.documentElement.classList.add('locked');
+  lockEl().classList.add('on');
+  lockRender();
+}
+function lockHide() {
+  _lk = null; clearInterval(_lkTick); _lkTick = 0;
+  document.documentElement.classList.remove('locked');
+  const el = document.getElementById('lock'); if (el) { el.classList.remove('on'); el.innerHTML = ''; }
+}
+function lockIsOpen() { return !!_lk; }
+function lockRender() {
+  const k = _lk, el = document.getElementById('lock'); if (!k || !el) return;
+  const c = lockCfg(), guarded = k.mode === 'unlock' || k.mode === 'verify' || k.mode === 'recover';
+  const wait = guarded ? lockWaitMs() : 0;
+  clearInterval(_lkTick); _lkTick = wait ? setInterval(() => { if (!_lk || !lockWaitMs()) { clearInterval(_lkTick); _lkTick = 0; } lockRender(); }, 1000) : 0;
+  const secs = Math.ceil(wait / 1000);
+  const waitMsg = wait ? `Too many wrong tries. Try again in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : '';
+  const T = {
+    unlock:  ['Enter your PIN', 'Daylog is locked'],
+    verify:  ['Enter your PIN', k.then === 'off' ? 'to turn the lock off' : k.then === 'code' ? 'to make a new recovery code' : 'to change it'],
+    set1:    [k.change ? 'Choose a new PIN' : 'Choose a PIN', '4 to 6 digits, then tap OK'],
+    set2:    ['Type it again', 'to make sure'],
+    code:    ['Your recovery code', 'If you forget your PIN, this code opens Daylog.'],
+    recover: ['Forgot your PIN?', 'Type the recovery code you saved when you set it.'],
+  }[k.mode] || ['', ''];
+  const head = `<img class="lk-logo" src="icons/icon-192.png" alt="">
+    <h2 class="lk-h">${T[0]}</h2><p class="lk-sub">${T[1]}</p>`;
+  const cancel = k.mode === 'unlock' ? '' : `<button class="lk-link" id="lk-cancel">Cancel</button>`;
+  if (k.mode === 'code') {
+    el.innerHTML = `${head}
+      <div class="lk-code" id="lk-codetext">${k.code}</div>
+      <button class="btn btn-ghost btn-sm" id="lk-copy">Copy the code</button>
+      <p class="lk-sub">Keep it somewhere that is not this phone: write it down, or save it in a password manager.</p>
+      <button class="btn btn-primary" id="lk-saved">I saved it</button>${cancel}`;
+    return;
+  }
+  if (k.mode === 'recover') {
+    const how = nativeShell() ? 'Android Settings ▸ Apps ▸ Daylog ▸ Storage ▸ Clear storage' : 'Clearing this site\'s data in your browser';
+    el.innerHTML = `${head}
+      <input class="lk-input" id="lk-codein" maxlength="14" autocomplete="off" autocapitalize="characters" spellcheck="false"
+        placeholder="XXXXX-XXXXX" aria-label="Recovery code" value="${escapeHtml(k.val || '')}"${wait || k.busy ? ' disabled' : ''}>
+      <p class="lk-msg" aria-live="polite">${waitMsg || escapeHtml(k.msg)}</p>
+      <button class="btn btn-primary" id="lk-recover"${wait || k.busy ? ' disabled' : ''}>${k.busy ? 'Checking…' : 'Unlock'}</button>
+      <button class="lk-link" id="lk-back">Back to the PIN</button>
+      <p class="lk-sub lk-small">Lost the code too? ${how} resets Daylog. That erases what is on this phone; a backup file or your Sheet can bring it back.</p>`;
+    return;
+  }
+  const n = k.mode === 'set1' ? Math.max(4, k.buf.length) : k.mode === 'set2' ? k.first.length : (c ? c.len : 4);
+  const dots = Array.from({ length: n }, (_, i) => `<span class="lk-dot${i < k.buf.length ? ' on' : ''}"></span>`).join('');
+  const off = wait || k.busy ? ' disabled' : '';
+  const key = d => `<button class="lk-key" data-lk-key="${d}"${off}>${d}</button>`;
+  const ok = k.mode === 'set1' ? `<button class="lk-key lk-fn" data-lk-key="ok"${k.buf.length < 4 || off ? ' disabled' : ''}>OK</button>` : '<span></span>';
+  el.innerHTML = `${head}
+    <div class="lk-dots${k.shake ? ' lk-shake' : ''}" role="img" aria-label="${k.buf.length} of ${n} digits">${dots}</div>
+    <p class="lk-msg" aria-live="polite">${waitMsg || escapeHtml(k.msg)}</p>
+    <div class="lk-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(key).join('')}${ok}${key(0)}<button class="lk-key lk-fn" data-lk-key="del" aria-label="Delete"${off}>⌫</button></div>
+    ${k.mode === 'unlock' && c && c.rh ? '<button class="lk-link" id="lk-forgot">Forgot PIN?</button>' : ''}${cancel}`;
+  k.shake = false;
+}
+function lockSave(c) { return safeSet('dp.lock', JSON.stringify(c)); }
+async function lockKey(d) {
+  const k = _lk; if (!k || k.busy || k.mode === 'code' || k.mode === 'recover') return;
+  if ((k.mode === 'unlock' || k.mode === 'verify') && lockWaitMs()) return;
+  if (d === 'del') { k.buf = k.buf.slice(0, -1); k.msg = ''; lockRender(); return; }
+  if (d === 'ok') { if (k.mode === 'set1' && k.buf.length >= 4) { k.first = k.buf; k.buf = ''; k.mode = 'set2'; k.msg = ''; lockRender(); } return; }
+  if (!/^\d$/.test(String(d))) return;
+  const c = lockCfg();
+  const max = k.mode === 'set1' ? 6 : k.mode === 'set2' ? k.first.length : (c ? c.len : 6);
+  if (k.buf.length >= max) return;
+  k.buf += d; k.msg = '';
+  if (k.mode === 'set1') { if (k.buf.length === 6) { k.first = k.buf; k.buf = ''; k.mode = 'set2'; } lockRender(); return; }
+  lockRender();
+  if (k.buf.length < max) return;
+  if (k.mode === 'set2') {
+    if (k.buf === k.first) { await lockSetDone(k.buf); return; }
+    k.mode = 'set1'; k.buf = ''; k.first = ''; k.msg = 'Those did not match. Choose your PIN again.'; k.shake = true; lockRender(); return;
+  }
+  k.busy = true; lockRender();
+  let good = false;
+  try { good = !!c && await lockHash(k.buf, c.salt, c.it) === c.hash; } catch (e) {}
+  k.busy = false;
+  if (_lk !== k) return;   // closed while the hash ran
+  if (!good) { lockFailed(); k.buf = ''; k.msg = 'Wrong PIN'; k.shake = true; lockRender(); return; }
+  lockFailClear();
+  if (k.mode === 'unlock') { lockHide(); return; }
+  if (k.then === 'off') { localStorage.removeItem('dp.lock'); lockHide(); lockSettingsRefresh(); toast('App lock is off'); return; }
+  if (k.then === 'change') { _lk = { mode: 'set1', buf: '', msg: '', change: true }; lockRender(); return; }
+  if (k.then === 'code') { await lockCodeStep(Object.assign({}, c), false); return; }
+}
+/* A new PIN. Changing it keeps the recovery code; a first PIN shows a recovery code and is only
+   saved once the person says they kept it. */
+async function lockSetDone(pin) {
+  const k = _lk; k.busy = true; lockRender();
+  try {
+    const old = lockCfg(), salt = lockSalt(), hash = await lockHash(pin, salt, LOCK_IT);
+    const next = { v: 1, len: pin.length, it: LOCK_IT, salt, hash, after: old ? lockAfterMin() : 1 };
+    if (old && old.rh) { next.rs = old.rs; next.rh = old.rh; }
+    if (k.change && old) {
+      if (!lockSave(next)) throw new Error('save');
+      lockHide(); lockSettingsRefresh(); toast('PIN changed'); return;
+    }
+    await lockCodeStep(next, true);
+  } catch (e) { lockHide(); toast('Could not save the PIN. Nothing changed.', true); }
+}
+async function lockCodeStep(cfg, fresh) {
+  const code = lockNewCode(), rs = lockSalt(), rh = await lockHash(lockCodeNorm(code), rs, cfg.it || LOCK_IT);
+  _lk = { mode: 'code', code, fresh, pending: Object.assign({}, cfg, { rs, rh }), buf: '', msg: '' };
+  lockRender();
+}
+async function lockRecover() {
+  const k = _lk; if (!k || k.mode !== 'recover' || k.busy || lockWaitMs()) return;
+  const inp = document.getElementById('lk-codein'); if (inp) k.val = inp.value;
+  const v = lockCodeNorm(k.val);
+  if (v.length !== 10) { k.msg = 'The code is 10 letters and numbers, like ABCDE-23456'; lockRender(); return; }
+  const c = lockCfg(); k.busy = true; lockRender();
+  let good = false;
+  try { good = !!(c && c.rh && c.rs) && await lockHash(v, c.rs, c.it) === c.rh; } catch (e) {}
+  k.busy = false;
+  if (_lk !== k) return;
+  if (!good) { lockFailed(); k.msg = 'That code does not match'; lockRender(); return; }
+  lockFailClear(); localStorage.removeItem('dp.lock'); lockHide();
+  // Land on Settings ▸ App lock, so a new PIN is one tap away.
+  try { navigateTo('settings'); settingsPage = 'lock'; renderSettings(); window.scrollTo(0, 0); } catch (e) {}
+  toast('Unlocked. The lock is off now: set a new PIN here.');
+}
+function lockSettingsRefresh() { try { renderSettingsIfShown(); } catch (e) {} }
+/* Back while the keypad is up: on the lock itself Daylog goes to the background (there is
+   nothing behind it to go back to); in a Settings step it cancels that step, and a first PIN
+   whose recovery code was not confirmed is simply not saved. */
+function lockBackPress() {
+  const k = _lk; if (!k) return;
+  if (k.mode === 'recover') { k.mode = 'unlock'; k.msg = ''; lockRender(); return; }
+  if (k.mode === 'unlock') {
+    const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (App && App.minimizeApp) App.minimizeApp(); else if (App && App.exitApp) App.exitApp();
+    return;
+  }
+  lockHide();
+}
+/* Leaving and coming back. On leaving, the lock screen goes up straight away, so the recent-apps
+   thumbnail shows it rather than the journal; on return it comes down without a PIN when the
+   person was away for less than the chosen time. A Settings step left open for longer turns
+   into the real lock, or Cancel would open the app for whoever picks the phone up. */
+function lockAway() {
+  if (!lockOn() || _lockAway) return;
+  _lockAway = Date.now();
+  if (!_lk) lockShow('unlock', { soft: true });
+}
+function lockBack() {
+  if (!_lockAway) return;
+  const away = Date.now() - _lockAway; _lockAway = 0;
+  const k = _lk; if (!k || !lockOn()) return;
+  const m = lockAfterMin(), limit = m ? m * 60000 : LOCK_GRACE_MS;
+  if (k.mode === 'unlock' && k.soft) { if (away < limit) lockHide(); else { k.soft = false; lockRender(); } return; }
+  if (k.mode !== 'unlock' && away >= limit) lockShow('unlock');
+}
+function lockBoot() {
+  if (lockOn()) lockShow('unlock'); else document.documentElement.classList.remove('locked');
+  document.addEventListener('visibilitychange', () => { if (document.hidden) lockAway(); else lockBack(); });
+  // Some Android shells skip visibilitychange; the App plugin's pause/resume covers them. Both
+  // handlers are idempotent, so getting both events is harmless.
+  try {
+    const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (App && App.addListener) { App.addListener('pause', lockAway); App.addListener('resume', lockBack); }
+  } catch (e) {}
+  document.addEventListener('click', ev => {
+    const t = ev.target.closest ? ev.target : null; if (!t) return;
+    const key = t.closest('[data-lk-key]');
+    if (key) { if (!key.disabled) lockKey(key.dataset.lkKey); return; }
+    if (t.closest('#lk-cancel')) { lockHide(); return; }
+    if (t.closest('#lk-forgot') && _lk) { _lk.mode = 'recover'; _lk.buf = ''; _lk.msg = ''; lockRender(); const i = document.getElementById('lk-codein'); if (i) i.focus(); return; }
+    if (t.closest('#lk-back') && _lk) { _lk.mode = 'unlock'; _lk.msg = ''; lockRender(); return; }
+    if (t.closest('#lk-recover')) { lockRecover(); return; }
+    if (t.closest('#lk-copy') && _lk) {
+      const code = _lk.code;
+      (async () => { try { await navigator.clipboard.writeText(code); toast('Copied'); } catch (e) { toast('Could not copy here. Write it down instead.', true); } })();
+      return;
+    }
+    if (t.closest('#lk-saved') && _lk && _lk.pending) {
+      const fresh = _lk.fresh;
+      if (!lockSave(_lk.pending)) { lockHide(); toast('Could not save the lock. Nothing changed.', true); return; }
+      lockFailClear(); lockHide(); lockSettingsRefresh();
+      toast(fresh ? '🔒 App lock is on' : 'New recovery code saved. The old one no longer works.');
+      return;
+    }
+    // Settings ▸ App lock
+    if (t.closest('#lock-set')) { if (lockCanHash()) lockShow('set1'); return; }
+    if (t.closest('#lock-now')) { if (lockOn()) lockShow('unlock'); return; }
+    if (t.closest('#lock-change')) { if (lockOn()) lockShow('verify', { then: 'change' }); return; }
+    if (t.closest('#lock-code')) { if (lockOn()) lockShow('verify', { then: 'code' }); return; }
+    if (t.closest('#lock-off')) { if (lockOn()) lockShow('verify', { then: 'off' }); return; }
+    const af = t.closest('[data-lock-after]');
+    if (af) {
+      const c = lockCfg(), m = +af.dataset.lockAfter; if (!c || !LOCK_AFTER.includes(m)) return;
+      c.after = m; if (!lockSave(c)) { toast('Could not save that', true); return; }
+      lockSettingsRefresh(); toast('Asks for the PIN: ' + (m ? 'after ' + lockAfterText(m) + ' away' : 'right away'));
+    }
+  });
+  document.addEventListener('input', ev => { if (ev.target && ev.target.id === 'lk-codein' && _lk) _lk.val = ev.target.value; });
+  // A keyboard works too (web, Chromebooks). Capture phase, so the app's own shortcuts never see
+  // a key meant for the keypad.
+  document.addEventListener('keydown', ev => {
+    const k = _lk; if (!k) return;
+    if (k.mode === 'recover') { if (ev.key === 'Enter') { ev.preventDefault(); lockRecover(); } return; }
+    if (k.mode === 'code') return;
+    if (/^\d$/.test(ev.key)) lockKey(ev.key);
+    else if (ev.key === 'Backspace') lockKey('del');
+    else if (ev.key === 'Enter') lockKey('ok');
+    else if (ev.key === 'Escape' && k.mode !== 'unlock') lockHide();
+    else return;
+    ev.preventDefault(); ev.stopPropagation();
+  }, true);
+}
+function lockCardHTML() {
+  const c = lockCfg();
+  const note = `<p class="hint lk-note">It keeps out someone holding your phone. It does not encrypt your data, and a backup file or your Google Sheet opens without it.</p>`;
+  if (!c) return `<div class="card">
+      <h2>🔒 App lock <span class="hint">off</span></h2>
+      <p class="hint">Daylog asks for a PIN when it opens, and again when you come back to it.</p>
+      ${lockCanHash() ? '<div class="btn-row"><button class="btn btn-primary" id="lock-set">Set a PIN</button></div>'
+        : '<p class="hint">This browser cannot keep a PIN safely. Use the Play Store app, or open Daylog over https.</p>'}
+      ${note}</div>`;
+  const a = lockAfterMin();
+  return `<div class="card">
+      <h2>🔒 App lock <span class="hint">on · ${c.len}-digit PIN</span></h2>
+      <div class="field"><label>Ask for the PIN when you come back after</label>
+        <div class="lk-after">${LOCK_AFTER.map(m => `<button class="ss-chip${m === a ? ' on' : ''}" data-lock-after="${m}" aria-pressed="${m === a}">${lockAfterText(m)}</button>`).join('')}</div></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="lock-now">Lock now</button>
+        <button class="btn btn-ghost btn-sm" id="lock-change">Change PIN</button>
+        <button class="btn btn-ghost btn-sm" id="lock-code">New recovery code</button>
+      </div>
+      <div class="btn-row"><button class="btn btn-ghost btn-sm lk-off" id="lock-off">Turn the lock off</button></div>
+      ${note}</div>`;
+}
+lockBoot();
 
 /* ---------- Date helpers ---------- */
 function todayStr(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
@@ -1709,8 +2006,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w35',
+  v: 'w36',
   items: [
+    '🔒 <b>App lock</b> — set a PIN so someone holding your phone cannot open your journal. Choose when it asks again: right away, or after 1, 5 or 15 minutes away. You also get a recovery code in case you forget the PIN. Settings ▸ App lock.',
     '📅 <b>Habit schedules</b> — not every habit is daily. Set one to certain weekdays (Mon, Wed, Fri) or to a number of times a week (gym 3 times a week). Days off show as rest days and never break your streak, and a times-a-week habit keeps a streak in weeks: get your 3 in by Sunday and it grows by one. Tap the 📅 on a habit in Habits, or in Customize.',
     '✉️ <b>Letters to future you</b> — write a letter today and seal it until a day you choose: your birthday, New Year, a year from now. Add a photo or a voice note if you like. Until that day nobody can read it, not even you; then it waits for you at the top of the Log. Find it in ☰ Menu ▸ Letters.',
     '🎬 <b>Your month as a film</b> — in the first week of a month the Log offers last month as a thirty-second film: every day as a colour, your best day and what you wrote that day, the habits you kept, a photo. Watch any month from Stats ▸ Month in review. In a browser you can also save it as a video to share.',
@@ -9292,6 +9590,7 @@ function renderSettings() {
     tracking:  { t: 'Auto-tracking',     sub: 'Sleep, steps and screen time',        html: C.tracking },
     data:      { t: 'Backup & restore',  sub: 'Keep a copy, move to a new phone',    html: C.backup + C.sync + C.pis },
     storage:   { t: 'Storage',           sub: 'What Daylog keeps on this phone',     html: settingsPage === 'storage' ? storagePageHTML() : '' },
+    lock:      { t: 'App lock',          sub: 'A PIN to open Daylog',                html: settingsPage === 'lock' ? lockCardHTML() : '' },
     wipe:      { t: 'Delete everything', sub: 'Erase all data on this phone',        html: C.wipe },
     feedback:  { t: 'Send feedback',     sub: 'Straight to the person who makes it', html: C.feedback },
   };
@@ -9317,6 +9616,7 @@ function renderSettings() {
     ${group('Your data',
       (sheetScriptOld(s.syncUrl) ? row('data-set-page="data"', 'download', 'Backup &amp; restore', 'Your Sheet script is out of date · how to update', 'set-warn')
         : row('data-set-page="data"', 'download', 'Backup &amp; restore', lastD < 0 ? 'No backup yet · do this once' : lastD === 0 ? 'Last backup today' : `Last backup ${lastD} day${lastD === 1 ? '' : 's'} ago`, lastD < 0 || lastD > 7 ? 'set-warn' : '')) +
+      row('data-set-page="lock"', 'lock', 'App lock', lockOn() ? `On · asks for your PIN ${lockAfterMin() ? 'after ' + lockAfterText(lockAfterMin()) + ' away' : 'every time'}` : 'Off · set a PIN to open Daylog') +
       row('data-set-page="storage"', 'hardDrive', 'Storage', storageHomeSub()) +
       row('id="open-report"', 'note', 'Download report (PDF)', 'Your stats as a printable report') +
       row('data-set-page="wipe"', 'trash', 'Delete everything', 'Erase all data on this phone', 'set-danger'))}
@@ -11638,6 +11938,7 @@ const BACKUP_EXCLUDED = [
   'ntfy.sent',                         // notification de-dup; replaying it would suppress alerts
   'logsecMigrated', 'moodInputMigrated', 'navmig255',   // one-shot migration markers
   'fbDraft',                           // an unsent feedback message on this install
+  'lock', 'lockFail',                  // v273: this phone's PIN lock and its wrong-try count; a restore must not lock anyone out
 ];
 /* Sections of the backup FILE that are not localStorage keys, so the BACKUP_KEYS loop cannot
    carry them; each has its own export and restore code. `_media` is the photos and voice notes
@@ -19903,6 +20204,8 @@ document.addEventListener('click', (ev) => {
 function handleBack() {
   // 0) a ringing alarm owns the screen — back must never dismiss it or poke things behind it
   const alarm = document.getElementById('alarm'); if (alarm && alarm.classList.contains('on')) return;
+  // 0b) the app lock (or one of its Settings steps) sits over everything else
+  if (lockIsOpen()) { lockBackPress(); return; }
   // 1) an open overlay always closes first.
   //    The share sheet sits at z-index 95, above every overlay below it, so it must be
   //    checked FIRST. Omitting it meant back fell through to the exit dialog, which is a
@@ -20261,6 +20564,7 @@ const ICONS = {
   fwd15: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',  // …and forward
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/>',
   chart:'<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/>',
   menu:'<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
@@ -20327,7 +20631,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'dot','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'lock','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;
