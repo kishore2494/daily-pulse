@@ -4667,3 +4667,19 @@ html.locked #alarm { z-index: 400; }
 .csvi-list li + li { margin-top: 3px; }
 .csvi-list b { color: var(--text); }
 .csvi-err { color: var(--bad-ink); }
+
+/* ---------- v275 habit notes ---------- */
+.habit.has-note { position: relative; }
+.habit.has-note::after { content: ''; position: absolute; top: 5px; right: 6px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg-card); }
+.hnote-box textarea { width: 100%; min-height: 84px; resize: vertical; }
+.hn-count { margin: -2px 0 2px; }
+.hab-notes { margin-top: 10px; display: grid; gap: 6px; }
+.hab-note { font-size: .88rem; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.hab-note span { display: inline-block; min-width: 92px; margin-right: 6px; color: var(--text-faint); font-size: .8rem; }
+.hd-hnotes { margin-top: 10px; display: grid; gap: 6px; }
+.hd-hnote { font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; }
+.hd-hnote b { margin-right: 4px; }
+/* Three things in the plan row now (how often · note · when & where): the cue gets its own line. */
+.hab-plan { flex-wrap: wrap; }
+.hab-plan .hcue-line { flex: 1 1 100%; }

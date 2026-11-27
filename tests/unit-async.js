@@ -1392,5 +1392,31 @@
       ok('csv: picking a file reads it and shows the preview', !!_csvImp && _csvImp.name === 'mine.csv' && /mine\.csv/.test(document.getElementById('s-settings').textContent) && !!document.getElementById('csvi-go'), _csvImp);
     } finally { _csvImp = null; settingsPage = spSnap; navigateTo('today'); }
   }
+  /* ---------- v275: hold a habit on the Log to write its note ---------- */
+  {
+    const eSnap = localStorage.getItem('dp.entries'), hSnap = localStorage.getItem('dp.habitcfg');
+    const P = (type, el) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    try {
+      localStorage.setItem('dp.habitcfg', JSON.stringify([{ key: 'workout', emoji: '💪', label: 'Workout' }]));
+      DB.saveEntries({}); reloadCfg(); logDate = todayStr(); loadDraft(); navigateTo('today');
+      const chip = () => document.querySelector('#s-today [data-habit="workout"]');
+      P('pointerdown', chip()); await sleep(120); P('pointerup', chip()); chip().click(); await sleep(600);
+      ok('hnote: a quick tap still ticks, and opens no sheet', !hnoteIsOpen() && hVal(draft, 'workout') === H_DONE);
+      chip().click(); await sleep(20);   // untick again
+      P('pointerdown', chip()); await sleep(650);
+      ok('hnote: holding a habit opens its note', hnoteIsOpen() && _hn && _hn.key === 'workout');
+      P('pointerup', chip()); chip().click(); await sleep(20);
+      ok('hnote: …and letting go does not tick it', hVal(draft, 'workout') !== H_DONE && hnoteIsOpen());
+      hnoteClose();
+      P('pointerdown', chip()); chip().dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 60, clientY: 10 })); await sleep(650);
+      ok('hnote: moving the finger (a scroll) cancels the hold', !hnoteIsOpen());
+      P('pointerup', chip());
+    } finally {
+      hnoteClose();
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (hSnap != null) localStorage.setItem('dp.habitcfg', hSnap); else localStorage.removeItem('dp.habitcfg');
+      reloadCfg(); loadDraft(); navigateTo('today');
+    }
+  }
   return { pass, fail, results: R };
 })();

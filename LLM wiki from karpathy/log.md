@@ -1,3 +1,9 @@
+## 2026-11-28 — v274 LIVE (CSV import); v275 built: habit notes
+
+- v274 deployed (web-v274, live check, no console errors). v275: notes on a habit for one day (features.md ▸
+  Habit notes). Tests 4 zones + every release check pass; checked at 360 px (Log chip dot, the sheet, Habits card
+  with notes, History day). Deploying under Kishore's overnight "and deploy".
+
 ## 2026-11-28 — v273 LIVE (App lock); v274 built: import days from a CSV (Daylio / sheets)
 
 - Kishore (going to sleep): "do all things 1 by 1 … and deploy … test every thing". Deployed v273 (web-v273,

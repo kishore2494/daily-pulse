@@ -839,6 +839,62 @@
     }
   }
 
+  // ---- v275: a note on a habit, for one day ----
+  {
+    const eSnap = localStorage.getItem('dp.entries'), hSnap = localStorage.getItem('dp.habitcfg'), ldSnap = logDate, tSnap = window.toast;
+    const toasts = []; window.toast = m => toasts.push(m);
+    const T = todayStr(), Y = addDays(T, -1);
+    const sheetOn = () => hnoteIsOpen() && !!document.getElementById('hn-text');
+    try {
+      localStorage.setItem('dp.habitcfg', JSON.stringify([{ key: 'workout', emoji: '💪', label: 'Workout' }, { key: 'reading', emoji: '📖', label: 'Reading' }]));
+      DB.saveEntries({}); reloadCfg(); logDate = T; loadDraft(); navigateTo('today');
+      hnoteOpen('workout', T);
+      ok('hnote: the sheet opens empty for today, with no Delete', sheetOn() && document.getElementById('hn-text').value === '' && !document.getElementById('hn-del') && /Workout · today/.test(document.getElementById('hnote-sheet').textContent));
+      document.getElementById('hn-text').value = '  legs, 45 min  '; document.getElementById('hn-save').click();
+      const en = DB.entry(T) || {};
+      ok('hnote: Save keeps the note on the day, trimmed', en.hnotes && en.hnotes.workout === 'legs, 45 min', en);
+      ok('hnote: …without ticking the habit', hBase(en, 'workout') === H_MISS);
+      ok('hnote: …says so and closes', !sheetOn() && toasts.includes('📝 Note saved'));
+      ok('hnote: …and is stamped for the sync merge', en.fieldAt && +en.fieldAt.hnotes > 0 && !!en.updatedAt);
+      ok('hnote: the Log draft has it, and the chip shows a dot', hnoteGet(draft, 'workout') === 'legs, 45 min' && document.querySelector('#s-today [data-habit="workout"]').classList.contains('has-note'));
+      ok('hnote: the chip tells you to hold for a note', /hold for a note/.test(document.querySelector('#s-today [data-habit="reading"]').title));
+      hnoteOpen('workout', T);
+      ok('hnote: reopening shows the note and a Delete', document.getElementById('hn-text').value === 'legs, 45 min' && !!document.getElementById('hn-del'));
+      handleBack();
+      ok('hnote: Back closes the sheet', !hnoteIsOpen());
+      ok('hnote: saving the same text changes nothing', hnoteSave('workout', T, 'legs, 45 min') === false);
+      hnoteSave('workout', T, 'x'.repeat(400));
+      ok('hnote: a note is capped at 300 characters', DB.entry(T).hnotes.workout.length === 300);
+      hnoteSave('workout', T, '   ');
+      ok('hnote: an empty note deletes it, and the empty map goes too', !('hnotes' in DB.entry(T)));
+      hnoteSave('reading', Y, 'ch 3 <img src=x onerror=alert(1)>');
+      ok('hnote: a note on another day makes that day, and leaves the Log alone', hnoteGet(DB.entry(Y), 'reading').indexOf('ch 3') === 0 && logDate === T);
+      ok('hnote: the CSV line names the habit', hnoteLine(DB.entry(Y)) === 'Reading: ch 3 <img src=x onerror=alert(1)>');
+      ok('hnote: the CSV export has a habitNotes column', /'habitNotes'/.test(exportCSV.toString()));
+      navigateTo('habits');
+      const card = [...document.querySelectorAll('#s-habits .card')].find(c => c.querySelector('[data-hnote-edit="reading"]'));
+      ok('hnote: each Habits card has a Note button', !!card && /Note/.test(card.querySelector('[data-hnote-edit]').textContent));
+      ok('hnote: …and lists the recent notes, escaped', !!card.querySelector('.hab-note') && /ch 3/.test(card.querySelector('.hab-notes').textContent) && !card.querySelector('.hab-notes img'));
+      card.querySelector('[data-hnote-edit="reading"]').click();
+      ok('hnote: Note on a Habits card writes today\'s note', sheetOn() && _hn.key === 'reading' && _hn.day === T);
+      document.getElementById('hn-text').value = 'ch 4'; document.getElementById('hn-save').click();
+      ok('hnote: …saved, and the card now says Today\'s note', hnoteGet(DB.entry(T), 'reading') === 'ch 4' && /Today's note/.test(document.querySelector('#s-habits [data-hnote-edit="reading"]').textContent));
+      hnoteOpen('reading', T); document.getElementById('hn-del').click();
+      ok('hnote: Delete removes it and says so', !hnoteGet(DB.entry(T), 'reading') && toasts.includes('Note deleted'));
+      hnoteOpen('reading', T); document.getElementById('hn-cancel').click();
+      ok('hnote: Cancel closes without saving', !hnoteIsOpen() && !hnoteGet(DB.entry(T), 'reading'));
+      navigateTo('history'); histDayOpen(Y);
+      const hv = document.getElementById('s-history');
+      ok('hnote: History shows the day\'s habit notes, escaped', /Reading/.test(hv.querySelector('.hd-hnotes').textContent) && /ch 3/.test(hv.querySelector('.hd-hnotes').textContent) && !hv.querySelector('.hd-hnotes img'));
+      try { histDayClose(); } catch (e) {}
+    } finally {
+      hnoteClose(); window.toast = tSnap;
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      if (hSnap != null) localStorage.setItem('dp.habitcfg', hSnap); else localStorage.removeItem('dp.habitcfg');
+      reloadCfg(); logDate = ldSnap; loadDraft(); navigateTo('today');
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

@@ -297,6 +297,21 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
   "Make a video" there. `shareFile({base64, filename, mime})` was added to SharePlugin.java on 2026-11-26
   (video/audio/image only) and ships with the next native build after 123.
 
+## Habit notes — a note on a habit for one day (v275, 2026-11-28)
+
+- `entry.hnotes = { habitKey: text }` (≤ 300 chars, trimmed; empty deletes the key, an empty map is removed).
+  It is an ordinary day field, so `entryFieldStamp` stamps it (`fieldAt.hnotes`), it syncs inside entries and
+  rides in backups. Not a Sheet "Log" column (Code.gs COLUMNS unchanged).
+- Write: **hold** a habit chip on the Log (550 ms; a move > 10 px or a scroll cancels; the click that ends the
+  hold is swallowed so it never ticks; `contextmenu` suppressed) → sheet `#hnote-sheet` (copy-modal) for the
+  Log's day. Or the **Note** pill on each Habits card (writes today). Save/Delete/Cancel; Back closes it.
+  `hnoteSave` = flushAutosave → clone stored day → saveDraftNow → loadDraft if it is the Log's day. Saving a
+  note never ticks or unticks the habit.
+- Read: a dot on the Log chip (`.has-note`), the last 3 notes under each Habits card, the day's notes under
+  Checklist in History ▸ day, and a `habitNotes` column ("Label: note; …") in Export CSV.
+- The Habits plan row now wraps: how often · note on one line, the when & where cue on its own line.
+- Tests: tests/unit.js "v275: a note on a habit" (22) + unit-async long-press (4).
+
 ## Import days from a CSV — Daylio or a spreadsheet (v274, 2026-11-28)
 
 - Settings ▸ Backup & restore ▸ "Import days from a CSV" (`csviCardHTML`, under the backup card). Pick a file →

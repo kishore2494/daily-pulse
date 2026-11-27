@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v274';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v275';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2006,8 +2006,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w37',
+  v: 'w38',
   items: [
+    '📝 <b>Notes on a habit</b> — hold a habit on the Log (or tap Note on its card in Habits) to say how it went: "legs, 45 min", "chapter 4", "skipped, sick". The note stays with that day: you see it in History and under the habit in Habits.',
     '📥 <b>Import from Daylio or a spreadsheet</b> — bring your old days with you. Pick a Daylio CSV export, or any sheet with a date column, and Daylog shows what it will add before it adds anything. Days you already logged keep what they have, and Undo puts it all back. Settings ▸ Backup &amp; restore.',
     '🔒 <b>App lock</b> — set a PIN so someone holding your phone cannot open your journal. Choose when it asks again: right away, or after 1, 5 or 15 minutes away. You also get a recovery code in case you forget the PIN. Settings ▸ App lock.',
     '📅 <b>Habit schedules</b> — not every habit is daily. Set one to certain weekdays (Mon, Wed, Fri) or to a number of times a week (gym 3 times a week). Days off show as rest days and never break your streak, and a times-a-week habit keeps a streak in weeks: get your 3 in by Sunday and it grows by one. Tap the 📅 on a habit in Habits, or in Customize.',
@@ -2863,7 +2864,7 @@ function habitChipHTML(h) {
     const n = typeof raw === 'number' ? raw : (raw === true ? g.n : 0);
     const over = g.cmp === 'atmost' && logged && n > g.n;
     const prog = `${logged ? n : '–'}/${g.cmp === 'atmost' ? '≤' : ''}${g.n}${g.unit ? ' ' + escapeHtml(g.unit) : ''}`;
-    return `<div class="habit qty ${on?'on':''}${over?' over':''}" data-habit="${h.key}" style="${style}" title="Tap to add 1">
+    return `<div class="habit qty ${on?'on':''}${over?' over':''}${hnoteGet(draft, h.key) ? ' has-note' : ''}" data-habit="${h.key}" style="${style}" title="Tap to add 1 · hold for a note">
       <span class="check">${over ? '!' : '✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
       ${chipTextHTML(h)}
       <span class="qty-prog">${prog}</span>
@@ -2880,7 +2881,7 @@ function habitChipHTML(h) {
   if (sc && sc.rest) badge = '<span class="hrest">rest</span>';
   const tip = sk ? 'Skipped — your streak is safe. Tap to clear' : sc && sc.rest ? 'Rest day for this habit. Tap to tick it anyway'
     : sc && sc.week ? `${sc.n} of ${sc.week} this week. Tap to tick` : 'Tap to tick, tap again to untick';
-  return `<div class="habit ${on?'on':''}${sk?' skip':''}${sc && sc.rest ? ' rest' : ''}" data-habit="${h.key}" style="${style}" title="${tip}">
+  return `<div class="habit ${on?'on':''}${sk?' skip':''}${sc && sc.rest ? ' rest' : ''}${hnoteGet(draft, h.key) ? ' has-note' : ''}" data-habit="${h.key}" style="${style}" title="${tip} · hold for a note">
     <span class="check">${sk?'⤳':'✓'}</span><span class="emoji">${hi ? icon(hi, 17) : escapeHtml(h.emoji)}</span>
     ${chipTextHTML(h)}${badge}</div>`;
 }
@@ -2893,6 +2894,98 @@ function habitChipSched(h, state) {
   for (let i = 0; i < 7; i++) { const d = addDays(ws, i); if (hBase(d === logDate ? draft : e[d], h.key) === H_DONE) n++; }
   return { week: s.week, n };
 }
+/* ---------- v275: a note on a habit, for one day ----------
+   "Gym: legs, 45 min". Kept on the day as entry.hnotes = { habitKey: text }, so it syncs, backs up
+   and is stamped like any other field of the day. Hold a habit on the Log, or tap Note on its card
+   in Habits. Saving a note never ticks or unticks the habit: a note on a skipped day ("sick") is
+   worth keeping too. */
+var HNOTE_MAX = 300;
+var _hn = null;                       // the open sheet: { key, day }
+var _hnLP = null, _hnSwallow = 0;     // a long-press in progress; when the last one fired
+function hnoteGet(en, key) { const t = en && en.hnotes && en.hnotes[key]; return typeof t === 'string' ? t : ''; }
+function hnoteSave(key, day, text) {
+  flushAutosave();
+  const t = String(text == null ? '' : text).trim().slice(0, HNOTE_MAX);
+  const en = JSON.parse(JSON.stringify(DB.entry(day) || { habits: {} }));
+  if (!en.habits) en.habits = {};
+  if (t === hnoteGet(en, key)) return false;
+  en.hnotes = Object.assign({}, en.hnotes);
+  if (t) en.hnotes[key] = t; else delete en.hnotes[key];
+  if (!Object.keys(en.hnotes).length) delete en.hnotes;
+  saveDraftNow(day, en);
+  if (logDate === day) { loadDraft(); try { refreshHabitChip(key); } catch (e) {} }
+  return true;
+}
+function hnoteOpen(key, day) {
+  const h = habitCfg().find(x => x.key === key); if (!h) return;
+  flushAutosave();
+  _hn = { key, day };
+  let m = document.getElementById('hnote-sheet');
+  if (!m) { m = document.createElement('div'); m.id = 'hnote-sheet'; m.className = 'copy-modal'; document.body.appendChild(m); }
+  const cur = hnoteGet(DB.entry(day), key);
+  m.innerHTML = `<div class="copy-box hnote-box" role="dialog" aria-label="Note for ${escapeHtml(h.label)}">
+    <h2 class="h2-icon">${hicon('pencil')}<span>${escapeHtml(h.label)} · ${escapeHtml(day === todayStr() ? 'today' : prettyDate(day))}</span></h2>
+    <textarea id="hn-text" maxlength="${HNOTE_MAX}" rows="3" placeholder="How did it go? e.g. legs, 45 min">${escapeHtml(cur)}</textarea>
+    <div class="hint hn-count"><span id="hn-n">${cur.length}</span>/${HNOTE_MAX} · kept with this day, and shown in History</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="hn-save" style="flex:1">Save</button>
+      ${cur ? '<button class="btn btn-ghost" id="hn-del">Delete</button>' : ''}
+      <button class="btn btn-ghost" id="hn-cancel">Cancel</button>
+    </div></div>`;
+  m.style.display = 'flex';
+  const ta = document.getElementById('hn-text');
+  try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
+}
+function hnoteClose() { const m = document.getElementById('hnote-sheet'); if (m) m.style.display = 'none'; _hn = null; }
+function hnoteIsOpen() { const m = document.getElementById('hnote-sheet'); return !!(m && m.style.display === 'flex'); }
+/* The last few notes on a habit's card in Habits. */
+function hnoteRecentHTML(key, e) {
+  const ds = Object.keys(e).filter(d => hnoteGet(e[d], key)).sort().reverse().slice(0, 3);
+  return ds.length ? `<div class="hab-notes">${ds.map(d => `<div class="hab-note"><span>${escapeHtml(d === todayStr() ? 'Today' : prettyDate(d))}</span>${escapeHtml(hnoteGet(e[d], key))}</div>`).join('')}</div>` : '';
+}
+function hnotePillHTML(h, en) {
+  return `<button type="button" class="sched-pill${hnoteGet(en, h.key) ? ' on' : ''}" data-hnote-edit="${h.key}" title="A note on today, e.g. legs, 45 min">${icon('pencil', 13)}<span>${hnoteGet(en, h.key) ? 'Today\'s note' : 'Note'}</span></button>`;
+}
+/* "Label: note; Label: note" for one day — History and the CSV export. */
+function hnoteLine(en) {
+  if (!en || !en.hnotes) return '';
+  const cfg = habitCfg();
+  return Object.keys(en.hnotes).filter(k => hnoteGet(en, k)).map(k => ((cfg.find(h => h.key === k) || {}).label || k) + ': ' + en.hnotes[k]).join('; ');
+}
+document.addEventListener('click', ev => {
+  const t = ev.target && ev.target.closest ? ev.target : null; if (!t) return;
+  const ed = t.closest('[data-hnote-edit]'); if (ed) { hnoteOpen(ed.dataset.hnoteEdit, todayStr()); return; }
+  if (!_hn) return;
+  if (t.closest('#hn-cancel')) { hnoteClose(); return; }
+  const del = !!t.closest('#hn-del');
+  if (del || t.closest('#hn-save')) {
+    const { key, day } = _hn, txt = del ? '' : (document.getElementById('hn-text') || {}).value || '';
+    const changed = hnoteSave(key, day, txt); hnoteClose();
+    if (document.getElementById('s-habits').classList.contains('on')) renderHabits();
+    if (changed) toast(txt.trim() ? '📝 Note saved' : 'Note deleted');
+  }
+});
+document.addEventListener('input', ev => { if (ev.target && ev.target.id === 'hn-text') { const n = document.getElementById('hn-n'); if (n) n.textContent = ev.target.value.length; } });
+/* Hold a habit on the Log to write its note. A tap still ticks; buttons inside a counted habit
+   (− and 0) keep their own tap. */
+function hnLPCancel() { if (_hnLP) { clearTimeout(_hnLP.t); _hnLP = null; } }
+document.addEventListener('pointerdown', ev => {
+  const c = ev.target && ev.target.closest && ev.target.closest('#s-today [data-habit]');
+  if (!c || ev.target.closest('button')) return;
+  hnLPCancel();
+  const k = c.dataset.habit, x = ev.clientX || 0, y = ev.clientY || 0;
+  _hnLP = { x, y, t: setTimeout(() => { _hnLP = null; _hnSwallow = Date.now(); buzz(15); hnoteOpen(k, logDate); }, 550) };
+});
+document.addEventListener('pointerup', hnLPCancel);
+document.addEventListener('pointercancel', hnLPCancel);
+document.addEventListener('pointermove', ev => { if (_hnLP && Math.hypot((ev.clientX || 0) - _hnLP.x, (ev.clientY || 0) - _hnLP.y) > 10) hnLPCancel(); });
+document.addEventListener('scroll', hnLPCancel, true);
+// The click that ends a long-press must not also tick the habit, or land on the sheet that just opened.
+document.addEventListener('click', ev => {
+  if (_hnSwallow && Date.now() - _hnSwallow < 900) { _hnSwallow = 0; ev.stopPropagation(); ev.preventDefault(); return; }
+  _hnSwallow = 0;
+}, true);
+document.addEventListener('contextmenu', ev => { if (ev.target && ev.target.closest && ev.target.closest('#s-today [data-habit]')) ev.preventDefault(); });
 function refreshHabitChip(key) {
   const el = document.querySelector(`[data-habit="${key}"]`); if (!el) return;
   const h = HABITS.find(x => x.key === key); if (!h) return;
@@ -5083,9 +5176,10 @@ function renderHabits() {
     return `<div class="card">
       <div class="hab-head"><h2>${h.emoji} ${escapeHtml(h.label)}</h2>${habTodayBtnHTML(h, e[todayStr()])}</div>
       <div class="hint hab-sum">${sum}</div>
-      <div class="hab-plan">${schedPillHTML(h)}${cueLineHTML(h)}</div>
+      <div class="hab-plan">${schedPillHTML(h)}${hnotePillHTML(h, e[todayStr()])}${cueLineHTML(h)}</div>
       <div class="heat heat-wk" aria-label="Last 13 weeks, one column per week">${heat}</div>
       <div class="heat-cap hint"><span>13 weeks ago</span><span>Today</span></div>
+      ${hnoteRecentHTML(h.key, e)}
       <div class="strength-row" title="Weighted 13-day trend — one miss won't zero it, one day won't max it">
         <span class="hint">Strength</span>
         <div class="strength-bar"><i style="width:${str}%"></i></div>
@@ -5680,12 +5774,12 @@ document.addEventListener('click', async (ev) => {
 function exportCSV() {
   const e = DB.entries(); const dates = Object.keys(e).sort();
   if (!dates.length) { toast('Nothing to export yet', true); return; }
-  const cols = ['date', 'mood', 'energy', 'sleepHours', 'deepWorkHours', 'tasksDone', 'tasksPlanned', 'workoutsDone', 'workoutDetail', 'timeSummary', 'wentWell', 'improve', 'journal', 'tasks'];
+  const cols = ['date', 'mood', 'energy', 'sleepHours', 'deepWorkHours', 'tasksDone', 'tasksPlanned', 'workoutsDone', 'workoutDetail', 'timeSummary', 'wentWell', 'improve', 'journal', 'tasks', 'habitNotes'];
   // A lone \r is a row break to Excel, so it is quoted too. Seeded sample days are not the
   // person's data and stay out, as they do of a backup.
   const esc = v => { v = String(v == null ? '' : v).replace(/"/g, '""'); return /[",\n\r]/.test(v) ? `"${v}"` : v; };
   let csv = cols.join(',') + '\n';
-  dates.filter(d => !(e[d] && e[d].sample)).forEach(d => csv += cols.map(c => esc(c === 'date' ? d : e[d][c])).join(',') + '\n');
+  dates.filter(d => !(e[d] && e[d].sample)).forEach(d => csv += cols.map(c => esc(c === 'date' ? d : c === 'habitNotes' ? hnoteLine(e[d]) : e[d][c])).join(',') + '\n');
   saveFile('daylog-' + todayStr() + '.csv', csv, 'text/csv');
 }
 /* ---------- v274: import days from a CSV — Daylio's export, or any sheet with a date column ----------
@@ -6878,7 +6972,7 @@ function historyDayHTML(d) {
     ${tilesHTML}
     ${sec('book', 'Reflection', refl)}
     ${sec('camera', 'Photos &amp; voice', pics + vl, mediaCountText({ p: photos.length, v: voices.length }))}
-    ${sec('check', 'Checklist', habs, en && HABITS.length ? hDone + ' of ' + HABITS.length + ' done' : '')}
+    ${sec('check', 'Checklist', habs + (en && en.hnotes ? `<div class="hd-hnotes">${Object.keys(en.hnotes).filter(k => hnoteGet(en, k)).map(k => `<div class="hd-hnote"><b>${escapeHtml((habitCfg().find(h => h.key === k) || {}).label || k)}</b> ${hdText(en.hnotes[k])}</div>`).join('')}</div>` : ''), en && HABITS.length ? hDone + ' of ' + HABITS.length + ' done' : '')}
     ${sec('clock', 'Where the time went', timeHTML)}
     ${sec('dumbbell', 'Workout', gym)}
     ${sec('calendar', 'Done &amp; planned', plan)}
@@ -20423,6 +20517,7 @@ function handleBack() {
   const wn = document.getElementById('wn-pop'); if (wn) { localStorage.setItem('dp.whatsnew', WHATS_NEW.v); wn.remove(); return; }
   const drawer = document.getElementById('drawer');
   if (drawer && drawer.classList.contains('on')) { closeDrawer(); return; }
+  if (hnoteIsOpen()) { hnoteClose(); return; }
   const se = document.getElementById('sched-editor'); if (se && se.style.display === 'flex') { schedEditorClose(); return; }
   const ge = document.getElementById('goal-editor'); if (ge && ge.style.display === 'flex') { ge.style.display = 'none'; return; }
   const cm = document.getElementById('copy-modal'); if (cm && cm.classList.contains('on')) { cm.classList.remove('on'); return; }
