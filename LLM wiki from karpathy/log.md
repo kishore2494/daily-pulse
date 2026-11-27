@@ -1,3 +1,13 @@
+## 2026-11-28 — v276 LIVE; fingerprint unlock parked (no device)
+
+- v276 deployed (web-v276, live check, no console errors). Night batch done: v273 App lock, v274 CSV import,
+  v275 habit notes, v276 week start — all live.
+- Fingerprint unlock (native build 124: androidx.biometric BiometricPrompt, BIOMETRIC_STRONG only, the Daylog
+  PIN as fallback) NOT built: inbook was offline (Tailscale: last seen 2 days ago) and this Mac cannot run the
+  emulator, so it could not be tested on a device. Build + test it when inbook is back.
+- Other sessions checked before stopping: hollpack-cf (FieldProxy backfill) done; kishore-10 (FieldProxy app
+  test) done.
+
 ## 2026-11-28 — v275 LIVE (habit notes); v276 built: week starts on Sunday or Monday
 
 - v275 deployed (web-v275, live check, no console errors). v276 (features.md ▸ Week starts on): one helper set
