@@ -323,7 +323,7 @@ Kishore 2026-11-26: "good about the video do it" (idea 3, "Your month as a film"
 - A ringing alarm stays on top (`html.locked #alarm` z 400) and can be dismissed without the PIN.
 - Back button: on the lock → minimize the app (`App.minimizeApp`); in a Settings step → cancel it; on the
   recovery-code screen → back to the keypad. Physical keyboard: digits, Backspace, Enter; Esc cancels a step.
-- Tests: tests/unit-async.js "v273: App lock" (≈60 checks). The runner gives jsdom Node's real
+- Tests: tests/unit-async.js "v273: App lock" (55 checks). The runner gives jsdom Node's real
   `crypto.subtle` (jsdom has none). Also fixed a pre-existing flake there: the recorder "reason cap" check read
   the on-screen toast, which a recovered recording's 1.8 s-delayed toast could overwrite.
 - Not done (would need native): biometric unlock, FLAG_SECURE (block screenshots).
