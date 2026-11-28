@@ -1087,6 +1087,79 @@
     }
   }
 
+  // ---- v279: one cached date formatter per option set (History was slow with years of data) ----
+  {
+    const OPTS = [{ weekday: 'short', month: 'short', day: 'numeric' }, { month: 'short', day: 'numeric', year: 'numeric' }, { month: 'short', day: 'numeric' },
+      { month: 'long', year: 'numeric' }, { month: 'long' }, { day: 'numeric', month: 'long', year: 'numeric' }, { weekday: 'long' }, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' },
+      { day: 'numeric', month: 'short', year: 'numeric' }, { weekday: 'short' }, { month: 'short', day: 'numeric', year: undefined }];
+    let bad = 0, n = 0;
+    for (let i = 0; i < 800; i += 7) {
+      const d = new Date(new Date('2024-01-01T00:00:00').getTime() + i * 864e5 + (i % 3) * 36e5);
+      OPTS.forEach(o => { n++; if (fmtDate(d, o) !== d.toLocaleDateString(undefined, o)) bad++; if (fmtDate(d, o, 'en') !== d.toLocaleDateString('en', o)) bad++; });
+    }
+    ok('fmtDate: the same text as toLocaleDateString, ' + n * 2 + ' dates × options', bad === 0, bad);
+    ok('fmtDate: an invalid date still reads "Invalid Date", never throws', fmtDate(new Date('x'), OPTS[0]) === new Date('x').toLocaleDateString(undefined, OPTS[0]) && prettyDate('not a day') === new Date('not a dayT00:00:00').toLocaleDateString(undefined, OPTS[0]));
+    ok('fmtDate: not a Date at all is handled the same way', fmtDate(null, OPTS[0]) === new Date(NaN).toLocaleDateString(undefined, OPTS[0]));
+    ok('fmtDate: prettyDate / shortDate / longDate unchanged', prettyDate('2026-11-28') === new Date('2026-11-28T00:00:00').toLocaleDateString(undefined, OPTS[0])
+      && longDate('2026-11-28') === new Date('2026-11-28T12:00:00').toLocaleDateString(undefined, OPTS[5]) && weekdayLong('2026-11-28') === new Date('2026-11-28T12:00:00').toLocaleDateString(undefined, OPTS[6]));
+    ok('fmtDate: one formatter per option set, reused', (() => { const k = _dtf.size; prettyDate('2026-01-01'); prettyDate('2026-01-02'); return _dtf.size === k; })());
+  }
+
+  // ---- v279: the faster week streak and gap model give the same answers as before ----
+  {
+    const tlSnap = localStorage.getItem('dp.timelog'), tdSnap = todayStr;
+    try {
+      // the old weekStreak: bucket every logged day, then walk the buckets
+      const oldWeekStreak = e => {
+        const map = {}; weekBuckets(e).forEach(b => { map[b.start] = b; });
+        const thisW = weekStart(todayStr()), cur = map[thisW] || { start: thisW, days: 0, ok: false };
+        let n = 0, w = addDays(thisW, -7); while (map[w] && map[w].ok) { n++; w = addDays(w, -7); }
+        return { streak: n, current: cur, live: n + (cur.ok ? 1 : 0), min: WEEK_MIN, weekStart: thisW };
+      };
+      let s32 = 7; const rnd = () => { s32 = (s32 * 1103515245 + 12345) & 0x7fffffff; return s32 / 0x7fffffff; };
+      let bad = 0, runs = 0, longest = 0;
+      for (let r = 0; r < 60; r++) {
+        const e = {}, dens = 0.3 + rnd() * 0.7, span = 20 + Math.floor(rnd() * 400);
+        for (let i = 0; i < span; i++) { if (rnd() < dens) e[addDays(tdSnap(), -i)] = rnd() < 0.1 ? { habits: {} } : { mood: 1 + Math.floor(rnd() * 10) }; }
+        if (rnd() < 0.2) e[''] = { mood: 5 };
+        const a = JSON.stringify(weekStreak(e)), b = JSON.stringify(oldWeekStreak(e)); runs++; if (a !== b) bad++;
+        longest = Math.max(longest, weekStreak(e).streak);
+      }
+      ok('perf: weekStreak walks back and gives what bucketing gave, ' + runs + ' random logs (longest ' + longest + ' weeks)', bad === 0 && longest > 3, bad);
+      // the old gap model: every block, every day of the look-back
+      const oldGapModel = dateStr => {
+        const blank = () => ({ mins: Array.from({ length: GAP_SLOTS }, () => ({})), days: Array.from({ length: GAP_SLOTS }, () => ({})), sample: Array.from({ length: GAP_SLOTS }, () => ({})) });
+        const same = blank(), all = blank(), wantWeekend = gapIsWeekend(dateStr), log = DB.timelog().filter(s => s.end != null);
+        for (let i = 1; i <= GAP_LOOKBACK; i++) {
+          const ds = addDays(dateStr, -i), b0 = dayStartMs(ds), b1 = dayEndMs(ds), targets = gapIsWeekend(ds) === wantWeekend ? [all, same] : [all];
+          log.forEach(s => { const a = Math.max(s.start, b0), b = Math.min(s.end, b1); if (b <= a) return;
+            const k0 = Math.floor((a - b0) / GAP_SLOT_MS), k1 = Math.ceil((b - b0) / GAP_SLOT_MS);
+            for (let k = k0; k < k1 && k < GAP_SLOTS; k++) { const ka = b0 + k * GAP_SLOT_MS, ov = Math.min(b, ka + GAP_SLOT_MS) - Math.max(a, ka); if (ov <= 0) continue;
+              targets.forEach(m => { m.mins[k][s.act] = (m.mins[k][s.act] || 0) + ov; (m.days[k][s.act] = m.days[k][s.act] || {})[ds] = 1; m.sample[k][ds] = 1; }); } });
+        }
+        return { same, all, wantWeekend };
+      };
+      const oldHist = dateStr => { const log = DB.timelog().filter(s => s.end != null); if (!log.length) return 0; const days = {};
+        for (let i = 1; i <= GAP_LOOKBACK; i++) { const ds = addDays(dateStr, -i), b0 = dayStartMs(ds), b1 = dayEndMs(ds); if (log.some(s => s.end > b0 && s.start < b1)) days[ds] = 1; }
+        return Object.keys(days).length; };
+      const T = tdSnap(), TL = [];
+      for (let i = 0; i < 160; i += 1 + Math.floor(rnd() * 2)) {
+        const d0 = dayStartMs(addDays(T, -i));
+        TL.push({ id: 'g' + i + 'a', act: 'work', start: d0 + 9 * 36e5, end: d0 + 12.5 * 36e5, upd: 1 });
+        TL.push({ id: 'g' + i + 'b', act: 'sleep', start: d0 + 22.5 * 36e5, end: d0 + 31 * 36e5, upd: 1 });   // across midnight
+        if (i % 5 === 0) TL.push({ id: 'g' + i + 'c', act: 'learn', start: d0 - 40 * 36e5, end: d0 + 2 * 36e5, upd: 1 });   // two days long
+      }
+      TL.push({ id: 'run', act: 'work', start: Date.now() - 36e5, end: null, upd: 1 });
+      localStorage.setItem('dp.timelog', JSON.stringify(TL));
+      const same = [T, addDays(T, -3), addDays(T, -40), addDays(T, -95)].every(d => canonJSON(gapModel(d)) === canonJSON(oldGapModel(d)) && gapHistoryDays(d) === oldHist(d));
+      ok('perf: the gap model reads only its window and finds the same gaps', same && gapHistoryDays(T) > 40);
+      localStorage.setItem('dp.timelog', '[]');
+      ok('perf: no blocks, no history', gapHistoryDays(T) === 0 && oldHist(T) === 0);
+    } finally {
+      if (tlSnap != null) localStorage.setItem('dp.timelog', tlSnap); else localStorage.removeItem('dp.timelog');
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

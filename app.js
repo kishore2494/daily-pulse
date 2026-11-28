@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v277';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v279';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -904,9 +904,20 @@ lockBoot();
 /* ---------- Date helpers ---------- */
 function todayStr(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 function addDays(str, n) { const d = new Date(str + 'T00:00:00'); d.setDate(d.getDate()+n); return todayStr(d); }
+/* A date formatter is slow to build (toLocaleDateString builds a new one on every call, ~30 µs):
+   History formatted 1,095 dates in 35 ms on a laptop with three years of data, several times that
+   on a phone (measured 2026-11-28). One Intl.DateTimeFormat per locale + option set, reused; the
+   text is identical. An invalid date still reads "Invalid Date" rather than throwing. */
+const _dtf = new Map();
+function fmtDate(d, opts, loc) {
+  if (!(d instanceof Date) || isNaN(d)) return new Date(NaN).toLocaleDateString(loc, opts);
+  const k = (loc || '') + '|' + JSON.stringify(opts || {});
+  let f = _dtf.get(k);
+  if (!f) { f = new Intl.DateTimeFormat(loc, opts); _dtf.set(k, f); }
+  return f.format(d);
+}
 function prettyDate(str) {
-  const d = new Date(str + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return fmtDate(new Date(str + 'T00:00:00'), { weekday: 'short', month: 'short', day: 'numeric' });
 }
 /* Compact date for records and awards. prettyDate() leads with the weekday, so stripping
    after its comma leaves a bare "Thu" — useless on a shelf that spans years. Shows the
@@ -915,7 +926,7 @@ function shortDate(str) {
   if (!str) return '';
   const d = new Date(str + 'T00:00:00');
   const other = d.getFullYear() !== new Date().getFullYear();
-  return d.toLocaleDateString(undefined, other
+  return fmtDate(d, other
     ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' });
 }
 
@@ -1126,14 +1137,16 @@ function weekBuckets(ents) {
 /* Consecutive qualifying weeks ending at the most recent COMPLETED week — plus this week
    separately, because a week still in progress must never break the streak. That is the
    entire point of a weekly cadence: you cannot fail a week you are still living. */
+/* Walks back week by week and stops at the first week that missed, instead of bucketing every
+   day ever logged on each Log render (4 ms of an 11 ms render with three years of data, measured
+   2026-11-28). The same answer as bucketing with weekBuckets; a test holds the two together. */
+function weekDaysLogged(e, w) { let n = 0; for (let i = 0; i < 7; i++) { const en = e[addDays(w, i)]; if (en && entryHasContent(en)) n++; } return n; }
 function weekStreak(ents) {
   const e = ents || DB.entries();
-  const map = {};
-  weekBuckets(e).forEach(b => { map[b.start] = b; });
-  const thisW = weekStart(todayStr());
-  const cur = map[thisW] || { start: thisW, days: 0, ok: false };
+  const thisW = weekStart(todayStr()), cd = weekDaysLogged(e, thisW);
+  const cur = { start: thisW, days: cd, ok: cd >= WEEK_MIN };
   let n = 0, w = addDays(thisW, -7);
-  while (map[w] && map[w].ok) { n++; w = addDays(w, -7); }
+  for (let c = weekDaysLogged(e, w); c && c >= WEEK_MIN; c = weekDaysLogged(e, w)) { n++; w = addDays(w, -7); }
   // A banked current week extends the run you can SEE, without being required for it.
   return { streak: n, current: cur, live: n + (cur.ok ? 1 : 0), min: WEEK_MIN, weekStart: thisW };
 }
@@ -2053,8 +2066,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w40',
+  v: 'w41',
   items: [
+    '⚡ <b>Faster with years of entries</b> — History opens about four times faster on a long log, and the Log and the Time screen render in less time too. Nothing about your data changed.',
     '🖼️ <b>Memories on their day</b> — a day\'s page in History now shows the memories dated that day, and Back from one returns to the day. <b>On this day</b> on the Log shows them too, a week, a month or a year on.',
     '📆 <b>Week starts on Sunday, if you like</b> — Settings ▸ Week starts on. Week streaks, times-a-week habits, the weekly review, calendars and charts all follow it. Monday stays the default.',
     '📝 <b>Notes on a habit</b> — hold a habit on the Log (or tap Note on its card in Habits) to say how it went: "legs, 45 min", "chapter 4", "skipped, sick". The note stays with that day: you see it in History and under the habit in Habits.',
@@ -6813,7 +6827,7 @@ document.addEventListener('click', (ev) => {
    ============================================================ */
 let histTab = 'days';
 function monthLong(ym, withYear) {
-  try { return new Date(ym + '-15T12:00:00').toLocaleDateString('en', withYear ? { month: 'long', year: 'numeric' } : { month: 'long' }); }
+  try { return fmtDate(new Date(ym + '-15T12:00:00'), withYear ? { month: 'long', year: 'numeric' } : { month: 'long' }, 'en'); }
   catch (e) { return ym; }
 }
 /* Every Log photo, newest month first. A month is one card, so a long history stays a list of
@@ -6871,10 +6885,10 @@ document.addEventListener('click', (ev) => {
    Back or Done there brings you back here. */
 let histDay = null, _histScroll = 0, _histTabWas = null, _editFromHist = null, _dayFrom = null;
 function longDate(d) {
-  try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return d; }
+  try { return fmtDate(new Date(d + 'T12:00:00'), { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return d; }
 }
 function weekdayLong(d) {
-  try { return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' }); } catch (e) { return ''; }
+  try { return fmtDate(new Date(d + 'T12:00:00'), { weekday: 'long' }); } catch (e) { return ''; }
 }
 /* "Yesterday", "3 weeks ago". Pure, so it is tested. */
 function relDay(d, today) {
@@ -7368,7 +7382,7 @@ function memBackToDay() {
 }
 function memDate(m) { return /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : (String(m.created || '').slice(0, 10) || todayStr()); }
 function memDateLong(day) {
-  try { return new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
+  try { return fmtDate(new Date(day + 'T12:00:00'), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
   catch (e) { return day; }
 }
 function memTitle(m) { return String(m.title || '').trim() || memDateLong(memDate(m)); }
@@ -13740,7 +13754,7 @@ function letterEmpty(l) {
   return true;
 }
 function letterDays(from, to) { return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000); }
-function letterDate(s) { return new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
+function letterDate(s) { return fmtDate(new Date(s + 'T00:00:00'), { day: 'numeric', month: 'short', year: 'numeric' }); }
 /* How long, the way people say it: "12 days", "3 weeks", "6 months", "1 year". */
 function letterSpan(days) {
   if (days < 14) return days === 1 ? '1 day' : days + ' days';
@@ -17484,7 +17498,10 @@ function gapModel(dateStr) {
   });
   const same = blank(), all = blank();
   const wantWeekend = gapIsWeekend(dateStr);
-  const log = DB.timelog().filter(s => s.end != null);   // a running block has no settled span
+  // a running block has no settled span; and only blocks inside the look-back window can count
+  // (the whole log, every day of the window, was 12 ms with three years of blocks)
+  const lo = dayStartMs(addDays(dateStr, -GAP_LOOKBACK)), hi = dayEndMs(addDays(dateStr, -1));
+  const log = DB.timelog().filter(s => s.end != null && s.end > lo && s.start < hi);
   for (let i = 1; i <= GAP_LOOKBACK; i++) {
     const ds = addDays(dateStr, -i);
     const b0 = dayStartMs(ds), b1 = dayEndMs(ds);
@@ -17541,7 +17558,8 @@ function gapPredictSlots(model, k0, k1) {
    brand-new install saying "00:00–24:00, what were you doing?" — which is not missing data,
    it is an app that has not been used yet. */
 function gapHistoryDays(dateStr) {
-  const log = DB.timelog().filter(s => s.end != null);
+  const lo = dayStartMs(addDays(dateStr, -GAP_LOOKBACK)), hi = dayEndMs(addDays(dateStr, -1));
+  const log = DB.timelog().filter(s => s.end != null && s.end > lo && s.start < hi);
   if (!log.length) return 0;
   const days = {};
   for (let i = 1; i <= GAP_LOOKBACK; i++) {
@@ -18038,7 +18056,7 @@ let mnFilter = { acct: '', cat: '' };
 function mnMonth() { return mnYm || finYm(todayStr()); }
 function mnMonthLabel(ym) {
   const [y, m] = ym.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return fmtDate(new Date(y, m - 1, 1), { month: 'long', year: 'numeric' });
 }
 function mnShiftMonth(n) {
   const [y, m] = mnMonth().split('-').map(Number);
@@ -19399,7 +19417,7 @@ function mealWeekShift(dir) {
   if (!(mlDay >= mlWeek && mlDay <= addDays(mlWeek, 6))) mlDay = mlWeek;
   mlAnim = dir; renderMeals(); buzz(6);
 }
-function mealWeekday(d, len) { return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: len || 'short' }); }
+function mealWeekday(d, len) { return fmtDate(new Date(d + 'T00:00:00'), { weekday: len || 'short' }); }
 function mealDietMark(diet) { return MEAL_DIETS[diet] ? `<span class="ml-dm ml-dm-${diet}" title="${MEAL_DIETS[diet]}" aria-label="${MEAL_DIETS[diet]}"><i></i></span>` : ''; }
 function mealMeta(m, extra) {
   const bits = [MEAL_DIETS[m.diet], ...(m.tags || []).map(t => MEAL_TAGS[t]), extra].filter(Boolean);

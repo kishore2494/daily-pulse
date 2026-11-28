@@ -462,3 +462,5 @@ internal track.
   `none` goes away, the original animation (`.screen.on { animation: fade }`) starts again from
   its first keyframe, and the screen blinks. Animate the children once instead (`screenRise`).
 
+
+- **Date formatting is slow per call** (2026-11-28): `toLocaleDateString(…, opts)` builds a new Intl formatter each time (~30 µs). In anything that runs per row/day, use `fmtDate(d, opts)` (cached `Intl.DateTimeFormat`).

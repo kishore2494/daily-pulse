@@ -1,3 +1,25 @@
+## 2026-11-28 — v279 built (not deployed): faster with years of data; metrics still blocked
+
+- Kishore asked "what's next" → "measure first". Seeded 3 years (1,095 days, 6,570 time blocks) in
+  headless Chromium at 360px and timed each screen (median of 5, laptop; a phone is ~4–6× slower):
+  History 53 → 14 ms, Time 17 → 10 ms, Log 15 → 10 ms, Habits 9 ms, Calendar 7 ms.
+  - History: `toLocaleDateString` builds an Intl formatter per call (35 ms for 1,095 dates). New
+    `fmtDate(d, opts, loc)` caches one `Intl.DateTimeFormat` per option set; used by prettyDate,
+    shortDate, monthLong, longDate, weekdayLong, memDateLong, letterDate, mealWeekday, fin month.
+    Same text (test compares 2,000+ dates × options); an invalid date still reads "Invalid Date".
+  - Log: `weekStreak` bucketed every day ever logged per render; now walks back week by week
+    (`weekDaysLogged`) and stops at the first missed week. Test: 60 random logs equal the old answer.
+  - Time: `gapModel` / `gapHistoryDays` looped the whole time log for each of 90 look-back days;
+    now filter to the window first. Test: identical model vs the old code.
+  - `firstInsight` costs ~7 ms but only until the first-pattern card is dismissed; left alone.
+  - Version went v277 → v279 (two bumps while beating the browser cache; v278 never shipped).
+- Metrics (Kishore: "see the metrics too"): `play.mjs metrics` still 403 (service account lacks
+  "View app information and download bulk reports"); the Play Developer Reporting API (crash/ANR
+  rate, daily users) is DISABLED in Cloud project 387412896984. Both need Kishore. Readable now:
+  production = 122 (completed); reviews all replied.
+- Answered peer session daylog-8a with the Reddit warm-up facts (plan file, rules; username,
+  karma and commented posts are not recorded anywhere).
+
 ## 2026-11-28 — v277 LIVE: memories on their day + settings sync by own stamp
 
 - Deployed on Kishore's "deploy" (web-v277 on both remotes; live app.js/sw.js/index agree; 360px live smoke, no console errors).
