@@ -491,7 +491,7 @@ bulk import; big files stay **on the phone only** (no Drive, no compression).
   viewer, links/backlinks/filters/search, backup = photos only. 44 unit tests (sync + async).
 - **Open items:** roadmap.md ▸ Memories.
 
-- **On their day (v277, 2026-11-28, built, not deployed):** History's day page has a "Memories from this day"
+- **On their day (v277, LIVE 2026-11-28):** History's day page has a "Memories from this day"
   section (cards via `memCardHTML(m, 'data-hday-mem')`, `memsOn(d)`); a day with only memories is not "Nothing
   logged". Opening one sets `_memFromDay = {d, from: _dayFrom, y}`, so its back button reads "← <date>" and
   `memBackToDay()` returns to the day page (scroll and the page's own Back kept); the phone's Back, Delete and

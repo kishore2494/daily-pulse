@@ -1,4 +1,8 @@
-## 2026-11-28 — v277 built (not deployed): memories on their day
+## 2026-11-28 — v277 LIVE: memories on their day + settings sync by own stamp
+
+- Deployed on Kishore's "deploy" (web-v277 on both remotes; live app.js/sw.js/index agree; 360px live smoke, no console errors).
+
+### Built earlier the same day
 
 - Kishore asked "what's next". Built the roadmap's Memories item: History's day page lists that day's memories,
   Back from one returns to the day, and the Log's "On this day" shows them (features.md ▸ Memories ▸ On their day).
