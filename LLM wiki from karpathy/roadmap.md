@@ -85,7 +85,7 @@
   long 4K clip stores and plays.
 - **Videos out of the phone, by choice:** Kishore chose phone-only; if he loses the phone the
   videos go. Options to offer later: "Save all videos to a folder" (native), or Google Drive.
-- History's day page and the Log's "On this day" could list that day's memories.
+- ~~History's day page and the Log's "On this day" could list that day's memories.~~ Built v277 (2026-11-28).
 - HEIC photos keep no taken date (EXIF is read from JPEG only) — they fall back to the file date.
 - A memory's own date does not move its media's `day` when edited (media `day` = taken day).
 

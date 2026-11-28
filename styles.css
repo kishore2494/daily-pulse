@@ -4683,3 +4683,10 @@ html.locked #alarm { z-index: 400; }
 /* Three things in the plan row now (how often · note · when & where): the cue gets its own line. */
 .hab-plan { flex-wrap: wrap; }
 .hab-plan .hcue-line { flex: 1 1 100%; }
+
+/* ---------- v277: memories on a day's page and in "On this day" ---------- */
+.hd-mems { margin-top: 4px; }
+.otd-mem { display: flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.otd-mem > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.otd-mem svg { flex: 0 0 auto; color: color-mix(in srgb, var(--oc) 60%, var(--text-dim)); }
+.otd-mem i { font-style: normal; color: var(--text-faint); }

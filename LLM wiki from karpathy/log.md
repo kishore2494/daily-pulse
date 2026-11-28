@@ -1,3 +1,11 @@
+## 2026-11-28 — v277 built (not deployed): memories on their day
+
+- Kishore asked "what's next". Built the roadmap's Memories item: History's day page lists that day's memories,
+  Back from one returns to the day, and the Log's "On this day" shows them (features.md ▸ Memories ▸ On their day).
+- Verified: 4-timezone unit tests (+19 checks, "memday:"), every release check, 360px browser walk (strip →
+  day page → memory → back), no console errors. Bumped to v277, What's New w40. Waiting on "deploy".
+- Review check the same day: no unreplied reviews.
+
 ## 2026-11-28 — v276 LIVE; fingerprint unlock parked (no device)
 
 - v276 deployed (web-v276, live check, no console errors). Night batch done: v273 App lock, v274 CSV import,

@@ -941,6 +941,76 @@
     }
   }
 
+  // ---- v277: memories on a day's page and in "On this day" ----
+  {
+    const dSnap = localStorage.getItem('dp.docs'), eSnap = localStorage.getItem('dp.entries');
+    const tdSnap = todayStr, ldSnap = logDate, cSnap = window.confirm, tSnap = window.toast;
+    const ob = document.getElementById('onboard'), obOn = !!(ob && ob.classList.contains('on'));
+    window.toast = () => {}; if (ob) ob.classList.remove('on');   // onboarding swallows Back
+    try {
+      todayStr = d => d ? tdSnap(d) : '2026-11-28';
+      const M1 = { id: 'm277a', kind: 'memory', title: 'Lake walk', date: '2025-11-28', place: '', people: [], tags: [], blocks: [], created: '2025-11-28', updated: '2025-11-28T10:00:00Z' };
+      const M2 = { id: 'm277b', kind: 'memory', title: 'Dinner with Asha', date: '2025-11-28', place: '', people: [], tags: [], blocks: [], created: '2025-11-28', updated: '2025-11-28T20:00:00Z' };
+      const M3 = { id: 'm277c', kind: 'memory', title: 'Other day', date: '2025-11-20', place: '', people: [], tags: [], blocks: [], created: '2025-11-20', updated: '' };
+      localStorage.setItem('dp.docs', JSON.stringify([M1, M2, M3]));
+      localStorage.setItem('dp.entries', JSON.stringify({ '2026-11-21': { mood: 7, journal: 'A good week ago' } }));
+      ok('memday: memsOn picks that day only, newest first', memsOn('2025-11-28').map(m => m.id).join() === 'm277b,m277a' && memsOn('2025-11-21').length === 0);
+      // the day page
+      show('today'); dayOpen('2025-11-28');
+      const sh = document.getElementById('s-history');
+      ok('memday: a day with only memories is not "nothing logged"', !/Nothing was logged on this day/.test(sh.textContent));
+      ok('memday: the day page lists both, and they open from there', /Memories from this day/.test(sh.textContent) && sh.querySelectorAll('.hd-mems [data-hday-mem]').length === 2 && !sh.querySelector('.hd-mems [data-memopen]'));
+      localStorage.setItem('dp.docs', JSON.stringify([M1, M3])); dayOpen('2025-11-28');
+      ok('memday: one memory reads "A memory from this day"', /A memory from this day/.test(sh.textContent) && /Lake walk/.test(sh.textContent));
+      localStorage.setItem('dp.docs', JSON.stringify([M1, M2, M3])); show('today'); dayOpen('2025-11-28');
+      ok('memday: opened from the Log, the day page goes back to the Log', /← Log/.test(sh.querySelector('[data-hday-back]').textContent));
+      sh.querySelector('[data-hday-mem="m277a"]').click();
+      const sm = document.getElementById('s-memories');
+      ok('memday: tapping a card opens that memory', sm.classList.contains('on') && curMem === 'm277a' && /Lake walk/.test(sm.textContent));
+      ok('memday: its back button names the day', sm.querySelector('[data-mem-back]').textContent.trim() === '← ' + prettyDate('2025-11-28'));
+      sm.querySelector('[data-mem-back]').click();
+      ok('memday: back returns to the day page, not the memories list', sh.classList.contains('on') && histDay === '2025-11-28' && curMem === null && /Memories from this day/.test(sh.textContent));
+      ok('memday: …and the day page still goes back to the Log', /← Log/.test(sh.querySelector('[data-hday-back]').textContent));
+      sh.querySelector('[data-hday-mem="m277b"]').click();
+      handleBack();
+      ok('memday: the phone\'s Back does the same', sh.classList.contains('on') && histDay === '2025-11-28' && curMem === null);
+      sh.querySelector('[data-hday-mem="m277b"]').click();
+      sm.querySelector('[data-mem-edit]').click();
+      handleBack();
+      ok('memday: Back while editing first leaves edit mode', sm.classList.contains('on') && curMem === 'm277b' && !memEdit);
+      handleBack();
+      ok('memday: …then returns to the day', sh.classList.contains('on') && histDay === '2025-11-28');
+      // leaving another way forgets the way back
+      sh.querySelector('[data-hday-mem="m277a"]').click();
+      show('today');
+      ok('memday: going elsewhere forgets "back to the day"', _memFromDay === null);
+      curMem = 'm277a'; memEdit = false; show('memories');
+      ok('memday: …so the memory goes back to All memories again', sm.querySelector('[data-mem-back]').textContent.trim() === '← All memories');
+      sm.querySelector('[data-mem-back]').click();
+      ok('memday: the memories list still opens memories itself', new Set([...sm.querySelectorAll('[data-memopen]')].map(b => b.dataset.memopen)).size === 3 && ![...sm.querySelectorAll('.mem-card')].some(b => b.hasAttribute('1') || b.hasAttribute('2')));
+      // delete from a page opened from the day
+      show('today'); dayOpen('2025-11-28'); sh.querySelector('[data-hday-mem="m277b"]').click();
+      window.confirm = () => true;
+      sm.querySelector('[data-mem-del]') ? sm.querySelector('[data-mem-del]').click() : (sm.querySelector('[data-mem-edit]').click(), sm.querySelector('[data-mem-del]').click());
+      ok('memday: deleting it returns to the day, which now lists one', sh.classList.contains('on') && memsOn('2025-11-28').length === 1 && /A memory from this day/.test(sh.textContent));
+      // On this day on the Log
+      localStorage.setItem('dp.docs', JSON.stringify([M1, M2, M3]));
+      logDate = todayStr(); const tb = throwbackHTML(), box = document.createElement('div'); box.innerHTML = tb;
+      const yr = box.querySelector('[data-throwback="2025-11-28"]');
+      ok('memday: On this day shows a year ago for a day with only memories', !!yr && /A year ago/.test(yr.textContent));
+      ok('memday: …with the memory\'s title and how many more', /Dinner with Asha/.test(yr.textContent) && /\+1/.test(yr.querySelector('.otd-mem').textContent));
+      ok('memday: …and the week-ago entry still shows, without a memory line', !!box.querySelector('[data-throwback="2026-11-21"]') && !box.querySelector('[data-throwback="2026-11-21"] .otd-mem'));
+      localStorage.setItem('dp.docs', JSON.stringify([M3])); box.innerHTML = throwbackHTML();
+      ok('memday: no memory, no entry, no card', !box.querySelector('[data-throwback="2025-11-28"]'));
+    } finally {
+      if (obOn) ob.classList.add('on');
+      todayStr = tdSnap; logDate = ldSnap; window.confirm = cSnap; window.toast = tSnap; _memFromDay = null; curMem = null; memEdit = false; histDay = null;
+      if (dSnap != null) localStorage.setItem('dp.docs', dSnap); else localStorage.removeItem('dp.docs');
+      if (eSnap != null) localStorage.setItem('dp.entries', eSnap); else localStorage.removeItem('dp.entries');
+      navigateTo('today');
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

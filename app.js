@@ -5,7 +5,7 @@
 
 'use strict';
 
-const APP_VERSION = 'v276';   // shown in More ▸ About so you can confirm the build on each device
+const APP_VERSION = 'v277';   // shown in More ▸ About so you can confirm the build on each device
 
 /* Corruption-proof localStorage reads: one interrupted write (force-kill mid-save is a
    real Android failure mode) must degrade to defaults, never white-screen the boot. */
@@ -2014,8 +2014,9 @@ function renderDeepSections() {
    Testers get silent web updates; this makes improvements visible so they keep
    giving feedback. Bump WHATS_NEW.v to re-show with new items. */
 const WHATS_NEW = {
-  v: 'w39',
+  v: 'w40',
   items: [
+    '🖼️ <b>Memories on their day</b> — a day\'s page in History now shows the memories dated that day, and Back from one returns to the day. <b>On this day</b> on the Log shows them too, a week, a month or a year on.',
     '📆 <b>Week starts on Sunday, if you like</b> — Settings ▸ Week starts on. Week streaks, times-a-week habits, the weekly review, calendars and charts all follow it. Monday stays the default.',
     '📝 <b>Notes on a habit</b> — hold a habit on the Log (or tap Note on its card in Habits) to say how it went: "legs, 45 min", "chapter 4", "skipped, sick". The note stays with that day: you see it in History and under the habit in Habits.',
     '📥 <b>Import from Daylio or a spreadsheet</b> — bring your old days with you. Pick a Daylio CSV export, or any sheet with a date column, and Daylog shows what it will add before it adds anything. Days you already logged keep what they have, and Undo puts it all back. Settings ▸ Backup &amp; restore.',
@@ -2181,14 +2182,15 @@ function throwbackHTML() {
     { d: addDays(logDate, -365), label: 'A year ago' },
   ];
   // A day with only a photo counts too: a picture from a year ago is the best "on this day".
-  const hits = marks.filter(m => e[m.d] || mediaDayCount(m.d).p);
+  const hits = marks.filter(m => e[m.d] || mediaDayCount(m.d).p || memsOn(m.d).length);
   if (!hits.length) return '';
   /* A strip of small cards you swipe through, each tinted by that day's mood, rather than a
      tall card of paragraphs: the past is a glance on the Log, and a tap opens the whole day. */
   const has = v => v != null && v !== '';
   const cards = hits.map(m => {
     const en = e[m.d] || {};
-    const pic = mediaList('log', m.d).filter(r => r.kind === 'photo')[0];
+    const mems = memsOn(m.d), mcov = mems.map(memCover).find(r => r && r.kind === 'photo');
+    const pic = mediaList('log', m.d).filter(r => r.kind === 'photo')[0] || mcov;
     const mc = has(en.mood) ? moodColor(+en.mood) : null;
     const nums = [];
     if (has(en.mood)) nums.push(`<span class="otd-n"><b>${escapeHtml(String(en.mood))}</b>mood</span>`);
@@ -2201,6 +2203,7 @@ function throwbackHTML() {
         <span class="otd-date">${escapeHtml(prettyDate(m.d))}</span>
         ${nums.length ? `<span class="otd-nums">${nums.join('')}</span>` : ''}
         ${jr ? `<span class="otd-q">“${escapeHtml(jr.slice(0, 160))}”</span>` : ''}
+        ${mems.length ? `<span class="otd-mem">${icon('image', 13)}<span>${escapeHtml(memTitle(mems[0]))}${mems.length > 1 ? ` <i>+${mems.length - 1}</i>` : ''}</span></span>` : ''}
       </button>
       ${pic ? `<button type="button" class="mthumb otd-pic" data-mview="${pic.id}" aria-label="Photo from ${escapeHtml(prettyDate(m.d))}"><img src="${mediaUrl(pic, 't')}" alt="" loading="lazy" decoding="async"></button>` : ''}
     </div>`;
@@ -6968,7 +6971,9 @@ function historyDayHTML(d) {
     return rows.length ? `<div class="hd-deep"><h3>${escapeHtml(stripLeadEmoji(s.title))}</h3>${rows.join('')}</div>` : '';
   }).join('') : '';
 
-  const nothing = !en && !tiles.length && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML;
+  const mems = memsOn(d);
+  const memHTML = mems.length ? `<div class="mem-grid hd-mems">${mems.map(m => memCardHTML(m, 'data-hday-mem')).join('')}</div>` : '';
+  const nothing = !en && !tiles.length && !items.length && !clips.length && !exDone.length && !plan && !money && !notesHTML && !mems.length;
   return `<div class="hd-nav">
       <button class="back-btn" data-hday-back>← ${_dayFrom ? escapeHtml(dayFromLabel(_dayFrom.screen)) : 'All days'}</button>
       <span class="hd-step">
@@ -6981,6 +6986,7 @@ function historyDayHTML(d) {
     ${tilesHTML}
     ${sec('book', 'Reflection', refl)}
     ${sec('camera', 'Photos &amp; voice', pics + vl, mediaCountText({ p: photos.length, v: voices.length }))}
+    ${sec('image', mems.length === 1 ? 'A memory from this day' : 'Memories from this day', memHTML, mems.length > 1 ? String(mems.length) : '')}
     ${sec('check', 'Checklist', habs + (en && en.hnotes ? `<div class="hd-hnotes">${Object.keys(en.hnotes).filter(k => hnoteGet(en, k)).map(k => `<div class="hd-hnote"><b>${escapeHtml((habitCfg().find(h => h.key === k) || {}).label || k)}</b> ${hdText(en.hnotes[k])}</div>`).join('')}</div>` : ''), en && HABITS.length ? hDone + ' of ' + HABITS.length + ' done' : '')}
     ${sec('clock', 'Where the time went', timeHTML)}
     ${sec('dumbbell', 'Workout', gym)}
@@ -7051,6 +7057,8 @@ document.addEventListener('click', (ev) => {
   const go = ev.target.closest('[data-hday-go]');
   if (go) { histDay = go.dataset.hdayGo; renderHistory(); window.scrollTo(0, 0); return; }
   if (ev.target.closest('[data-hday-back]')) { histDayClose(); return; }
+  const hm = ev.target.closest('[data-hday-mem]');
+  if (hm) { _memFromDay = { d: histDay, from: _dayFrom, y: window.scrollY || 0 }; memOpenPage(hm.dataset.hdayMem); return; }
   const ed = ev.target.closest('[data-hday-edit]');
   if (ed) { const d = ed.dataset.hdayEdit; logDate = d; show('today'); _editFromHist = d; }
 });
@@ -7304,6 +7312,21 @@ document.addEventListener('keydown', (ev) => {
    ============================================================ */
 let curMem = null, memEdit = false, memQ = '', memFilter = null, memLinkOpen = false, memLinkQ = '', _memImport = null;
 function memList() { return DB.docs().filter(d => d && d.kind === 'memory'); }
+// the memories dated on one day, for that day's page and the Log's "On this day" (v277)
+function memsOn(d) { return memSorted(memList().filter(m => memDate(m) === d)); }
+/* A memory opened from a day's page: its back button returns to that page (where it was
+   scrolled, with the page's own back still going where it went), not to the memories list. */
+let _memFromDay = null;
+function memBackToDay() {
+  const f = _memFromDay; if (!f) return false;
+  _memFromDay = null;
+  if (curMem) docDiscardIfEmpty(curMem);
+  curMem = null; memEdit = false; memLinkOpen = false;
+  histDay = f.d; histTab = 'days'; _dayFrom = f.from;
+  show('history');
+  window.scrollTo({ top: f.y, behavior: 'instant' });
+  return true;
+}
 function memDate(m) { return /^\d{4}-\d{2}-\d{2}$/.test(m.date || '') ? m.date : (String(m.created || '').slice(0, 10) || todayStr()); }
 function memDateLong(day) {
   try { return new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
@@ -7428,11 +7451,11 @@ function memMatches(m, q, f) {
 }
 
 /* ---------- the timeline ---------- */
-function memCardHTML(m) {
+function memCardHTML(m, attr) {
   const cov = memCover(m), md = memMedia(m);
   const np = md.filter(r => r.kind === 'photo').length, nv = md.filter(r => r.kind === 'video').length, na = md.filter(r => r.kind === 'voice').length;
   const txt = docText(m).replace(MEM_LINK, '$1').trim();
-  return `<button class="mem-card" data-memopen="${escapeHtml(m.id)}">
+  return `<button class="mem-card" ${attr || 'data-memopen'}="${escapeHtml(m.id)}">
     <span class="mem-cover">${cov ? `<img src="${mediaUrl(cov, 't')}" alt="" loading="lazy" decoding="async">` : `<span class="mem-cover-blank" aria-hidden="true">${icon('image', 26)}</span>`}${nv ? `<span class="mvid-badge" aria-hidden="true">${icon('playFill', 12)}${nv}</span>` : ''}</span>
     <span class="mem-card-body">
       <span class="mem-card-t">${escapeHtml(memTitle(m))}</span>
@@ -7451,13 +7474,13 @@ function memResultsHTML() {
   if (!memQ && !memFilter) {
     const md = todayStr().slice(5), yr = todayStr().slice(0, 4);
     const back = memSorted(all.filter(m => memDate(m).slice(5) === md && memDate(m).slice(0, 4) < yr));
-    if (back.length) otd = `<div class="card mem-otd"><h2>On this day</h2><div class="mem-grid">${back.map(memCardHTML).join('')}</div></div>`;
+    if (back.length) otd = `<div class="card mem-otd"><h2>On this day</h2><div class="mem-grid">${back.map(m => memCardHTML(m)).join('')}</div></div>`;
   }
   if (!list.length) return otd + `<div class="empty">Nothing matches${memQ ? ' “' + escapeHtml(memQ) + '”' : ''}${memFilter ? ' with ' + escapeHtml(memFilter.v) : ''}.</div>`;
   const years = new Map();
   list.forEach(m => { const y = memDate(m).slice(0, 4), ym = memDate(m).slice(0, 7); if (!years.has(y)) years.set(y, new Map()); const mo = years.get(y); if (!mo.has(ym)) mo.set(ym, []); mo.get(ym).push(m); });
   return otd + [...years].map(([y, mo]) => `<section class="mem-year"><h2 class="mem-year-h">${escapeHtml(y)}</h2>${[...mo].map(([ym, ms]) =>
-    `<h3 class="mem-month-h">${escapeHtml(monthLong(ym))}</h3><div class="mem-grid">${ms.map(memCardHTML).join('')}</div>`).join('')}</section>`).join('');
+    `<h3 class="mem-month-h">${escapeHtml(monthLong(ym))}</h3><div class="mem-grid">${ms.map(m => memCardHTML(m)).join('')}</div>`).join('')}</section>`).join('');
 }
 function memListHTML() {
   const fc = memFacets(memList());
@@ -7512,7 +7535,7 @@ function memReadHTML(m) {
   const out = [...docLinks(m)].map(t => docByTitle(t)).filter(Boolean), back = docBacklinks(m), rel = memRelated(m);
   const pageBtn = d => `<button class="mem-linkrow" data-memlink="${escapeHtml(d.id)}">${icon(d.kind === 'memory' ? 'image' : 'pencil', 16)}<span>${escapeHtml(docPageTitle(d))}</span>${d.kind === 'memory' ? `<span class="hint">${escapeHtml(memDateLong(memDate(d)))}</span>` : ''}</button>`;
   return `<div class="mem-page" data-mset="mem">
-    <div class="mem-bar"><button class="back-btn" data-mem-back>← All memories</button><button class="btn btn-ghost btn-sm" data-mem-edit>${icon('pencil', 16)} Edit</button></div>
+    <div class="mem-bar"><button class="back-btn" data-mem-back>← ${_memFromDay ? escapeHtml(prettyDate(_memFromDay.d)) : 'All memories'}</button><button class="btn btn-ghost btn-sm" data-mem-edit>${icon('pencil', 16)} Edit</button></div>
     ${cov ? `<button class="mem-hero" data-mview="${escapeHtml(cov.id)}" aria-label="Open the cover ${cov.kind === 'video' ? 'video' : 'photo'}"><img src="${mediaUrl(cov, cov.kind === 'photo' ? 'f' : 't')}" alt=""></button>` : ''}
     <div class="card mem-sheet">
       <h1 class="mem-title">${escapeHtml(memTitle(m))}</h1>
@@ -7821,10 +7844,10 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-mem-new],[data-mem-import],[data-memopen],[data-mem-back],[data-mem-edit],[data-mem-done],[data-mem-del],[data-memf],[data-memf-clear],[data-memlink],[data-memlinkbtn],[data-memlinkadd],[data-memadd],[data-memimp-cancel],[data-memimp-mode],[data-memimp-go]');
   if (!t) return;
   const d = t.dataset;
-  if (d.memNew !== undefined) { const id = memNew(); if (id) { curMem = id; memEdit = true; renderMemories(); window.scrollTo(0, 0); const ti = sc.querySelector('.doc-title-input'); if (ti) ti.focus(); } return; }
+  if (d.memNew !== undefined) { _memFromDay = null; const id = memNew(); if (id) { curMem = id; memEdit = true; renderMemories(); window.scrollTo(0, 0); const ti = sc.querySelector('.doc-title-input'); if (ti) ti.focus(); } return; }
   if (d.memImport !== undefined) { memImportInput().click(); return; }
   if (d.memopen) { curMem = d.memopen; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
-  if (d.memBack !== undefined) { if (curMem) docDiscardIfEmpty(curMem); curMem = null; memEdit = false; renderMemories(); return; }
+  if (d.memBack !== undefined) { if (memBackToDay()) return; if (curMem) docDiscardIfEmpty(curMem); curMem = null; memEdit = false; renderMemories(); return; }
   if (d.memEdit !== undefined) { memEdit = true; memLinkOpen = false; renderMemories(); window.scrollTo(0, 0); return; }
   if (d.memDone !== undefined) { flushAutosave(); memEdit = false; memLinkOpen = false;
     if (curMem && docDiscardIfEmpty(curMem)) { curMem = null; toast('Nothing in it yet, so it was not kept'); }
@@ -7832,12 +7855,12 @@ document.addEventListener('click', (ev) => {
   if (d.memDel !== undefined) {
     const id = curMem, att = mediaList('doc:' + id, null).map(r => r.id);
     if (!confirm(att.length ? `Delete this memory and its ${att.length} photo${att.length === 1 ? '' : 's'}, video${att.length === 1 ? '' : 's'} and voice notes? This cannot be undone.` : 'Delete this memory? This cannot be undone.')) return;
-    const drop = () => { const ok = DB.saveDocs(DB.docs().filter(x => x.id !== id)); curMem = null; memEdit = false; renderMemories(); savedToast(ok, 'Memory deleted'); };
+    const drop = () => { const ok = DB.saveDocs(DB.docs().filter(x => x.id !== id)); curMem = null; memEdit = false; if (!memBackToDay()) renderMemories(); savedToast(ok, 'Memory deleted'); };
     if (!att.length) { drop(); return; }
     mediaDelete(att).then(ok => { if (ok) drop(); });
     return;
   }
-  if (d.memf) { const f = { k: d.memf, v: d.memv }; memFilter = memFilter && memFilter.k === f.k && memFilter.v.toLowerCase() === f.v.toLowerCase() ? null : f; curMem = null; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
+  if (d.memf) { _memFromDay = null; const f = { k: d.memf, v: d.memv }; memFilter = memFilter && memFilter.k === f.k && memFilter.v.toLowerCase() === f.v.toLowerCase() ? null : f; curMem = null; memEdit = false; renderMemories(); window.scrollTo(0, 0); return; }
   if (d.memfClear !== undefined) { memFilter = null; renderMemories(); return; }
   if (d.memlink) { memOpenPage(d.memlink); return; }
   if (d.memlinkbtn !== undefined) { memLinkOpen = !memLinkOpen; memLinkQ = ''; renderMemories(); const q = document.getElementById('mem-link-q'); if (q) q.focus(); return; }
@@ -20544,6 +20567,7 @@ function handleBack() {
   // 2) step back within a screen's sub-view first (mirror the on-screen "← back" buttons)
   if (cur === 'write' && curDoc) { docDiscardIfEmpty(curDoc); curDoc = null; renderWrite(); return; }
   if (cur === 'memories' && _memImport && !_memImport.running) { _memImport = null; renderMemories(); return; }
+  if (cur === 'memories' && curMem && !memEdit && memBackToDay()) return;
   if (cur === 'memories' && curMem) { if (docDiscardIfEmpty(curMem)) curMem = null; else if (memEdit) { memEdit = false; memLinkOpen = false; } else curMem = null; renderMemories(); window.scrollTo(0, 0); return; }
   if (cur === 'plans' && curPlan) { curPlan = null; renderPlans(); return; }
   if (cur === 'gym' && gymView === 'day') { gymView = 'home'; renderGym(); return; }
@@ -20778,6 +20802,7 @@ function show(name) {
   if (name !== 'today') _editFromHist = null;          // "back to the day" only from the Log it opened
   if (name !== 'custom') _customFrom = null;          // "back to Habits" only from the Customize page Habits opened
   if (name !== 'today' && name !== 'history') _dayFrom = null;
+  if (name !== 'memories') _memFromDay = null;      // "back to the day" only from the memory it opened
   if (name !== 'recordings') _recFor = null;          // "save it on that day" only from the Log that opened Recordings
   if (name !== 'letters' && (_lt || _ltDelArm)) letterLeave();   // a draft is saved, an empty one dropped
   const leaving = (document.querySelector('.screen.on') || {}).id !== 's-' + name;
@@ -20936,7 +20961,7 @@ function stripLeadEmoji(s) { return (s || '').replace(/^\s*[\p{Extended_Pictogra
 /* Global emoji→icon decorator. Runs after each screen renders and swaps a leading emoji
    in any card header (h2) or menu-row icon for a clean line-icon chip — so every screen
    gets the professional treatment without editing dozens of template strings. */
-const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'lock','📥':'download','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
+const EMOJI_ICON = { '🧭':'target','🧑‍🏫':'star','😊':'smile','⚡':'zap','😴':'moon','🎯':'target','🏋️':'dumbbell','🏋':'dumbbell','💪':'dumbbell','🧠':'lightbulb','🔢':'list','✅':'check','📅':'calendar','📆':'calendar','🔥':'flame','🕸️':'radio','🕸':'radio','💡':'lightbulb','📌':'star','💬':'note','☁️':'radio','☁':'radio','⏰':'clock','🔔':'bell','💾':'layers','ℹ️':'dot','ℹ':'dot','📄':'note','📖':'book','🕘':'history','⏱️':'clock','⏱':'clock','🗒️':'note','🗒':'note','📋':'list','🎨':'sparkle','🍅':'target','📝':'pencil','🌊':'radio','😌':'smile','🩺':'heart','💼':'briefcase','📚':'book','💰':'wallet','📱':'phone','🌱':'trending','💇':'scissors','🧴':'droplet','📦':'layers','🎙️':'radio','🗓️':'calendar','🗓':'calendar','📊':'chart','⏳':'clock','⌛':'clock','🏃':'zap','🚌':'target','📈':'trending','🔒':'lock','📥':'download','🖼️':'image','🖼':'image','🎉':'star','⏸':'clock','▶':'target','⏹':'dot','🎤':'radio','💊':'heart','🧘':'sparkle','🥗':'leaf','😁':'smile','📣':'radio','🤖':'dot','🚀':'trending','🍳':'flame','☕':'clock','🛒':'wallet','🎸':'radio','🌅':'sparkle','🎓':'play','💛':'heart' };
 function lookupEmojiIcon(e) { return EMOJI_ICON[e] || EMOJI_ICON[e.replace(/️/g, '')] || null; }
 function decorateHeaders(root) {
   if (!root) return;

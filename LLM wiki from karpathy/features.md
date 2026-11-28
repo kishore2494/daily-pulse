@@ -491,6 +491,14 @@ bulk import; big files stay **on the phone only** (no Drive, no compression).
   viewer, links/backlinks/filters/search, backup = photos only. 44 unit tests (sync + async).
 - **Open items:** roadmap.md ▸ Memories.
 
+- **On their day (v277, 2026-11-28, built, not deployed):** History's day page has a "Memories from this day"
+  section (cards via `memCardHTML(m, 'data-hday-mem')`, `memsOn(d)`); a day with only memories is not "Nothing
+  logged". Opening one sets `_memFromDay = {d, from: _dayFrom, y}`, so its back button reads "← <date>" and
+  `memBackToDay()` returns to the day page (scroll and the page's own Back kept); the phone's Back, Delete and
+  leaving Memories behave the same (`show()` clears it). The Log's "On this day" strip counts a day with only
+  memories, shows the first memory's title (+N more) and uses a memory photo when the Log has none.
+  Gotcha found: `list.map(memCardHTML)` passed the array index as the new 2nd argument; call it as `m => memCardHTML(m)`.
+
 ## Meals (built 2026-11-15 on branch worktree-agent-a7d95bec3ba692ed9, NOT deployed)
 
 Kishore: "we may can have the meal planned". A weekly meal planner, in the ☰ menu under More
