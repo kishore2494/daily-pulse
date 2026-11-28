@@ -5,6 +5,16 @@
 - Verified: 4-timezone unit tests (+19 checks, "memday:"), every release check, 360px browser walk (strip →
   day page → memory → back), no console errors. Bumped to v277, What's New w40. Waiting on "deploy".
 - Review check the same day: no unreplied reviews.
+- **Sync fix folded into v277: settings-like stores by their own change time.** The roadmap's "gym
+  untick doesn't propagate" was stale (fixed 2026-11-02, `dp.gymAt`), but its neighbour was real: habit
+  list, tabs, fields, budgets etc. adopted the WHOLE copy of whichever phone changed anything later,
+  so a habit renamed on phone A was undone by a gym tick on phone B. The fuzzer got a `cfg` step
+  (rename a habit; truth = latest save wins whole) and reproduced it in 3 moves; fixed with
+  `CFG_SYNC` + `cfgSave()` + `dp.cfgAt` (pushed, merged per store, `cfgRestored` on restore at the
+  backup's time, excluded from backups). First version re-pushed forever under clock skew (a phone
+  with no stored copy compared `null` to the other's defaults); now only a newer local stamp pushes.
+  Verified: 16 unit checks (a mutation back to the old rule fails 3), STRICT fuzz 300 seeds clean,
+  4 timezones, all release checks, browser smoke.
 
 ## 2026-11-28 — v276 LIVE; fingerprint unlock parked (no device)
 

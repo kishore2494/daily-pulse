@@ -158,7 +158,7 @@
   /* ---------------- generating a run (pure data, so it can be replayed and shrunk) ---------------- */
   const ACTS = ['work', 'gymt', 'learn', 'travel'];
   const SYNC_OPS = [['pull', 12], ['pullStart', 4], ['pullEnd', 4], ['stale', 3], ['flush', 3], ['offline', 4], ['lag', 3], ['deliver', 3]];
-  const EDIT_OPS = [['mood', 8], ['journal', 7], ['habit', 10], ['task', 10], ['note', 7], ['tl', 15], ['gym', 8]];
+  const EDIT_OPS = [['mood', 8], ['journal', 7], ['habit', 10], ['task', 10], ['note', 7], ['tl', 15], ['gym', 8], ['cfg', 4]];
   const KINDS = SYNC_OPS.concat(EDIT_OPS), KSUM = KINDS.reduce((s, k) => s + k[1], 0);
   function gen(seed) {
     s32 = seed;
@@ -185,7 +185,7 @@
      before/after diff of what the real save path stored, so the bookkeeping cannot drift from
      what the app actually wrote. */
   function before() {
-    const o = { lists: {}, tl: ids(DB.timelog()), entries: DB.entries(), gym: objOf(DB.gym()) };
+    const o = { lists: {}, tl: ids(DB.timelog()), entries: DB.entries(), gym: objOf(DB.gym()), cfg: canonJSON(habitCfg()) };
     STORES.forEach(s => { o.lists[s] = ids(readList(s)); });
     return o;
   }
@@ -220,6 +220,9 @@
         (truth.saves[d] = truth.saves[d] || []).push({ stamp: now, phone: p, has, val, why });
       }
     });
+    // the habit list is one whole setting: its latest save wins as a whole (v277 dp.cfgAt)
+    const hc = canonJSON(habitCfg());
+    if (hc !== b.cfg) stampIt(truth.cfg, 'habitcfg', { stamp: now, phone: p, json: hc });
     const g = objOf(DB.gym());
     new Set([...Object.keys(g), ...Object.keys(b.gym)]).forEach(d => ['done', 'log'].forEach(part => {
       const x = objOf(objOf(g[d])[part]), y = objOf(objOf(b.gym[d])[part]);
@@ -330,6 +333,9 @@
       if (r[2] < 0.75) { g.done[k] = !g.done[k]; what = 'gym ' + (g.done[k] ? 'tick ' : 'untick ') + d.slice(5) + ' ' + k; }
       else { g.log[k] = r[3] < 0.2 ? '' : '3x' + (++ver); what = 'gym log ' + d.slice(5) + ' ' + k + '=' + JSON.stringify(g.log[k]); }
       persistGym(true, d, g);
+    } else if (op.k === 'cfg') {   // rename a habit: a settings-like store, saved whole
+      const c = clone(habitCfg()), h = at(c, r[0]);
+      if (h) { h.label = 'H' + (++ver); saveHabitCfg(c); what = 'habit rename ' + h.key + '=' + h.label; } else what = 'cfg (no habits)';
     }
     record(b, op.k);
     return P + what;
@@ -337,7 +343,7 @@
 
   /* ---------------- the end state ---------------- */
   const SECTIONS = ['entries', 'tasks', 'notes', 'timelog', 'gym', 'habitcfg', 'actcfg', 'awards', 'gapskip'];
-  const STAMPS = ['timelogDel', 'listAt', 'listDel', 'gymAt'];
+  const STAMPS = ['timelogDel', 'listAt', 'listDel', 'gymAt', 'cfgAt'];
   /* What this phone would push, section by section — the canonical state. Taken from a real
      pushState call that is captured instead of sent; dp.touched is put back. */
   function payload() {
@@ -438,6 +444,11 @@
       counters.habits++;
       if (JSON.stringify(h) !== JSON.stringify(g.val)) fail('no-loss', d + ' habit ' + k + ' is ' + JSON.stringify(h) + ', the latest change (by ' + g.phone + ' @' + rel(g.stamp) + ') set ' + JSON.stringify(g.val), { key: 'habit:' + key });
     });
+    Object.keys(truth.cfg).forEach(key => {
+      const g = truth.cfg[key];
+      counters.cfg++;
+      if (canonJSON(v[key]) !== g.json) fail('no-loss', key + ' is ' + short(canonJSON(v[key])) + ', the latest save (by ' + g.phone + ' @' + rel(g.stamp) + ') was ' + short(g.json), { key: 'cfg:' + key });
+    });
     const gym = objOf(v.gym);
     Object.keys(truth.gym).forEach(key => {
       const [d, part, k] = key.split('|'), g = truth.gym[key], h = objOf(objOf(gym[d])[part])[k];
@@ -481,9 +492,9 @@
     if (cur !== null) { park(); cur = null; }
     Object.keys(phones).forEach(k => delete phones[k]);
     SHEET.state = null; SHEET.hist = []; SHEET.log = []; net.inflight = []; net.sent = 0; toasts = [];
-    truth = { list: { tasks: {}, notes: {} }, tl: {}, field: {}, habit: {}, gym: {}, saves: {}, vals: {} };
+    truth = { list: { tasks: {}, notes: {} }, tl: {}, field: {}, habit: {}, gym: {}, cfg: {}, saves: {}, vals: {} };
     machine = new Set(); trace = []; fails = []; ver = 0; killedDays = new Set();
-    counters = { items: 0, blocks: 0, fields: 0, habits: 0, gym: 0, sums: 0, wo: 0 };
+    counters = { items: 0, blocks: 0, fields: 0, habits: 0, gym: 0, cfg: 0, sums: 0, wo: 0 };
     T = T0 - 3600 * 1000 * 3;
   }
   function warmup() {

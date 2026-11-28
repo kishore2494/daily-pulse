@@ -127,10 +127,10 @@ Still unbuilt: ~~PIN lock (S)~~ built v273 (fingerprint unlock = native, later) 
 
 ## From the 2026-07-24 audit — deferred fixes (prioritize before/around launch)
 - **Sync robustness**: (DONE 2026-11-01, v253: the 14 lists with ids merge item by item with
-  stamps + delete records — see architecture.md.) Still open: settings-like stores (habitcfg,
-  actcfg, navcfg, finbudget, fincats, …) are last-writer-wins whole; gym merge is union-only
-  (uncheck/edit doesn't propagate); plans merge as whole plans (two phones ticking different
-  items of one plan: the later tick of the plan wins).
+  stamps + delete records — see architecture.md.) ~~Still open: settings-like stores last-writer-wins
+  whole; gym union-only; plans whole~~ — ALL FIXED: gym per key + plans per step (2026-11-02,
+  `dp.gymAt`, `mergePlans`); settings-like stores by their own change time (v277, `dp.cfgAt`).
+  Two phones changing the SAME settings store at once still keep the later whole copy (by design).
   - Found again 2026-11-01 (review 2), both reproduced in a jsdom harness:
     - (DONE 2026-11-01, v253: per-habit stamps `habitsAt`; time-log tombstones `dp.timelogDel`;
       push-after-pull and flush-on-hide. List stores: done too, same day.)

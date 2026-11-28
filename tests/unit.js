@@ -1011,6 +1011,82 @@
     }
   }
 
+  // ---- v277: settings-like stores sync by their own change time (dp.cfgAt) ----
+  {
+    const keys = ['dp.habitcfg', 'dp.navcfg', 'dp.cfgAt', 'dp.touched', 'dp.settings'];
+    const snap = {}; keys.forEach(k => { snap[k] = localStorage.getItem(k); });
+    const fSnap = window.fetch, sent = [], tSnap = window.toast;
+    window.fetch = (u, o) => { try { sent.push(JSON.parse(o.body)); } catch (e) {} return Promise.resolve({ ok: true }); };
+    window.toast = () => {};
+    try {
+      const st0 = DB.settings(); delete st0.syncUrl; DB.saveSettings(st0);
+      localStorage.removeItem('dp.cfgAt');
+      const base = habitCfg().map(h => Object.assign({}, h));
+      saveHabitCfg(base.map((h, i) => i ? h : Object.assign({}, h, { label: 'Before link' })));
+      ok('cfgAt: no sync link, no stamp (a new phone\'s choices never outrank the Sheet)', !('habitcfg' in listMeta('dp.cfgAt')));
+      const st = DB.settings(); st.syncUrl = 'https://example.invalid/exec'; DB.saveSettings(st);
+      const renamed = habitCfg().map((h, i) => i ? h : Object.assign({}, h, { label: 'Renamed here' }));
+      saveHabitCfg(renamed);
+      const ls = +listMeta('dp.cfgAt').habitcfg;
+      ok('cfgAt: linked, a change is stamped', ls > 0 && Math.abs(ls - Date.now()) < 5000);
+      localStorage.setItem('dp.cfgAt', JSON.stringify({ habitcfg: ls - 777 })); saveHabitCfg(renamed);
+      ok('cfgAt: saving the same copy again keeps the stamp', +listMeta('dp.cfgAt').habitcfg === ls - 777);
+      localStorage.setItem('dp.cfgAt', JSON.stringify({ habitcfg: ls }));
+      // the bug: the other phone changed SOMETHING later (newer touched), its habit list earlier
+      const older = base.map((h, i) => i ? h : Object.assign({}, h, { label: 'Old name' }));
+      localStorage.setItem('dp.touched', String(ls + 10));
+      sent.length = 0;
+      applyRemoteState({ touched: ls + 60000, habitcfg: older, cfgAt: { habitcfg: ls - 60000 } });
+      flushPush && flushPush();
+      ok('cfgAt: a habit renamed here survives the other phone\'s later, unrelated change', habitCfg()[0].label === 'Renamed here');
+      ok('cfgAt: …and this phone sends its newer copy back, with its stamp', sent.some(p => p.habitcfg && p.habitcfg[0].label === 'Renamed here' && +objOf(p.cfgAt).habitcfg === ls));
+      // the other phone changed it later: taken, with its stamp
+      const theirs = base.map((h, i) => i ? h : Object.assign({}, h, { label: 'Their newer name' }));
+      applyRemoteState({ touched: ls + 90000, habitcfg: theirs, cfgAt: { habitcfg: ls + 80000 } });
+      ok('cfgAt: a newer change on the other phone is taken', habitCfg()[0].label === 'Their newer name' && +listMeta('dp.cfgAt').habitcfg === ls + 80000);
+      // a store the other phone never stamped (but this one did) stays
+      localStorage.setItem('dp.cfgAt', JSON.stringify({ habitcfg: ls + 80000 }));
+      applyRemoteState({ touched: ls + 99000, habitcfg: older, cfgAt: {} });
+      ok('cfgAt: a stamped copy here beats an unstamped one from a newer app', habitCfg()[0].label === 'Their newer name');
+      // an older app's state: no cfgAt at all
+      localStorage.setItem('dp.touched', String(ls + 100000));
+      applyRemoteState({ touched: ls + 120000, habitcfg: older });
+      ok('cfgAt: an older app\'s copy saved after this phone\'s change is taken (the old rule)', habitCfg()[0].label === 'Old name');
+      saveHabitCfg(renamed); const ls2 = +listMeta('dp.cfgAt').habitcfg;
+      localStorage.setItem('dp.touched', String(ls2 - 50000));
+      applyRemoteState({ touched: ls2 - 1000, habitcfg: older });
+      ok('cfgAt: …but not one saved before this phone changed it', habitCfg()[0].label === 'Renamed here');
+      // neither phone has stamped a store: the old whole-state rule
+      localStorage.setItem('dp.cfgAt', '{}');
+      const nav0 = navCfg(), navR = nav0.map((n, i) => i ? n : Object.assign({}, n, { label: 'Remote tab' }));
+      localStorage.setItem('dp.touched', String(ls2));
+      applyRemoteState({ touched: ls2 + 5000, navcfg: navR, cfgAt: {} });
+      ok('cfgAt: unstamped on both sides, the phone that changed anything later still gives it', navCfg()[0].label === 'Remote tab');
+      localStorage.setItem('dp.navcfg', JSON.stringify(nav0)); localStorage.setItem('dp.touched', String(ls2 + 99999));
+      applyRemoteState({ touched: ls2 + 6000, navcfg: navR, cfgAt: {} });
+      ok('cfgAt: …and an older one does not', navCfg()[0].label === nav0[0].label);
+      // the push carries the stamps; a backup restore stamps what it changed at the backup's time
+      sent.length = 0; pushState(true);
+      ok('cfgAt: every push carries dp.cfgAt', sent.length && 'cfgAt' in sent[sent.length - 1]);
+      ok('cfgAt: dp.cfgAt is per device, not in backups', BACKUP_EXCLUDED.includes('cfgAt'));
+      localStorage.setItem('dp.cfgAt', JSON.stringify({ habitcfg: 5, navcfg: 7 }));
+      const before = cfgRaw();
+      localStorage.setItem('dp.habitcfg', JSON.stringify(older));
+      cfgRestored(before, 1000);
+      ok('cfgRestored: a store the restore changed is stamped at the backup\'s time; others keep theirs', listMeta('dp.cfgAt').habitcfg === 1000 && listMeta('dp.cfgAt').navcfg === 7);
+      const before2 = cfgRaw(); localStorage.setItem('dp.habitcfg', JSON.stringify(renamed));
+      cfgRestored(before2, 2000, { cfg: { habitcfg: 1500 } });
+      ok('cfgRestored: …at the time it last changed in the backup, when the file says', listMeta('dp.cfgAt').habitcfg === 1500);
+      const before3 = cfgRaw(); localStorage.setItem('dp.habitcfg', JSON.stringify(older));
+      cfgRestored(before3, 2000, { cfg: { habitcfg: 9e15 } });
+      ok('cfgRestored: …never later than the backup itself', listMeta('dp.cfgAt').habitcfg === 2000);
+    } finally {
+      window.fetch = fSnap; window.toast = tSnap;
+      keys.forEach(k => { if (snap[k] != null) localStorage.setItem(k, snap[k]); else localStorage.removeItem(k); });
+      reloadCfg(); renderNav();
+    }
+  }
+
   // ---- Custom goals ----
   const gSnapG = localStorage.getItem('dp.goals'), gSnapE2 = localStorage.getItem('dp.entries');
   ok('goals join BACKUP_KEYS', BACKUP_KEYS.includes('goals'));

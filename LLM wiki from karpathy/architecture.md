@@ -128,7 +128,11 @@ backup, which is why adding a store means editing that list.
 2. `applyRemoteState()` merge — how it comes back. Lists with ids (`LIST_SYNC`: tasks, notes,
    plans, projects, reminders, exercises, timeacts, events, docs, timebox, goals, finaccts,
    fintx, finmarks) merge **item by item** (`mergeList`, since v253); settings-like stores
-   adopt newest-device-wins; entries / gym / timelog merge per record; `awards` and `gapskip`
+   (`CFG_SYNC`: habitcfg, actcfg, deepcfg, gymcfg, corecfg, daycfg, gymgroups, navcfg, pjnames,
+   finbudget, fincats, finset) sync whole, **each by its own change time** (`dp.cfgAt`, since v277):
+   save them through `cfgSave()`, which stamps only while a sync link is set (like `dp.touched`), so
+   a new phone's pre-link defaults never beat the Sheet. Unstamped on both sides, or from an older
+   app, falls back to newest-device-wins; entries / gym / timelog merge per record; `awards` and `gapskip`
    **union**, because a stale second phone must never be able to un-earn an award. A new list
    with ids goes in `LIST_SYNC` and is saved through `listSave()`, never raw `safeSet`.
 3. `BACKUP_KEYS` — export / import

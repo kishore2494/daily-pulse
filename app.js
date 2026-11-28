@@ -44,7 +44,7 @@ const DEFAULT_HABITS = [
   { key: 'healthyFood', emoji: '🥗', label: 'Healthy food', color: '#fb923c' },
 ];
 function habitCfg() { const p = safeParse(localStorage.getItem('dp.habitcfg'), null); return Array.isArray(p) ? p : DEFAULT_HABITS.map(h => Object.assign({}, h)); }
-function saveHabitCfg(cfg) { const ok = safeSet('dp.habitcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
+function saveHabitCfg(cfg) { const ok = cfgSave('dp.habitcfg', cfg); reloadCfg(); pushState(); return ok; }
 let HABITS = habitCfg().filter(h => !h.hidden);
 function reloadCfg() {
   HABITS = habitCfg().filter(h => !h.hidden);
@@ -92,7 +92,7 @@ const DEFAULT_DEEP_SECTIONS = [
    sections (titles, hidden flags, renamed/hidden/added fields). DEEP_SECTIONS
    is the cooked, visible-only view the Today screen renders. */
 function deepCfg() { const v = safeParse(localStorage.getItem('dp.deepcfg'), null); return Array.isArray(v) ? v : JSON.parse(JSON.stringify(DEFAULT_DEEP_SECTIONS)); }
-function saveDeepCfg(cfg) { const ok = safeSet('dp.deepcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
+function saveDeepCfg(cfg) { const ok = cfgSave('dp.deepcfg', cfg); reloadCfg(); pushState(); return ok; }
 function cookDeep(cfg) {
   return cfg.filter(sec => !sec.hidden).map(sec => Object.assign({}, sec, {
     scales: (sec.scales || []).filter(f => !f.hidden),
@@ -140,7 +140,7 @@ function bedwakeHours(bed, wake) {
 // Decimal hours ⇄ HH:MM for the clock picker. 7.5 ⇄ "07:30".
 function hoursToHM(v) { if (v === '' || v == null || isNaN(v)) return ''; const t = Math.max(0, Math.round(+v * 60)); const h = Math.floor(t / 60), m = t % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
 function hmToHours(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) return ''; return +(+m[1] + (+m[2]) / 60).toFixed(2); }
-function saveCoreCfg(cfg) { const ok = safeSet('dp.corecfg', JSON.stringify(cfg)); pushState(); return ok; }
+function saveCoreCfg(cfg) { const ok = cfgSave('dp.corecfg', cfg); pushState(); return ok; }
 
 /* Default gym routine — fully editable in the Gym tab. */
 const DEFAULT_EXERCISES = [
@@ -327,6 +327,21 @@ const LIST_DEL_KEEP = 90 * 864e5;   // long enough to reach every phone that syn
 // The feedback box keeps its draft: Back or a tab switch used to wipe a long message.
 document.addEventListener('input', (ev) => { if (ev.target.id === 'fb-text') { try { localStorage.setItem('dp.fbDraft', ev.target.value.slice(0, 5000)); } catch (e) {} } });
 function listMeta(store) { const v = safeParse(localStorage.getItem(store), {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+/* Settings-like stores sync whole, each by its own change time (v277). Before, the phone that had
+   changed ANYTHING later gave its whole copy of every one of them: a habit renamed on one phone
+   was undone by a gym tick on the other (the sync fuzzer's 'cfg' step found it in 3 moves).
+   dp.cfgAt = { key: when this store last changed }, stamped by cfgSave only while a sync link is
+   set — the same rule as dp.touched — so a new phone's defaults and onboarding choices, made
+   before it is linked, never outrank the copy already on the Sheet. The pull takes, store by
+   store, the copy changed later; see applyRemoteState. */
+const CFG_SYNC = [['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['projectnames', 'dp.pjnames'],
+  ['finbudget', 'dp.finbudget'], ['fincats', 'dp.fincats'], ['finset', 'dp.finset']];
+function cfgSave(store, value) {
+  const prev = localStorage.getItem(store), next = JSON.stringify(value), ok = safeSet(store, next);
+  const key = (CFG_SYNC.find(x => x[1] === store) || [])[0];
+  if (ok && key && prev !== next && DB.settings().syncUrl) { const at = listMeta('dp.cfgAt'); at[key] = Date.now(); safeSet('dp.cfgAt', JSON.stringify(at)); }
+  return ok;
+}
 function listMetaSave(at, del) {
   [[at, 'dp.listAt'], [del, 'dp.listDel']].forEach(([m, store]) => {
     Object.keys(m).forEach(k => { if (!m[k] || typeof m[k] !== 'object' || !Object.keys(m[k]).length) delete m[k]; });
@@ -1404,7 +1419,7 @@ function pushState(now) {
       meals: mealPlan(), meallib: mealLib(), mealshop: mealShop(),
       gapskip: safeParse(localStorage.getItem('dp.gapskip'), {}),
       awards: safeParse(localStorage.getItem('dp.awards'), {}),
-      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel'), gymAt: listMeta('dp.gymAt') };
+      timelogDel: timelogDels(), listAt: listMeta('dp.listAt'), listDel: listMeta('dp.listDel'), gymAt: listMeta('dp.gymAt'), cfgAt: listMeta('dp.cfgAt') };
     _pushPending = null;
     fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }).catch(() => {});
   };
@@ -1781,12 +1796,36 @@ function applyRemoteState(remote) {
     });
     listMetaSave(at, del);
   }
-  // Settings-like stores (and every list, from an older app version): when the other device
-  // changed more recently, adopt its whole copy. Local-newer keeps local.
-  if (remoteNewer) {
-    [['habitcfg', 'dp.habitcfg'], ['actcfg', 'dp.actcfg'], ['deepcfg', 'dp.deepcfg'], ['gymcfg', 'dp.gymcfg'], ['corecfg', 'dp.corecfg'], ['daycfg', 'dp.daycfg'], ['gymgroups', 'dp.gymgroups'], ['navcfg', 'dp.navcfg'], ['projectnames', 'dp.pjnames'],
-     ['finbudget', 'dp.finbudget'], ['fincats', 'dp.fincats'], ['finset', 'dp.finset'],
-     ...(itemwise ? [] : LIST_SYNC.map(k => [k, 'dp.' + k]))].forEach(([key, store]) => {
+  /* Settings-like stores: store by store, the copy changed later (dp.cfgAt, see CFG_SYNC). A store
+     neither phone has changed since stamps began keeps the old rule (the phone that changed
+     anything later gives it), and so does a state from an older app, which has no cfgAt at all —
+     except where this phone changed the store after that state was saved. Equal stamps with
+     different copies (cannot happen in practice) take one fixed side, so both phones agree. */
+  {
+    const la = listMeta('dp.cfgAt'), ra = remote.cfgAt, stamped = !!ra && typeof ra === 'object' && !Array.isArray(ra);
+    const at = Object.assign({}, la); let atHit = false;
+    CFG_SYNC.forEach(([key, store]) => {
+      if (!remote[key]) return;
+      if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
+      const ls = +la[key] || 0, rs = stamped ? +ra[key] || 0 : 0;
+      const lraw = localStorage.getItem(store) || 'null', same = JSON.stringify(remote[key]) === lraw;
+      const tie = () => !same && canonJSON(remote[key]) > canonJSON(safeParse(lraw, null));
+      let take;
+      if (!stamped) take = remoteNewer && +remote.touched > ls;
+      else if (rs !== ls) take = rs > ls;
+      else if (!rs) take = remoteNewer || (+remote.touched === localTouched && tie());
+      else take = tie();
+      if (take) {
+        if (!same) { safeSet(store, JSON.stringify(remote[key])); changed = true; }
+        if (rs > ls) { at[key] = rs; atHit = true; }
+      } else if (stamped && ls > rs) remoteBehind = true;   // this phone changed it later: send it (the old rule pushes by dp.touched)
+    });
+    if (atHit) safeSet('dp.cfgAt', JSON.stringify(at));
+  }
+  // Every list, from an older app version without item stamps: when the other device changed
+  // more recently, adopt its whole copy. Local-newer keeps local.
+  if (remoteNewer && !itemwise) {
+    LIST_SYNC.map(k => [k, 'dp.' + k]).forEach(([key, store]) => {
       if (!remote[key]) return;
       if (!remoteSectionOk(store, remote[key])) { skippedSections.push(key); return; }
       if (JSON.stringify(remote[key]) !== (localStorage.getItem(store) || 'null')) {
@@ -4226,11 +4265,11 @@ let openExr = new Set();
    custom: {groupId: [{id:'cx…', name, sets, tip}]} }. The cooked* helpers apply
    overrides + customs on top of WORKOUT_PLAN, so the plan file stays pristine. */
 function gymCfg() { return safeParse(localStorage.getItem('dp.gymcfg'), { ex: {}, custom: {} }); }
-function saveGymCfg(c) { const ok = safeSet('dp.gymcfg', JSON.stringify(c)); pushState(); return ok; }
+function saveGymCfg(c) { const ok = cfgSave('dp.gymcfg', c); pushState(); return ok; }
 /* Custom muscle groups (dp.gymgroups) — brand-new groups whose exercises all
    live in gymCfg().custom[groupId]. */
 function gymGroups() { return safeParse(localStorage.getItem('dp.gymgroups'), []); }
-function saveGymGroups(g) { const ok = safeSet('dp.gymgroups', JSON.stringify(g)); pushState(); return ok; }
+function saveGymGroups(g) { const ok = cfgSave('dp.gymgroups', g); pushState(); return ok; }
 function anyGroupById(id) {
   const cg = gymGroups().find(g => g.id === id);
   return cg ? Object.assign({ exercises: [] }, cg) : groupById(id);
@@ -4241,7 +4280,7 @@ function allGroups() { return WORKOUT_PLAN.concat(gymGroups()); }
 function gymDays() {
   return safeParse(localStorage.getItem('dp.daycfg'), WORKOUT_DAYS.map(d => Object.assign({}, d)));
 }
-function saveGymDays(d) { const ok = safeSet('dp.daycfg', JSON.stringify(d)); pushState(); return ok; }
+function saveGymDays(d) { const ok = cfgSave('dp.daycfg', d); pushState(); return ok; }
 function cookedGroupById(id) {
   const g = anyGroupById(id); const cfg = gymCfg();
   const own = g.exercises.map(e => Object.assign({}, e, cfg.ex[e.id] || {}));
@@ -4473,7 +4512,7 @@ const DEFAULT_TIME_ACTS = [
 ];
 const CUSTOM_ACT_COLORS = ['#f472b6', '#818cf8', '#2dd4bf', '#facc15', '#fb7185', '#a3e635'];
 function actCfg() { const v = safeParse(localStorage.getItem('dp.actcfg'), null); return Array.isArray(v) ? v : DEFAULT_TIME_ACTS.map(a => Object.assign({}, a)); }
-function saveActCfg(cfg) { const ok = safeSet('dp.actcfg', JSON.stringify(cfg)); reloadCfg(); pushState(); return ok; }
+function saveActCfg(cfg) { const ok = cfgSave('dp.actcfg', cfg); reloadCfg(); pushState(); return ok; }
 let TIME_ACTS_ALL = actCfg();
 /* visible activities = non-hidden defaults + non-hidden customs */
 function allActs() { return TIME_ACTS_ALL.filter(a => !a.hidden).concat(DB.timeacts().filter(a => !a.hidden)); }
@@ -12258,7 +12297,7 @@ const BACKUP_EXCLUDED = [
   'lastBackup',                        // when this device last exported; restoring it misreports
   'quotaWarn',                         // storage-pressure warning state
   'sampleMeta',                        // marks which rows are seeded demo data on this install
-  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel', 'gymAt',
+  'touched', 'pausedAct', 'pausedPid', 'timelogDel', 'listAt', 'listDel', 'gymAt', 'cfgAt',
   'tlDirty',                           // days whose time summary waits for a re-sum on this install
   'sheetScript',                       // which script version this device's sync link answered with
   'rateAsk', 'backupNudge', 'awardsInit',
@@ -12365,7 +12404,7 @@ async function exportData() {
   const media = await mediaForExport();
   if (media.items.length) out._media = media.items;
   out._at = Date.now();
-  out._stamps = { at: listMeta('dp.listAt'), del: listMeta('dp.listDel') };
+  out._stamps = { at: listMeta('dp.listAt'), del: listMeta('dp.listDel'), cfg: listMeta('dp.cfgAt') };
   // Await it, and only stamp the date if the file actually reached the user. Stamping
   // unconditionally meant Settings said "last backup: today ✅" after a cancelled share
   // sheet — the single most dangerous lie this app could tell.
@@ -12553,6 +12592,18 @@ function planPartsRestored(before, at, del, now) {
    phone then still wins. */
 /* Stamped at the backup's time (`at0`), not now — the same rule as listRestored: an edit made
    anywhere after the backup still wins over what the restore brought back. */
+/* The same for settings-like stores (dp.cfgAt): one the restore changed is stamped at the time it
+   last changed in the backup (its own `_stamps.cfg`, v277+), else at the backup's time, so a change
+   made anywhere after the backup still wins; one it left as it was keeps its stamp. */
+function cfgRaw() { const o = {}; CFG_SYNC.forEach(([, store]) => { o[store] = localStorage.getItem(store); }); return o; }
+function cfgRestored(before, at0, stamps) {
+  const at = listMeta('dp.cfgAt'), own = objOf(stamps && stamps.cfg); let hit = false;
+  CFG_SYNC.forEach(([key, store]) => {
+    if (localStorage.getItem(store) === before[store]) return;
+    at[key] = Math.min(+own[key] || at0, at0); hit = true;
+  });
+  if (hit) safeSet('dp.cfgAt', JSON.stringify(at));
+}
 function gymRestored(before, at0) {
   const at = {}, g = objOf(DB.gym()), now = +at0 || Date.now();
   Object.keys(g).forEach(d => GYM_PARTS.forEach(f => {
@@ -12583,10 +12634,11 @@ function importData(file, after) {
       // Sample rows first: the restore replaces the sections it names, and the seeded rows in the
       // sections it does not name would otherwise stay, unmarked, and go into the next backup.
       clearSampleData();
-      const listsBefore = listIds(check.keys), gymBefore = check.keys.includes('gym') ? DB.gym() : null;
+      const listsBefore = listIds(check.keys), gymBefore = check.keys.includes('gym') ? DB.gym() : null, cfgBefore = cfgRaw();
       check.keys.forEach(k => { if (safeSet('dp.' + k, JSON.stringify(d[k])) === false) failed++; else wrote++; });
       listRestored(listsBefore, backupTime(d._at, d.entries, d.timelog), d._stamps);
       if (gymBefore) gymRestored(gymBefore, backupTime(d._at, d.entries, d.timelog));
+      cfgRestored(cfgBefore, backupTime(d._at, d.entries, d.timelog), d._stamps);
       // This install's sample markers point at rows the restore has just replaced; left in place,
       // "Clear sample" would delete restored REAL rows on those dates.
       localStorage.removeItem('dp.sampleMeta');
@@ -17337,7 +17389,7 @@ document.addEventListener('click', (ev) => {
     if (log.some(s => s.act === PJ_ACT + pjOpen)) {
       const names = safeParse(localStorage.getItem('dp.pjnames'), {});
       names[pjOpen] = { name: p.name, color: p.color };
-      safeSet('dp.pjnames', JSON.stringify(names));
+      cfgSave('dp.pjnames', names);
     }
     pjOpen = null; renderProjects(); toast('Project deleted');
     return;
@@ -17692,11 +17744,11 @@ function finSaveTx(t) { const ok = listSave('dp.fintx', t); pushState(); return 
 function finMarks() { const v = safeParse(localStorage.getItem('dp.finmarks'), []); return Array.isArray(v) ? v : []; }
 function finSaveMarks(m) { const ok = listSave('dp.finmarks', m); pushState(); return ok; }
 function finBudgets() { return safeParse(localStorage.getItem('dp.finbudget'), {}) || {}; }
-function finSaveBudgets(b) { const ok = safeSet('dp.finbudget', JSON.stringify(b)); pushState(); return ok; }
+function finSaveBudgets(b) { const ok = cfgSave('dp.finbudget', b); pushState(); return ok; }
 function finSet() {
   return Object.assign({ cur: '₹', dp: 2 }, safeParse(localStorage.getItem('dp.finset'), {}) || {});
 }
-function finSaveSet(s) { const ok = safeSet('dp.finset', JSON.stringify(s)); pushState(); return ok; }
+function finSaveSet(s) { const ok = cfgSave('dp.finset', s); pushState(); return ok; }
 function finAcct(id) { return finAccts().find(a => a.id === id) || null; }
 
 /* ---- money in and out of text ----
@@ -20388,7 +20440,7 @@ function navCfg() {
   }
   return cfg;
 }
-function saveNavCfg(cfg) { const ok = safeSet('dp.navcfg', JSON.stringify(cfg)); renderNav(); pushState(); return ok; }
+function saveNavCfg(cfg) { const ok = cfgSave('dp.navcfg', cfg); renderNav(); pushState(); return ok; }
 function defaultTab() {
   const dt = DB.settings().defaultTab || 'today';
   const n = navCfg().find(x => x.k === dt);
